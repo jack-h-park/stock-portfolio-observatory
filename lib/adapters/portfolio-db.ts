@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import path from 'node:path'
 import Database from 'better-sqlite3'
 import { config } from '@/config'
 
@@ -147,6 +148,35 @@ export type RefreshRun = {
   durationMs: number | null
   status: 'success' | 'failed' | 'running'
   steps: RefreshStep[]
+}
+
+export type SourceInventoryItem = {
+  id: string
+  name: string
+  filename: string
+  relativePath: string
+  path: string
+  category: string
+  status: 'used' | 'unused' | 'drift' | 'missing'
+  bytes: number | null
+  mtimeMs: number | null
+  rowCount: number | null
+  sha256: string | null
+  detail: string
+}
+
+export type SourceInventory = {
+  dataDir: string
+  tracked: SourceInventoryItem[]
+  untracked: SourceInventoryItem[]
+  items: SourceInventoryItem[]
+  summary: {
+    used: number
+    unused: number
+    drift: number
+    missing: number
+    totalBytes: number
+  }
 }
 
 export type ReviewPosition = {
@@ -551,6 +581,96 @@ function sourceFreshness(source: any): FreshnessItem {
         : 'Matches the size and modified time captured at ingest.',
     path: source.path,
     rowCount: source.row_count,
+  }
+}
+
+function fileCategory(filePath: string, relativePath: string) {
+  const ext = path.extname(filePath).toLowerCase()
+  if (relativePath.startsWith('.codex_sheet_payloads/')) return 'kr sheet payload'
+  if (relativePath.startsWith('outputs/')) return 'generated output'
+  if (relativePath.startsWith('.codex_drive_pdfs/text/')) return 'extracted text'
+  if (relativePath.startsWith('.codex_drive_pdfs/')) return 'drive pdf cache'
+  if (ext === '.csv') return 'us csv export'
+  if (ext === '.pdf') return 'pdf evidence'
+  if (ext === '.tsv') return 'tsv payload'
+  if (ext === '.xlsx') return 'workbook'
+  if (ext === '.json') return 'json snapshot'
+  if (ext === '.db' || ext === '.sqlite' || ext === '.sqlite3') return 'database'
+  if (ext === '.png') return 'image artifact'
+  if (ext === '.txt') return 'text artifact'
+  if (ext === '.md') return 'documentation'
+  return ext ? `${ext.slice(1)} file` : 'file'
+}
+
+function inventoryCandidate(filePath: string) {
+  const ext = path.extname(filePath).toLowerCase()
+  return new Set(['.csv', '.pdf', '.tsv', '.xlsx', '.json', '.db', '.sqlite', '.sqlite3', '.png', '.txt', '.md']).has(ext)
+}
+
+function walkFiles(root: string, maxFiles = 2000) {
+  const out: string[] = []
+  function walk(dir: string) {
+    if (out.length >= maxFiles) return
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      if (out.length >= maxFiles) break
+      const fullPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        walk(fullPath)
+      } else if (entry.isFile() && inventoryCandidate(fullPath)) {
+        out.push(fullPath)
+      }
+    }
+  }
+  walk(root)
+  return out
+}
+
+function relativeToDataDir(dataDir: string, filePath: string) {
+  const rel = path.relative(dataDir, filePath)
+  return rel && !rel.startsWith('..') ? rel : filePath
+}
+
+function trackedInventoryItem(dataDir: string, source: any): SourceInventoryItem {
+  const freshness = sourceFreshness(source)
+  const status = freshness.status === 'fresh' || freshness.status === 'stale' ? 'used' : freshness.status
+  return {
+    id: `tracked:${source.name}`,
+    name: source.name,
+    filename: source.filename,
+    relativePath: relativeToDataDir(dataDir, source.path),
+    path: source.path,
+    category: fileCategory(source.path, relativeToDataDir(dataDir, source.path)),
+    status,
+    bytes: Number(source.bytes ?? 0),
+    mtimeMs: Number(source.mtime_ms ?? 0),
+    rowCount: Number(source.row_count ?? 0),
+    sha256: source.sha256,
+    detail: freshness.detail,
+  }
+}
+
+function untrackedInventoryItem(dataDir: string, filePath: string): SourceInventoryItem {
+  const stat = fs.statSync(filePath)
+  const relativePath = relativeToDataDir(dataDir, filePath)
+  return {
+    id: `untracked:${relativePath}`,
+    name: path.basename(filePath),
+    filename: path.basename(filePath),
+    relativePath,
+    path: filePath,
+    category: fileCategory(filePath, relativePath),
+    status: 'unused',
+    bytes: stat.size,
+    mtimeMs: stat.mtimeMs,
+    rowCount: null,
+    sha256: null,
+    detail: 'Detected in STOCK_DATA_DIR but not recorded in the latest ingest source_files table.',
   }
 }
 
@@ -1256,6 +1376,52 @@ export function getSourceFiles() {
   const conn = db()
   try {
     return conn.prepare('select * from source_files order by name').all() as any[]
+  } finally {
+    conn.close()
+  }
+}
+
+export function getSourceInventory(): SourceInventory {
+  const conn = db()
+  try {
+    const meta = Object.fromEntries(conn.prepare('select key, value from meta').all().map((r: any) => [r.key, r.value])) as Record<
+      string,
+      string
+    >
+    const dataDir = meta.data_dir || config.stockDataDir
+    const sourceRows = conn.prepare('select * from source_files order by name').all() as any[]
+    const tracked = sourceRows.map((source) => trackedInventoryItem(dataDir, source))
+    const trackedPaths = new Set(
+      sourceRows.map((source) => {
+        try {
+          return path.resolve(source.path)
+        } catch {
+          return String(source.path)
+        }
+      })
+    )
+    const discovered = fs.existsSync(dataDir)
+      ? walkFiles(dataDir)
+          .filter((filePath) => !trackedPaths.has(path.resolve(filePath)))
+          .map((filePath) => untrackedInventoryItem(dataDir, filePath))
+      : []
+    const items = [...tracked, ...discovered].sort((a, b) => {
+      const statusScore = { missing: 0, drift: 1, unused: 2, used: 3 } as Record<SourceInventoryItem['status'], number>
+      return statusScore[a.status] - statusScore[b.status] || a.relativePath.localeCompare(b.relativePath)
+    })
+    return {
+      dataDir,
+      tracked,
+      untracked: discovered,
+      items,
+      summary: {
+        used: items.filter((item) => item.status === 'used').length,
+        unused: items.filter((item) => item.status === 'unused').length,
+        drift: items.filter((item) => item.status === 'drift').length,
+        missing: items.filter((item) => item.status === 'missing').length,
+        totalBytes: items.reduce((sum, item) => sum + Number(item.bytes ?? 0), 0),
+      },
+    }
   } finally {
     conn.close()
   }
