@@ -1,5 +1,5 @@
 {
-  "name": "jackhpark-stock-observatory",
+  "name": "stock-portfolio-observatory",
   "version": "0.1.0",
   "private": true,
   "description": "Read-only stock portfolio monitoring dashboard",

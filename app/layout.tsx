@@ -7,11 +7,11 @@ import { Sidebar } from '@/components/Sidebar'
 
 export const metadata: Metadata = {
   title: {
-    default: 'Stock Observatory',
-    template: '%s · Stock Observatory',
+    default: 'Stock Portfolio Observatory',
+    template: '%s · Stock Portfolio Observatory',
   },
   description: 'Read-only portfolio monitoring for local stock-management data.',
-  applicationName: 'Stock Observatory',
+  applicationName: 'Stock Portfolio Observatory',
   icons: {
     icon: '/favicon.ico',
   },

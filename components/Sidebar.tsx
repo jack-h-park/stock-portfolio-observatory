@@ -71,7 +71,7 @@ export function Sidebar() {
             className="bg-clip-text text-[15px] font-semibold leading-tight tracking-tight text-transparent"
             style={{ backgroundImage: 'var(--gradient-full)' }}
           >
-            Observatory
+            Portfolio Observatory
           </span>
         </div>
       </header>
@@ -103,7 +103,7 @@ export function Sidebar() {
             SO
           </div>
           <div className="min-w-0">
-            <div className="truncate text-[13px] font-medium leading-tight text-ink">Stock Observatory</div>
+            <div className="truncate text-[13px] font-medium leading-tight text-ink">Stock Portfolio</div>
             <div className="mt-0.5 text-[9px] font-medium uppercase tracking-[0.18em] text-ink-3">Portfolio</div>
           </div>
         </div>
@@ -114,7 +114,7 @@ export function Sidebar() {
             className="bg-clip-text text-[19px] font-semibold leading-tight tracking-tight text-transparent"
             style={{ backgroundImage: 'var(--gradient-full)' }}
           >
-            Observatory
+            Portfolio Observatory
           </div>
         </div>
 

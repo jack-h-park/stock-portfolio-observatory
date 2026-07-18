@@ -5,8 +5,8 @@ import Database from 'better-sqlite3'
 
 const dataDir = process.env.STOCK_DATA_DIR || path.join(process.cwd(), 'private-data')
 const payloadDir = path.join(dataDir, '.codex_sheet_payloads')
-const outDir = path.join(dataDir, 'outputs/stock-observatory')
-const dbPath = process.env.STOCK_DB_PATH || path.join(outDir, 'stock-observatory.db')
+const outDir = path.join(dataDir, 'outputs/stock-portfolio-observatory')
+const dbPath = process.env.STOCK_DB_PATH || path.join(outDir, 'stock-portfolio-observatory.db')
 const fxRatesPath = process.env.STOCK_FX_RATES_PATH || path.join(process.cwd(), 'data/fx-rates.json')
 const krPricesPath = process.env.STOCK_KR_PRICES_PATH || path.join(process.cwd(), 'data/kr-prices.json')
 const usPricesPath = process.env.STOCK_US_PRICES_PATH || path.join(process.cwd(), 'data/us-prices.json')

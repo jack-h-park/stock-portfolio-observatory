@@ -2,7 +2,7 @@ import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Stock Observatory',
+    name: 'Stock Portfolio Observatory',
     short_name: 'Stocks',
     description: 'Read-only portfolio monitoring dashboard',
     start_url: '/',

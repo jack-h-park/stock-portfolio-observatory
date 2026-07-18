@@ -23,7 +23,7 @@ export default function OverviewPage() {
   if (!dbAvailable()) {
     return (
       <>
-        <PageHeader eyebrow="Stock Observatory" title="Overview" emphasis="Overview" />
+        <PageHeader eyebrow="Stock Portfolio Observatory" title="Overview" emphasis="Overview" />
         <Card title="Portfolio DB not found">
           <p className="text-[13px] text-ink-2">
             Run <code className="font-mono text-[12px]">pnpm ingest</code> to generate{' '}
@@ -72,7 +72,7 @@ export default function OverviewPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Stock Observatory"
+        eyebrow="Stock Portfolio Observatory"
         title="Portfolio Overview"
         emphasis="Overview"
         subtitle={`Read-only snapshot ingested ${fmtDateTime(meta.ingested_at)} from local stock-management files.${usdKrw ? ` FX: USD/KRW ${fmtNumber(usdKrw.rate, 2)} as of ${usdKrw.as_of_date}.` : ''}`}

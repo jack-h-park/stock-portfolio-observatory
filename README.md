@@ -1,4 +1,4 @@
-# Stock Observatory
+# Stock Portfolio Observatory
 
 Read-only portfolio monitoring dashboard for manually curated stock-management data.
 
@@ -31,7 +31,7 @@ Local URL: <http://localhost:3101>
 
 ## Data posture
 
-The web app treats `.codex_sheet_payloads/*.tsv` as the current Korea source snapshot and imports supported US brokerage CSV exports into the same normalized SQLite database under `outputs/stock-observatory/`. The dashboard never writes back to the source files.
+The web app treats `.codex_sheet_payloads/*.tsv` as the current Korea source snapshot and imports supported US brokerage CSV exports into the same normalized SQLite database under `outputs/stock-portfolio-observatory/`. The dashboard never writes back to the source files.
 
 Real source files and generated artifacts are private by default:
 
