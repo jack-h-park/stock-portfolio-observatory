@@ -1,5 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { loadLocalEnv } from './env.mjs'
+
+loadLocalEnv()
 
 const dataDir = process.env.STOCK_DATA_DIR || path.join(process.cwd(), 'private-data')
 const evidencePath = process.env.STOCK_US_PDF_EVIDENCE_PATH || path.join(process.cwd(), 'data/us-pdf-evidence.json')

@@ -17,6 +17,7 @@ export const config = {
   stockUsPricesPath: env('STOCK_US_PRICES_PATH', repoPath('data/us-prices.json')),
   stockUsPdfEvidencePath: env('STOCK_US_PDF_EVIDENCE_PATH', repoPath('data/us-pdf-evidence.json')),
   stockManualMappingsPath: env('STOCK_MANUAL_MAPPINGS_PATH', repoPath('data/manual-mappings.json')),
+  stockRefreshRunsPath: env('STOCK_REFRESH_RUNS_PATH', repoPath('data/refresh-runs.json')),
 }
 
 export type AppConfig = typeof config

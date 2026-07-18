@@ -2,6 +2,9 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
+import { loadLocalEnv } from './env.mjs'
+
+loadLocalEnv()
 
 const dataDir = process.env.STOCK_DATA_DIR || path.join(process.cwd(), 'private-data')
 const payloadDir = path.join(dataDir, '.codex_sheet_payloads')
@@ -12,6 +15,7 @@ const krPricesPath = process.env.STOCK_KR_PRICES_PATH || path.join(process.cwd()
 const usPricesPath = process.env.STOCK_US_PRICES_PATH || path.join(process.cwd(), 'data/us-prices.json')
 const usPdfEvidencePath = process.env.STOCK_US_PDF_EVIDENCE_PATH || path.join(process.cwd(), 'data/us-pdf-evidence.json')
 const manualMappingsPath = process.env.STOCK_MANUAL_MAPPINGS_PATH || path.join(process.cwd(), 'data/manual-mappings.json')
+const refreshRunsPath = process.env.STOCK_REFRESH_RUNS_PATH || path.join(process.cwd(), 'data/refresh-runs.json')
 
 const sources = {
   holdings: 'summary.noapost.tsv',
@@ -578,6 +582,7 @@ db.prepare('insert into meta (key, value) values (?, ?)').run('kr_prices_path', 
 db.prepare('insert into meta (key, value) values (?, ?)').run('us_prices_path', usPricesPath)
 db.prepare('insert into meta (key, value) values (?, ?)').run('us_pdf_evidence_path', usPdfEvidencePath)
 db.prepare('insert into meta (key, value) values (?, ?)').run('manual_mappings_path', manualMappingsPath)
+db.prepare('insert into meta (key, value) values (?, ?)').run('refresh_runs_path', refreshRunsPath)
 
 insertMany(
   db,

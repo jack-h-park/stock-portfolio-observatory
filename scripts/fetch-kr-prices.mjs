@@ -1,5 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { loadLocalEnv } from './env.mjs'
+
+loadLocalEnv()
 
 const dataDir = process.env.STOCK_DATA_DIR || path.join(process.cwd(), 'private-data')
 const payloadDir = path.join(dataDir, '.codex_sheet_payloads')

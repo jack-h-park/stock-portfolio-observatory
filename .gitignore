@@ -26,6 +26,7 @@ data/kr-prices.json
 data/us-prices.json
 data/us-pdf-evidence.json
 data/manual-mappings.json
+data/refresh-runs.json
 *.db
 *.sqlite
 *.sqlite3

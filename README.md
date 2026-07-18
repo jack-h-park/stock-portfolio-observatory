@@ -13,17 +13,16 @@ pnpm install
 cp .env.example .env.local
 
 # Configure STOCK_DATA_DIR and STOCK_DB_PATH in .env.local.
+# If your default python3 does not have pdfplumber, set STOCK_PYTHON_BIN.
 # Then create local generated-data files from public examples:
 cp data/fx-rates.example.json data/fx-rates.json
 cp data/manual-mappings.example.json data/manual-mappings.json
 cp data/us-pdf-evidence.example.json data/us-pdf-evidence.json
 cp data/kr-prices.example.json data/kr-prices.json
 cp data/us-prices.example.json data/us-prices.json
+cp data/refresh-runs.example.json data/refresh-runs.json
 
-pnpm fetch:kr-prices
-pnpm extract:us-pdf-evidence
-pnpm fetch:us-prices
-pnpm ingest
+pnpm refresh
 pnpm dev
 ```
 
@@ -47,13 +46,12 @@ The `/health` page acts as the operating control center: it shows row counts, so
 Refresh external valuation inputs before ingesting:
 
 ```bash
-pnpm fetch:kr-prices
-pnpm fetch:us-prices
-pnpm extract:us-pdf-evidence
-pnpm ingest
+pnpm refresh
 ```
 
-Then open `/health` and confirm that validation checks pass, price/FX snapshots are fresh, and source drift is clear.
+`pnpm refresh` runs KR price fetch, US PDF evidence extraction, US price fetch, and ingest in sequence. It writes local run history to `data/refresh-runs.json`.
+
+Then open `/health` and confirm that validation checks pass, price/FX snapshots are fresh, source drift is clear, and the latest refresh run succeeded.
 Open `/data-ops` when `/health` or `/income` surfaces tickerless rows, missing valuation, stale inputs, or source drift.
 Open `/review` after `/health` for the portfolio decision pass: concentration, top gains/losses, short-term exposure, and missing valuation rows.
 Open `/rebalance` for the allocation pass: market target gaps, single-position cap checks, reduce candidates, and tax-sensitive watchlists.

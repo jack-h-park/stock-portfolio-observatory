@@ -1,8 +1,8 @@
 import { PageHeader } from '@/components/PageHeader'
 import { FreshnessRows } from '@/components/Freshness'
-import { Badge, Card, EmptyState } from '@/components/ui'
-import { getEvidenceReports, getMeta, getOperationalHealth, getOverview, getSourceFiles, getValidationChecks } from '@/lib/adapters/portfolio-db'
-import { fmtDateTime, fmtNumber, shortHash } from '@/lib/format'
+import { Badge, Card, EmptyState, type Tone } from '@/components/ui'
+import { getEvidenceReports, getMeta, getOperationalHealth, getOverview, getRefreshRuns, getSourceFiles, getValidationChecks } from '@/lib/adapters/portfolio-db'
+import { fmtDateTime, fmtDuration, fmtNumber, shortHash } from '@/lib/format'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,6 +15,12 @@ function parseMetrics(value: string | null) {
   }
 }
 
+function statusTone(status: string): Tone {
+  if (status === 'success') return 'success'
+  if (status === 'running') return 'info'
+  return 'danger'
+}
+
 export default function HealthPage() {
   const meta = getMeta()
   const overview = getOverview()
@@ -22,6 +28,8 @@ export default function HealthPage() {
   const sources = getSourceFiles()
   const evidence = getEvidenceReports()
   const operational = getOperationalHealth()
+  const refreshRuns = getRefreshRuns()
+  const latestRefresh = refreshRuns[0]
   const failed = checks.filter((c) => c.status !== 'pass')
   const errors = failed.filter((c) => c.severity === 'error')
   const warnings = failed.filter((c) => c.severity === 'warning')
@@ -86,6 +94,66 @@ export default function HealthPage() {
           </ul>
         </Card>
       </div>
+
+      <Card
+        title="Refresh run history"
+        accent={latestRefresh?.status === 'failed'}
+        action={latestRefresh ? <Badge tone={statusTone(latestRefresh.status)}>{latestRefresh.status}</Badge> : undefined}
+      >
+        {!latestRefresh ? (
+          <EmptyState
+            hint={`Run history is read from ${getMeta().refresh_runs_path ?? 'data/refresh-runs.json'}.`}
+          >
+            No refresh runs recorded
+          </EmptyState>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid gap-3 text-[12px] sm:grid-cols-4">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Latest start</div>
+                <div className="font-medium tabular-nums text-ink">{fmtDateTime(latestRefresh.startedAt)}</div>
+              </div>
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Duration</div>
+                <div className="font-medium tabular-nums text-ink">{fmtDuration(latestRefresh.durationMs)}</div>
+              </div>
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Steps</div>
+                <div className="font-medium tabular-nums text-ink">
+                  {fmtNumber(latestRefresh.steps.filter((step) => step.status === 'success').length)} / {fmtNumber(latestRefresh.steps.length)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">History</div>
+                <div className="font-medium tabular-nums text-ink">{fmtNumber(refreshRuns.length)} run(s)</div>
+              </div>
+            </div>
+
+            <ul className="divide-y divide-line-subtle">
+              {latestRefresh.steps.map((step) => (
+                <li key={`${latestRefresh.id}:${step.name}`} className="flex flex-col gap-1 py-2.5 lg:flex-row lg:items-center lg:gap-3">
+                  <Badge tone={statusTone(step.status)}>{step.status}</Badge>
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{step.name}</span>
+                  <span className="text-[12px] tabular-nums text-ink-3">{fmtDuration(step.durationMs)}</span>
+                  <code className="font-mono text-[11px] text-ink-3">{step.command}</code>
+                  {step.exitCode != null ? (
+                    <span className="text-[12px] tabular-nums text-ink-3">exit {step.exitCode}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+
+            {latestRefresh.steps.some((step) => step.status === 'failed' && step.stderrTail) ? (
+              <div className="rounded-md border border-line-subtle bg-surface p-3">
+                <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">Latest error tail</div>
+                <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-danger">
+                  {latestRefresh.steps.find((step) => step.status === 'failed' && step.stderrTail)?.stderrTail}
+                </pre>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </Card>
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card title="FX snapshot">

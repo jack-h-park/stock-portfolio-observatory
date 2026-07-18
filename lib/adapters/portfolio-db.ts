@@ -127,6 +127,28 @@ export type OperationalHealth = {
   }
 }
 
+export type RefreshStep = {
+  name: string
+  command: string
+  startedAt: string
+  finishedAt: string | null
+  durationMs: number | null
+  status: 'success' | 'failed' | 'running'
+  exitCode: number | null
+  signal?: string | null
+  stdoutTail?: string
+  stderrTail?: string
+}
+
+export type RefreshRun = {
+  id: string
+  startedAt: string
+  finishedAt: string | null
+  durationMs: number | null
+  status: 'success' | 'failed' | 'running'
+  steps: RefreshStep[]
+}
+
 export type ReviewPosition = {
   market: string
   currency: string
@@ -416,6 +438,31 @@ function readJson(path: string) {
     return JSON.parse(fs.readFileSync(path, 'utf8')) as any
   } catch {
     return null
+  }
+}
+
+function asRefreshRun(value: any): RefreshRun | null {
+  if (!value || typeof value !== 'object') return null
+  if (!value.id || !value.startedAt || !Array.isArray(value.steps)) return null
+  const status = ['success', 'failed', 'running'].includes(value.status) ? value.status : 'failed'
+  return {
+    id: String(value.id),
+    startedAt: String(value.startedAt),
+    finishedAt: value.finishedAt ? String(value.finishedAt) : null,
+    durationMs: Number.isFinite(Number(value.durationMs)) ? Number(value.durationMs) : null,
+    status,
+    steps: value.steps.map((step: any) => ({
+      name: String(step.name ?? ''),
+      command: String(step.command ?? ''),
+      startedAt: String(step.startedAt ?? ''),
+      finishedAt: step.finishedAt ? String(step.finishedAt) : null,
+      durationMs: Number.isFinite(Number(step.durationMs)) ? Number(step.durationMs) : null,
+      status: ['success', 'failed', 'running'].includes(step.status) ? step.status : 'failed',
+      exitCode: Number.isFinite(Number(step.exitCode)) ? Number(step.exitCode) : null,
+      signal: step.signal ? String(step.signal) : null,
+      stdoutTail: step.stdoutTail ? String(step.stdoutTail) : '',
+      stderrTail: step.stderrTail ? String(step.stderrTail) : '',
+    })),
   }
 }
 
@@ -1212,6 +1259,12 @@ export function getSourceFiles() {
   } finally {
     conn.close()
   }
+}
+
+export function getRefreshRuns(limit = 10): RefreshRun[] {
+  const history = readJson(config.stockRefreshRunsPath)
+  if (!history || !Array.isArray(history.runs)) return []
+  return history.runs.map(asRefreshRun).filter(Boolean).slice(0, limit) as RefreshRun[]
 }
 
 export function getEvidenceReports(): EvidenceReport[] {

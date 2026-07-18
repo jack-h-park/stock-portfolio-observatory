@@ -18,8 +18,9 @@
     "start": "next start -p 3101",
     "fetch:kr-prices": "node scripts/fetch-kr-prices.mjs",
     "fetch:us-prices": "node scripts/fetch-us-prices.mjs",
-    "extract:us-pdf-evidence": "python3 scripts/extract-us-pdf-evidence.py",
+    "extract:us-pdf-evidence": "node scripts/extract-us-pdf-evidence.mjs",
     "ingest": "node scripts/ingest-stock-data.mjs",
+    "refresh": "node scripts/refresh.mjs",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },
