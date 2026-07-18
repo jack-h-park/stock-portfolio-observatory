@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "source": "Example only",
+  "sourceUrl": "",
+  "note": "Synthetic US price snapshot for public bootstrapping. Replace with data/us-prices.json locally.",
+  "prices": [
+    {
+      "ticker": "AAPL",
+      "symbol": "AAPL",
+      "price": 200,
+      "currency": "USD",
+      "exchangeName": "NMS",
+      "instrumentType": "EQUITY",
+      "asOfDate": "2026-01-01",
+      "regularMarketTime": null,
+      "shortName": "Example Apple",
+      "longName": "Example Apple Inc"
+    }
+  ],
+  "missing": []
+}

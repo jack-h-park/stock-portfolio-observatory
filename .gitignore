@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Next.js build output
+.next/
+out/
+.vercel/
+
+# Local environment
+.env
+.env.local
+.env.*.local
+
+# Logs and local caches
+*.log
+.playwright-cli/
+tsconfig.tsbuildinfo
+__pycache__/
+*.py[cod]
+
+# Generated or private portfolio data
+private-data/
+data/fx-rates.json
+data/kr-prices.json
+data/us-prices.json
+data/us-pdf-evidence.json
+data/manual-mappings.json
+*.db
+*.sqlite
+*.sqlite3
+
+# Personal local branding
+public/brand/avatar-jack-square.png
+
+# OS/editor files
+.DS_Store

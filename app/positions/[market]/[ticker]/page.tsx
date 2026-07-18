@@ -1,0 +1,275 @@
+import Link from 'next/link'
+import { notFound } from 'next/navigation'
+import { DataTable } from '@/components/DataTable'
+import { FreshnessInline } from '@/components/Freshness'
+import { PageHeader } from '@/components/PageHeader'
+import { Badge, Card, EmptyState, StatCard } from '@/components/ui'
+import { getOperationalHealth, getPositionDetail, type FreshnessItem } from '@/lib/adapters/portfolio-db'
+import { fmtDateTime, fmtMoney, fmtNumber, shortHash } from '@/lib/format'
+
+export const dynamic = 'force-dynamic'
+
+function pct(value: number | null | undefined) {
+  return `${fmtNumber(value, 2)}%`
+}
+
+function glTone(value: number | null | undefined) {
+  return Number(value ?? 0) >= 0 ? 'success' : 'danger'
+}
+
+function moneyOrNa(value: number | null | undefined, currency: string) {
+  return value == null ? 'n/a' : fmtMoney(value, currency)
+}
+
+function isFreshnessItem(item: FreshnessItem | undefined): item is FreshnessItem {
+  return item != null
+}
+
+function ReconciliationStrip({
+  label,
+  left,
+  right,
+  diff,
+  unit,
+}: {
+  label: string
+  left: number
+  right: number
+  diff: number
+  unit: 'quantity' | 'KRW'
+}) {
+  const ok = Math.abs(diff) < (unit === 'quantity' ? 0.0001 : 1)
+  return (
+    <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px]">
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-medium text-ink">{label}</span>
+        <Badge tone={ok ? 'success' : 'warning'}>{ok ? 'Matched' : 'Review'}</Badge>
+      </div>
+      <div className="mt-2 grid gap-2 text-[11px] sm:grid-cols-3">
+        <div>
+          <div className="uppercase tracking-[0.08em] text-ink-3">Holdings</div>
+          <div className="font-medium tabular-nums text-ink">{unit === 'KRW' ? fmtMoney(left, 'KRW') : fmtNumber(left, 4)}</div>
+        </div>
+        <div>
+          <div className="uppercase tracking-[0.08em] text-ink-3">Tax lots</div>
+          <div className="font-medium tabular-nums text-ink">{unit === 'KRW' ? fmtMoney(right, 'KRW') : fmtNumber(right, 4)}</div>
+        </div>
+        <div>
+          <div className="uppercase tracking-[0.08em] text-ink-3">Difference</div>
+          <div className={ok ? 'font-medium tabular-nums text-success' : 'font-medium tabular-nums text-warning'}>
+            {unit === 'KRW' ? fmtMoney(diff, 'KRW') : fmtNumber(diff, 4)}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default async function PositionPage({ params }: { params: Promise<{ market: string; ticker: string }> }) {
+  const { market: rawMarket, ticker: rawTicker } = await params
+  const market = decodeURIComponent(rawMarket).toUpperCase()
+  const ticker = decodeURIComponent(rawTicker)
+  const detail = getPositionDetail(market, ticker)
+  if (!detail) notFound()
+  const operational = getOperationalHealth()
+  const marketFreshness = operational.snapshots.find((item) => item.key === (detail.market === 'KR' ? 'kr_prices' : 'us_prices'))
+  const fxFreshness = operational.snapshots.find((item) => item.key === 'fx_rates')
+  const freshnessItems = [marketFreshness, fxFreshness].filter(isFreshnessItem)
+
+  const nativeUnrealizedPct =
+    detail.totals.native_cost > 0 && detail.totals.native_unrealized_gl != null
+      ? (detail.totals.native_unrealized_gl / detail.totals.native_cost) * 100
+      : null
+  const baseUnrealizedPct =
+    detail.totals.base_cost > 0 && detail.totals.base_unrealized_gl != null
+      ? (detail.totals.base_unrealized_gl / detail.totals.base_cost) * 100
+      : null
+  const quantityDiff = detail.totals.quantity - detail.lotTotals.open_quantity
+  const baseCostDiff = detail.totals.base_cost - detail.lotTotals.cost_basis_krw
+
+  return (
+    <>
+      <PageHeader
+        eyebrow={`${detail.market} Position`}
+        title={detail.name}
+        emphasis={detail.ticker}
+        subtitle={`${fmtNumber(detail.totals.account_count)} account(s), ${fmtNumber(detail.lotTotals.lot_count)} open lot(s), ${fmtNumber(detail.transactions.length)} transaction row(s).`}
+        action={<Link href="/holdings" className="text-[12px] font-medium text-info hover:underline">Back to holdings</Link>}
+      />
+
+      <Card title="Valuation freshness" className="mb-5">
+        <div className="grid gap-2 lg:grid-cols-2">
+          {freshnessItems.map((item) => (
+            <div key={item.key} className="rounded-md border border-line-subtle bg-surface px-3 py-2">
+              <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">{item.label}</div>
+              <FreshnessInline item={item} />
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <StatCard label="Quantity" value={fmtNumber(detail.totals.quantity, 4)} accent />
+        <StatCard label="Cost Basis" value={fmtMoney(detail.totals.native_cost, detail.currency)} />
+        <StatCard label="Market Value" value={moneyOrNa(detail.totals.native_market_value, detail.currency)} />
+        <StatCard
+          label="Unrealized G/L"
+          value={moneyOrNa(detail.totals.native_unrealized_gl, detail.currency)}
+          hint={nativeUnrealizedPct == null ? 'n/a' : pct(nativeUnrealizedPct)}
+          tone={glTone(detail.totals.native_unrealized_gl)}
+        />
+        <StatCard
+          label="Base G/L"
+          value={moneyOrNa(detail.totals.base_unrealized_gl, 'KRW')}
+          hint={baseUnrealizedPct == null ? 'n/a' : pct(baseUnrealizedPct)}
+          tone={glTone(detail.totals.base_unrealized_gl)}
+        />
+        <StatCard label="Dividends" value={fmtMoney(detail.dividendTotals.native_amount, detail.currency)} hint={`${fmtNumber(detail.dividendTotals.count)} rows`} tone="success" />
+      </div>
+
+      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
+        <Card title="Reconciliation">
+          <div className="space-y-3">
+            <ReconciliationStrip label="Open quantity" left={detail.totals.quantity} right={detail.lotTotals.open_quantity} diff={quantityDiff} unit="quantity" />
+            <ReconciliationStrip label="Base cost" left={detail.totals.base_cost} right={detail.lotTotals.cost_basis_krw} diff={baseCostDiff} unit="KRW" />
+          </div>
+        </Card>
+
+        <Card title="Term profile">
+          <div className="grid gap-3 text-[12px]">
+            <div className="flex items-center justify-between">
+              <span className="text-ink-3">Long-term quantity</span>
+              <span className="font-medium tabular-nums text-ink">{fmtNumber(detail.totals.long_term_qty, 4)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-ink-3">Short-term quantity</span>
+              <span className="font-medium tabular-nums text-ink">{fmtNumber(detail.totals.short_term_qty, 4)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-ink-3">Long / short lot count</span>
+              <span className="font-medium tabular-nums text-ink">{fmtNumber(detail.lotTotals.long_term_count)} / {fmtNumber(detail.lotTotals.short_term_count)}</span>
+            </div>
+          </div>
+        </Card>
+
+        <Card title="Transaction mix">
+          {detail.transactionSummary.length === 0 ? (
+            <EmptyState>No ticker-level transactions</EmptyState>
+          ) : (
+            <ul className="divide-y divide-line-subtle">
+              {detail.transactionSummary.map((row) => (
+                <li key={row.type} className="flex items-center justify-between gap-3 py-2 text-[12px]">
+                  <Badge tone={row.type === 'DIVIDEND' ? 'success' : row.type === 'SELL' ? 'warning' : 'info'}>{row.type}</Badge>
+                  <span className="text-ink-3">{fmtNumber(row.count)} rows</span>
+                  <span className="font-medium tabular-nums text-ink">{row.amount == null ? 'n/a' : fmtMoney(row.amount, detail.currency)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
+
+      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <Card title="Account holdings">
+          <DataTable
+            rows={detail.holdings}
+            columns={[
+              { key: 'brokerage', label: 'Broker' },
+              { key: 'account', label: 'Account' },
+              { key: 'quantity', label: 'Qty', align: 'right', render: (r) => fmtNumber(r.quantity, 4) },
+              { key: 'native_cost', label: 'Cost', align: 'right', render: (r) => fmtMoney(r.native_cost, r.currency) },
+              { key: 'native_market_value', label: 'Market', align: 'right', render: (r) => moneyOrNa(r.native_market_value, r.currency) },
+              {
+                key: 'native_unrealized_gl',
+                label: 'G/L',
+                align: 'right',
+                render: (r) => (
+                  <span className={Number(r.native_unrealized_gl ?? 0) >= 0 ? 'text-success' : 'text-danger'}>
+                    {moneyOrNa(r.native_unrealized_gl, r.currency)}
+                  </span>
+                ),
+              },
+              { key: 'lot_count', label: 'Lots', align: 'right' },
+            ]}
+          />
+        </Card>
+
+        <Card title="Data lineage">
+          <DataTable
+            rows={detail.sources}
+            columns={[
+              { key: 'source', label: 'Source', render: (r) => <span className="max-w-[18rem] break-words">{r.source}</span> },
+              { key: 'usages', label: 'Usage', render: (r) => r.usages.join(', ') },
+              { key: 'row_count', label: 'Rows', align: 'right', render: (r) => (r.file ? fmtNumber(r.file.row_count) : 'n/a') },
+              { key: 'mtime_ms', label: 'Modified', render: (r) => (r.file ? fmtDateTime(new Date(r.file.mtime_ms).toISOString()) : 'n/a') },
+              { key: 'sha256', label: 'SHA', render: (r) => (r.file ? <code className="font-mono text-[11px]">{shortHash(r.file.sha256)}</code> : 'n/a') },
+            ]}
+          />
+        </Card>
+      </div>
+
+      <div className="mb-5 grid grid-cols-1 gap-5">
+        <Card title="Open tax lots">
+          {detail.lots.length === 0 ? (
+            <EmptyState>No open tax lots for this ticker</EmptyState>
+          ) : (
+            <DataTable
+              rows={detail.lots}
+              columns={[
+                { key: 'brokerage', label: 'Broker' },
+                { key: 'account', label: 'Account' },
+                { key: 'acquired_date', label: 'Acquired' },
+                { key: 'tax_term', label: 'Term' },
+                { key: 'open_quantity', label: 'Qty', align: 'right', render: (r) => fmtNumber(r.open_quantity, 4) },
+                { key: 'native_cost_basis', label: 'Cost', align: 'right', render: (r) => fmtMoney(r.native_cost_basis, r.currency) },
+                { key: 'cost_basis_krw', label: 'Base Cost', align: 'right', render: (r) => fmtMoney(r.cost_basis_krw, 'KRW') },
+                { key: 'source', label: 'Source' },
+              ]}
+            />
+          )}
+        </Card>
+
+        <Card title="Transactions">
+          {detail.transactions.length === 0 ? (
+            <EmptyState>No ticker-level transactions</EmptyState>
+          ) : (
+            <DataTable
+              rows={detail.transactions}
+              columns={[
+                { key: 'date', label: 'Date' },
+                { key: 'brokerage', label: 'Broker' },
+                { key: 'account', label: 'Account' },
+                { key: 'type', label: 'Type', render: (r) => <Badge tone={r.type === 'SELL' ? 'warning' : r.type === 'DIVIDEND' ? 'success' : 'info'}>{r.type}</Badge> },
+                { key: 'quantity', label: 'Qty', align: 'right', render: (r) => fmtNumber(r.quantity, 4) },
+                { key: 'native_amount', label: 'Amount', align: 'right', render: (r) => moneyOrNa(r.native_amount, r.currency) },
+                { key: 'native_unit_price', label: 'Unit', align: 'right', render: (r) => moneyOrNa(r.native_unit_price, r.currency) },
+                { key: 'source', label: 'Source' },
+                { key: 'page', label: 'Page', align: 'right' },
+              ]}
+            />
+          )}
+        </Card>
+
+        <Card title="Dividends">
+          {detail.dividends.length === 0 ? (
+            <EmptyState>No dividend rows for this ticker</EmptyState>
+          ) : (
+            <DataTable
+              rows={detail.dividends}
+              columns={[
+                { key: 'date', label: 'Date' },
+                { key: 'brokerage', label: 'Broker' },
+                { key: 'account', label: 'Account' },
+                { key: 'native_amount', label: 'Amount', align: 'right', render: (r) => fmtMoney(r.native_amount, r.currency) },
+                { key: 'native_tax_withheld', label: 'Tax', align: 'right', render: (r) => moneyOrNa(r.native_tax_withheld, r.currency) },
+                { key: 'amount_krw', label: 'Base Amount', align: 'right', render: (r) => fmtMoney(r.amount_krw, 'KRW') },
+                { key: 'source', label: 'Source' },
+                { key: 'page', label: 'Page', align: 'right' },
+              ]}
+            />
+          )}
+        </Card>
+      </div>
+    </>
+  )
+}

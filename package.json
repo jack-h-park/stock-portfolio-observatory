@@ -1,0 +1,47 @@
+{
+  "name": "jackhpark-stock-observatory",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Read-only stock portfolio monitoring dashboard",
+  "packageManager": "pnpm@10.18.2",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "next dev -p 3101",
+    "build": "next build",
+    "start": "next start -p 3101",
+    "fetch:kr-prices": "node scripts/fetch-kr-prices.mjs",
+    "fetch:us-prices": "node scripts/fetch-us-prices.mjs",
+    "extract:us-pdf-evidence": "python3 scripts/extract-us-pdf-evidence.py",
+    "ingest": "node scripts/ingest-stock-data.mjs",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "clsx": "^2.1.1",
+    "next": "^15.5.7",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "recharts": "^2.15.0",
+    "tailwind-merge": "^2.6.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.4",
+    "@types/react-dom": "^19.0.2",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^15.5.7",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15",
+    "typescript": "^5.7.3"
+  }
+}

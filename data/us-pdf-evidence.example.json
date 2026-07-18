@@ -1,0 +1,39 @@
+{
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "source": "Example only",
+  "reports": [
+    {
+      "name": "gain_loss:example",
+      "category": "us_gain_loss_pdf",
+      "filename": "example-gain-loss.pdf",
+      "path": "/path/to/private/example-gain-loss.pdf",
+      "account_hint": "",
+      "account": "Example Brokerage",
+      "pages": 1,
+      "row_count": 1,
+      "metrics": {
+        "tax_cost_usd": 1000,
+        "units": 10,
+        "ticker_count": 1,
+        "terms": {
+          "lt": 1
+        }
+      },
+      "lots": [
+        {
+          "account": "Example Brokerage",
+          "account_hint": "",
+          "ticker": "AAPL",
+          "name": "Example Holding",
+          "acquired_date": "2025-01-01",
+          "hold_date": "2025-01-02",
+          "open_quantity": 10,
+          "native_cost_basis": 1000,
+          "native_unit_cost": 100,
+          "tax_term": "lt",
+          "source": "example-gain-loss.pdf"
+        }
+      ]
+    }
+  ]
+}

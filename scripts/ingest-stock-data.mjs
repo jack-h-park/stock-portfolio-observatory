@@ -1,0 +1,1545 @@
+import crypto from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
+import Database from 'better-sqlite3'
+
+const dataDir = process.env.STOCK_DATA_DIR || path.join(process.cwd(), 'private-data')
+const payloadDir = path.join(dataDir, '.codex_sheet_payloads')
+const outDir = path.join(dataDir, 'outputs/stock-observatory')
+const dbPath = process.env.STOCK_DB_PATH || path.join(outDir, 'stock-observatory.db')
+const fxRatesPath = process.env.STOCK_FX_RATES_PATH || path.join(process.cwd(), 'data/fx-rates.json')
+const krPricesPath = process.env.STOCK_KR_PRICES_PATH || path.join(process.cwd(), 'data/kr-prices.json')
+const usPricesPath = process.env.STOCK_US_PRICES_PATH || path.join(process.cwd(), 'data/us-prices.json')
+const usPdfEvidencePath = process.env.STOCK_US_PDF_EVIDENCE_PATH || path.join(process.cwd(), 'data/us-pdf-evidence.json')
+const manualMappingsPath = process.env.STOCK_MANUAL_MAPPINGS_PATH || path.join(process.cwd(), 'data/manual-mappings.json')
+
+const sources = {
+  holdings: 'summary.noapost.tsv',
+  taxlots: 'taxlots.tsv',
+  transactions: 'transactions.tsv',
+  dividends: 'dividends.tsv',
+  realized: 'realized.tsv',
+}
+
+const usHoldingFiles = [
+  {
+    brokerage: 'Chase',
+    filename: path.join(dataDir, '미국증권사 보유종목 현황 (Tax Lot 구분 포함)', 'Chase-taxlots-20260715.csv'),
+  },
+  {
+    brokerage: 'Merrill',
+    filename: path.join(
+      dataDir,
+      '미국증권사 보유종목 현황 (Tax Lot 구분 포함)',
+      'Merrill-ExportData15072026205306-20260715.csv'
+    ),
+  },
+]
+
+const usTransactionFiles = [
+  {
+    brokerage: 'Chase',
+    filename: path.join(dataDir, '미국증권사 거래내역 (CSV)', 'Chase - All Transactions - 2025 Full.csv'),
+  },
+  {
+    brokerage: 'Chase',
+    filename: path.join(dataDir, '미국증권사 거래내역 (CSV)', 'Chase - All Transactions - 20260716 Year-to-date.csv'),
+  },
+  {
+    brokerage: 'Fidelity',
+    filename: path.join(dataDir, '미국증권사 거래내역 (CSV)', 'Fidelity - All History - 2025 Full.csv'),
+  },
+  {
+    brokerage: 'Fidelity',
+    filename: path.join(dataDir, '미국증권사 거래내역 (CSV)', 'Fidelity - All History - 20260716 Year-to-date.csv'),
+  },
+  {
+    brokerage: 'Merrill',
+    filename: path.join(dataDir, '미국증권사 거래내역 (CSV)', 'Merrill - All Activities - 20260716 Year-to-date.csv'),
+  },
+  {
+    brokerage: 'Robinhood',
+    account: 'Agentic',
+    filename: path.join(dataDir, '미국증권사 거래내역 (CSV)', 'Robinhood - Agentic - 20060716 Year-to-date.csv'),
+  },
+  {
+    brokerage: 'Robinhood',
+    account: 'Long-term',
+    filename: path.join(dataDir, '미국증권사 거래내역 (CSV)', 'Robinhood - Long-term - 20060716 Year-to-date.csv'),
+  },
+  {
+    brokerage: 'Robinhood',
+    account: 'Mid-term',
+    filename: path.join(dataDir, '미국증권사 거래내역 (CSV)', 'Robinhood - Mid-term - 20060716 Year-to-date.csv'),
+  },
+  {
+    brokerage: 'Robinhood',
+    account: 'Mid-term',
+    filename: path.join(dataDir, '미국증권사 거래내역 (CSV)', 'Robinhood - Mid-term - 2024~2025.csv'),
+  },
+]
+
+function readTsv(filename) {
+  const filePath = path.join(payloadDir, filename)
+  const text = fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/, '').trim()
+  if (!text) return { columns: [], rows: [], filePath }
+  const [header, ...lines] = text.split(/\r?\n/)
+  const columns = header.split('\t')
+  const rows = lines
+    .filter(Boolean)
+    .map((line) => {
+      const cells = line.split('\t')
+      const row = {}
+      columns.forEach((col, i) => {
+        row[col] = cells[i] ?? ''
+      })
+      return row
+    })
+  return { columns, rows, filePath }
+}
+
+function parseCsv(text) {
+  const rows = []
+  let row = []
+  let cell = ''
+  let quoted = false
+  const src = text.replace(/^\uFEFF/, '')
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i]
+    const next = src[i + 1]
+    if (quoted) {
+      if (ch === '"' && next === '"') {
+        cell += '"'
+        i++
+      } else if (ch === '"') {
+        quoted = false
+      } else {
+        cell += ch
+      }
+    } else if (ch === '"') {
+      quoted = true
+    } else if (ch === ',') {
+      row.push(cell.trim())
+      cell = ''
+    } else if (ch === '\n') {
+      row.push(cell.trim())
+      rows.push(row)
+      row = []
+      cell = ''
+    } else if (ch !== '\r') {
+      cell += ch
+    }
+  }
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell.trim())
+    rows.push(row)
+  }
+  return rows
+}
+
+function readCsvObjects(filePath, headerMatcher) {
+  const rows = parseCsv(fs.readFileSync(filePath, 'utf8'))
+  const headerIndex = rows.findIndex(headerMatcher)
+  if (headerIndex < 0) return []
+  const header = rows[headerIndex].map((h) => h.trim())
+  return rows
+    .slice(headerIndex + 1)
+    .filter((r) => r.some((c) => c.trim().length > 0))
+    .map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] ?? ''])))
+}
+
+function fingerprint(filePath) {
+  const buf = fs.readFileSync(filePath)
+  const stat = fs.statSync(filePath)
+  return {
+    path: filePath,
+    basename: path.basename(filePath),
+    bytes: stat.size,
+    mtimeMs: Math.round(stat.mtimeMs),
+    sha256: crypto.createHash('sha256').update(buf).digest('hex'),
+  }
+}
+
+function normalizeTicker(value) {
+  return String(value || '').replace(/^'/, '').trim()
+}
+
+function text(value) {
+  return value == null ? '' : String(value).trim()
+}
+
+function number(value) {
+  const raw = String(value ?? '').trim()
+  if (!raw || raw.startsWith('=')) return null
+  const cleaned = raw.replace(/[$,%]/g, '').replace(/,/g, '').replace(/^\((.*)\)$/, '-$1')
+  const n = Number(cleaned)
+  return Number.isFinite(n) ? n : null
+}
+
+function dateIso(value) {
+  const raw = text(value)
+  if (!raw) return ''
+  const d = new Date(raw.replace(/ ET$/, ''))
+  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10)
+  const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+  if (m) return `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`
+  return raw
+}
+
+function normalizeTerm(value) {
+  const raw = text(value).toLowerCase()
+  if (raw === 'lt') return 'Long-term'
+  if (raw === 'st') return 'Short-term'
+  if (raw.includes('long')) return 'Long-term'
+  if (raw.includes('short')) return 'Short-term'
+  return text(value)
+}
+
+function dateFromGainLossFilename(filename) {
+  const match = text(filename).match(/as of (\d{1,2})_(\d{1,2})_(\d{4})/i)
+  if (!match) return ''
+  return `${match[3]}-${match[1].padStart(2, '0')}-${match[2].padStart(2, '0')}`
+}
+
+function normalizeUsTransactionType(value, action = '') {
+  const explicit = text(value).toLowerCase()
+  const act = text(action).toLowerCase()
+  const raw = `${explicit} ${act}`
+  if (explicit === 'cdiv') return 'DIVIDEND'
+  if (explicit === 'int') return 'INTEREST'
+  if (explicit === 'slip') return 'STOCK_LENDING_INCOME'
+  if (explicit === 'rtp') return 'TRANSFER_IN'
+  if (explicit === 'ach') return 'TRANSFER_OUT'
+  if (explicit === 'itrf') return 'INTERNAL_TRANSFER'
+  if (explicit === 'spl') return 'STOCK_SPLIT'
+  if (explicit === 'spr' || explicit === 'sxch') return 'CORPORATE_ACTION'
+  if (explicit === 'gmpc') return 'OTHER_INCOME'
+  if (explicit === 'gold') return 'FEE'
+  if (explicit === 'rec') return 'REINVEST'
+  if (explicit === 'bnk') return 'CASH_SWEEP'
+  if (explicit === 'jnl') return 'JOURNAL'
+  if (explicit === 'stk splt') return 'STOCK_SPLIT'
+  if (act.startsWith('electronic funds transfer received')) return 'TRANSFER_IN'
+  if (act.startsWith('electronic funds transfer paid')) return 'TRANSFER_OUT'
+  if (explicit === 'dividend' || act.startsWith('dividend received')) return 'DIVIDEND'
+  if (explicit === 'interest' || act.startsWith('interest')) return 'INTEREST'
+  if (explicit === 'reinvest' || act.startsWith('reinvestment')) return 'REINVEST'
+  if (explicit === 'buy' || act.startsWith('you bought')) return 'BUY'
+  if (explicit === 'sell' || act.startsWith('you sold')) return 'SELL'
+  if (act.startsWith('transfer of assets acat deliver')) return 'TRANSFER_OUT'
+  if (act.startsWith('transfer of assets acat receive')) return 'TRANSFER_IN'
+  if (raw.includes('dividend')) return 'DIVIDEND'
+  if (raw.includes('interest')) return 'INTEREST'
+  if (raw.includes('reinvest')) return 'REINVEST'
+  if (raw.includes('buy') || raw.includes('bought')) return 'BUY'
+  if (raw.includes('sell') || raw.includes('sold')) return 'SELL'
+  if (raw.includes('deposit') || raw.includes('dbs')) return 'TRANSFER_IN'
+  if (raw.includes('withdraw') || raw.includes('wdl')) return 'TRANSFER_OUT'
+  return text(value || action).toUpperCase()
+}
+
+function normalizeMerrillTransactionType(description, type = '') {
+  const explicit = text(type).toLowerCase()
+  const desc = text(description).toLowerCase()
+  if (explicit) return normalizeUsTransactionType(explicit, description)
+  if (desc.includes('reinvestment')) return 'REINVEST'
+  if (desc.includes('dividend')) return 'DIVIDEND'
+  if (desc.includes('interest')) return 'INTEREST'
+  if (desc.includes('stock lending')) return 'STOCK_LENDING_INCOME'
+  if (desc.includes('other income')) return 'OTHER_INCOME'
+  if (desc.startsWith('funds received')) return 'TRANSFER_IN'
+  if (desc.startsWith('security transfer in')) return 'TRANSFER_IN'
+  if (desc.startsWith('security transfer out')) return 'TRANSFER_OUT'
+  if (desc.includes('purchase')) return 'BUY'
+  if (desc.includes('sale') || desc.includes('sold')) return 'SELL'
+  if (desc.includes('deposit') || desc.includes('transfer received')) return 'TRANSFER_IN'
+  if (desc.includes('withdraw') || desc.includes('transfer paid')) return 'TRANSFER_OUT'
+  return text(type || description).toUpperCase()
+}
+
+function isIncomeType(type) {
+  return ['DIVIDEND', 'INTEREST', 'STOCK_LENDING_INCOME', 'OTHER_INCOME'].includes(type)
+}
+
+function loadManualMappings() {
+  if (!fs.existsSync(manualMappingsPath)) {
+    return { version: 1, incomeRules: [], dividendOverrides: [] }
+  }
+  return JSON.parse(fs.readFileSync(manualMappingsPath, 'utf8'))
+}
+
+function includesText(value, needle) {
+  if (!needle) return true
+  return text(value).toLowerCase().includes(text(needle).toLowerCase())
+}
+
+function mappingMatches(row, match = {}) {
+  return (
+    includesText(row.market, match.market) &&
+    includesText(row.currency, match.currency) &&
+    includesText(row.brokerage, match.brokerage) &&
+    includesText(row.account, match.accountIncludes) &&
+    includesText(row.ticker, match.ticker) &&
+    includesText(row.name, match.nameIncludes) &&
+    includesText(row.type, match.typeIncludes) &&
+    includesText(row.source, match.sourceIncludes)
+  )
+}
+
+function defaultIncomeCategory(row) {
+  const type = text(row.type).toUpperCase()
+  const name = text(row.name).toUpperCase()
+  if (type.includes('INTEREST') || name.includes('INTEREST PAYMENT')) return 'interest'
+  if (type.includes('STOCK_LENDING') || name.includes('STOCK LENDING')) return 'stock_lending'
+  if (type.includes('OTHER_INCOME')) return 'other'
+  if (type.includes('DIVIDEND') || type.includes('배당') || type.includes('분배')) return 'dividend'
+  return 'other'
+}
+
+function applyDividendMappings(row, mappings) {
+  const out = {
+    ...row,
+    income_category: defaultIncomeCategory(row),
+    mapping_status: row.ticker ? 'ticker_mapped' : 'tickerless',
+    mapping_note: 'auto classified',
+  }
+  for (const rule of mappings.incomeRules ?? []) {
+    if (!mappingMatches(out, rule.match)) continue
+    Object.assign(out, rule.set ?? {})
+    out.mapping_status = out.mapping_status === 'tickerless' ? 'tickerless_categorized' : 'categorized'
+    out.mapping_note = rule.note || rule.id || out.mapping_note
+  }
+  for (const override of mappings.dividendOverrides ?? []) {
+    if (!mappingMatches(out, override.match)) continue
+    Object.assign(out, override.set ?? {})
+    if (out.ticker) out.ticker = normalizeTicker(out.ticker)
+    out.mapping_status = 'manual_override'
+    out.mapping_note = override.note || override.id || 'manual override'
+  }
+  return out
+}
+
+function loadFxRates() {
+  if (!fs.existsSync(fxRatesPath)) {
+    return { baseCurrency: 'KRW', rates: [] }
+  }
+  return JSON.parse(fs.readFileSync(fxRatesPath, 'utf8'))
+}
+
+function loadKrPrices() {
+  if (!fs.existsSync(krPricesPath)) {
+    return { prices: [], missing: [] }
+  }
+  return JSON.parse(fs.readFileSync(krPricesPath, 'utf8'))
+}
+
+function loadUsPrices() {
+  if (!fs.existsSync(usPricesPath)) {
+    return { prices: [], missing: [] }
+  }
+  return JSON.parse(fs.readFileSync(usPricesPath, 'utf8'))
+}
+
+function loadUsPdfEvidence() {
+  if (!fs.existsSync(usPdfEvidencePath)) {
+    return { reports: [] }
+  }
+  return JSON.parse(fs.readFileSync(usPdfEvidencePath, 'utf8'))
+}
+
+const fxConfig = loadFxRates()
+const krPriceConfig = loadKrPrices()
+const usPriceConfig = loadUsPrices()
+const usPdfEvidence = loadUsPdfEvidence()
+const krPricesByTicker = new Map((krPriceConfig.prices ?? []).map((p) => [normalizeTicker(p.ticker), p]))
+const usPricesByTicker = new Map((usPriceConfig.prices ?? []).map((p) => [normalizeTicker(p.ticker), p]))
+const manualMappings = loadManualMappings()
+
+function fxRate(from, to = fxConfig.baseCurrency || 'KRW') {
+  if (from === to) return { rate: 1, asOfDate: '', source: 'native', sourceUrl: '' }
+  return fxConfig.rates.find((r) => r.from === from && r.to === to) ?? null
+}
+
+function toBase(value, currency) {
+  if (value == null) return null
+  const fx = fxRate(currency)
+  if (!fx) return null
+  return value * fx.rate
+}
+
+function insertMany(db, table, rows, columns) {
+  if (rows.length === 0) return
+  const placeholders = columns.map(() => '?').join(', ')
+  const stmt = db.prepare(`insert into ${table} (${columns.join(', ')}) values (${placeholders})`)
+  const tx = db.transaction((items) => {
+    for (const item of items) stmt.run(columns.map((col) => item[col] ?? null))
+  })
+  tx(rows)
+}
+
+function required(value) {
+  return text(value).length > 0
+}
+
+fs.mkdirSync(outDir, { recursive: true })
+if (fs.existsSync(dbPath)) fs.rmSync(dbPath)
+
+const datasets = Object.fromEntries(Object.entries(sources).map(([name, file]) => [name, readTsv(file)]))
+const db = new Database(dbPath)
+db.pragma('journal_mode = WAL')
+
+db.exec(`
+create table meta (
+  key text primary key,
+  value text not null
+);
+
+create table source_files (
+  name text primary key,
+  filename text not null,
+  path text not null,
+  bytes integer not null,
+  mtime_ms integer not null,
+  sha256 text not null,
+  row_count integer not null
+);
+
+create table fx_rates (
+  id integer primary key,
+  from_currency text not null,
+  to_currency text not null,
+  rate real not null,
+  as_of_date text not null,
+  source text not null,
+  source_url text,
+  note text
+);
+
+create table holdings (
+  id integer primary key,
+  market text not null,
+  currency text not null,
+  base_currency text not null,
+  fx_rate_to_base real,
+  brokerage text,
+  account_type text,
+  source_system text,
+  as_of_date text,
+  account text not null,
+  ticker text not null,
+  name text not null,
+  quantity real not null,
+  native_average_unit_cost real,
+  native_cost real not null,
+  native_price real,
+  native_market_value real,
+  native_unrealized_gl real,
+  native_unrealized_gl_pct real,
+  base_cost real,
+  base_market_value real,
+  base_unrealized_gl real,
+  average_unit_cost real,
+  total_cost_krw real not null,
+  current_price real,
+  pe real,
+  eps real,
+  unrealized_gl_krw real,
+  unrealized_gl_pct real,
+  long_term_qty real,
+  short_term_qty real,
+  lot_count integer
+);
+
+create table tax_lots (
+  id integer primary key,
+  market text not null,
+  currency text not null,
+  base_currency text not null,
+  fx_rate_to_base real,
+  brokerage text,
+  account_type text,
+  source_system text,
+  as_of_date text,
+  account text not null,
+  ticker text not null,
+  name text not null,
+  acquired_date text not null,
+  open_quantity real not null,
+  native_cost_basis real not null,
+  native_unit_cost real,
+  native_market_value real,
+  native_unrealized_gl real,
+  cost_basis_krw real not null,
+  unit_cost real,
+  holding_days integer,
+  tax_term text,
+  source text
+);
+
+create table realized_lots (
+  id integer primary key,
+  market text not null,
+  currency text not null,
+  base_currency text not null,
+  brokerage text,
+  source_system text,
+  account text not null,
+  ticker text not null,
+  name text not null,
+  acquired_date text,
+  sold_date text,
+  quantity_sold real,
+  cost_basis_krw real,
+  proceeds_krw real,
+  realized_gl_krw real,
+  holding_days integer,
+  tax_term text,
+  source text
+);
+
+create table transactions (
+  id integer primary key,
+  market text not null,
+  currency text not null,
+  base_currency text not null,
+  brokerage text,
+  account_type text,
+  source_system text,
+  date text not null,
+  account text not null,
+  type text not null,
+  raw_type text,
+  ticker text,
+  name text,
+  quantity real,
+  native_amount real,
+  native_settlement real,
+  native_unit_price real,
+  amount_krw real,
+  settlement_krw real,
+  unit_price real,
+  fee real,
+  tax real,
+  balance real,
+  source text,
+  page integer
+);
+
+create table dividends (
+  id integer primary key,
+  market text not null,
+  currency text not null,
+  base_currency text not null,
+  brokerage text,
+  account_type text,
+  source_system text,
+  date text not null,
+  account text not null,
+  ticker text,
+  name text,
+  native_amount real not null,
+  native_tax_withheld real,
+  amount_krw real not null,
+  type text,
+  income_category text,
+  mapping_status text,
+  mapping_note text,
+  source text,
+  page integer
+);
+
+create table validation_checks (
+  id integer primary key,
+  name text not null,
+  status text not null,
+  detail text not null,
+  severity text not null
+);
+
+create table evidence_reports (
+  id integer primary key,
+  name text not null,
+  category text not null,
+  filename text not null,
+  path text not null,
+  account_hint text,
+  pages integer,
+  row_count integer,
+  metrics_json text
+);
+`)
+
+const now = new Date().toISOString()
+db.prepare('insert into meta (key, value) values (?, ?)').run('ingested_at', now)
+db.prepare('insert into meta (key, value) values (?, ?)').run('data_dir', dataDir)
+db.prepare('insert into meta (key, value) values (?, ?)').run('payload_dir', payloadDir)
+db.prepare('insert into meta (key, value) values (?, ?)').run('fx_rates_path', fxRatesPath)
+db.prepare('insert into meta (key, value) values (?, ?)').run('kr_prices_path', krPricesPath)
+db.prepare('insert into meta (key, value) values (?, ?)').run('us_prices_path', usPricesPath)
+db.prepare('insert into meta (key, value) values (?, ?)').run('us_pdf_evidence_path', usPdfEvidencePath)
+db.prepare('insert into meta (key, value) values (?, ?)').run('manual_mappings_path', manualMappingsPath)
+
+insertMany(
+  db,
+  'fx_rates',
+  fxConfig.rates.map((r) => ({
+    from_currency: r.from,
+    to_currency: r.to,
+    rate: r.rate,
+    as_of_date: r.asOfDate,
+    source: r.source,
+    source_url: r.sourceUrl,
+    note: r.note,
+  })),
+  ['from_currency', 'to_currency', 'rate', 'as_of_date', 'source', 'source_url', 'note']
+)
+
+for (const [name, file] of Object.entries(sources)) {
+  const fp = fingerprint(path.join(payloadDir, file))
+  db.prepare(
+    'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run(name, fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, datasets[name].rows.length)
+}
+for (const source of [...usHoldingFiles, ...usTransactionFiles]) {
+  if (!fs.existsSync(source.filename)) continue
+  const fp = fingerprint(source.filename)
+  const name = `${source.brokerage}:${fp.basename}`
+  const rowCount = parseCsv(fs.readFileSync(source.filename, 'utf8')).filter((r) => r.some((c) => c.trim())).length
+  db.prepare(
+    'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run(name, fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, rowCount)
+}
+if (fs.existsSync(fxRatesPath)) {
+  const fp = fingerprint(fxRatesPath)
+  db.prepare(
+    'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run('fx_rates', fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, fxConfig.rates.length)
+}
+if (fs.existsSync(krPricesPath)) {
+  const fp = fingerprint(krPricesPath)
+  db.prepare(
+    'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run('kr_prices', fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, krPriceConfig.prices?.length ?? 0)
+}
+if (fs.existsSync(usPricesPath)) {
+  const fp = fingerprint(usPricesPath)
+  db.prepare(
+    'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run('us_prices', fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, usPriceConfig.prices?.length ?? 0)
+}
+if (fs.existsSync(usPdfEvidencePath)) {
+  const fp = fingerprint(usPdfEvidencePath)
+  db.prepare(
+    'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run('us_pdf_evidence', fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, usPdfEvidence.reports?.length ?? 0)
+}
+if (fs.existsSync(manualMappingsPath)) {
+  const fp = fingerprint(manualMappingsPath)
+  db.prepare(
+    'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run(
+    'manual_mappings',
+    fp.basename,
+    fp.path,
+    fp.bytes,
+    fp.mtimeMs,
+    fp.sha256,
+    (manualMappings.incomeRules?.length ?? 0) + (manualMappings.dividendOverrides?.length ?? 0)
+  )
+}
+for (const report of usPdfEvidence.reports ?? []) {
+  if (!fs.existsSync(report.path)) continue
+  const fp = fingerprint(report.path)
+  db.prepare(
+    'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run(report.name, fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, report.row_count ?? 0)
+}
+
+const holdingRows = datasets.holdings.rows
+  .filter((r) => text(r.Account).toLowerCase() !== 'total')
+  .map((r) => {
+    const ticker = normalizeTicker(r.Ticker)
+    const priceSnapshot = krPricesByTicker.get(ticker)
+    const quantity = number(r.Quantity) ?? 0
+    const nativeCost = number(r['Total Cost']) ?? 0
+    const currentPrice = number(r['Current Price']) ?? priceSnapshot?.price ?? null
+    const marketValue = currentPrice == null ? null : currentPrice * quantity
+    const unrealized = marketValue == null ? number(r['Unrealized G/L Amt.']) : marketValue - nativeCost
+    const unrealizedPct = unrealized == null || nativeCost === 0 ? number(r['Unrealized Gain/Loss (%)']) : (unrealized / nativeCost) * 100
+    const averageCost = number(r['Average Unit Cost']) ?? (quantity > 0 ? nativeCost / quantity : null)
+    return {
+      market: 'KR',
+      currency: 'KRW',
+      base_currency: 'KRW',
+      fx_rate_to_base: 1,
+      brokerage: text(r.Account).split('(')[0],
+      account_type: text(r.Account).match(/\(([^)]+)\)/)?.[1] ?? '',
+      source_system: priceSnapshot ? 'korea_sheet_payload+yahoo_chart' : 'korea_sheet_payload',
+      as_of_date: priceSnapshot?.asOfDate || '2026-07-15',
+      account: text(r.Account),
+      ticker,
+      name: text(r.Name),
+      quantity,
+      native_average_unit_cost: averageCost,
+      native_cost: nativeCost,
+      native_price: currentPrice,
+      native_market_value: marketValue,
+      native_unrealized_gl: unrealized,
+      native_unrealized_gl_pct: unrealizedPct,
+      base_cost: nativeCost,
+      base_market_value: marketValue,
+      base_unrealized_gl: unrealized,
+      average_unit_cost: averageCost,
+      total_cost_krw: nativeCost,
+      current_price: currentPrice,
+      pe: number(r.PE),
+      eps: number(r.EPS),
+      unrealized_gl_krw: unrealized,
+      unrealized_gl_pct: unrealizedPct,
+      long_term_qty: number(r['Long-Term Qty']),
+      short_term_qty: number(r['Short-Term Qty']),
+      lot_count: number(r['Lot Count']),
+    }
+  })
+
+const taxLotRows = datasets.taxlots.rows.map((r) => ({
+  market: 'KR',
+  currency: 'KRW',
+  base_currency: 'KRW',
+  fx_rate_to_base: 1,
+  brokerage: text(r.Account).split('(')[0],
+  account_type: text(r.Account).match(/\(([^)]+)\)/)?.[1] ?? '',
+  source_system: 'korea_sheet_payload',
+  as_of_date: '2026-07-15',
+  account: text(r.Account),
+  ticker: normalizeTicker(r.Ticker),
+  name: text(r.Name),
+  acquired_date: text(r['Acquired Date']),
+  open_quantity: number(r['Open Quantity']) ?? 0,
+  native_cost_basis: number(r['Cost Basis (KRW)']) ?? 0,
+  native_unit_cost: number(r['Unit Cost']),
+  native_market_value: null,
+  native_unrealized_gl: null,
+  cost_basis_krw: number(r['Cost Basis (KRW)']) ?? 0,
+  unit_cost: number(r['Unit Cost']),
+  holding_days: number(r['Holding Days as of 2026-07-15']),
+  tax_term: text(r['Tax Term']),
+  source: text(r.Source),
+}))
+
+const realizedRows = datasets.realized.rows.map((r) => ({
+  market: 'KR',
+  currency: 'KRW',
+  base_currency: 'KRW',
+  brokerage: text(r.Account).split('(')[0],
+  source_system: 'korea_sheet_payload',
+  account: text(r.Account),
+  ticker: normalizeTicker(r.Ticker),
+  name: text(r.Name),
+  acquired_date: text(r['Acquired Date']),
+  sold_date: text(r['Sold Date']),
+  quantity_sold: number(r['Quantity Sold']),
+  cost_basis_krw: number(r['Cost Basis (KRW)']),
+  proceeds_krw: number(r['Proceeds (KRW)']),
+  realized_gl_krw: number(r['Realized G/L (KRW)']),
+  holding_days: number(r['Holding Days']),
+  tax_term: text(r['Tax Term']),
+  source: text(r.Source),
+}))
+
+const transactionRows = datasets.transactions.rows.map((r) => ({
+  market: 'KR',
+  currency: 'KRW',
+  base_currency: 'KRW',
+  brokerage: text(r.Account).split('(')[0],
+  account_type: text(r.Account).match(/\(([^)]+)\)/)?.[1] ?? '',
+  source_system: 'korea_sheet_payload',
+  date: text(r.Date),
+  account: text(r.Account),
+  type: text(r.Type),
+  raw_type: text(r['Raw Type']),
+  ticker: normalizeTicker(r.Ticker),
+  name: text(r.Name),
+  quantity: number(r.Quantity),
+  native_amount: number(r['Amount (KRW)']),
+  native_settlement: number(r['Settlement (KRW)']),
+  native_unit_price: number(r['Unit Price']),
+  amount_krw: number(r['Amount (KRW)']),
+  settlement_krw: number(r['Settlement (KRW)']),
+  unit_price: number(r['Unit Price']),
+  fee: number(r.Fee),
+  tax: number(r.Tax),
+  balance: number(r.Balance),
+  source: text(r.Source),
+  page: number(r.Page),
+}))
+
+const dividendRows = datasets.dividends.rows.map((r) => ({
+  market: 'KR',
+  currency: 'KRW',
+  base_currency: 'KRW',
+  brokerage: text(r.Account).split('(')[0],
+  account_type: text(r.Account).match(/\(([^)]+)\)/)?.[1] ?? '',
+  source_system: 'korea_sheet_payload',
+  date: text(r.Date),
+  account: text(r.Account),
+  ticker: normalizeTicker(r.Symbol),
+  name: text(r.Name),
+  native_amount: number(r['Amount (KRW)']) ?? 0,
+  native_tax_withheld: null,
+  amount_krw: number(r['Amount (KRW)']) ?? 0,
+  type: text(r.Type),
+  source: text(r.Source),
+  page: number(r.Page),
+}))
+
+for (const source of usHoldingFiles) {
+  if (!fs.existsSync(source.filename)) continue
+  if (source.brokerage === 'Chase') {
+    const rows = readCsvObjects(source.filename, (r) => r.includes('Account name') && r.includes('Ticker'))
+    for (const r of rows) {
+      if (!required(r.Ticker) || !required(r.Quantity)) continue
+      if (text(r['Asset Class']) !== 'Equity') continue
+      if (normalizeTicker(r.Ticker) === 'QACDS') continue
+      const quantity = number(r.Quantity) ?? 0
+      const cost = number(r.Cost) ?? number(r['Orig Cost (Base)']) ?? 0
+      const marketValue = number(r.Value)
+      const unrealized = number(r['Unrealized G/L Amt.'])
+      const currency = text(r['Base CCY']) || 'USD'
+      const fx = fxRate(currency)
+      const asOf = dateIso(r['As of'] || r['Pricing Date'])
+      const account = `${source.brokerage} ${text(r['Account name'])} ${text(r['Account number'])}`.trim()
+      const shared = {
+        market: 'US',
+        currency,
+        base_currency: 'KRW',
+        fx_rate_to_base: fx?.rate ?? null,
+        brokerage: source.brokerage,
+        account_type: text(r['Account type'] || r['Acct Type']),
+        source_system: path.basename(source.filename),
+        as_of_date: asOf,
+        account,
+        ticker: normalizeTicker(r.Ticker),
+        name: text(r.Description),
+      }
+      taxLotRows.push({
+        ...shared,
+        acquired_date: dateIso(r['Acquisition Date']),
+        open_quantity: quantity,
+        native_cost_basis: cost,
+        native_unit_cost: number(r['Unit Cost']),
+        native_market_value: marketValue,
+        native_unrealized_gl: unrealized,
+        cost_basis_krw: toBase(cost, currency) ?? 0,
+        unit_cost: toBase(number(r['Unit Cost']), currency),
+        holding_days: number(r['Days held']),
+        tax_term: normalizeTerm(r['Tax term']),
+        source: path.basename(source.filename),
+      })
+    }
+  }
+
+  if (source.brokerage === 'Merrill') {
+    const rows = parseCsv(fs.readFileSync(source.filename, 'utf8')).filter((r) => r.some((c) => c.trim()))
+    let account = 'Merrill'
+    const accountLine = rows.find((r) => r[0]?.includes('Selected account'))
+    if (accountLine) account = `Merrill ${accountLine.join(' ').split(':').slice(1).join(':').trim()}`
+    let currentTicker = ''
+    let currentName = ''
+    let asOf = '2026-07-15'
+    for (const r of rows) {
+      if (r[1] && /^[A-Z][A-Z0-9. -]{0,12}$/.test(r[1]) && number(r[2]) != null && text(r[2]) !== '') {
+        currentTicker = text(r[1])
+        currentName = currentTicker
+        const quantity = number(r[2]) ?? 0
+        const cost = number(r[4]) ?? 0
+        const price = number(r[5])
+        const value = number(r[6])
+        holdingRows.push({
+          market: 'US',
+          currency: 'USD',
+          base_currency: 'KRW',
+          fx_rate_to_base: fxRate('USD')?.rate ?? null,
+          brokerage: source.brokerage,
+          account_type: '',
+          source_system: path.basename(source.filename),
+          as_of_date: asOf,
+          account,
+          ticker: currentTicker,
+          name: currentName,
+          quantity,
+          native_average_unit_cost: number(r[3]),
+          native_cost: cost,
+          native_price: price,
+          native_market_value: value,
+          native_unrealized_gl: number(text(r[7]).split(' ')[0]),
+          native_unrealized_gl_pct: null,
+          base_cost: toBase(cost, 'USD'),
+          base_market_value: toBase(value, 'USD'),
+          base_unrealized_gl: toBase(number(text(r[7]).split(' ')[0]), 'USD'),
+          average_unit_cost: null,
+          total_cost_krw: toBase(cost, 'USD') ?? 0,
+          current_price: null,
+          pe: null,
+          eps: null,
+          unrealized_gl_krw: null,
+          unrealized_gl_pct: null,
+          long_term_qty: null,
+          short_term_qty: null,
+          lot_count: null,
+        })
+      } else if (currentTicker && text(r[2]).match(/^\d{1,2}\/\d{1,2}\/\d{4}/)) {
+        taxLotRows.push({
+          market: 'US',
+          currency: 'USD',
+          base_currency: 'KRW',
+          fx_rate_to_base: fxRate('USD')?.rate ?? null,
+          brokerage: source.brokerage,
+          account_type: '',
+          source_system: path.basename(source.filename),
+          as_of_date: asOf,
+          account,
+          ticker: currentTicker,
+          name: currentName,
+          acquired_date: dateIso(text(r[2]).replace(/\s+\(.+\)$/, '')),
+          open_quantity: number(r[3]) ?? 0,
+          native_cost_basis: number(r[5]) ?? 0,
+          native_unit_cost: number(r[4]),
+          native_market_value: number(r[7]),
+          native_unrealized_gl: number(text(r[8]).split(' ')[0]),
+          cost_basis_krw: toBase(number(r[5]) ?? 0, 'USD') ?? 0,
+          unit_cost: toBase(number(r[4]), 'USD'),
+          holding_days: null,
+          tax_term: normalizeTerm(r[2]),
+          source: path.basename(source.filename),
+        })
+      }
+    }
+  }
+}
+
+for (const report of usPdfEvidence.reports ?? []) {
+  if (report.category !== 'us_gain_loss_pdf') continue
+  const asOf = dateFromGainLossFilename(report.filename) || '2026-07-16'
+  for (const lot of report.lots ?? []) {
+    if (!required(lot.ticker) || lot.open_quantity == null || lot.native_cost_basis == null) continue
+    const quantity = Number(lot.open_quantity)
+    const cost = Number(lot.native_cost_basis)
+    const unitCost = Number(lot.native_unit_cost)
+    taxLotRows.push({
+      market: 'US',
+      currency: 'USD',
+      base_currency: 'KRW',
+      fx_rate_to_base: fxRate('USD')?.rate ?? null,
+      brokerage: 'Robinhood',
+      account_type: text(lot.account_hint),
+      source_system: 'us_gain_loss_pdf',
+      as_of_date: asOf,
+      account: text(lot.account) || `Robinhood ${text(report.account_hint)}`.trim(),
+      ticker: normalizeTicker(lot.ticker),
+      name: text(lot.name),
+      acquired_date: text(lot.acquired_date),
+      open_quantity: quantity,
+      native_cost_basis: cost,
+      native_unit_cost: Number.isFinite(unitCost) ? unitCost : quantity ? cost / quantity : null,
+      native_market_value: null,
+      native_unrealized_gl: null,
+      cost_basis_krw: toBase(cost, 'USD') ?? 0,
+      unit_cost: toBase(Number.isFinite(unitCost) ? unitCost : quantity ? cost / quantity : null, 'USD'),
+      holding_days: null,
+      tax_term: normalizeTerm(lot.tax_term),
+      source: text(lot.source) || text(report.filename),
+    })
+  }
+}
+
+const chaseLotsByKey = new Map()
+for (const lot of taxLotRows.filter((r) => r.market === 'US' && r.brokerage === 'Chase')) {
+  const key = `${lot.account}\t${lot.ticker}`
+  const cur = chaseLotsByKey.get(key) || { ...lot, quantity: 0, cost: 0, marketValue: 0, unrealized: 0, lotCount: 0 }
+  cur.quantity += lot.open_quantity
+  cur.cost += lot.native_cost_basis
+  cur.marketValue += lot.native_market_value ?? 0
+  cur.unrealized += lot.native_unrealized_gl ?? 0
+  cur.lotCount += 1
+  chaseLotsByKey.set(key, cur)
+}
+for (const lot of chaseLotsByKey.values()) {
+  holdingRows.push({
+    market: 'US',
+    currency: lot.currency || 'USD',
+    base_currency: 'KRW',
+    fx_rate_to_base: fxRate(lot.currency || 'USD')?.rate ?? null,
+    brokerage: lot.brokerage,
+    account_type: lot.account_type,
+    source_system: lot.source_system,
+    as_of_date: lot.as_of_date,
+    account: lot.account,
+    ticker: lot.ticker,
+    name: lot.name,
+    quantity: lot.quantity,
+    native_average_unit_cost: lot.quantity ? lot.cost / lot.quantity : null,
+    native_cost: lot.cost,
+    native_price: lot.quantity ? lot.marketValue / lot.quantity : null,
+    native_market_value: lot.marketValue,
+    native_unrealized_gl: lot.unrealized,
+    native_unrealized_gl_pct: lot.cost ? (lot.unrealized / lot.cost) * 100 : null,
+    base_cost: toBase(lot.cost, lot.currency || 'USD'),
+    base_market_value: toBase(lot.marketValue, lot.currency || 'USD'),
+    base_unrealized_gl: toBase(lot.unrealized, lot.currency || 'USD'),
+    average_unit_cost: null,
+    total_cost_krw: toBase(lot.cost, lot.currency || 'USD') ?? 0,
+    current_price: null,
+    pe: null,
+    eps: null,
+    unrealized_gl_krw: null,
+    unrealized_gl_pct: null,
+    long_term_qty: null,
+    short_term_qty: null,
+    lot_count: lot.lotCount,
+  })
+}
+
+const robinhoodLotsByKey = new Map()
+for (const lot of taxLotRows.filter((r) => r.market === 'US' && r.brokerage === 'Robinhood')) {
+  const key = `${lot.account}\t${lot.ticker}`
+  const cur = robinhoodLotsByKey.get(key) || { ...lot, quantity: 0, cost: 0, longQty: 0, shortQty: 0, lotCount: 0 }
+  cur.quantity += lot.open_quantity
+  cur.cost += lot.native_cost_basis
+  if (lot.tax_term === 'Long-term') cur.longQty += lot.open_quantity
+  if (lot.tax_term === 'Short-term') cur.shortQty += lot.open_quantity
+  cur.lotCount += 1
+  robinhoodLotsByKey.set(key, cur)
+}
+for (const lot of robinhoodLotsByKey.values()) {
+  const priceSnapshot = usPricesByTicker.get(lot.ticker)
+  const nativePrice = priceSnapshot?.price ?? null
+  const marketValue = nativePrice == null ? null : nativePrice * lot.quantity
+  const unrealized = marketValue == null ? null : marketValue - lot.cost
+  holdingRows.push({
+    market: 'US',
+    currency: 'USD',
+    base_currency: 'KRW',
+    fx_rate_to_base: fxRate('USD')?.rate ?? null,
+    brokerage: lot.brokerage,
+    account_type: lot.account_type,
+    source_system: lot.source_system,
+    as_of_date: lot.as_of_date,
+    account: lot.account,
+    ticker: lot.ticker,
+    name: lot.name,
+    quantity: lot.quantity,
+    native_average_unit_cost: lot.quantity ? lot.cost / lot.quantity : null,
+    native_cost: lot.cost,
+    native_price: nativePrice,
+    native_market_value: marketValue,
+    native_unrealized_gl: unrealized,
+    native_unrealized_gl_pct: unrealized == null || lot.cost === 0 ? null : (unrealized / lot.cost) * 100,
+    base_cost: toBase(lot.cost, 'USD'),
+    base_market_value: toBase(marketValue, 'USD'),
+    base_unrealized_gl: toBase(unrealized, 'USD'),
+    average_unit_cost: null,
+    total_cost_krw: toBase(lot.cost, 'USD') ?? 0,
+    current_price: nativePrice,
+    pe: null,
+    eps: null,
+    unrealized_gl_krw: toBase(unrealized, 'USD'),
+    unrealized_gl_pct: unrealized == null || lot.cost === 0 ? null : (unrealized / lot.cost) * 100,
+    long_term_qty: lot.longQty,
+    short_term_qty: lot.shortQty,
+    lot_count: lot.lotCount,
+  })
+}
+
+for (const source of usTransactionFiles) {
+  if (!fs.existsSync(source.filename)) continue
+  if (source.brokerage === 'Chase') {
+    const rows = readCsvObjects(source.filename, (r) => r.includes('Trade Date') && r.includes('Ticker'))
+    for (const r of rows) {
+      const type = normalizeUsTransactionType(r.Type)
+      const amount = number(r['Amount USD']) ?? number(r['Amount Local'])
+      const tax = number(r['Tax Withheld'])
+      const currency = text(r['Local Currency']) || 'USD'
+      const row = {
+        market: 'US',
+        currency,
+        base_currency: 'KRW',
+        brokerage: source.brokerage,
+        account_type: text(r['Account Type']),
+        source_system: path.basename(source.filename),
+        date: dateIso(r['Trade Date']),
+        account: `${source.brokerage} ${text(r['Account Name'])} ${text(r['Account Number'])}`.trim(),
+        type,
+        raw_type: text(r.Type),
+        ticker: normalizeTicker(r.Ticker),
+        name: text(r.Description),
+        quantity: number(r.Quantity),
+        native_amount: amount,
+        native_settlement: amount,
+        native_unit_price: number(r['Price USD']) ?? number(r['Price Local']),
+        amount_krw: toBase(amount, currency),
+        settlement_krw: toBase(amount, currency),
+        unit_price: toBase(number(r['Price USD']) ?? number(r['Price Local']), currency),
+        fee: number(r['Commissions USD']) ?? number(r['Commissions Local']),
+        tax,
+        balance: number(r.Balance),
+        source: path.basename(source.filename),
+        page: null,
+      }
+      transactionRows.push(row)
+      if (isIncomeType(type)) {
+        dividendRows.push({
+          market: 'US',
+          currency: row.currency,
+          base_currency: 'KRW',
+          brokerage: source.brokerage,
+          account_type: row.account_type,
+          source_system: row.source_system,
+          date: row.date,
+          account: row.account,
+          ticker: row.ticker,
+          name: row.name,
+          native_amount: amount ?? 0,
+          native_tax_withheld: tax,
+          amount_krw: toBase(amount ?? 0, row.currency) ?? 0,
+          type: row.raw_type,
+          source: row.source,
+          page: null,
+        })
+      }
+    }
+  }
+  if (source.brokerage === 'Fidelity') {
+    const rows = readCsvObjects(source.filename, (r) => r.includes('Run Date') && r.includes('Action') && r.includes('Symbol'))
+    for (const r of rows) {
+      if (!text(r['Run Date']).match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) continue
+      const type = normalizeUsTransactionType('', r.Action)
+      if (!type) continue
+      const amount = number(r['Amount ($)'])
+      const row = {
+        market: 'US',
+        currency: 'USD',
+        base_currency: 'KRW',
+        brokerage: source.brokerage,
+        account_type: text(r.Type),
+        source_system: path.basename(source.filename),
+        date: dateIso(r['Run Date']),
+        account: `${source.brokerage} Account`,
+        type,
+        raw_type: text(r.Action),
+        ticker: normalizeTicker(r.Symbol),
+        name: text(r.Description),
+        quantity: number(r.Quantity),
+        native_amount: amount,
+        native_settlement: amount,
+        native_unit_price: number(r['Price ($)']),
+        amount_krw: toBase(amount, 'USD'),
+        settlement_krw: toBase(amount, 'USD'),
+        unit_price: toBase(number(r['Price ($)']), 'USD'),
+        fee: number(r['Fees ($)']) ?? number(r['Commission ($)']),
+        tax: null,
+        balance: number(r['Cash Balance ($)']),
+        source: path.basename(source.filename),
+        page: null,
+      }
+      transactionRows.push(row)
+      if (isIncomeType(type)) {
+        dividendRows.push({
+          market: 'US',
+          currency: 'USD',
+          base_currency: 'KRW',
+          brokerage: source.brokerage,
+          account_type: row.account_type,
+          source_system: row.source_system,
+          date: row.date,
+          account: row.account,
+          ticker: row.ticker,
+          name: row.name,
+          native_amount: amount ?? 0,
+          native_tax_withheld: null,
+          amount_krw: toBase(amount ?? 0, 'USD') ?? 0,
+          type: row.raw_type,
+          source: row.source,
+          page: null,
+        })
+      }
+    }
+  }
+  if (source.brokerage === 'Merrill') {
+    const rows = readCsvObjects(source.filename, (r) => r.map((c) => c.trim()).includes('Trade Date') && r.map((c) => c.trim()).includes('Symbol/ CUSIP'))
+    for (const r of rows) {
+      if (!text(r['Trade Date']).match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) continue
+      const type = normalizeMerrillTransactionType(r.Description, r.Type)
+      const amount = number(r.Amount)
+      const row = {
+        market: 'US',
+        currency: 'USD',
+        base_currency: 'KRW',
+        brokerage: source.brokerage,
+        account_type: 'Brokerage',
+        source_system: path.basename(source.filename),
+        date: dateIso(r['Trade Date']),
+        account: `${source.brokerage} ${text(r.Account)}`.trim(),
+        type,
+        raw_type: text(r.Type) || text(r.Description).split(/\s+/).slice(0, 4).join(' '),
+        ticker: normalizeTicker(r['Symbol/ CUSIP']),
+        name: text(r.Description),
+        quantity: number(r.Quantity),
+        native_amount: amount,
+        native_settlement: amount,
+        native_unit_price: number(r.Price),
+        amount_krw: toBase(amount, 'USD'),
+        settlement_krw: toBase(amount, 'USD'),
+        unit_price: toBase(number(r.Price), 'USD'),
+        fee: null,
+        tax: null,
+        balance: null,
+        source: path.basename(source.filename),
+        page: null,
+      }
+      transactionRows.push(row)
+      if (isIncomeType(type)) {
+        dividendRows.push({
+          market: 'US',
+          currency: 'USD',
+          base_currency: 'KRW',
+          brokerage: source.brokerage,
+          account_type: row.account_type,
+          source_system: row.source_system,
+          date: row.date,
+          account: row.account,
+          ticker: row.ticker,
+          name: row.name,
+          native_amount: amount ?? 0,
+          native_tax_withheld: null,
+          amount_krw: toBase(amount ?? 0, 'USD') ?? 0,
+          type: row.type,
+          source: row.source,
+          page: null,
+        })
+      }
+    }
+  }
+  if (source.brokerage === 'Robinhood') {
+    const rows = readCsvObjects(source.filename, (r) => r.includes('Activity Date') && r.includes('Trans Code'))
+    for (const r of rows) {
+      if (!text(r['Activity Date']).match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) continue
+      const type = normalizeUsTransactionType(r['Trans Code'], r.Description)
+      const amount = number(r.Amount)
+      const row = {
+        market: 'US',
+        currency: 'USD',
+        base_currency: 'KRW',
+        brokerage: source.brokerage,
+        account_type: source.account ?? '',
+        source_system: path.basename(source.filename),
+        date: dateIso(r['Activity Date']),
+        account: `${source.brokerage} ${source.account ?? ''}`.trim(),
+        type,
+        raw_type: text(r['Trans Code']),
+        ticker: normalizeTicker(r.Instrument),
+        name: text(r.Description).replace(/\s*CUSIP:.*$/s, '').trim(),
+        quantity: number(r.Quantity),
+        native_amount: amount,
+        native_settlement: amount,
+        native_unit_price: number(r.Price),
+        amount_krw: toBase(amount, 'USD'),
+        settlement_krw: toBase(amount, 'USD'),
+        unit_price: toBase(number(r.Price), 'USD'),
+        fee: null,
+        tax: null,
+        balance: null,
+        source: path.basename(source.filename),
+        page: null,
+      }
+      transactionRows.push(row)
+      if (isIncomeType(type)) {
+        dividendRows.push({
+          market: 'US',
+          currency: 'USD',
+          base_currency: 'KRW',
+          brokerage: source.brokerage,
+          account_type: row.account_type,
+          source_system: row.source_system,
+          date: row.date,
+          account: row.account,
+          ticker: row.ticker,
+          name: row.name,
+          native_amount: amount ?? 0,
+          native_tax_withheld: null,
+          amount_krw: toBase(amount ?? 0, 'USD') ?? 0,
+          type: row.type,
+          source: row.source,
+          page: null,
+        })
+      }
+    }
+  }
+}
+
+for (let i = 0; i < dividendRows.length; i += 1) {
+  dividendRows[i] = applyDividendMappings(dividendRows[i], manualMappings)
+}
+
+insertMany(db, 'holdings', holdingRows, [
+  'market',
+  'currency',
+  'base_currency',
+  'fx_rate_to_base',
+  'brokerage',
+  'account_type',
+  'source_system',
+  'as_of_date',
+  'account',
+  'ticker',
+  'name',
+  'quantity',
+  'native_average_unit_cost',
+  'native_cost',
+  'native_price',
+  'native_market_value',
+  'native_unrealized_gl',
+  'native_unrealized_gl_pct',
+  'base_cost',
+  'base_market_value',
+  'base_unrealized_gl',
+  'average_unit_cost',
+  'total_cost_krw',
+  'current_price',
+  'pe',
+  'eps',
+  'unrealized_gl_krw',
+  'unrealized_gl_pct',
+  'long_term_qty',
+  'short_term_qty',
+  'lot_count',
+])
+insertMany(db, 'tax_lots', taxLotRows, [
+  'market',
+  'currency',
+  'base_currency',
+  'fx_rate_to_base',
+  'brokerage',
+  'account_type',
+  'source_system',
+  'as_of_date',
+  'account',
+  'ticker',
+  'name',
+  'acquired_date',
+  'open_quantity',
+  'native_cost_basis',
+  'native_unit_cost',
+  'native_market_value',
+  'native_unrealized_gl',
+  'cost_basis_krw',
+  'unit_cost',
+  'holding_days',
+  'tax_term',
+  'source',
+])
+insertMany(db, 'realized_lots', realizedRows, [
+  'market',
+  'currency',
+  'base_currency',
+  'brokerage',
+  'source_system',
+  'account',
+  'ticker',
+  'name',
+  'acquired_date',
+  'sold_date',
+  'quantity_sold',
+  'cost_basis_krw',
+  'proceeds_krw',
+  'realized_gl_krw',
+  'holding_days',
+  'tax_term',
+  'source',
+])
+insertMany(db, 'transactions', transactionRows, [
+  'market',
+  'currency',
+  'base_currency',
+  'brokerage',
+  'account_type',
+  'source_system',
+  'date',
+  'account',
+  'type',
+  'raw_type',
+  'ticker',
+  'name',
+  'quantity',
+  'native_amount',
+  'native_settlement',
+  'native_unit_price',
+  'amount_krw',
+  'settlement_krw',
+  'unit_price',
+  'fee',
+  'tax',
+  'balance',
+  'source',
+  'page',
+])
+insertMany(db, 'dividends', dividendRows, [
+  'market',
+  'currency',
+  'base_currency',
+  'brokerage',
+  'account_type',
+  'source_system',
+  'date',
+  'account',
+  'ticker',
+  'name',
+  'native_amount',
+  'native_tax_withheld',
+  'amount_krw',
+  'type',
+  'income_category',
+  'mapping_status',
+  'mapping_note',
+  'source',
+  'page',
+])
+insertMany(
+  db,
+  'evidence_reports',
+  (usPdfEvidence.reports ?? []).map((r) => ({
+    name: r.name,
+    category: r.category,
+    filename: r.filename,
+    path: r.path,
+    account_hint: r.account_hint,
+    pages: r.pages,
+    row_count: r.row_count,
+    metrics_json: JSON.stringify(r.metrics ?? {}),
+  })),
+  ['name', 'category', 'filename', 'path', 'account_hint', 'pages', 'row_count', 'metrics_json']
+)
+
+const checks = []
+function check(name, ok, detail, severity = 'error') {
+  checks.push({ name, status: ok ? 'pass' : 'fail', detail, severity })
+}
+
+const holdingsByKey = new Map()
+for (const r of holdingRows) holdingsByKey.set(`${r.account}\t${r.ticker}`, r)
+
+const lotsByKey = new Map()
+for (const r of taxLotRows) {
+  const key = `${r.account}\t${r.ticker}`
+  const cur = lotsByKey.get(key) || { quantity: 0, cost: 0 }
+  cur.quantity += r.open_quantity
+  cur.cost += r.cost_basis_krw
+  lotsByKey.set(key, cur)
+}
+
+const quantityMismatches = []
+const costMismatches = []
+for (const [key, holding] of holdingsByKey) {
+  if (!(holding.market === 'KR' || (holding.market === 'US' && ['Chase', 'Robinhood'].includes(holding.brokerage)))) continue
+  const lots = lotsByKey.get(key) || { quantity: 0, cost: 0 }
+  if (Math.abs(holding.quantity - lots.quantity) > 1e-6) {
+    quantityMismatches.push({ key, holding: holding.quantity, lots: lots.quantity })
+  }
+  if (Math.abs(holding.total_cost_krw - lots.cost) > 1) {
+    costMismatches.push({ key, holding: holding.total_cost_krw, lots: lots.cost })
+  }
+}
+
+const txDividendCount = transactionRows.filter((r) => isIncomeType(r.type)).length
+const invalidHoldings = holdingRows.filter((r) => !required(r.account) || !required(r.ticker) || r.quantity < 0)
+const invalidLots = taxLotRows.filter(
+  (r) => !required(r.account) || !required(r.ticker) || !required(r.acquired_date) || r.open_quantity < 0
+)
+const invalidTransactions = transactionRows.filter((r) => !required(r.date) || !required(r.account) || !required(r.type))
+const invalidDividends = dividendRows.filter((r) => !required(r.date) || !required(r.account) || r.amount_krw < 0)
+const unmappedTypes = transactionRows.filter(
+  (r) =>
+    ![
+      'BUY',
+      'SELL',
+      'DIVIDEND',
+      'INTEREST',
+      'REINVEST',
+      'TRANSFER_IN',
+      'TRANSFER_OUT',
+      'CASH_SWEEP',
+      'JOURNAL',
+      'STOCK_SPLIT',
+      'STOCK_LENDING_INCOME',
+      'OTHER_INCOME',
+      'INTERNAL_TRANSFER',
+      'CORPORATE_ACTION',
+      'FEE',
+    ].includes(r.type)
+)
+const missingFxHoldings = holdingRows.filter((r) => r.currency !== r.base_currency && (r.fx_rate_to_base == null || r.base_cost == null))
+const missingKrPrices = holdingRows.filter((r) => r.market === 'KR' && r.quantity > 0 && r.native_price == null)
+const missingUsPrices = holdingRows.filter((r) => r.market === 'US' && r.quantity > 0 && r.native_market_value == null)
+const gainLossReports = (usPdfEvidence.reports ?? []).filter((r) => r.category === 'us_gain_loss_pdf')
+const taxDocReports = (usPdfEvidence.reports ?? []).filter((r) => r.category === 'us_tax_document_pdf')
+
+check('reconcilable_holdings_vs_taxlots_quantity', quantityMismatches.length === 0, `${quantityMismatches.length} mismatch(es)`)
+check('reconcilable_holdings_vs_taxlots_cost_basis', costMismatches.length === 0, `${costMismatches.length} mismatch(es)`)
+check(
+  'dividend_rows_match_transactions',
+  txDividendCount === dividendRows.length,
+  `${txDividendCount} transaction dividends vs ${dividendRows.length} dividend rows`
+)
+check('holdings_required_fields', invalidHoldings.length === 0, `${invalidHoldings.length} invalid holding row(s)`)
+check('taxlots_required_fields', invalidLots.length === 0, `${invalidLots.length} invalid tax lot row(s)`)
+check('transactions_required_fields', invalidTransactions.length === 0, `${invalidTransactions.length} invalid transaction row(s)`)
+check('dividends_required_fields', invalidDividends.length === 0, `${invalidDividends.length} invalid dividend row(s)`)
+check('transaction_types_mapped', unmappedTypes.length === 0, `${unmappedTypes.length} unmapped transaction type row(s)`, 'warning')
+check('fx_rates_available_for_non_base_holdings', missingFxHoldings.length === 0, `${missingFxHoldings.length} holding row(s) missing FX/base cost`)
+check('kr_prices_available_for_unrealized_gl', missingKrPrices.length === 0, `${missingKrPrices.length} KR holding row(s) missing current price`, 'warning')
+check('us_prices_available_for_unrealized_gl', missingUsPrices.length === 0, `${missingUsPrices.length} US holding row(s) missing market value`, 'warning')
+check(
+  'us_pdf_evidence_extracted',
+  gainLossReports.length >= 3 && taxDocReports.length >= 5,
+  `${gainLossReports.length} gain/loss report(s), ${taxDocReports.length} tax document(s)`,
+  'warning'
+)
+
+insertMany(db, 'validation_checks', checks, ['name', 'status', 'detail', 'severity'])
+
+db.exec(`
+create index idx_holdings_account on holdings(account);
+create index idx_holdings_ticker on holdings(ticker);
+create index idx_tax_lots_ticker on tax_lots(ticker);
+create index idx_transactions_date on transactions(date);
+create index idx_transactions_type on transactions(type);
+create index idx_dividends_date on dividends(date);
+`)
+
+const report = {
+  ingestedAt: now,
+  dbPath,
+  sourceFiles: Object.fromEntries(
+    [
+      ...Object.entries(sources).map(([name, file]) => [name, { file, rows: datasets[name].rows.length }]),
+      ['kr_prices', { file: krPricesPath, rows: krPriceConfig.prices?.length ?? 0 }],
+      ['us_prices', { file: usPricesPath, rows: usPriceConfig.prices?.length ?? 0 }],
+      ['us_pdf_evidence', { file: usPdfEvidencePath, rows: usPdfEvidence.reports?.length ?? 0 }],
+      [
+        'manual_mappings',
+        { file: manualMappingsPath, rows: (manualMappings.incomeRules?.length ?? 0) + (manualMappings.dividendOverrides?.length ?? 0) },
+      ],
+    ]
+  ),
+  checks,
+}
+fs.writeFileSync(path.join(outDir, 'validation-report.json'), JSON.stringify(report, null, 2))
+db.close()
+
+const failed = checks.filter((c) => c.status !== 'pass' && c.severity === 'error')
+console.log(`Wrote ${dbPath}`)
+console.log(`Validation: ${checks.length - failed.length}/${checks.length} checks passing`)
+if (failed.length) {
+  console.error(JSON.stringify(failed, null, 2))
+  process.exitCode = 1
+}

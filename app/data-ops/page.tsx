@@ -1,0 +1,139 @@
+import Link from 'next/link'
+import { DataTable } from '@/components/DataTable'
+import { FreshnessRows } from '@/components/Freshness'
+import { PageHeader } from '@/components/PageHeader'
+import { Badge, Card, EmptyState, StatCard } from '@/components/ui'
+import { getDataOpsReview } from '@/lib/adapters/portfolio-db'
+import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
+import { positionHref } from '@/lib/position-url'
+
+export const dynamic = 'force-dynamic'
+
+export default function DataOpsPage() {
+  const ops = getDataOpsReview()
+  const issueCount = ops.tickerlessIncome.length + ops.missingValuation.length + ops.sourceIssues.length + ops.validationIssues.length
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="System"
+        title="Data Ops"
+        emphasis="Ops"
+        subtitle="Read-only triage for mappings, tickerless income, missing valuation, source drift, and validation issues."
+        action={issueCount ? <Badge tone="warning">{fmtNumber(issueCount)} triage item(s)</Badge> : <Badge tone="success">Clear</Badge>}
+      />
+
+      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <StatCard label="Income Rules" value={fmtNumber(ops.manualMappings.incomeRuleCount)} accent />
+        <StatCard label="Manual Overrides" value={fmtNumber(ops.manualMappings.overrideCount)} />
+        <StatCard label="Tickerless Groups" value={fmtNumber(ops.tickerlessIncome.length)} tone={ops.tickerlessIncome.length ? 'warning' : 'success'} />
+        <StatCard label="Missing Valuation" value={fmtNumber(ops.missingValuation.length)} tone={ops.missingValuation.length ? 'warning' : 'success'} />
+        <StatCard label="Source / Validation Issues" value={fmtNumber(ops.sourceIssues.length + ops.validationIssues.length)} tone={ops.sourceIssues.length + ops.validationIssues.length ? 'warning' : 'success'} />
+      </div>
+
+      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <Card title="Manual mapping file">
+          <div className="space-y-2 text-[12px] text-ink-2">
+            <div className="flex items-center justify-between gap-3">
+              <span>Version</span>
+              <span className="font-medium tabular-nums text-ink">{ops.manualMappings.version ?? 'n/a'}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span>Income rules</span>
+              <span className="font-medium tabular-nums text-ink">{fmtNumber(ops.manualMappings.incomeRuleCount)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span>Dividend overrides</span>
+              <span className="font-medium tabular-nums text-ink">{fmtNumber(ops.manualMappings.overrideCount)}</span>
+            </div>
+            <code className="block break-words rounded-sm border border-line-subtle bg-surface px-2 py-1 font-mono text-[11px] text-ink-3">
+              {ops.manualMappings.path}
+            </code>
+          </div>
+        </Card>
+
+        <Card title="Mapping coverage">
+          <DataTable
+            rows={ops.mappingSummary}
+            columns={[
+              { key: 'mapping_status', label: 'Status', render: (r) => <Badge tone={r.mapping_status.includes('tickerless') ? 'warning' : 'success'}>{r.mapping_status}</Badge> },
+              { key: 'income_category', label: 'Category' },
+              { key: 'row_count', label: 'Rows', align: 'right', render: (r) => fmtNumber(r.row_count) },
+              { key: 'base_income', label: 'Base Income', align: 'right', render: (r) => fmtKrw(r.base_income) },
+            ]}
+          />
+        </Card>
+      </div>
+
+      <Card title="Tickerless income triage" accent={ops.tickerlessIncome.length > 0}>
+        {ops.tickerlessIncome.length === 0 ? (
+          <EmptyState ok>All income rows are ticker-mapped</EmptyState>
+        ) : (
+          <DataTable
+            rows={ops.tickerlessIncome}
+            columns={[
+              { key: 'market', label: 'Market', render: (r) => <Badge tone={r.market === 'US' ? 'info' : 'success'}>{r.market}</Badge> },
+              { key: 'income_category', label: 'Category' },
+              { key: 'brokerage', label: 'Broker' },
+              { key: 'name', label: 'Name' },
+              { key: 'type', label: 'Type' },
+              { key: 'row_count', label: 'Rows', align: 'right', render: (r) => fmtNumber(r.row_count) },
+              { key: 'native_income', label: 'Native', align: 'right', render: (r) => fmtMoney(r.native_income, r.currency) },
+              { key: 'base_income', label: 'Base', align: 'right', render: (r) => fmtKrw(r.base_income) },
+              { key: 'suggestion', label: 'Suggested handling' },
+            ]}
+          />
+        )}
+      </Card>
+
+      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <Card title="Missing valuation">
+          {ops.missingValuation.length === 0 ? (
+            <EmptyState ok>No holdings missing market value</EmptyState>
+          ) : (
+            <DataTable
+              rows={ops.missingValuation}
+              columns={[
+                { key: 'market', label: 'Market', render: (r) => <Badge tone={r.market === 'US' ? 'info' : 'success'}>{r.market}</Badge> },
+                {
+                  key: 'ticker',
+                  label: 'Position',
+                  render: (r) => (
+                    <Link href={positionHref(r.market, r.ticker)} className="font-mono text-[12px] font-medium text-info hover:underline">
+                      {r.ticker}
+                    </Link>
+                  ),
+                },
+                { key: 'name', label: 'Name' },
+                { key: 'account', label: 'Account' },
+                { key: 'native_cost', label: 'Native Cost', align: 'right', render: (r) => fmtMoney(r.native_cost, r.currency) },
+                { key: 'base_cost', label: 'Base Cost', align: 'right', render: (r) => (r.base_cost == null ? 'n/a' : fmtKrw(r.base_cost)) },
+              ]}
+            />
+          )}
+        </Card>
+
+        <Card title="Source and validation issues" accent={ops.sourceIssues.length + ops.validationIssues.length > 0}>
+          {ops.sourceIssues.length === 0 && ops.validationIssues.length === 0 ? (
+            <EmptyState ok>No stale, drifted, missing, or failing inputs</EmptyState>
+          ) : (
+            <div className="space-y-4">
+              {ops.sourceIssues.length > 0 && <FreshnessRows items={ops.sourceIssues} />}
+              {ops.validationIssues.length > 0 && (
+                <ul className="divide-y divide-line-subtle">
+                  {ops.validationIssues.map((issue) => (
+                    <li key={issue.id} className="flex flex-col gap-1 py-2.5 lg:flex-row lg:items-center lg:gap-3">
+                      <Badge tone={issue.severity === 'error' ? 'danger' : 'warning'}>{issue.status}</Badge>
+                      <span className="min-w-0 flex-1 text-[13px] font-medium text-ink">{issue.name}</span>
+                      <span className="text-[12px] text-ink-3">{issue.detail}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </Card>
+      </div>
+    </>
+  )
+}

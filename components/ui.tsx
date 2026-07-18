@@ -1,0 +1,430 @@
+import { clsx } from 'clsx'
+import Link from 'next/link'
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
+import { fmtDate, relTime } from '@/lib/format'
+
+// InfoTooltip — a small "i" affordance that reveals an explanation on hover or
+// keyboard focus, as an absolutely-positioned overlay (no layout cost). Used
+// consistently across the dashboard to explain domain jargon (gates, stages,
+// depth, drift, freshness, etc.) without cluttering the surface.
+export function InfoTooltip({
+  children,
+  label,
+  align = 'center',
+  className,
+}: {
+  children: ReactNode
+  label?: string
+  align?: 'center' | 'left' | 'right'
+  className?: string
+}) {
+  return (
+    <span className={clsx('group relative inline-flex items-center align-middle', className)}>
+      <button
+        type="button"
+        aria-label={label ?? 'More information'}
+        className="ml-1 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border border-line text-[9px] font-semibold leading-none text-ink-3 transition-colors hover:border-info hover:text-info focus:outline-none focus-visible:ring-1 focus-visible:ring-info"
+      >
+        i
+      </button>
+      <span
+        role="tooltip"
+        className={clsx(
+          'pointer-events-none absolute top-full z-50 mt-1.5 w-64 rounded-md border border-line bg-card p-2.5 text-left text-[11px] font-normal normal-case leading-relaxed tracking-normal text-ink-2 opacity-0 shadow-elevated transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100',
+          align === 'center' && 'left-1/2 -translate-x-1/2',
+          align === 'left' && 'left-0',
+          align === 'right' && 'right-0'
+        )}
+      >
+        {children}
+      </span>
+    </span>
+  )
+}
+
+export function Card({
+  children,
+  className,
+  title,
+  info,
+  action,
+  fill,
+  accent,
+  hover,
+}: {
+  children: ReactNode
+  className?: string
+  title?: ReactNode
+  info?: ReactNode
+  action?: ReactNode
+  /** Make the body a flex column that fills the card's height. Pair with a height
+   *  on `className` (e.g. `xl:h-[42rem]`) so a `flex-1` child list scrolls to fill
+   *  it — lets two side-by-side cards stay exactly equal-height regardless of content. */
+  fill?: boolean
+  /** Brand gradient accent bar across the card's top edge. Use sparingly — once
+   *  per surface for the hero/primary card (gradient guideline §3.2). */
+  accent?: boolean
+  /** Subtle elevation lift on hover (motion tokens). For clickable cards. */
+  hover?: boolean
+}) {
+  return (
+    <section
+      className={clsx(
+        'relative rounded-md border border-line bg-card shadow-card',
+        hover && 'jp-card-hover',
+        fill && 'flex flex-col',
+        className
+      )}
+      style={{ borderRadius: 'var(--radius-md)' }}
+    >
+      {accent && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-[3px]"
+          style={{ backgroundImage: 'var(--gradient-full)', borderRadius: 'var(--radius-md) var(--radius-md) 0 0' }}
+        />
+      )}
+      {(title || action) && (
+        <header className="flex items-center justify-between border-b border-line-subtle px-4 py-2.5">
+          <h2 className="flex items-center text-[13px] font-medium tracking-tight text-ink">
+            {title}
+            {info && <InfoTooltip label={typeof title === 'string' ? title : undefined}>{info}</InfoTooltip>}
+          </h2>
+          {action}
+        </header>
+      )}
+      <div className={clsx('p-4', fill && 'flex min-h-0 flex-1 flex-col')}>{children}</div>
+    </section>
+  )
+}
+
+const TONE_STYLES = {
+  neutral: 'bg-surface text-ink-2 border-line',
+  info: 'border-[color:var(--accent-info)]/30 bg-[color:var(--accent-info)]/10 text-[color:var(--accent-info)]',
+  success:
+    'border-[color:var(--accent-success)]/30 bg-[color:var(--accent-success)]/10 text-[color:var(--accent-success)]',
+  warning:
+    'border-[color:var(--accent-warning)]/30 bg-[color:var(--accent-warning)]/10 text-[color:var(--accent-warning)]',
+  danger:
+    'border-[color:var(--accent-danger)]/30 bg-[color:var(--accent-danger)]/10 text-[color:var(--accent-danger)]',
+} as const
+
+export type Tone = keyof typeof TONE_STYLES
+
+export function Badge({ children, tone = 'neutral' }: { children: ReactNode; tone?: Tone }) {
+  return (
+    <span
+      className={clsx(
+        'inline-flex items-center gap-1 whitespace-nowrap rounded-pill border px-2 py-0.5 text-[11px] font-medium',
+        TONE_STYLES[tone]
+      )}
+    >
+      {children}
+    </span>
+  )
+}
+
+export function StatCard({
+  label,
+  value,
+  hint,
+  info,
+  tone = 'neutral',
+  accent,
+}: {
+  label: string
+  value: ReactNode
+  hint?: ReactNode
+  info?: ReactNode
+  tone?: Tone
+  /** Brand gradient accent bar across the top edge. Reserve for the single
+   *  headline metric in a KPI row (gradient guideline §3.2). */
+  accent?: boolean
+}) {
+  return (
+    <div className="relative rounded-md border border-line bg-card px-4 py-3 shadow-card">
+      {accent && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-[3px]"
+          style={{ backgroundImage: 'var(--gradient-full)', borderRadius: 'var(--radius-md) var(--radius-md) 0 0' }}
+        />
+      )}
+      <div className="flex items-center text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">
+        {label}
+        {info && <InfoTooltip label={label}>{info}</InfoTooltip>}
+      </div>
+      <div
+        className={clsx('mt-1 text-[24px] font-medium leading-tight tabular-nums', {
+          'text-ink': tone === 'neutral',
+          'text-info': tone === 'info',
+          'text-success': tone === 'success',
+          'text-warning': tone === 'warning',
+          'text-danger': tone === 'danger',
+        })}
+      >
+        {value}
+      </div>
+      {hint && <div className="mt-1 text-[11px] text-ink-3">{hint}</div>}
+    </div>
+  )
+}
+
+export function EmptyState({
+  children,
+  hint,
+  ok,
+}: {
+  children: ReactNode
+  /** A muted secondary line — use for the technical reason (env var, path) so it
+   *  doesn't clutter the primary message. */
+  hint?: ReactNode
+  /** Append a ✓ — the "all clear, nothing pending" case (vs. a true empty result). */
+  ok?: boolean
+}) {
+  return (
+    <div className="py-6 text-center text-[13px] text-ink-3">
+      <div>
+        {children}
+        {ok && ' ✓'}
+      </div>
+      {hint && <div className="mt-1 text-[11px] text-ink-3/80">{hint}</div>}
+    </div>
+  )
+}
+
+export function Eyebrow({ children }: { children: ReactNode }) {
+  return (
+    <div className="text-[11px] font-medium uppercase tracking-[0.1em] text-ink-3">{children}</div>
+  )
+}
+
+// — Button ——————————————————————————————————————————————————————————————————
+// The single button primitive. Before this, every action/control component
+// hand-rolled its own <button> className (divergent radius, padding, tone,
+// disabled, focus). Variants:
+//   solid   — filled ink, for the primary commit in a surface (e.g. Save)
+//   outline — bordered; tone colors the border/text (gate decisions, triggers)
+//   ghost   — chromeless, for icon/secondary controls
+//   link    — inline text affordance (no padding); tone ignored, always info
+type ButtonVariant = 'solid' | 'outline' | 'ghost' | 'link'
+
+const BTN_SIZE: Record<'sm' | 'md', string> = {
+  sm: 'px-2.5 py-1 text-[11px]',
+  md: 'px-4 py-2 text-[13px]',
+}
+
+// Link-variant text color. Defaults (neutral) to the info blue, the app's
+// standard inline-affordance color; pass tone="danger" for destructive links.
+const BTN_LINK_TONE: Record<Tone, string> = {
+  neutral: 'text-info',
+  info: 'text-info',
+  success: 'text-success',
+  warning: 'text-warning',
+  danger: 'text-danger',
+}
+
+const BTN_OUTLINE_TONE: Record<Tone, string> = {
+  neutral: 'border-line bg-card text-ink hover:border-ink-3 hover:bg-surface',
+  info: 'border-[color:var(--accent-info)]/30 bg-[color:var(--accent-info)]/10 text-[color:var(--accent-info)] hover:border-[color:var(--accent-info)]',
+  success:
+    'border-[color:var(--accent-success)]/30 bg-[color:var(--accent-success)]/10 text-[color:var(--accent-success)] hover:border-[color:var(--accent-success)]',
+  warning:
+    'border-[color:var(--accent-warning)]/30 bg-[color:var(--accent-warning)]/10 text-[color:var(--accent-warning)] hover:border-[color:var(--accent-warning)]',
+  danger:
+    'border-[color:var(--accent-danger)]/30 bg-[color:var(--accent-danger)]/10 text-[color:var(--accent-danger)] hover:border-[color:var(--accent-danger)]',
+}
+
+export function Button({
+  children,
+  variant = 'outline',
+  tone = 'neutral',
+  size = 'sm',
+  loading = false,
+  href,
+  className,
+  disabled,
+  type = 'button',
+  ...rest
+}: {
+  children: ReactNode
+  variant?: ButtonVariant
+  tone?: Tone
+  size?: 'sm' | 'md'
+  /** Show a busy state: disables the control and dims it (caller supplies the label text). */
+  loading?: boolean
+  /** Render as a Next.js <Link> instead of a <button>. */
+  href?: string
+} & ButtonHTMLAttributes<HTMLButtonElement>) {
+  const isDisabled = disabled || loading
+  const cls = clsx(
+    'inline-flex items-center justify-center gap-1.5 font-medium transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-info disabled:cursor-not-allowed disabled:opacity-50',
+    variant === 'link'
+      ? clsx('hover:underline', BTN_LINK_TONE[tone])
+      : clsx('rounded-sm border', BTN_SIZE[size]),
+    variant === 'solid' && 'border-ink bg-ink text-card hover:brightness-110',
+    variant === 'outline' && BTN_OUTLINE_TONE[tone],
+    variant === 'ghost' && 'border-transparent text-ink-2 hover:bg-surface hover:text-ink',
+    loading && 'opacity-60',
+    className
+  )
+
+  if (href && !isDisabled) {
+    return (
+      <Link href={href} className={cls}>
+        {children}
+      </Link>
+    )
+  }
+  return (
+    <button type={type} disabled={isDisabled} className={cls} {...rest}>
+      {children}
+    </button>
+  )
+}
+
+// — RelativeTime ——————————————————————————————————————————————————————————
+// "3h ago" with the absolute timestamp on hover. The relTime + title={fmtDate}
+// pairing was repeated on every page that shows a timestamp.
+export function RelativeTime({
+  iso,
+  className,
+}: {
+  iso: string | null | undefined
+  className?: string
+}) {
+  return (
+    <span title={fmtDate(iso)} className={className}>
+      {relTime(iso)}
+    </span>
+  )
+}
+
+// — Table ————————————————————————————————————————————————————————————————
+// A thin shell over the raw <table>/<thead>/<tbody> markup that every data page
+// re-typed by hand. Header cells can be plain <Th> or the sortable <SortableTh>
+// from TableControls (both render a <th> sized to sit inside <Thead>'s row).
+const CELL_ALIGN = { left: '', right: 'text-right', center: 'text-center' } as const
+
+export function Table({
+  children,
+  minWidth,
+  scroll,
+  className,
+}: {
+  children: ReactNode
+  /** Min width before the table scrolls horizontally. Defaults to the standard
+   *  "48rem" when `scroll` is set — override only when the column set truly
+   *  needs more room (keep table breakpoints consistent across pages). */
+  minWidth?: string
+  /** Wrap in a horizontally-scrollable container that bleeds to the card edges. */
+  scroll?: boolean
+  className?: string
+}) {
+  const mw = minWidth ?? (scroll ? '48rem' : undefined)
+  const table = (
+    <table className={clsx('w-full text-[13px]', className)} style={mw ? { minWidth: mw } : undefined}>
+      {children}
+    </table>
+  )
+  return scroll ? <div className="-mx-4 overflow-x-auto px-4">{table}</div> : table
+}
+
+export function Thead({ children }: { children: ReactNode }) {
+  return (
+    <thead>
+      <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.06em] text-ink-3">
+        {children}
+      </tr>
+    </thead>
+  )
+}
+
+export function Th({
+  children,
+  align = 'left',
+  className,
+}: {
+  children?: ReactNode
+  align?: 'left' | 'right' | 'center'
+  className?: string
+}) {
+  return <th className={clsx('pb-2 pr-3 font-medium', CELL_ALIGN[align], className)}>{children}</th>
+}
+
+export function Tbody({ children }: { children: ReactNode }) {
+  return <tbody className="divide-y divide-[color:var(--border-subtle)]">{children}</tbody>
+}
+
+export function Tr({ children, className }: { children: ReactNode; className?: string }) {
+  return <tr className={clsx('align-top hover:bg-surface', className)}>{children}</tr>
+}
+
+export function Td({
+  children,
+  align = 'left',
+  className,
+}: {
+  children?: ReactNode
+  align?: 'left' | 'right' | 'center'
+  className?: string
+}) {
+  return <td className={clsx('py-2 pr-3', CELL_ALIGN[align], className)}>{children}</td>
+}
+
+// — CodeBlock ——————————————————————————————————————————————————————————————
+// Monospace scrollable content panel — the <pre> block duplicated in the sensing
+// inbox, pipeline gate-0 expander, and publisher drift detail.
+export function CodeBlock({
+  children,
+  maxHeight = '20rem',
+  className,
+}: {
+  children: ReactNode
+  /** CSS max-height before the panel scrolls (default 20rem ≈ max-h-80). */
+  maxHeight?: string
+  className?: string
+}) {
+  return (
+    <pre
+      style={{ maxHeight }}
+      className={clsx(
+        'overflow-y-auto whitespace-pre-wrap break-words rounded border border-line bg-card px-3 py-2 font-mono text-[11px] leading-relaxed text-ink',
+        className
+      )}
+    >
+      {children}
+    </pre>
+  )
+}
+
+// — MetaRow / MetaItem ————————————————————————————————————————————————————
+// A wrapping row of "label value" pairs — the metadata strips in run detail,
+// the sensing expander, and the gate-0 expander all rebuilt this by hand.
+export function MetaRow({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={clsx('flex flex-wrap items-baseline gap-x-6 gap-y-1 text-[11px]', className)}>{children}</div>
+}
+
+export function MetaItem({ label, children }: { label: ReactNode; children: ReactNode }) {
+  return (
+    <span>
+      <span className="text-ink-3">{label} </span>
+      {children}
+    </span>
+  )
+}
+
+// — Input / TextArea ——————————————————————————————————————————————————————
+// Text inputs with the shared border/focus treatment, so config editors stop
+// re-typing `rounded-sm border border-line bg-card …`.
+export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      className={clsx(
+        'rounded-sm border border-line bg-card px-2 py-1 text-[13px] text-ink outline-none placeholder:text-ink-3 focus:border-ink-3',
+        className
+      )}
+      {...rest}
+    />
+  )
+}

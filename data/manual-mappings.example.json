@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "description": "Synthetic mapping examples. Copy to data/manual-mappings.json and edit locally.",
+  "incomeRules": [
+    {
+      "match": {
+        "typeIncludes": "interest"
+      },
+      "category": "interest",
+      "note": "Classify non-position interest income."
+    }
+  ],
+  "dividendOverrides": []
+}

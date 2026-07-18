@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "source": "Example only",
+  "sourceUrl": "",
+  "note": "Synthetic KR price snapshot for public bootstrapping. Replace with data/kr-prices.json locally.",
+  "prices": [
+    {
+      "ticker": "005930",
+      "symbol": "005930.KS",
+      "price": 70000,
+      "currency": "KRW",
+      "exchangeName": "KSC",
+      "instrumentType": "EQUITY",
+      "asOfDate": "2026-01-01",
+      "regularMarketTime": null,
+      "shortName": "Example Electronics",
+      "longName": "Example Electronics Co Ltd"
+    }
+  ],
+  "missing": []
+}
