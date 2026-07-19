@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, StatCard } from '@/components/ui'
+import { Badge, Card, InfoTooltip, StatCard } from '@/components/ui'
 import { fmtDateTime, fmtNumber } from '@/lib/format'
 import { annualProfiles, assumptionBool, assumptionNumber, assumptionString, getTaxPolicyState } from '@/lib/tax-policy'
 import { saveTaxSettings } from './actions'
@@ -109,17 +109,33 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
           </div>
         </Card>
 
-        <Card title="Annual filing timeline" accent>
+        <Card
+          title="Annual filing timeline"
+          info="Filing means reporting workflow is required for that country/year. Tax calc means the planner includes that country's tax estimate in scenario math."
+          accent
+        >
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-[12px]">
               <thead className="text-[10px] uppercase tracking-[0.08em] text-ink-3">
                 <tr>
                   <th className="pb-2 pr-4 font-medium">Year</th>
                   <th className="pb-2 pr-4 font-medium">Default scenario</th>
-                  <th className="pb-2 pr-4 text-center font-medium">US filing</th>
-                  <th className="pb-2 pr-4 text-center font-medium">US tax calc</th>
-                  <th className="pb-2 pr-4 text-center font-medium">KR filing</th>
-                  <th className="pb-2 pr-4 text-center font-medium">KR tax calc</th>
+                  <th className="pb-2 pr-4 text-center font-medium">
+                    US filing
+                    <InfoTooltip align="left">Tracks whether this year needs US filing work, evidence collection, and reporting review.</InfoTooltip>
+                  </th>
+                  <th className="pb-2 pr-4 text-center font-medium">
+                    US tax calc
+                    <InfoTooltip align="left">Controls whether US capital gain tax assumptions are included in planning estimates for this year.</InfoTooltip>
+                  </th>
+                  <th className="pb-2 pr-4 text-center font-medium">
+                    KR filing
+                    <InfoTooltip align="left">Tracks whether this year needs Korea filing work, evidence collection, and reporting review.</InfoTooltip>
+                  </th>
+                  <th className="pb-2 pr-4 text-center font-medium">
+                    KR tax calc
+                    <InfoTooltip align="left">Controls whether Korea stock tax assumptions are included in planning estimates for this year.</InfoTooltip>
+                  </th>
                   <th className="pb-2 pr-4 font-medium">Status</th>
                 </tr>
               </thead>
@@ -157,7 +173,7 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
             </table>
           </div>
           <div className="mt-3 text-[11px] leading-relaxed text-ink-3">
-            Filing obligation and tax calculation can differ. Use filing flags for operational reminders; use tax calculation flags for planning estimates.
+            In normal cases filing and tax calc should usually move together. Keep them separate only when reporting duty is known but the taxable calculation needs manual review, or when stress-testing a planning assumption.
           </div>
         </Card>
 

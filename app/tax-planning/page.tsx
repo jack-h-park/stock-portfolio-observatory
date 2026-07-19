@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, StatCard } from '@/components/ui'
+import { Badge, Card, EmptyState, InfoTooltip, StatCard } from '@/components/ui'
 import { getOperationalHealth, getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
@@ -21,6 +21,10 @@ function signedKrw(value: number | null | undefined) {
 
 function pct(value: number | null | undefined) {
   return value == null ? 'n/a' : `${fmtNumber(value, 2)}%`
+}
+
+function sameKrw(a: number | null | undefined, b: number | null | undefined) {
+  return Math.round(Number(a ?? 0)) === Math.round(Number(b ?? 0))
 }
 
 function PositionCell({ row }: { row: TaxPlanCandidate }) {
@@ -134,6 +138,12 @@ export default async function TaxPlanningPage({
         </button>
       </form>
 
+      {annualTargetCashKrw <= 0 && (
+        <div className="mb-5 rounded-md border border-[color:var(--accent-warning)]/25 bg-[color:var(--accent-warning)]/10 px-3 py-2 text-[12px] leading-relaxed text-ink-2">
+          Set an annual cash target to compare market timing meaningfully. With no target, scenarios can converge because the planner is effectively reviewing available sale lots across the whole horizon.
+        </div>
+      )}
+
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-6">
         <StatCard label="Open Lots" value={fmtNumber(plan.summary.candidateCount)} accent />
         <StatCard label="Best Scenario" value={multiYearPlan.bestScenario?.label ?? 'n/a'} />
@@ -144,15 +154,25 @@ export default async function TaxPlanningPage({
       </div>
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card title="Annual filing profile" accent>
+        <Card
+          title="Annual filing profile"
+          info="Filing flags track whether that country needs reporting work in a year. Tax calc flags decide whether that country's tax estimate is included in planning math."
+          accent
+        >
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-[12px]">
               <thead className="text-[10px] uppercase tracking-[0.08em] text-ink-3">
                 <tr>
                   <th className="pb-2 pr-4 font-medium">Year</th>
                   <th className="pb-2 pr-4 font-medium">Tax calc</th>
-                  <th className="pb-2 pr-4 font-medium">US filing</th>
-                  <th className="pb-2 pr-4 font-medium">KR filing</th>
+                  <th className="pb-2 pr-4 font-medium">
+                    US filing
+                    <InfoTooltip align="left">Whether this year needs US tax reporting workflow and evidence review. This does not by itself change the planner's tax math.</InfoTooltip>
+                  </th>
+                  <th className="pb-2 pr-4 font-medium">
+                    KR filing
+                    <InfoTooltip align="left">Whether this year needs Korea tax reporting workflow and evidence review. This does not by itself change the planner's tax math.</InfoTooltip>
+                  </th>
                   <th className="pb-2 pr-4 font-medium">Status</th>
                 </tr>
               </thead>
@@ -186,7 +206,12 @@ export default async function TaxPlanningPage({
         </Card>
       </div>
 
-      <Card title="Market timing scenario comparison" className="mb-5" accent>
+      <Card
+        title="Market timing scenario comparison"
+        info="These scenarios compare which market exposure to realize earlier in the multi-year plan. They do not model whether Korea or the US return is filed first within the same year."
+        className="mb-5"
+        accent
+      >
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-[12px]">
             <thead className="text-[10px] uppercase tracking-[0.08em] text-ink-3">
@@ -207,6 +232,7 @@ export default async function TaxPlanningPage({
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-ink">{scenarioRow.label}</span>
                       {multiYearPlan.bestScenario?.key === scenarioRow.key && <Badge tone="success">Lowest tax</Badge>}
+                      {multiYearPlan.bestScenario?.key !== scenarioRow.key && sameKrw(scenarioRow.summary.taxKrw, multiYearPlan.bestScenario?.summary.taxKrw) && <Badge tone="neutral">Same tax</Badge>}
                     </div>
                     <div className="mt-1 max-w-[24rem] text-[11px] text-ink-3">{scenarioRow.description}</div>
                   </td>

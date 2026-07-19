@@ -146,15 +146,15 @@ function isScenarioEnabled(scenario: FilingScenario, jurisdiction: 'US' | 'KR') 
 }
 
 function scenarioLabel(key: MultiYearStrategyKey) {
-  if (key === 'KR_FIRST') return 'KR first'
-  if (key === 'US_FIRST') return 'US first'
+  if (key === 'KR_FIRST') return 'KR-market first'
+  if (key === 'US_FIRST') return 'US-market first'
   if (key === 'LOSS_FIRST') return 'Loss first'
   return 'Balanced'
 }
 
 function scenarioDescription(key: MultiYearStrategyKey) {
-  if (key === 'KR_FIRST') return 'Sell Korea-market exposure earlier, then move to US exposure in later years.'
-  if (key === 'US_FIRST') return 'Sell US-market exposure earlier while keeping Korea-market exposure later.'
+  if (key === 'KR_FIRST') return 'Realize Korea-listed holdings earlier in the planning horizon; this is not a filing-order assumption.'
+  if (key === 'US_FIRST') return 'Realize US-listed holdings earlier in the planning horizon; this is not a filing-order assumption.'
   if (key === 'LOSS_FIRST') return 'Use loss lots first across markets before raising the remaining cash target.'
   return 'Split each year across Korea and US market exposure based on available value.'
 }
