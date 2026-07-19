@@ -9,9 +9,15 @@ import { positionHref } from '@/lib/position-url'
 
 export const dynamic = 'force-dynamic'
 
+function priorityTone(priority: string) {
+  if (priority === 'high') return 'danger'
+  if (priority === 'medium') return 'warning'
+  return 'info'
+}
+
 export default function DataOpsPage() {
   const ops = getDataOpsReview()
-  const issueCount = ops.tickerlessIncome.length + ops.missingValuation.length + ops.sourceIssues.length + ops.validationIssues.length
+  const issueCount = ops.actionQueue.reduce((sum, item) => sum + item.count, 0)
 
   return (
     <>
@@ -19,17 +25,42 @@ export default function DataOpsPage() {
         eyebrow="System"
         title="Data Ops"
         emphasis="Ops"
-        subtitle="Read-only triage for mappings, tickerless income, missing valuation, source drift, and validation issues."
-        action={issueCount ? <Badge tone="warning">{fmtNumber(issueCount)} triage item(s)</Badge> : <Badge tone="success">Clear</Badge>}
+        subtitle="Read-only operating queue for mappings, valuation coverage, source freshness, and validation issues."
+        action={issueCount ? <Badge tone="warning">{fmtNumber(issueCount)} action item(s)</Badge> : <Badge tone="success">Clear</Badge>}
       />
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <StatCard label="Income Rules" value={fmtNumber(ops.manualMappings.incomeRuleCount)} accent />
         <StatCard label="Manual Overrides" value={fmtNumber(ops.manualMappings.overrideCount)} />
-        <StatCard label="Tickerless Groups" value={fmtNumber(ops.tickerlessIncome.length)} tone={ops.tickerlessIncome.length ? 'warning' : 'success'} />
-        <StatCard label="Missing Valuation" value={fmtNumber(ops.missingValuation.length)} tone={ops.missingValuation.length ? 'warning' : 'success'} />
+        <StatCard label="Mapping Suggestions" value={fmtNumber(ops.mappingSuggestions.length)} tone={ops.mappingSuggestions.length ? 'warning' : 'success'} />
+        <StatCard label="Valuation Fixes" value={fmtNumber(ops.valuationFixes.length)} tone={ops.valuationFixes.length ? 'warning' : 'success'} />
         <StatCard label="Source / Validation Issues" value={fmtNumber(ops.sourceIssues.length + ops.validationIssues.length)} tone={ops.sourceIssues.length + ops.validationIssues.length ? 'warning' : 'success'} />
       </div>
+
+      <Card title="Data Ops action queue" className="mb-5" accent={ops.actionQueue.length > 0}>
+        {ops.actionQueue.length === 0 ? (
+          <EmptyState ok>No operating actions queued</EmptyState>
+        ) : (
+          <DataTable
+            rows={ops.actionQueue}
+            columns={[
+              { key: 'priority', label: 'Priority', render: (r) => <Badge tone={priorityTone(r.priority)}>{r.priority}</Badge> },
+              { key: 'area', label: 'Area' },
+              { key: 'count', label: 'Count', align: 'right', render: (r) => fmtNumber(r.count) },
+              { key: 'action', label: 'Action', render: (r) => <span className="text-[12px] text-ink-2">{r.action}</span> },
+              {
+                key: 'href',
+                label: 'Open',
+                render: (r) => (
+                  <Link href={r.href} className="text-[12px] font-medium text-info hover:underline">
+                    View
+                  </Link>
+                ),
+              },
+            ]}
+          />
+        )}
+      </Card>
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card title="Manual mapping file">
@@ -65,6 +96,50 @@ export default function DataOpsPage() {
         </Card>
       </div>
 
+      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <Card title="Manual mapping suggestions" accent={ops.mappingSuggestions.length > 0}>
+          {ops.mappingSuggestions.length === 0 ? (
+            <EmptyState ok>No manual mapping suggestions</EmptyState>
+          ) : (
+            <DataTable
+              rows={ops.mappingSuggestions}
+              columns={[
+                { key: 'market', label: 'Market', render: (r) => <Badge tone={r.market === 'US' ? 'info' : 'success'}>{r.market}</Badge> },
+                { key: 'brokerage', label: 'Broker' },
+                { key: 'income_category', label: 'Category' },
+                { key: 'row_count', label: 'Rows', align: 'right', render: (r) => fmtNumber(r.row_count) },
+                { key: 'base_income', label: 'Base', align: 'right', render: (r) => fmtKrw(r.base_income) },
+                { key: 'rule', label: 'Suggested rule', render: (r) => <code className="block max-w-[24rem] whitespace-pre-wrap font-mono text-[11px] text-ink-2">{r.rule}</code> },
+              ]}
+            />
+          )}
+        </Card>
+
+        <Card title="Valuation fix suggestions" accent={ops.valuationFixes.length > 0}>
+          {ops.valuationFixes.length === 0 ? (
+            <EmptyState ok>No valuation fixes suggested</EmptyState>
+          ) : (
+            <DataTable
+              rows={ops.valuationFixes}
+              columns={[
+                { key: 'market', label: 'Market', render: (r) => <Badge tone={r.market === 'US' ? 'info' : 'success'}>{r.market}</Badge> },
+                {
+                  key: 'ticker',
+                  label: 'Position',
+                  render: (r) => (
+                    <Link href={positionHref(r.market, r.ticker)} className="font-mono text-[12px] font-medium text-info hover:underline">
+                      {r.ticker}
+                    </Link>
+                  ),
+                },
+                { key: 'reason', label: 'Reason' },
+                { key: 'suggestion', label: 'Suggested handling', render: (r) => <span className="text-[12px] text-ink-2">{r.suggestion}</span> },
+              ]}
+            />
+          )}
+        </Card>
+      </div>
+
       <Card title="Tickerless income triage" accent={ops.tickerlessIncome.length > 0}>
         {ops.tickerlessIncome.length === 0 ? (
           <EmptyState ok>All income rows are ticker-mapped</EmptyState>
@@ -81,6 +156,7 @@ export default function DataOpsPage() {
               { key: 'native_income', label: 'Native', align: 'right', render: (r) => fmtMoney(r.native_income, r.currency) },
               { key: 'base_income', label: 'Base', align: 'right', render: (r) => fmtKrw(r.base_income) },
               { key: 'suggestion', label: 'Suggested handling' },
+              { key: 'suggestedRule', label: 'Rule', render: (r) => <code className="block max-w-[18rem] whitespace-pre-wrap font-mono text-[11px] text-ink-3">{r.suggestedRule}</code> },
             ]}
           />
         )}
@@ -108,6 +184,8 @@ export default function DataOpsPage() {
                 { key: 'account', label: 'Account' },
                 { key: 'native_cost', label: 'Native Cost', align: 'right', render: (r) => fmtMoney(r.native_cost, r.currency) },
                 { key: 'base_cost', label: 'Base Cost', align: 'right', render: (r) => (r.base_cost == null ? 'n/a' : fmtKrw(r.base_cost)) },
+                { key: 'reason', label: 'Reason' },
+                { key: 'suggestion', label: 'Suggested handling' },
               ]}
             />
           )}

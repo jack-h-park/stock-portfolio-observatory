@@ -350,6 +350,7 @@ export type DataOpsReview = {
     native_income: number
     base_income: number
     suggestion: string
+    suggestedRule: string
   }[]
   missingValuation: {
     market: string
@@ -361,6 +362,34 @@ export type DataOpsReview = {
     quantity: number
     native_cost: number
     base_cost: number | null
+    reason: string
+    suggestion: string
+  }[]
+  actionQueue: {
+    priority: 'high' | 'medium' | 'low'
+    area: string
+    count: number
+    action: string
+    href: string
+  }[]
+  mappingSuggestions: {
+    id: string
+    market: string
+    brokerage: string | null
+    source: string | null
+    income_category: string
+    row_count: number
+    base_income: number
+    rule: string
+    note: string
+  }[]
+  valuationFixes: {
+    market: string
+    ticker: string
+    name: string
+    brokerage: string | null
+    reason: string
+    suggestion: string
   }[]
   sourceIssues: FreshnessItem[]
   validationIssues: HealthCheck[]
@@ -1138,6 +1167,49 @@ function tickerlessSuggestion(category: string | null | undefined) {
   return 'Review source/name and add dividendOverrides entry if this income belongs to a specific ticker.'
 }
 
+function compactRuleValue(value: string | null | undefined) {
+  const text = String(value ?? '').trim()
+  if (!text) return ''
+  return text.replace(/\s+/g, ' ').slice(0, 80)
+}
+
+function mappingRuleSuggestion(row: {
+  income_category: string
+  mapping_status: string
+  type: string | null
+  name: string | null
+  source: string | null
+}) {
+  const match: Record<string, string> = {}
+  const type = compactRuleValue(row.type)
+  const name = compactRuleValue(row.name)
+  const source = compactRuleValue(row.source)
+  if (type) match.typeIncludes = type
+  if (!type && name) match.nameIncludes = name
+  if (source && row.mapping_status.includes('tickerless')) match.sourceIncludes = source
+  const category = row.income_category || 'dividend'
+  const payload = {
+    match,
+    category,
+    note: tickerlessSuggestion(category),
+  }
+  return JSON.stringify(payload)
+}
+
+function valuationReason(row: { market: string; ticker: string }) {
+  const prices = readJson(row.market === 'KR' ? config.stockKrPricesPath : config.stockUsPricesPath)
+  const tickers = new Set((prices?.prices ?? []).map((price: any) => String(price.ticker ?? '').toUpperCase()))
+  if (!prices) return 'price_snapshot_missing'
+  if (!tickers.has(String(row.ticker).toUpperCase())) return 'ticker_missing_from_price_snapshot'
+  return 'source_missing_market_value'
+}
+
+function valuationSuggestion(reason: string) {
+  if (reason === 'price_snapshot_missing') return 'Run pnpm refresh or restore the local price snapshot file.'
+  if (reason === 'ticker_missing_from_price_snapshot') return 'Check ticker normalization and refresh the relevant price snapshot.'
+  return 'Review source valuation fields; tax-lot-only sources may need external price enrichment.'
+}
+
 export function getDataOpsReview(): DataOpsReview {
   const operational = getOperationalHealth()
   const manualMappings = readJson(config.stockManualMappingsPath) ?? {}
@@ -1178,8 +1250,12 @@ export function getDataOpsReview(): DataOpsReview {
            limit 50`
         )
         .all() as Omit<DataOpsReview['tickerlessIncome'][number], 'suggestion'>[]
-    ).map((row) => ({ ...row, suggestion: tickerlessSuggestion(row.income_category) }))
-    const missingValuation = conn
+    ).map((row) => ({
+      ...row,
+      suggestion: tickerlessSuggestion(row.income_category),
+      suggestedRule: mappingRuleSuggestion(row),
+    }))
+    const missingValuationRows = conn
       .prepare(
         `select market, currency, brokerage, account, ticker, name, quantity, native_cost, base_cost
          from holdings
@@ -1187,10 +1263,70 @@ export function getDataOpsReview(): DataOpsReview {
          order by coalesce(base_cost, total_cost_krw) desc
          limit 50`
       )
-      .all() as DataOpsReview['missingValuation']
+      .all() as Omit<DataOpsReview['missingValuation'][number], 'reason' | 'suggestion'>[]
+    const missingValuation = missingValuationRows.map((row) => {
+      const reason = valuationReason(row)
+      return { ...row, reason, suggestion: valuationSuggestion(reason) }
+    })
     const validationIssues = conn
       .prepare("select * from validation_checks where status != 'pass' order by severity, name")
       .all() as HealthCheck[]
+    const mappingSuggestions = tickerlessIncome.slice(0, 20).map((row, index) => ({
+      id: `${index}:${row.market}:${row.brokerage}:${row.source}:${row.name}:${row.type}`,
+      market: row.market,
+      brokerage: row.brokerage,
+      source: row.source,
+      income_category: row.income_category,
+      row_count: row.row_count,
+      base_income: row.base_income,
+      rule: row.suggestedRule,
+      note: row.suggestion,
+    }))
+    const valuationFixes = missingValuation.slice(0, 20).map((row) => ({
+      market: row.market,
+      ticker: row.ticker,
+      name: row.name,
+      brokerage: row.brokerage,
+      reason: row.reason,
+      suggestion: row.suggestion,
+    }))
+    const actionQueue: DataOpsReview['actionQueue'] = []
+    if (validationIssues.length > 0) {
+      actionQueue.push({
+        priority: 'high',
+        area: 'Validation',
+        count: validationIssues.length,
+        action: 'Fix failing ingest validation checks before acting on downstream triage.',
+        href: '/health',
+      })
+    }
+    if (operational.staleItems.length > 0) {
+      actionQueue.push({
+        priority: operational.summary.missing || operational.summary.drift ? 'high' : 'medium',
+        area: 'Source freshness',
+        count: operational.staleItems.length,
+        action: 'Resolve stale, drifted, or missing inputs and rerun pnpm refresh.',
+        href: '/health',
+      })
+    }
+    if (mappingSuggestions.length > 0) {
+      actionQueue.push({
+        priority: 'medium',
+        area: 'Manual mappings',
+        count: mappingSuggestions.reduce((sum, row) => sum + Number(row.row_count ?? 0), 0),
+        action: 'Review suggested read-only mapping rules and apply the useful ones to data/manual-mappings.json.',
+        href: '/data-ops',
+      })
+    }
+    if (valuationFixes.length > 0) {
+      actionQueue.push({
+        priority: 'low',
+        area: 'Valuation',
+        count: valuationFixes.length,
+        action: 'Refresh price snapshots or resolve ticker normalization for missing valuation rows.',
+        href: '/data-ops',
+      })
+    }
     return {
       manualMappings: {
         path: config.stockManualMappingsPath,
@@ -1201,6 +1337,9 @@ export function getDataOpsReview(): DataOpsReview {
       mappingSummary,
       tickerlessIncome,
       missingValuation,
+      actionQueue,
+      mappingSuggestions,
+      valuationFixes,
       sourceIssues: operational.staleItems,
       validationIssues,
     }
