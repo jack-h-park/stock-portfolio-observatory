@@ -27,6 +27,15 @@ function sameKrw(a: number | null | undefined, b: number | null | undefined) {
   return Math.round(Number(a ?? 0)) === Math.round(Number(b ?? 0))
 }
 
+function marketAmount(row: MultiYearTaxScenario['years'][number], market: string) {
+  return row.markets.find((item) => item.market === market)?.proceedsKrw ?? 0
+}
+
+function scenarioTaxTie(plan: ReturnType<typeof buildMultiYearTaxPlan>) {
+  if (!plan.bestScenario) return false
+  return plan.scenarios.every((item) => sameKrw(item.summary.taxKrw, plan.bestScenario?.summary.taxKrw))
+}
+
 function PositionCell({ row }: { row: TaxPlanCandidate }) {
   return (
     <div className="min-w-[14rem]">
@@ -83,8 +92,9 @@ export default async function TaxPlanningPage({
     objective,
   })
   const operational = getOperationalHealth()
-  const taxRate = plan.summary.grossProceedsKrw > 0 ? (plan.summary.estimatedTaxKrw / plan.summary.grossProceedsKrw) * 100 : null
   const filingProfiles = annualProfiles(taxPolicy.policy, horizonYears)
+  const hasPlanningTarget = annualTargetCashKrw > 0
+  const tiedTax = scenarioTaxTie(multiYearPlan)
 
   return (
     <>
@@ -103,7 +113,7 @@ export default async function TaxPlanningPage({
         }
       />
 
-      <form className="mb-5 grid gap-3 rounded-md border border-line bg-card p-3 shadow-card lg:grid-cols-[10rem_13rem_1fr_8rem_auto]">
+      <form className="mb-5 grid gap-3 rounded-md border border-line bg-card p-3 shadow-card lg:grid-cols-[10rem_13rem_1fr_11rem_auto]">
         <label className="block">
           <span className="mb-1 block text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">Horizon</span>
           <select name="horizon" defaultValue={horizonYears} className="w-full rounded-md border border-line bg-card px-3 py-2 text-[13px] text-ink outline-none">
@@ -130,28 +140,33 @@ export default async function TaxPlanningPage({
           </select>
         </label>
         <label className="block">
-          <span className="mb-1 block text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">Annual cash target KRW</span>
-          <input name="annualTarget" type="number" defaultValue={annualTargetCashKrw || ''} className="w-full rounded-md border border-line bg-card px-3 py-2 text-[13px] text-ink outline-none" />
+          <span className="mb-1 block text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">Sell per year</span>
+          <input
+            name="annualTarget"
+            type="number"
+            placeholder="30000000"
+            defaultValue={annualTargetCashKrw || ''}
+            className="w-full rounded-md border border-line bg-card px-3 py-2 text-[13px] text-ink outline-none"
+          />
         </label>
         <button type="submit" className="self-end rounded-md border border-line bg-ink px-4 py-2 text-[13px] font-medium text-card transition-opacity hover:opacity-90">
-          Recalculate
+          Compare
         </button>
       </form>
 
-      {annualTargetCashKrw <= 0 && (
-        <div className="mb-5 rounded-md border border-[color:var(--accent-warning)]/25 bg-[color:var(--accent-warning)]/10 px-3 py-2 text-[12px] leading-relaxed text-ink-2">
-          Set an annual cash target to compare market timing meaningfully. With no target, scenarios can converge because the planner is effectively reviewing available sale lots across the whole horizon.
-        </div>
-      )}
+      <DecisionSummary
+        hasPlanningTarget={hasPlanningTarget}
+        tiedTax={tiedTax}
+        bestScenario={multiYearPlan.bestScenario}
+        inputIssueCount={plan.summary.missingValuationCount + operational.staleItems.length}
+        openLotCount={plan.summary.candidateCount}
+      />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-6">
-        <StatCard label="Open Lots" value={fmtNumber(plan.summary.candidateCount)} accent />
-        <StatCard label="Best Scenario" value={multiYearPlan.bestScenario?.label ?? 'n/a'} />
-        <StatCard label="Total Proceeds" value={fmtKrw(multiYearPlan.bestScenario?.summary.proceedsKrw ?? 0)} />
-        <StatCard label="Total Tax" value={fmtKrw(multiYearPlan.bestScenario?.summary.taxKrw ?? 0)} hint={pct(multiYearPlan.bestScenario?.summary.effectiveTaxRatePct)} tone={(multiYearPlan.bestScenario?.summary.taxKrw ?? 0) > 0 ? 'warning' : 'success'} />
-        <StatCard label="Peak Year Tax" value={fmtKrw(multiYearPlan.bestScenario?.summary.peakYearTaxKrw ?? 0)} />
-        <StatCard label="Input Issues" value={fmtNumber(plan.summary.missingValuationCount + operational.staleItems.length)} tone={plan.summary.missingValuationCount + operational.staleItems.length ? 'warning' : 'success'} />
-      </div>
+      <BestYearPlan
+        scenario={multiYearPlan.bestScenario}
+        hasPlanningTarget={hasPlanningTarget}
+        annualTargetCashKrw={annualTargetCashKrw}
+      />
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[1.2fr_0.8fr]">
         <Card
@@ -207,11 +222,15 @@ export default async function TaxPlanningPage({
       </div>
 
       <Card
-        title="Market timing scenario comparison"
+        title="Detailed scenario comparison"
         info="These scenarios compare which market exposure to realize earlier in the multi-year plan. They do not model whether Korea or the US return is filed first within the same year."
         className="mb-5"
-        accent
       >
+        {!hasPlanningTarget && (
+          <div className="mb-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] leading-relaxed text-ink-3">
+            This table is in preview mode because no annual sale target is set. Enter a KRW amount above to turn it into a real timing comparison.
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-[12px]">
             <thead className="text-[10px] uppercase tracking-[0.08em] text-ink-3">
@@ -249,11 +268,13 @@ export default async function TaxPlanningPage({
         </div>
       </Card>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+      {hasPlanningTarget && (
+        <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
         {multiYearPlan.scenarios.slice(0, 4).map((scenarioRow) => (
           <ScenarioTimeline key={scenarioRow.key} scenario={scenarioRow} />
         ))}
-      </div>
+        </div>
+      )}
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card title="Selected single-year tax split">
@@ -287,6 +308,138 @@ export default async function TaxPlanningPage({
         <CandidateTable rows={plan.candidates.slice(0, 80)} />
       </Card>
     </>
+  )
+}
+
+function DecisionSummary({
+  hasPlanningTarget,
+  tiedTax,
+  bestScenario,
+  inputIssueCount,
+  openLotCount,
+}: {
+  hasPlanningTarget: boolean
+  tiedTax: boolean
+  bestScenario: MultiYearTaxScenario | null
+  inputIssueCount: number
+  openLotCount: number
+}) {
+  const title = !hasPlanningTarget
+    ? 'Enter a yearly sale amount first'
+    : tiedTax
+      ? 'No tax difference across timing choices'
+      : `Current lowest-tax path: ${bestScenario?.label ?? 'n/a'}`
+  const body = !hasPlanningTarget
+    ? 'The planner needs a KRW amount to compare whether Korea-listed or US-listed holdings should be sold in 2026, 2027, and later years.'
+    : tiedTax
+      ? 'Under the current assumptions, changing the market order does not change estimated tax. Focus on cash needs, exposure, and data issues before reading the lot table.'
+      : 'Use the yearly action plan first. The lot table below is only the execution detail behind the selected market timing path.'
+
+  return (
+    <Card title="Current decision" className="mb-5" accent>
+      <div className="grid gap-4 xl:grid-cols-[1fr_26rem]">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={!hasPlanningTarget ? 'warning' : tiedTax ? 'neutral' : 'success'}>
+              {!hasPlanningTarget ? 'Needs target' : tiedTax ? 'Tie' : 'Recommendation'}
+            </Badge>
+            <h2 className="text-[22px] font-medium leading-tight tracking-tight text-ink">{title}</h2>
+          </div>
+          <p className="mt-2 max-w-[56rem] text-[13px] leading-relaxed text-ink-2">{body}</p>
+          <div className="mt-4 grid gap-2 md:grid-cols-3">
+            <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
+              <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">Step 1</div>
+              <div className="mt-1 text-[12px] text-ink">Set yearly sale amount</div>
+            </div>
+            <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
+              <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">Step 2</div>
+              <div className="mt-1 text-[12px] text-ink">Compare KR vs US market timing</div>
+            </div>
+            <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
+              <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">Step 3</div>
+              <div className="mt-1 text-[12px] text-ink">Review lots only after timing is chosen</div>
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <StatCard label="Open Lots" value={fmtNumber(openLotCount)} />
+          <StatCard label="Input Issues" value={fmtNumber(inputIssueCount)} tone={inputIssueCount ? 'warning' : 'success'} />
+          <StatCard label="Sale Target" value={hasPlanningTarget ? fmtKrw(bestScenario?.years[0]?.targetCashKrw ?? 0) : 'Not set'} tone={hasPlanningTarget ? 'neutral' : 'warning'} />
+          <StatCard
+            label="Est. Tax"
+            value={hasPlanningTarget ? fmtKrw(bestScenario?.summary.taxKrw ?? 0) : 'n/a'}
+            hint={hasPlanningTarget ? pct(bestScenario?.summary.effectiveTaxRatePct) : 'requires target'}
+            tone={!hasPlanningTarget ? 'warning' : (bestScenario?.summary.taxKrw ?? 0) > 0 ? 'warning' : 'success'}
+          />
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+function BestYearPlan({
+  scenario,
+  hasPlanningTarget,
+  annualTargetCashKrw,
+}: {
+  scenario: MultiYearTaxScenario | null
+  hasPlanningTarget: boolean
+  annualTargetCashKrw: number
+}) {
+  return (
+    <Card
+      title="Year-by-year action plan"
+      info="This is the decision layer: which market to realize in each tax year. Specific lots are shown later as execution detail."
+      className="mb-5"
+      accent={hasPlanningTarget}
+      action={hasPlanningTarget && scenario ? <Badge tone="info">{scenario.label}</Badge> : undefined}
+    >
+      {!hasPlanningTarget || !scenario ? (
+        <EmptyState hint="Example: enter 30000000 to compare selling about KRW 30M per year.">
+          No yearly sale amount set
+        </EmptyState>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-[12px]">
+            <thead className="text-[10px] uppercase tracking-[0.08em] text-ink-3">
+              <tr>
+                <th className="pb-2 pr-4 font-medium">Year</th>
+                <th className="pb-2 pr-4 font-medium">Filing profile</th>
+                <th className="pb-2 pr-4 text-right font-medium">Sell KR market</th>
+                <th className="pb-2 pr-4 text-right font-medium">Sell US market</th>
+                <th className="pb-2 pr-4 text-right font-medium">Target</th>
+                <th className="pb-2 pr-4 text-right font-medium">Est. tax</th>
+                <th className="pb-2 pr-4 font-medium">Readout</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line-subtle">
+              {scenario.years.map((year) => {
+                const krAmount = marketAmount(year, 'KR')
+                const usAmount = marketAmount(year, 'US')
+                const readout = krAmount > usAmount
+                  ? 'Mostly Korea-listed sales'
+                  : usAmount > krAmount
+                    ? 'Mostly US-listed sales'
+                    : krAmount + usAmount > 0
+                      ? 'Mixed market sales'
+                      : 'No planned sale'
+                return (
+                  <tr key={year.year}>
+                    <td className="py-3 pr-4 font-mono text-ink">{year.year}</td>
+                    <td className="py-3 pr-4"><Badge tone="info">{year.filingScenario}</Badge></td>
+                    <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(krAmount)}</td>
+                    <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(usAmount)}</td>
+                    <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(annualTargetCashKrw)}</td>
+                    <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(year.taxKrw)}</td>
+                    <td className="py-3 pr-4 text-ink-2">{readout}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
   )
 }
 
