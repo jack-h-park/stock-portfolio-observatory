@@ -73,6 +73,32 @@ pnpm refresh
 pnpm dev
 ```
 
+## macOS launchd deployment
+
+Production deployments on a private macOS host can run under launchd on port
+3101. Keep real brokerage exports, generated databases, and runtime JSON files
+outside git or in ignored local files.
+
+**First-time install on the host:**
+
+```bash
+make install-service   # build + launchd registration (com.jackpark.stock-observatory, port 3101)
+make status / make stop / make logs
+```
+
+**Redeploy after code updates:**
+
+```bash
+make redeploy          # git pull --ff-only -> pnpm build -> service restart -> status
+```
+
+`make redeploy` is the canonical live-update path. `pnpm build` alone only writes
+a new `.next/` build; the running `next start` process keeps serving the old build
+until launchd is restarted with `make restart` or `make redeploy`.
+
+Use a hostname or private-network address that resolves from the client browser;
+SSH aliases are not necessarily browser-resolvable DNS names.
+
 ## Data posture
 
 The web app treats `.codex_sheet_payloads/*.tsv` as the current Korea source snapshot and imports supported US brokerage CSV exports into the same normalized SQLite database under `outputs/stock-portfolio-observatory/`. The dashboard never writes back to the source files.

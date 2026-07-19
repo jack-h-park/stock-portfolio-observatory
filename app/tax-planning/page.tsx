@@ -61,6 +61,18 @@ type OpportunityRow = {
   estimatedTaxIfAllSoldKrw: number
 }
 
+type OpportunityGroup = Omit<OpportunityRow, 'year'> & {
+  years: number[]
+  yearLabel: string
+}
+
+type OpportunityTakeaway = {
+  title: string
+  body: string
+  metric: string
+  tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger'
+}
+
 function sumKrw(rows: TaxPlanCandidate[], key: 'proceedsKrw' | 'gainKrw' | 'estimatedTaxKrw') {
   return rows.reduce((sum, row) => sum + Number(row[key] ?? 0), 0)
 }
@@ -111,6 +123,81 @@ function opportunitySummary(rows: OpportunityRow[]) {
     taxLightProceedsKrw: bestTaxLight?.taxLightProceedsKrw ?? 0,
     lossHarvestKrw: bestLoss?.lossHarvestKrw ?? 0,
   }
+}
+
+function yearLabel(years: number[]) {
+  const sorted = [...years].sort((a, b) => a - b)
+  if (sorted.length === 1) return String(sorted[0])
+  return `${sorted[0]}-${sorted[sorted.length - 1]}`
+}
+
+function sameOpportunity(a: OpportunityGroup, b: OpportunityRow) {
+  return (
+    a.market === b.market &&
+    a.filingScenario === b.filingScenario &&
+    sameKrw(a.taxLightProceedsKrw, b.taxLightProceedsKrw) &&
+    sameKrw(a.lossHarvestKrw, b.lossHarvestKrw) &&
+    sameKrw(a.totalProceedsKrw, b.totalProceedsKrw) &&
+    sameKrw(a.estimatedTaxIfAllSoldKrw, b.estimatedTaxIfAllSoldKrw)
+  )
+}
+
+function groupOpportunityRows(rows: OpportunityRow[]): OpportunityGroup[] {
+  const groups: OpportunityGroup[] = []
+  for (const row of rows) {
+    const existing = groups.find((group) => sameOpportunity(group, row))
+    if (existing) {
+      existing.years.push(row.year)
+      existing.yearLabel = yearLabel(existing.years)
+    } else {
+      groups.push({ ...row, years: [row.year], yearLabel: String(row.year) })
+    }
+  }
+  return groups
+}
+
+function buildTakeaways(rows: OpportunityRow[]): OpportunityTakeaway[] {
+  const groups = groupOpportunityRows(rows)
+  const takeaways: OpportunityTakeaway[] = []
+  const markets = Array.from(new Set(groups.map((group) => group.market)))
+
+  for (const market of markets) {
+    const marketGroups = groups.filter((group) => group.market === market)
+    if (marketGroups.length < 2) continue
+    const highestTax = [...marketGroups].sort((a, b) => b.estimatedTaxIfAllSoldKrw - a.estimatedTaxIfAllSoldKrw)[0]
+    const lowestTax = [...marketGroups].sort((a, b) => a.estimatedTaxIfAllSoldKrw - b.estimatedTaxIfAllSoldKrw)[0]
+    const savings = highestTax.estimatedTaxIfAllSoldKrw - lowestTax.estimatedTaxIfAllSoldKrw
+    if (savings > 0) {
+      takeaways.push({
+        title: `${market} sales look cheaper in ${lowestTax.yearLabel}`,
+        body: `All-sold stress tax is lower than ${highestTax.yearLabel} under the current filing profiles.`,
+        metric: `${fmtKrw(savings)} less tax`,
+        tone: 'success',
+      })
+    }
+  }
+
+  const bestLoss = [...groups].sort((a, b) => b.lossHarvestKrw - a.lossHarvestKrw)[0]
+  if (bestLoss && bestLoss.lossHarvestKrw > 0) {
+    takeaways.push({
+      title: `${bestLoss.market} has the largest loss-harvest pool`,
+      body: `${bestLoss.yearLabel} shows the most unrealized loss that could potentially offset gains, subject to wash-sale and country rules.`,
+      metric: fmtKrw(bestLoss.lossHarvestKrw),
+      tone: 'info',
+    })
+  }
+
+  const bestLowTax = [...groups].sort((a, b) => b.taxLightProceedsKrw - a.taxLightProceedsKrw)[0]
+  if (bestLowTax && bestLowTax.taxLightProceedsKrw > 0) {
+    takeaways.push({
+      title: `${bestLowTax.market} has the largest zero-tax sale room`,
+      body: `${bestLowTax.yearLabel} has the largest proceeds currently estimated at zero tax under the enabled profile.`,
+      metric: fmtKrw(bestLowTax.taxLightProceedsKrw),
+      tone: 'success',
+    })
+  }
+
+  return takeaways.slice(0, 3)
 }
 
 function PositionCell({ row }: { row: TaxPlanCandidate }) {
@@ -552,16 +639,32 @@ function PlanningMap({
 
 function OpportunityTable({ rows }: { rows: OpportunityRow[] }) {
   if (rows.length === 0) return <EmptyState>No planning opportunities from current tax lots</EmptyState>
+  const groups = groupOpportunityRows(rows)
+  const takeaways = buildTakeaways(rows)
   return (
     <>
       <div className="mb-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] leading-relaxed text-ink-3">
         This view does not require a pre-made sale plan. Amounts apply each year&apos;s tax profile to today&apos;s open lots, so they can repeat across years until future price, holding-period, and lot-consumption projection is added. When US tax calc is enabled, US estimates include non-US market gains as a planning assumption for US citizens/residents.
       </div>
+      {takeaways.length > 0 && (
+        <div className="mb-4 grid gap-3 lg:grid-cols-3">
+          {takeaways.map((takeaway) => (
+            <div key={`${takeaway.title}-${takeaway.metric}`} className="rounded-md border border-line-subtle bg-surface px-3 py-3">
+              <div className="flex items-center justify-between gap-2">
+                <Badge tone={takeaway.tone}>{takeaway.tone === 'success' ? 'Takeaway' : 'Review'}</Badge>
+                <span className="text-right text-[13px] font-medium tabular-nums text-ink">{takeaway.metric}</span>
+              </div>
+              <div className="mt-2 text-[13px] font-medium leading-tight text-ink">{takeaway.title}</div>
+              <div className="mt-1 text-[11px] leading-relaxed text-ink-3">{takeaway.body}</div>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="min-w-full text-left text-[12px]">
           <thead className="text-[10px] uppercase tracking-[0.08em] text-ink-3">
             <tr>
-              <th className="pb-2 pr-4 font-medium">Year</th>
+              <th className="pb-2 pr-4 font-medium">Years</th>
               <th className="pb-2 pr-4 font-medium">Market</th>
               <th className="pb-2 pr-4 font-medium">
                 Tax profile
@@ -586,7 +689,7 @@ function OpportunityTable({ rows }: { rows: OpportunityRow[] }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-line-subtle">
-            {rows.map((row) => {
+            {groups.map((row) => {
               const readout = row.lossHarvestKrw > 0
                 ? row.estimatedTaxIfAllSoldKrw <= 0
                   ? 'Loss-harvest area; no positive estimated tax in this row'
@@ -597,8 +700,8 @@ function OpportunityTable({ rows }: { rows: OpportunityRow[] }) {
                     ? 'Likely taxable; test smaller ranges'
                     : 'No priced lots to evaluate'
               return (
-                <tr key={`${row.year}-${row.market}`}>
-                  <td className="py-3 pr-4 font-mono text-ink">{row.year}</td>
+                <tr key={`${row.yearLabel}-${row.market}-${row.filingScenario}`}>
+                  <td className="py-3 pr-4 font-mono text-ink">{row.yearLabel}</td>
                   <td className="py-3 pr-4"><Badge tone={row.market === 'US' ? 'info' : 'success'}>{row.market}</Badge></td>
                   <td className="py-3 pr-4"><Badge tone="neutral">{row.filingScenario}</Badge></td>
                   <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(row.taxLightProceedsKrw)}</td>
