@@ -11,6 +11,7 @@ const SECTIONS: { label: string; items: { href: string; label: string }[] }[] = 
     items: [
       { href: '/', label: 'Overview' },
       { href: '/review', label: 'Review' },
+      { href: '/reconciliation', label: 'Reconciliation' },
       { href: '/rebalance', label: 'Rebalance' },
       { href: '/income', label: 'Income' },
       { href: '/holdings', label: 'Holdings' },

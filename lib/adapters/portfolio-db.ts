@@ -366,6 +366,70 @@ export type DataOpsReview = {
   validationIssues: HealthCheck[]
 }
 
+export type ReconciliationReview = {
+  totals: {
+    issue_count: number
+    market_count: number
+    brokerage_count: number
+    position_count: number
+    lot_position_count: number
+    tickerless_income_count: number
+    missing_valuation_count: number
+    source_issue_count: number
+    validation_issue_count: number
+  }
+  coverage: {
+    market: string
+    brokerage: string
+    holding_positions: number
+    holding_accounts: number
+    holding_base_cost: number
+    lot_positions: number
+    lot_rows: number
+    lot_base_cost: number
+    transaction_rows: number
+    dividend_rows: number
+  }[]
+  positionBreaks: {
+    market: string
+    brokerage: string
+    ticker: string
+    name: string
+    holding_accounts: number
+    holding_quantity: number | null
+    lot_quantity: number | null
+    quantity_diff: number | null
+    holding_base_cost: number | null
+    lot_base_cost: number | null
+    base_cost_diff: number | null
+    status: 'holding_only' | 'lot_only' | 'quantity_break' | 'cost_break'
+  }[]
+  incomeBreaks: {
+    market: string
+    currency: string
+    brokerage: string | null
+    income_category: string
+    row_count: number
+    base_income: number
+  }[]
+  valuationBreaks: {
+    market: string
+    currency: string
+    brokerage: string | null
+    ticker: string
+    name: string
+    native_cost: number
+    base_cost: number | null
+  }[]
+  actionQueue: {
+    priority: 'high' | 'medium' | 'low'
+    area: string
+    count: number
+    action: string
+    href: string
+  }[]
+}
+
 function db() {
   return new Database(config.stockDbPath, { readonly: true, fileMustExist: true })
 }
@@ -1139,6 +1203,245 @@ export function getDataOpsReview(): DataOpsReview {
       missingValuation,
       sourceIssues: operational.staleItems,
       validationIssues,
+    }
+  } finally {
+    conn.close()
+  }
+}
+
+function reconciliationStatus(row: any): ReconciliationReview['positionBreaks'][number]['status'] {
+  if (!row.holding_present) return 'lot_only'
+  if (!row.lot_present) return 'holding_only'
+  if (Math.abs(Number(row.quantity_diff ?? 0)) > 0.0001) return 'quantity_break'
+  return 'cost_break'
+}
+
+export function getReconciliationReview(): ReconciliationReview {
+  const conn = db()
+  try {
+    const operational = getOperationalHealth()
+    const validationIssues = conn.prepare("select count(*) as count from validation_checks where status != 'pass'").get() as { count: number }
+    const coverage = conn
+      .prepare(
+        `with holding_summary as (
+           select market, coalesce(brokerage, 'Unassigned') as brokerage,
+             count(distinct ticker) as holding_positions,
+             count(distinct account) as holding_accounts,
+             coalesce(sum(coalesce(base_cost, total_cost_krw)), 0) as holding_base_cost
+           from holdings
+           group by market, coalesce(brokerage, 'Unassigned')
+         ),
+         lot_summary as (
+           select market, coalesce(brokerage, 'Unassigned') as brokerage,
+             count(distinct ticker) as lot_positions,
+             count(*) as lot_rows,
+             coalesce(sum(cost_basis_krw), 0) as lot_base_cost
+           from tax_lots
+           group by market, coalesce(brokerage, 'Unassigned')
+         ),
+         transaction_summary as (
+           select market, coalesce(brokerage, 'Unassigned') as brokerage, count(*) as transaction_rows
+           from transactions
+           group by market, coalesce(brokerage, 'Unassigned')
+         ),
+         dividend_summary as (
+           select market, coalesce(brokerage, 'Unassigned') as brokerage, count(*) as dividend_rows
+           from dividends
+           group by market, coalesce(brokerage, 'Unassigned')
+         ),
+         keys as (
+           select market, brokerage from holding_summary
+           union
+           select market, brokerage from lot_summary
+           union
+           select market, brokerage from transaction_summary
+           union
+           select market, brokerage from dividend_summary
+         )
+         select keys.market, keys.brokerage,
+           coalesce(holding_summary.holding_positions, 0) as holding_positions,
+           coalesce(holding_summary.holding_accounts, 0) as holding_accounts,
+           coalesce(holding_summary.holding_base_cost, 0) as holding_base_cost,
+           coalesce(lot_summary.lot_positions, 0) as lot_positions,
+           coalesce(lot_summary.lot_rows, 0) as lot_rows,
+           coalesce(lot_summary.lot_base_cost, 0) as lot_base_cost,
+           coalesce(transaction_summary.transaction_rows, 0) as transaction_rows,
+           coalesce(dividend_summary.dividend_rows, 0) as dividend_rows
+         from keys
+         left join holding_summary on holding_summary.market = keys.market and holding_summary.brokerage = keys.brokerage
+         left join lot_summary on lot_summary.market = keys.market and lot_summary.brokerage = keys.brokerage
+         left join transaction_summary on transaction_summary.market = keys.market and transaction_summary.brokerage = keys.brokerage
+         left join dividend_summary on dividend_summary.market = keys.market and dividend_summary.brokerage = keys.brokerage
+         order by keys.market, keys.brokerage`
+      )
+      .all() as ReconciliationReview['coverage']
+
+    const positionRows = conn
+      .prepare(
+        `with h as (
+           select market, coalesce(brokerage, 'Unassigned') as brokerage, ticker, max(name) as name,
+             count(distinct account) as holding_accounts,
+             coalesce(sum(quantity), 0) as holding_quantity,
+             coalesce(sum(coalesce(base_cost, total_cost_krw)), 0) as holding_base_cost,
+             1 as holding_present
+           from holdings
+           group by market, coalesce(brokerage, 'Unassigned'), ticker
+         ),
+         l as (
+           select market, coalesce(brokerage, 'Unassigned') as brokerage, ticker, max(name) as name,
+             coalesce(sum(open_quantity), 0) as lot_quantity,
+             coalesce(sum(cost_basis_krw), 0) as lot_base_cost,
+             1 as lot_present
+           from tax_lots
+           group by market, coalesce(brokerage, 'Unassigned'), ticker
+         ),
+         keys as (
+           select market, brokerage, ticker from h
+           union
+           select market, brokerage, ticker from l
+         )
+         select keys.market, keys.brokerage, keys.ticker,
+           coalesce(h.name, l.name, keys.ticker) as name,
+           coalesce(h.holding_accounts, 0) as holding_accounts,
+           h.holding_quantity,
+           l.lot_quantity,
+           case when h.holding_present = 1 and l.lot_present = 1 then h.holding_quantity - l.lot_quantity else null end as quantity_diff,
+           h.holding_base_cost,
+           l.lot_base_cost,
+           case when h.holding_present = 1 and l.lot_present = 1 then h.holding_base_cost - l.lot_base_cost else null end as base_cost_diff,
+           coalesce(h.holding_present, 0) as holding_present,
+           coalesce(l.lot_present, 0) as lot_present
+         from keys
+         left join h on h.market = keys.market and h.brokerage = keys.brokerage and h.ticker = keys.ticker
+         left join l on l.market = keys.market and l.brokerage = keys.brokerage and l.ticker = keys.ticker
+         where h.holding_present is null
+            or l.lot_present is null
+            or abs(coalesce(h.holding_quantity, 0) - coalesce(l.lot_quantity, 0)) > 0.0001
+            or abs(coalesce(h.holding_base_cost, 0) - coalesce(l.lot_base_cost, 0)) > 1000
+         order by
+           case when h.holding_present is null or l.lot_present is null then 0 else 1 end,
+           abs(coalesce(h.holding_base_cost, 0) - coalesce(l.lot_base_cost, 0)) desc
+         limit 100`
+      )
+      .all() as any[]
+    const positionBreaks = positionRows.map((row) => ({
+      market: row.market,
+      brokerage: row.brokerage,
+      ticker: row.ticker,
+      name: row.name,
+      holding_accounts: row.holding_accounts,
+      holding_quantity: row.holding_quantity,
+      lot_quantity: row.lot_quantity,
+      quantity_diff: row.quantity_diff,
+      holding_base_cost: row.holding_base_cost,
+      lot_base_cost: row.lot_base_cost,
+      base_cost_diff: row.base_cost_diff,
+      status: reconciliationStatus(row),
+    })) as ReconciliationReview['positionBreaks']
+
+    const incomeBreaks = conn
+      .prepare(
+        `select market, currency, brokerage, income_category,
+          count(*) as row_count,
+          coalesce(sum(amount_krw), 0) as base_income
+         from dividends
+         where ticker is null or trim(ticker) = ''
+         group by market, currency, brokerage, income_category
+         order by row_count desc, base_income desc
+         limit 20`
+      )
+      .all() as ReconciliationReview['incomeBreaks']
+    const valuationBreaks = conn
+      .prepare(
+        `select market, currency, brokerage, ticker, name, native_cost, base_cost
+         from holdings
+         where native_market_value is null
+         order by coalesce(base_cost, total_cost_krw) desc
+         limit 30`
+      )
+      .all() as ReconciliationReview['valuationBreaks']
+    const totals = conn
+      .prepare(
+        `select
+          count(distinct market) as market_count,
+          count(distinct coalesce(brokerage, 'Unassigned')) as brokerage_count,
+          count(distinct market || ':' || ticker) as position_count
+         from holdings`
+      )
+      .get() as Pick<ReconciliationReview['totals'], 'market_count' | 'brokerage_count' | 'position_count'>
+    const lotTotals = conn.prepare("select count(distinct market || ':' || ticker) as count from tax_lots").get() as { count: number }
+
+    const actionQueue: ReconciliationReview['actionQueue'] = []
+    if (operational.staleItems.length > 0) {
+      actionQueue.push({
+        priority: operational.summary.missing || operational.summary.drift ? 'high' : 'medium',
+        area: 'Source freshness',
+        count: operational.staleItems.length,
+        action: 'Resolve stale, drifted, or missing source inputs before trusting reconciliation deltas.',
+        href: '/health',
+      })
+    }
+    if (validationIssues.count > 0) {
+      actionQueue.push({
+        priority: 'high',
+        area: 'Validation checks',
+        count: validationIssues.count,
+        action: 'Fix failing validation checks from the latest ingest.',
+        href: '/health',
+      })
+    }
+    if (positionBreaks.length > 0) {
+      actionQueue.push({
+        priority: 'medium',
+        area: 'Holdings vs lots',
+        count: positionBreaks.length,
+        action: 'Review quantity and cost-basis differences by ticker and brokerage.',
+        href: '/reconciliation',
+      })
+    }
+    if (incomeBreaks.length > 0) {
+      actionQueue.push({
+        priority: 'medium',
+        area: 'Ticker mapping',
+        count: incomeBreaks.reduce((sum, row) => sum + Number(row.row_count ?? 0), 0),
+        action: 'Map tickerless income groups through manual mapping rules.',
+        href: '/data-ops',
+      })
+    }
+    if (valuationBreaks.length > 0) {
+      actionQueue.push({
+        priority: 'low',
+        area: 'Valuation',
+        count: valuationBreaks.length,
+        action: 'Refresh or map missing market valuation rows.',
+        href: '/data-ops',
+      })
+    }
+
+    const issueCount =
+      positionBreaks.length +
+      incomeBreaks.reduce((sum, row) => sum + Number(row.row_count ?? 0), 0) +
+      valuationBreaks.length +
+      operational.staleItems.length +
+      validationIssues.count
+
+    return {
+      totals: {
+        issue_count: issueCount,
+        market_count: totals.market_count,
+        brokerage_count: totals.brokerage_count,
+        position_count: totals.position_count,
+        lot_position_count: lotTotals.count,
+        tickerless_income_count: incomeBreaks.reduce((sum, row) => sum + Number(row.row_count ?? 0), 0),
+        missing_valuation_count: valuationBreaks.length,
+        source_issue_count: operational.staleItems.length,
+        validation_issue_count: validationIssues.count,
+      },
+      coverage,
+      positionBreaks,
+      incomeBreaks,
+      valuationBreaks,
+      actionQueue,
     }
   } finally {
     conn.close()
