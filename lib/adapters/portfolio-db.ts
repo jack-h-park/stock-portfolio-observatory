@@ -1603,11 +1603,32 @@ export function getPositionDetail(market: string, ticker: string): PositionDetai
       .all(market, ticker) as Holding[]
     const lots = conn
       .prepare(
-        `select id, market, currency, brokerage, account, ticker, name, acquired_date, open_quantity, native_cost_basis,
-          native_market_value, native_unrealized_gl, cost_basis_krw, native_unit_cost, unit_cost, holding_days, tax_term, source
+        `with holding_prices as (
+           select market, brokerage, account, ticker,
+             max(current_price) as current_price,
+             max(case when quantity > 0 then native_market_value / quantity else null end) as implied_price
+           from holdings
+           group by market, brokerage, account, ticker
+         )
+         select tax_lots.id, tax_lots.market, tax_lots.currency, tax_lots.brokerage, tax_lots.account, tax_lots.ticker,
+           tax_lots.name, tax_lots.acquired_date, tax_lots.open_quantity, tax_lots.native_cost_basis,
+           coalesce(
+             tax_lots.native_market_value,
+             tax_lots.open_quantity * coalesce(holding_prices.current_price, holding_prices.implied_price)
+           ) as native_market_value,
+           coalesce(
+             tax_lots.native_unrealized_gl,
+             tax_lots.open_quantity * coalesce(holding_prices.current_price, holding_prices.implied_price) - tax_lots.native_cost_basis
+           ) as native_unrealized_gl,
+           tax_lots.cost_basis_krw, tax_lots.native_unit_cost, tax_lots.unit_cost, tax_lots.holding_days, tax_lots.tax_term, tax_lots.source
          from tax_lots
-         where market = ? and ticker = ?
-         order by account, tax_term, acquired_date desc, native_cost_basis desc`
+         left join holding_prices
+           on holding_prices.market = tax_lots.market
+          and coalesce(holding_prices.brokerage, '') = coalesce(tax_lots.brokerage, '')
+          and holding_prices.account = tax_lots.account
+          and holding_prices.ticker = tax_lots.ticker
+         where tax_lots.market = ? and tax_lots.ticker = ?
+         order by tax_lots.account, tax_lots.tax_term, tax_lots.acquired_date desc, tax_lots.native_cost_basis desc`
       )
       .all(market, ticker) as any[]
     const transactions = conn
@@ -1723,24 +1744,46 @@ export function getTaxPlanningLots(limit = 500): TaxPlanningLot[] {
   try {
     return conn
       .prepare(
-        `select
-          id,
-          market,
-          currency,
-          brokerage,
-          account,
-          ticker,
-          name,
-          acquired_date,
-          open_quantity,
-          native_cost_basis,
-          native_market_value,
-          native_unrealized_gl,
-          cost_basis_krw,
-          holding_days,
-          tax_term
-         from tax_lots
-         where open_quantity > 0
+        `with holding_prices as (
+           select market, brokerage, account, ticker,
+             max(current_price) as current_price,
+             max(case when quantity > 0 then native_market_value / quantity else null end) as implied_price
+           from holdings
+           group by market, brokerage, account, ticker
+         ),
+         enriched_lots as (
+           select
+             tax_lots.id,
+             tax_lots.market,
+             tax_lots.currency,
+             tax_lots.brokerage,
+             tax_lots.account,
+             tax_lots.ticker,
+             tax_lots.name,
+             tax_lots.acquired_date,
+             tax_lots.open_quantity,
+             tax_lots.native_cost_basis,
+             coalesce(
+               tax_lots.native_market_value,
+               tax_lots.open_quantity * coalesce(holding_prices.current_price, holding_prices.implied_price)
+             ) as native_market_value,
+             coalesce(
+               tax_lots.native_unrealized_gl,
+               tax_lots.open_quantity * coalesce(holding_prices.current_price, holding_prices.implied_price) - tax_lots.native_cost_basis
+             ) as native_unrealized_gl,
+             tax_lots.cost_basis_krw,
+             tax_lots.holding_days,
+             tax_lots.tax_term
+           from tax_lots
+           left join holding_prices
+             on holding_prices.market = tax_lots.market
+            and coalesce(holding_prices.brokerage, '') = coalesce(tax_lots.brokerage, '')
+            and holding_prices.account = tax_lots.account
+            and holding_prices.ticker = tax_lots.ticker
+           where tax_lots.open_quantity > 0
+         )
+         select *
+         from enriched_lots
          order by
            case when native_market_value is null then 1 else 0 end,
            coalesce(native_unrealized_gl, native_market_value - native_cost_basis, 0) asc,
