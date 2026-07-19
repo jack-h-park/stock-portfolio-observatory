@@ -1,15 +1,23 @@
 {
   "baseCurrency": "KRW",
-  "rates": {
-    "USD": {
+  "rates": [
+    {
+      "from": "USD",
+      "to": "KRW",
       "rate": 1300,
       "asOfDate": "2026-01-01",
-      "source": "Example only"
+      "source": "Example only",
+      "sourceUrl": "",
+      "note": "Synthetic public example"
     },
-    "KRW": {
+    {
+      "from": "KRW",
+      "to": "KRW",
       "rate": 1,
       "asOfDate": "2026-01-01",
-      "source": "Example only"
+      "source": "Example only",
+      "sourceUrl": "",
+      "note": "Base currency"
     }
-  }
+  ]
 }

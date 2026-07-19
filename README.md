@@ -6,7 +6,23 @@ This repository is intended to contain application code only. Real brokerage exp
 tax documents, generated databases, price snapshots, and mapping overrides should stay
 outside git or in ignored local files.
 
-## Start
+## Sample mode
+
+Use this path to run the public repository without private brokerage data:
+
+```bash
+pnpm install
+pnpm seed:sample
+pnpm dev
+```
+
+Local URL: <http://localhost:3101>
+
+`pnpm seed:sample` creates a synthetic SQLite database under `private-data/outputs/stock-portfolio-observatory/` and local ignored sample snapshots under `data/*.json`.
+
+If `.env.local` already exists, `pnpm seed:sample` refuses to run so private-mode runtime snapshots are not overwritten accidentally. Use `SAMPLE_FORCE=1 pnpm seed:sample` only when you intentionally want to refresh local sample files in an existing private workspace.
+
+## Private operating mode
 
 ```bash
 pnpm install
@@ -25,8 +41,6 @@ cp data/refresh-runs.example.json data/refresh-runs.json
 pnpm refresh
 pnpm dev
 ```
-
-Local URL: <http://localhost:3101>
 
 ## Data posture
 
