@@ -309,52 +309,64 @@ export default async function TaxPlanningPage({
         </Card>
       </div>
 
-      <Card
-        title="Detailed scenario comparison"
-        info="These scenarios compare which market exposure to realize earlier in the multi-year plan. They do not model whether Korea or the US return is filed first within the same year."
-        className="mb-5"
-      >
-        {!hasPlanningTarget && (
+      {hasPlanningTarget ? (
+        <Card
+          title="Annual target scenario comparison"
+          info="These rows compare how to satisfy the same annual KRW sale target across the planning horizon. They do not model whether Korea or the US return is filed first within the same year."
+          className="mb-5"
+          accent
+        >
           <div className="mb-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] leading-relaxed text-ink-3">
-            This table is in preview mode because no annual sale target is set. Enter a KRW amount above to turn it into a real timing comparison.
+            Each row uses the same annual test amount, then changes which market is sold first. Read this only after choosing a rough yearly sale range from the Opportunity map.
           </div>
-        )}
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-[12px]">
-            <thead className="text-[10px] uppercase tracking-[0.08em] text-ink-3">
-              <tr>
-                <th className="pb-2 pr-4 font-medium">Scenario</th>
-                <th className="pb-2 pr-4 text-right font-medium">Proceeds</th>
-                <th className="pb-2 pr-4 text-right font-medium">Gain/Loss</th>
-                <th className="pb-2 pr-4 text-right font-medium">Tax</th>
-                <th className="pb-2 pr-4 text-right font-medium">After Tax</th>
-                <th className="pb-2 pr-4 text-right font-medium">Peak Year</th>
-                <th className="pb-2 pr-4 text-right font-medium">Lots</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line-subtle">
-              {multiYearPlan.scenarios.map((scenarioRow) => (
-                <tr key={scenarioRow.key} className={multiYearPlan.bestScenario?.key === scenarioRow.key ? 'bg-surface/60' : undefined}>
-                  <td className="py-3 pr-4">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-ink">{scenarioRow.label}</span>
-                      {multiYearPlan.bestScenario?.key === scenarioRow.key && <Badge tone="success">Lowest tax</Badge>}
-                      {multiYearPlan.bestScenario?.key !== scenarioRow.key && sameKrw(scenarioRow.summary.taxKrw, multiYearPlan.bestScenario?.summary.taxKrw) && <Badge tone="neutral">Same tax</Badge>}
-                    </div>
-                    <div className="mt-1 max-w-[24rem] text-[11px] text-ink-3">{scenarioRow.description}</div>
-                  </td>
-                  <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(scenarioRow.summary.proceedsKrw)}</td>
-                  <td className="py-3 pr-4 text-right tabular-nums">{signedKrw(scenarioRow.summary.gainKrw)}</td>
-                  <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(scenarioRow.summary.taxKrw)}</td>
-                  <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(scenarioRow.summary.afterTaxKrw)}</td>
-                  <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(scenarioRow.summary.peakYearTaxKrw)}</td>
-                  <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtNumber(scenarioRow.summary.lotCount)}</td>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-[12px]">
+              <thead className="text-[10px] uppercase tracking-[0.08em] text-ink-3">
+                <tr>
+                  <th className="pb-2 pr-4 font-medium">Scenario</th>
+                  <th className="pb-2 pr-4 text-right font-medium">Total sales</th>
+                  <th className="pb-2 pr-4 text-right font-medium">Realized G/L</th>
+                  <th className="pb-2 pr-4 text-right font-medium">Est. tax</th>
+                  <th className="pb-2 pr-4 text-right font-medium">After tax cash</th>
+                  <th className="pb-2 pr-4 text-right font-medium">Peak year tax</th>
+                  <th className="pb-2 pr-4 text-right font-medium">Lots used</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+              </thead>
+              <tbody className="divide-y divide-line-subtle">
+                {multiYearPlan.scenarios.map((scenarioRow) => (
+                  <tr key={scenarioRow.key} className={multiYearPlan.bestScenario?.key === scenarioRow.key ? 'bg-surface/60' : undefined}>
+                    <td className="py-3 pr-4">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-ink">{scenarioRow.label}</span>
+                        {multiYearPlan.bestScenario?.key === scenarioRow.key && <Badge tone="success">Lowest tax</Badge>}
+                        {multiYearPlan.bestScenario?.key !== scenarioRow.key && sameKrw(scenarioRow.summary.taxKrw, multiYearPlan.bestScenario?.summary.taxKrw) && <Badge tone="neutral">Same tax</Badge>}
+                      </div>
+                      <div className="mt-1 max-w-[24rem] text-[11px] text-ink-3">{scenarioRow.description}</div>
+                    </td>
+                    <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(scenarioRow.summary.proceedsKrw)}</td>
+                    <td className="py-3 pr-4 text-right tabular-nums">{signedKrw(scenarioRow.summary.gainKrw)}</td>
+                    <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(scenarioRow.summary.taxKrw)}</td>
+                    <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(scenarioRow.summary.afterTaxKrw)}</td>
+                    <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(scenarioRow.summary.peakYearTaxKrw)}</td>
+                    <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtNumber(scenarioRow.summary.lotCount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : (
+        <Card title="Annual target scenario comparison" className="mb-5">
+          <div className="grid gap-3 md:grid-cols-[1fr_18rem]">
+            <div className="text-[13px] leading-relaxed text-ink-2">
+              This comparison is hidden until an annual test amount is entered. Without a repeated yearly sale amount, labels like lowest tax or same tax are not decision-grade because the planner has not been asked to satisfy a concrete sale range.
+            </div>
+            <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] text-ink-3">
+              Use the Opportunity map first to find promising years and markets, then enter a KRW amount above to compare execution scenarios.
+            </div>
+          </div>
+        </Card>
+      )}
 
       {hasPlanningTarget && (
         <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
