@@ -20,6 +20,13 @@ function scenario(value: string | undefined, fallback: FilingScenario): FilingSc
   return value === 'US_ONLY' || value === 'KR_ONLY' || value === 'US_AND_KR' ? value : fallback
 }
 
+function amountParam(value: string | undefined) {
+  if (!value) return 0
+  const normalized = value.replace(/[^\d.-]/g, '')
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 function signedKrw(value: number | null | undefined) {
   if (value == null) return 'n/a'
   return <span className={value >= 0 ? 'text-success' : 'text-danger'}>{fmtKrw(value)}</span>
@@ -149,8 +156,8 @@ export default async function TaxPlanningPage({
   const taxPolicy = getTaxPolicyState()
   const activeScenario = scenario(params.scenario, taxPolicy.policy.activeScenario)
   const objective = params.objective || 'minimize-tax'
-  const targetCashKrw = Number(params.target ?? 0) || 0
-  const annualTargetCashKrw = Number(params.annualTarget ?? params.target ?? 0) || 0
+  const targetCashKrw = amountParam(params.target)
+  const annualTargetCashKrw = amountParam(params.annualTarget ?? params.target)
   const horizonYears = Math.min(Math.max(Number(params.horizon ?? taxPolicy.policy.planningHorizonYears ?? 5) || 5, 1), 10)
   const lots = getTaxPlanningLots()
   const plan = buildTaxPlan({ lots, policy: taxPolicy.policy, scenario: activeScenario, objective, targetCashKrw })
@@ -212,14 +219,21 @@ export default async function TaxPlanningPage({
           </select>
         </label>
         <label className="block">
-          <span className="mb-1 block text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">Test sale amount</span>
+          <span className="mb-1 block text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">
+            Annual test amount
+            <InfoTooltip align="right">Optional KRW amount to test as a repeated sale target for each year in the horizon. Leave it blank to stay in opportunity exploration mode.</InfoTooltip>
+          </span>
           <input
             name="annualTarget"
-            type="number"
-            placeholder="30000000"
-            defaultValue={annualTargetCashKrw || ''}
+            type="text"
+            inputMode="numeric"
+            placeholder="₩30,000,000"
+            defaultValue={annualTargetCashKrw ? fmtKrw(annualTargetCashKrw) : ''}
             className="w-full rounded-md border border-line bg-card px-3 py-2 text-[13px] text-ink outline-none"
           />
+          <span className="mt-1 block text-[11px] leading-tight text-ink-3">
+            Optional. When filled, the same KRW amount is tested for every year.
+          </span>
         </label>
         <button type="submit" className="self-end rounded-md border border-line bg-ink px-4 py-2 text-[13px] font-medium text-card transition-opacity hover:opacity-90">
           Test
@@ -441,7 +455,7 @@ function DecisionSummary({
           <StatCard label="Open Lots" value={fmtNumber(openLotCount)} />
           <StatCard label="Input Issues" value={fmtNumber(inputIssueCount)} tone={inputIssueCount ? 'warning' : 'success'} />
           <StatCard
-            label={hasPlanningTarget ? 'Sale Target' : 'Low-Tax Window'}
+            label={hasPlanningTarget ? 'Annual Test' : 'Low-Tax Window'}
             value={hasPlanningTarget ? fmtKrw(bestScenario?.years[0]?.targetCashKrw ?? 0) : fmtKrw(opportunities.taxLightProceedsKrw)}
             hint={!hasPlanningTarget && opportunities.bestTaxLight ? `${opportunities.bestTaxLight.year} ${opportunities.bestTaxLight.market}` : undefined}
             tone={hasPlanningTarget ? 'neutral' : 'success'}
