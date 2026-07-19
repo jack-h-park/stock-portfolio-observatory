@@ -4,10 +4,23 @@ import { config } from '@/config'
 
 export type FilingScenario = 'US_ONLY' | 'KR_ONLY' | 'US_AND_KR'
 
+export type TaxYearProfile = {
+  year: number
+  filingScenario: FilingScenario
+  status: 'assumed' | 'confirmed'
+  jurisdictions: {
+    code: 'US' | 'KR' | string
+    filingRequired: boolean
+    taxCalculationEnabled: boolean
+  }[]
+}
+
 export type TaxPolicy = {
   version: number
   activeScenario: FilingScenario
   baseCurrency: string
+  planningHorizonYears?: number
+  annualFilingProfiles?: TaxYearProfile[]
   jurisdictions: {
     code: 'US' | 'KR' | string
     enabled: boolean
@@ -35,7 +48,7 @@ export type TaxPolicyState = {
 }
 
 function readJson(filePath: string) {
-  return JSON.parse(fs.readFileSync(filePath, 'utf8')) as TaxPolicy
+  return normalizeTaxPolicy(JSON.parse(fs.readFileSync(filePath, 'utf8')) as TaxPolicy)
 }
 
 function statIso(filePath: string) {
@@ -75,12 +88,102 @@ function bool(value: FormDataEntryValue | null) {
   return value === 'on' || value === 'true'
 }
 
+function validScenario(value: unknown, fallback: FilingScenario): FilingScenario {
+  return value === 'US_ONLY' || value === 'KR_ONLY' || value === 'US_AND_KR' ? value : fallback
+}
+
+function scenarioFlags(scenario: FilingScenario) {
+  return {
+    US: scenario === 'US_ONLY' || scenario === 'US_AND_KR',
+    KR: scenario === 'KR_ONLY' || scenario === 'US_AND_KR',
+  }
+}
+
+function defaultScenarioForYear(year: number, activeScenario: FilingScenario, currentYear = new Date().getFullYear()) {
+  if (activeScenario === 'US_AND_KR' && year >= currentYear + 2) return 'US_ONLY'
+  return activeScenario
+}
+
+export function scenarioFromTaxYearProfile(profile: TaxYearProfile): FilingScenario {
+  const us = profile.jurisdictions.find((item) => item.code === 'US')?.taxCalculationEnabled ?? false
+  const kr = profile.jurisdictions.find((item) => item.code === 'KR')?.taxCalculationEnabled ?? false
+  if (us && kr) return 'US_AND_KR'
+  if (us) return 'US_ONLY'
+  if (kr) return 'KR_ONLY'
+  return profile.filingScenario
+}
+
+export function annualProfileForYear(policy: TaxPolicy, year: number): TaxYearProfile {
+  const found = policy.annualFilingProfiles?.find((item) => item.year === year)
+  if (found) return found
+  const fallbackScenario = defaultScenarioForYear(year, policy.activeScenario)
+  const flags = scenarioFlags(fallbackScenario)
+  return {
+    year,
+    filingScenario: fallbackScenario,
+    status: 'assumed',
+    jurisdictions: [
+      { code: 'US', filingRequired: flags.US, taxCalculationEnabled: flags.US },
+      { code: 'KR', filingRequired: flags.KR, taxCalculationEnabled: flags.KR },
+    ],
+  }
+}
+
+export function annualProfiles(policy: TaxPolicy, horizonYears = policy.planningHorizonYears ?? 5): TaxYearProfile[] {
+  const startYear = new Date().getFullYear()
+  return Array.from({ length: Math.max(1, horizonYears) }, (_, idx) => annualProfileForYear(policy, startYear + idx))
+}
+
+function normalizeAnnualProfile(raw: Partial<TaxYearProfile>, fallbackScenario: FilingScenario): TaxYearProfile | null {
+  const year = Number(raw.year)
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) return null
+  const filingScenario = validScenario(raw.filingScenario, fallbackScenario)
+  const flags = scenarioFlags(filingScenario)
+  const jurisdictions = ['US', 'KR'].map((code) => {
+    const found = raw.jurisdictions?.find((item) => item.code === code)
+    return {
+      code,
+      filingRequired: typeof found?.filingRequired === 'boolean' ? found.filingRequired : flags[code as 'US' | 'KR'],
+      taxCalculationEnabled:
+        typeof found?.taxCalculationEnabled === 'boolean' ? found.taxCalculationEnabled : flags[code as 'US' | 'KR'],
+    }
+  })
+  return {
+    year,
+    filingScenario,
+    status: raw.status === 'confirmed' ? 'confirmed' : 'assumed',
+    jurisdictions,
+  }
+}
+
+export function normalizeTaxPolicy(raw: TaxPolicy): TaxPolicy {
+  const activeScenario = validScenario(raw.activeScenario, 'US_AND_KR')
+  const horizon = Number.isInteger(raw.planningHorizonYears) ? Number(raw.planningHorizonYears) : 5
+  const normalized: TaxPolicy = {
+    ...raw,
+    version: Math.max(Number(raw.version || 1), 2),
+    activeScenario,
+    baseCurrency: String(raw.baseCurrency || 'KRW').toUpperCase(),
+    planningHorizonYears: Math.min(Math.max(horizon, 1), 10),
+    annualFilingProfiles: [],
+  }
+  const profiles = Array.isArray(raw.annualFilingProfiles)
+    ? raw.annualFilingProfiles
+        .map((profile) => normalizeAnnualProfile(profile, activeScenario))
+        .filter((profile): profile is TaxYearProfile => profile != null)
+    : []
+  normalized.annualFilingProfiles = profiles.length ? profiles : annualProfiles(normalized, normalized.planningHorizonYears)
+  return normalized
+}
+
 export function policyFromFormData(formData: FormData): TaxPolicy {
   const current = getTaxPolicyState().policy
   const policy: TaxPolicy = JSON.parse(JSON.stringify(current))
   const scenario = String(formData.get('activeScenario') ?? policy.activeScenario)
-  policy.activeScenario = ['US_ONLY', 'KR_ONLY', 'US_AND_KR'].includes(scenario) ? (scenario as FilingScenario) : 'US_AND_KR'
+  policy.version = Math.max(Number(policy.version || 1), 2)
+  policy.activeScenario = validScenario(scenario, 'US_AND_KR')
   policy.baseCurrency = String(formData.get('baseCurrency') ?? (policy.baseCurrency || 'KRW')).toUpperCase()
+  policy.planningHorizonYears = Math.min(Math.max(numeric(formData.get('planningHorizonYears')) ?? 5, 1), 10)
 
   setAssumption(policy, 'US', 'federalShortTermRatePct', numeric(formData.get('usFederalShortTermRatePct')))
   setAssumption(policy, 'US', 'federalLongTermRatePct', numeric(formData.get('usFederalLongTermRatePct')))
@@ -97,7 +200,32 @@ export function policyFromFormData(formData: FormData): TaxPolicy {
   setAssumption(policy, 'KR', 'foreignStockTaxableResidenceYearsThreshold', numeric(formData.get('krForeignStockTaxableResidenceYearsThreshold')) ?? 5)
   setAssumption(policy, 'KR', 'foreignTaxCreditMode', String(formData.get('krForeignTaxCreditMode') ?? 'manual'))
 
-  return policy
+  const profileYears = formData
+    .getAll('profileYear')
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value >= 2000 && value <= 2100)
+  policy.annualFilingProfiles = profileYears.map((year) => {
+    const filingScenario = validScenario(formData.get(`filingScenario_${year}`), policy.activeScenario)
+    return {
+      year,
+      filingScenario,
+      status: formData.get(`status_${year}`) === 'confirmed' ? 'confirmed' : 'assumed',
+      jurisdictions: [
+        {
+          code: 'US',
+          filingRequired: bool(formData.get(`usFilingRequired_${year}`)),
+          taxCalculationEnabled: bool(formData.get(`usTaxCalculationEnabled_${year}`)),
+        },
+        {
+          code: 'KR',
+          filingRequired: bool(formData.get(`krFilingRequired_${year}`)),
+          taxCalculationEnabled: bool(formData.get(`krTaxCalculationEnabled_${year}`)),
+        },
+      ],
+    }
+  })
+
+  return normalizeTaxPolicy(policy)
 }
 
 export function saveTaxPolicy(policy: TaxPolicy) {

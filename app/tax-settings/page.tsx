@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, StatCard } from '@/components/ui'
 import { fmtDateTime, fmtNumber } from '@/lib/format'
-import { assumptionBool, assumptionNumber, assumptionString, getTaxPolicyState } from '@/lib/tax-policy'
+import { annualProfiles, assumptionBool, assumptionNumber, assumptionString, getTaxPolicyState } from '@/lib/tax-policy'
 import { saveTaxSettings } from './actions'
 
 export const dynamic = 'force-dynamic'
@@ -45,6 +45,15 @@ function CheckField({ label, name, defaultChecked }: { label: string; name: stri
   )
 }
 
+function CompactCheck({ name, defaultChecked, label }: { name: string; defaultChecked: boolean; label: string }) {
+  return (
+    <label className="inline-flex items-center justify-center">
+      <span className="sr-only">{label}</span>
+      <input name={name} type="checkbox" defaultChecked={defaultChecked} className="h-4 w-4 accent-[color:var(--accent-info)]" />
+    </label>
+  )
+}
+
 function scenarioLabel(value: string) {
   if (value === 'US_ONLY') return 'US only'
   if (value === 'KR_ONLY') return 'Korea only'
@@ -55,6 +64,7 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
   const params = await searchParams
   const state = getTaxPolicyState()
   const { policy } = state
+  const profiles = annualProfiles(policy, policy.planningHorizonYears ?? 5)
 
   return (
     <>
@@ -92,9 +102,62 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
               </select>
             </label>
             <Field label="Base currency" name="baseCurrency" defaultValue={policy.baseCurrency} type="text" />
+            <Field label="Planning horizon" name="planningHorizonYears" defaultValue={policy.planningHorizonYears ?? 5} suffix="years" />
             <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] leading-relaxed text-ink-3">
               Settings are assumptions for planning. Lot evidence, filing forms, residency, treaty positions, and tax professional review remain outside the app.
             </div>
+          </div>
+        </Card>
+
+        <Card title="Annual filing timeline" accent>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-[12px]">
+              <thead className="text-[10px] uppercase tracking-[0.08em] text-ink-3">
+                <tr>
+                  <th className="pb-2 pr-4 font-medium">Year</th>
+                  <th className="pb-2 pr-4 font-medium">Default scenario</th>
+                  <th className="pb-2 pr-4 text-center font-medium">US filing</th>
+                  <th className="pb-2 pr-4 text-center font-medium">US tax calc</th>
+                  <th className="pb-2 pr-4 text-center font-medium">KR filing</th>
+                  <th className="pb-2 pr-4 text-center font-medium">KR tax calc</th>
+                  <th className="pb-2 pr-4 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line-subtle">
+                {profiles.map((profile) => {
+                  const us = profile.jurisdictions.find((item) => item.code === 'US')
+                  const kr = profile.jurisdictions.find((item) => item.code === 'KR')
+                  return (
+                    <tr key={profile.year}>
+                      <td className="py-2 pr-4 font-mono text-ink">
+                        {profile.year}
+                        <input type="hidden" name="profileYear" value={profile.year} />
+                      </td>
+                      <td className="py-2 pr-4">
+                        <select name={`filingScenario_${profile.year}`} defaultValue={profile.filingScenario} className="w-full min-w-[8rem] rounded-md border border-line bg-card px-2 py-1.5 text-[12px] text-ink outline-none">
+                          <option value="US_ONLY">US only</option>
+                          <option value="KR_ONLY">Korea only</option>
+                          <option value="US_AND_KR">US + Korea</option>
+                        </select>
+                      </td>
+                      <td className="py-2 pr-4 text-center"><CompactCheck name={`usFilingRequired_${profile.year}`} defaultChecked={us?.filingRequired ?? false} label={`${profile.year} US filing required`} /></td>
+                      <td className="py-2 pr-4 text-center"><CompactCheck name={`usTaxCalculationEnabled_${profile.year}`} defaultChecked={us?.taxCalculationEnabled ?? false} label={`${profile.year} US tax calculation enabled`} /></td>
+                      <td className="py-2 pr-4 text-center"><CompactCheck name={`krFilingRequired_${profile.year}`} defaultChecked={kr?.filingRequired ?? false} label={`${profile.year} KR filing required`} /></td>
+                      <td className="py-2 pr-4 text-center"><CompactCheck name={`krTaxCalculationEnabled_${profile.year}`} defaultChecked={kr?.taxCalculationEnabled ?? false} label={`${profile.year} KR tax calculation enabled`} /></td>
+                      <td className="py-2 pr-4">
+                        <select name={`status_${profile.year}`} defaultValue={profile.status} className="w-full min-w-[7rem] rounded-md border border-line bg-card px-2 py-1.5 text-[12px] text-ink outline-none">
+                          <option value="assumed">Assumed</option>
+                          <option value="confirmed">Confirmed</option>
+                        </select>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-3 text-[11px] leading-relaxed text-ink-3">
+            Filing obligation and tax calculation can differ. Use filing flags for operational reminders; use tax calculation flags for planning estimates.
           </div>
         </Card>
 

@@ -84,10 +84,22 @@ The planner should load `data/tax-policy.json` when present and fall back to `da
    - reduce concentration while preserving tax efficiency.
 6. Explain every recommendation with lot-level evidence, rule assumptions, and warnings.
 
+## Multi-Year Market Timing Layer
+
+The planner now separates the strategic question from the lot execution question:
+
+- First compare which market exposure to realize in each year: Korea first, US first, balanced, or loss-first.
+- Then drill into the specific lots that make up the chosen yearly market budget.
+- Store annual filing profiles separately from the default active scenario because tax filing obligations can change by year.
+- Keep `filingRequired` separate from `taxCalculationEnabled`: a country can require operational filing reminders even when the user disables that jurisdiction's estimate for planning.
+- Rank scenario alternatives by cumulative estimated tax, peak-year tax, after-tax proceeds, lot count, and unresolved warnings.
+
+Current implementation is a deterministic planning estimator. It does not yet optimize partial share quantities, realized loss carryforwards, treaty positions, prior-year realized gains, or foreign tax credit limits.
+
 ## UX Shape
 
-- `/tax-planning`: Scenario switcher, target cash input, objective selector, candidate sale table, plan comparison, and warnings.
-- `/tax-settings`: Filing profile, residency/taxable-scope questions, rates, deductions, wash-sale settings, FX policy, foreign tax credit mode, and manual overrides.
+- `/tax-planning`: Multi-year horizon, annual cash target, objective selector, annual filing profile, market timing scenario comparison, year-by-year market allocation, candidate sale table, and warnings.
+- `/tax-settings`: Filing profile timeline, residency/taxable-scope questions, rates, deductions, wash-sale settings, FX policy, foreign tax credit mode, and manual overrides.
 - Position detail: Add a tax-lot realization panel showing best/worst lots to sell for the active scenario.
 - Data ops: Add missing cost basis, stale FX, ambiguous taxable scope, and missing account-type alerts.
 

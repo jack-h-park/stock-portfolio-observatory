@@ -1,7 +1,55 @@
 {
-  "version": 1,
+  "version": 2,
   "activeScenario": "US_AND_KR",
   "baseCurrency": "KRW",
+  "planningHorizonYears": 5,
+  "annualFilingProfiles": [
+    {
+      "year": 2026,
+      "filingScenario": "US_AND_KR",
+      "status": "assumed",
+      "jurisdictions": [
+        { "code": "US", "filingRequired": true, "taxCalculationEnabled": true },
+        { "code": "KR", "filingRequired": true, "taxCalculationEnabled": true }
+      ]
+    },
+    {
+      "year": 2027,
+      "filingScenario": "US_AND_KR",
+      "status": "assumed",
+      "jurisdictions": [
+        { "code": "US", "filingRequired": true, "taxCalculationEnabled": true },
+        { "code": "KR", "filingRequired": true, "taxCalculationEnabled": true }
+      ]
+    },
+    {
+      "year": 2028,
+      "filingScenario": "US_ONLY",
+      "status": "assumed",
+      "jurisdictions": [
+        { "code": "US", "filingRequired": true, "taxCalculationEnabled": true },
+        { "code": "KR", "filingRequired": false, "taxCalculationEnabled": false }
+      ]
+    },
+    {
+      "year": 2029,
+      "filingScenario": "US_ONLY",
+      "status": "assumed",
+      "jurisdictions": [
+        { "code": "US", "filingRequired": true, "taxCalculationEnabled": true },
+        { "code": "KR", "filingRequired": false, "taxCalculationEnabled": false }
+      ]
+    },
+    {
+      "year": 2030,
+      "filingScenario": "US_ONLY",
+      "status": "assumed",
+      "jurisdictions": [
+        { "code": "US", "filingRequired": true, "taxCalculationEnabled": true },
+        { "code": "KR", "filingRequired": false, "taxCalculationEnabled": false }
+      ]
+    }
+  ],
   "jurisdictions": [
     {
       "code": "US",

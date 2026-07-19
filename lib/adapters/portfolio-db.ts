@@ -1761,6 +1761,7 @@ export function getTaxPlanningLots(limit = 500): TaxPlanningLot[] {
              tax_lots.ticker,
              tax_lots.name,
              tax_lots.acquired_date,
+             tax_lots.fx_rate_to_base,
              tax_lots.open_quantity,
              tax_lots.native_cost_basis,
              coalesce(
