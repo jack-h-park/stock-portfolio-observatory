@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "activeScenario": "US_AND_KR",
+  "baseCurrency": "KRW",
+  "jurisdictions": [
+    {
+      "code": "US",
+      "enabled": true,
+      "filingCurrency": "USD",
+      "manualAssumptions": {
+        "federalShortTermRatePct": null,
+        "federalLongTermRatePct": null,
+        "stateRatePct": null,
+        "netInvestmentIncomeTaxRatePct": null,
+        "lossDeductionLimitUsd": 3000,
+        "washSaleWindowDaysBefore": 30,
+        "washSaleWindowDaysAfter": 30
+      }
+    },
+    {
+      "code": "KR",
+      "enabled": true,
+      "filingCurrency": "KRW",
+      "manualAssumptions": {
+        "stockBasicDeductionKrw": 2500000,
+        "foreignStockFlatRatePct": 22,
+        "domesticMajorShareholder": false,
+        "domesticListedOffMarketSale": false,
+        "foreignStockTaxableResidenceYearsThreshold": 5,
+        "foreignTaxCreditMode": "manual"
+      }
+    }
+  ],
+  "manualAdjustments": [
+    {
+      "id": "example-adjustment",
+      "enabled": false,
+      "jurisdiction": "KR",
+      "scope": "annual-deduction",
+      "amount": 0,
+      "currency": "KRW",
+      "note": "Synthetic example only. Copy this file to data/tax-policy.json for private assumptions."
+    }
+  ]
+}
