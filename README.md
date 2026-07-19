@@ -6,6 +6,14 @@ This repository is intended to contain application code only. Real brokerage exp
 tax documents, generated databases, price snapshots, and mapping overrides should stay
 outside git or in ignored local files.
 
+## What it does
+
+- Combines Korea and US stock holdings into one read-only portfolio view.
+- Preserves native KRW/USD values and converts USD amounts into KRW using an explicit FX snapshot.
+- Monitors valuation freshness, source drift, validation checks, and refresh run history.
+- Provides operating views for review, rebalancing, income, data ops, reconciliation, source inventory, and position-level investigation.
+- Supports a public synthetic sample mode so the app can be evaluated without private brokerage files.
+
 ## Sample mode
 
 Use this path to run the public repository without private brokerage data:
@@ -21,6 +29,15 @@ Local URL: <http://localhost:3101>
 `pnpm seed:sample` creates a synthetic SQLite database under `private-data/outputs/stock-portfolio-observatory/` and local ignored sample snapshots under `data/*.json`.
 
 If `.env.local` already exists, `pnpm seed:sample` refuses to run so private-mode runtime snapshots are not overwritten accidentally. Use `SAMPLE_FORCE=1 pnpm seed:sample` only when you intentionally want to refresh local sample files in an existing private workspace.
+
+## Main screens
+
+- `/` - global overview, allocation, largest positions, valuation freshness.
+- `/health` - refresh run history, price/FX freshness, source drift, validation checks, PDF evidence coverage.
+- `/data-map` - full source inventory with used, unused, drift, and missing classifications.
+- `/reconciliation` - holdings vs tax lots, brokerage coverage, tickerless income, and valuation breaks.
+- `/data-ops` - operating action queue with mapping and valuation fix suggestions.
+- `/positions/[market]/[ticker]` - position investigation detail with activity timeline, account lot profile, reconciliation state, and source evidence.
 
 ## Private operating mode
 
@@ -120,3 +137,16 @@ rg -n "/Users|BEGIN .*PRIVATE KEY|API[_-]?KEY|SECRET|TOKEN|PASSWORD|1099|Gain_Lo
 ```
 
 Do not commit real `data/*.json`, `.env.local`, `private-data/`, `.next/`, `node_modules/`, or generated SQLite files.
+
+## CI
+
+GitHub Actions runs the public sample path on every push and pull request:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm seed:sample
+pnpm typecheck
+pnpm build
+```
+
+The workflow intentionally uses synthetic sample data only.
