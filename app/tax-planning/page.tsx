@@ -543,7 +543,7 @@ function OpportunityTable({ rows }: { rows: OpportunityRow[] }) {
   return (
     <>
       <div className="mb-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] leading-relaxed text-ink-3">
-        This view does not require a pre-made sale plan. It applies each year&apos;s filing profile to today&apos;s open lots, so amounts can repeat across years until future price, holding-period, and lot-consumption projection is added.
+        This view does not require a pre-made sale plan. Amounts apply each year&apos;s tax profile to today&apos;s open lots, so they can repeat across years until future price, holding-period, and lot-consumption projection is added. When US tax calc is enabled, US estimates include non-US market gains as a planning assumption for US citizens/residents.
       </div>
       <div className="overflow-x-auto">
         <table className="min-w-full text-left text-[12px]">
@@ -551,17 +551,34 @@ function OpportunityTable({ rows }: { rows: OpportunityRow[] }) {
             <tr>
               <th className="pb-2 pr-4 font-medium">Year</th>
               <th className="pb-2 pr-4 font-medium">Market</th>
-              <th className="pb-2 pr-4 font-medium">Tax profile</th>
-              <th className="pb-2 pr-4 text-right font-medium">Low-tax room</th>
-              <th className="pb-2 pr-4 text-right font-medium">Loss harvest</th>
-              <th className="pb-2 pr-4 text-right font-medium">If all sold tax</th>
-              <th className="pb-2 pr-4 font-medium">Planning readout</th>
+              <th className="pb-2 pr-4 font-medium">
+                Tax profile
+                <InfoTooltip align="left">Which country tax calculations are enabled for that year. US_AND_KR means both US and Korea estimates are included.</InfoTooltip>
+              </th>
+              <th className="pb-2 pr-4 text-right font-medium">
+                Low-tax room
+                <InfoTooltip align="right">Estimated sale proceeds that currently produce zero estimated tax across the enabled tax profile. If US_AND_KR is enabled, this includes US tax estimates too.</InfoTooltip>
+              </th>
+              <th className="pb-2 pr-4 text-right font-medium">
+                Loss harvest
+                <InfoTooltip align="right">Estimated unrealized loss that could be realized by selling loss lots. This is not sale cash; it is the loss amount that may offset gains subject to rule review.</InfoTooltip>
+              </th>
+              <th className="pb-2 pr-4 text-right font-medium">
+                If all sold tax
+                <InfoTooltip align="right">Estimated tax if all priced lots in this market row were sold under that year's tax profile. This is a stress-test number, not a recommendation to sell everything.</InfoTooltip>
+              </th>
+              <th className="pb-2 pr-4 font-medium">
+                Planning readout
+                <InfoTooltip align="left">Plain-language interpretation for where to start: loss harvesting, low-tax sale room, or taxable area that should be tested with smaller ranges.</InfoTooltip>
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line-subtle">
             {rows.map((row) => {
               const readout = row.lossHarvestKrw > 0
-                ? 'Good candidate for loss harvesting'
+                ? row.estimatedTaxIfAllSoldKrw <= 0
+                  ? 'Loss-harvest area; no positive estimated tax in this row'
+                  : 'Loss-harvest area, but some taxable gains remain'
                 : row.taxLightProceedsKrw > 0
                   ? 'Possible low-tax sale room'
                   : row.estimatedTaxIfAllSoldKrw > 0

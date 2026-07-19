@@ -214,11 +214,10 @@ export function buildTaxPlan({
     const gainKrw = normalizedProceedsKrw == null ? null : normalizedProceedsKrw - Number(lot.cost_basis_krw ?? 0)
     const holdingBucket = isLongTerm(lot) ? 'long' : 'short'
 
-    const usApplies = isScenarioEnabled(scenario, 'US') && lot.market === 'US' && gainNative != null && gainNative > 0
+    const usApplies = isScenarioEnabled(scenario, 'US') && gainKrw != null && gainKrw > 0
     const usRate = pctRate((holdingBucket === 'long' ? usLongRatePct : usShortRatePct) + usStateRatePct + usNiitRatePct)
-    const usTaxUsd = usApplies ? gainNative * usRate : 0
-    const usdToKrw = lot.currency === 'USD' ? fxRateToBase : 0
-    const usTaxKrw = usTaxUsd * usdToKrw
+    const usTaxKrw = usApplies ? gainKrw * usRate : 0
+    const usTaxUsd = usApplies && lot.currency === 'USD' && gainNative != null ? gainNative * usRate : 0
     const krApplies = isScenarioEnabled(scenario, 'KR') && krTaxable(lot, policy) && gainKrw != null && gainKrw > 0
     const krTaxKrw = krApplies ? gainKrw * pctRate(krForeignStockRatePct) : 0
     const estimatedTaxKrw = usTaxKrw + krTaxKrw
@@ -238,6 +237,9 @@ export function buildTaxPlan({
         ...warningForLot(lot, policy, normalizedProceedsKrw, gainKrw),
         ...(lot.currency !== 'KRW' && !explicitFxRate && basisFxRate
           ? ['KRW estimate uses cost-basis FX because current FX is missing on the tax lot.']
+          : []),
+        ...(lot.market !== 'US' && isScenarioEnabled(scenario, 'US') && gainKrw != null && gainKrw > 0
+          ? ['US tax estimate includes non-US market gains because US citizens/residents generally report worldwide income.']
           : []),
       ],
     } satisfies TaxPlanCandidate
