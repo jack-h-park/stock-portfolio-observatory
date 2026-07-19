@@ -13,6 +13,8 @@ const SECTIONS: { label: string; items: { href: string; label: string }[] }[] = 
       { href: '/review', label: 'Review' },
       { href: '/reconciliation', label: 'Reconciliation' },
       { href: '/rebalance', label: 'Rebalance' },
+      { href: '/tax-planning', label: 'Tax Planning' },
+      { href: '/tax-settings', label: 'Tax Settings' },
       { href: '/income', label: 'Income' },
       { href: '/holdings', label: 'Holdings' },
       { href: '/lots', label: 'Tax Lots' },

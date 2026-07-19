@@ -6,6 +6,8 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, StatCard } from '@/components/ui'
 import { getOperationalHealth, getPositionDetail, type FreshnessItem } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtMoney, fmtNumber, shortHash } from '@/lib/format'
+import { buildTaxPlan } from '@/lib/tax-planning'
+import { getTaxPolicyState } from '@/lib/tax-policy'
 
 export const dynamic = 'force-dynamic'
 
@@ -82,6 +84,8 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
   const marketFreshness = operational.snapshots.find((item) => item.key === (detail.market === 'KR' ? 'kr_prices' : 'us_prices'))
   const fxFreshness = operational.snapshots.find((item) => item.key === 'fx_rates')
   const freshnessItems = [marketFreshness, fxFreshness].filter(isFreshnessItem)
+  const taxPolicy = getTaxPolicyState()
+  const taxPlan = buildTaxPlan({ lots: detail.lots, policy: taxPolicy.policy, objective: 'minimize-tax' })
 
   const nativeUnrealizedPct =
     detail.totals.native_cost > 0 && detail.totals.native_unrealized_gl != null
@@ -358,6 +362,42 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
       </div>
 
       <div className="mb-5 grid grid-cols-1 gap-5">
+        <Card
+          title="Tax realization preview"
+          action={
+            <Link href={`/tax-planning?scenario=${taxPlan.assumptions.scenario}&objective=minimize-tax`} className="text-[12px] font-medium text-info hover:underline">
+              Open planner
+            </Link>
+          }
+        >
+          {taxPlan.recommended.length === 0 ? (
+            <EmptyState>No tax-lot sale preview available</EmptyState>
+          ) : (
+            <DataTable
+              rows={taxPlan.recommended.slice(0, 8)}
+              columns={[
+                { key: 'brokerage', label: 'Broker' },
+                { key: 'account', label: 'Account' },
+                { key: 'acquired_date', label: 'Acquired' },
+                { key: 'holdingBucket', label: 'Term', render: (r) => <Badge tone={r.holdingBucket === 'long' ? 'success' : 'warning'}>{r.holdingBucket}</Badge> },
+                { key: 'open_quantity', label: 'Qty', align: 'right', render: (r) => fmtNumber(r.open_quantity, 4) },
+                { key: 'proceedsNative', label: 'Proceeds', align: 'right', render: (r) => (r.proceedsNative == null ? 'n/a' : fmtMoney(r.proceedsNative, r.currency)) },
+                {
+                  key: 'gainKrw',
+                  label: 'Base G/L',
+                  align: 'right',
+                  render: (r) => (
+                    <span className={Number(r.gainKrw ?? 0) >= 0 ? 'text-success' : 'text-danger'}>
+                      {r.gainKrw == null ? 'n/a' : fmtMoney(r.gainKrw, 'KRW')}
+                    </span>
+                  ),
+                },
+                { key: 'estimatedTaxKrw', label: 'Est. Tax', align: 'right', render: (r) => fmtMoney(r.estimatedTaxKrw, 'KRW') },
+              ]}
+            />
+          )}
+        </Card>
+
         <Card title="Open tax lots">
           {detail.lots.length === 0 ? (
             <EmptyState>No open tax lots for this ticker</EmptyState>

@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
 import { config } from '@/config'
+import type { TaxPlanningLot } from '@/lib/tax-planning'
 
 export type Holding = {
   id: number
@@ -1602,7 +1603,7 @@ export function getPositionDetail(market: string, ticker: string): PositionDetai
       .all(market, ticker) as Holding[]
     const lots = conn
       .prepare(
-        `select market, currency, brokerage, account, ticker, name, acquired_date, open_quantity, native_cost_basis,
+        `select id, market, currency, brokerage, account, ticker, name, acquired_date, open_quantity, native_cost_basis,
           native_market_value, native_unrealized_gl, cost_basis_krw, native_unit_cost, unit_cost, holding_days, tax_term, source
          from tax_lots
          where market = ? and ticker = ?
@@ -1712,6 +1713,41 @@ export function getPositionDetail(market: string, ticker: string): PositionDetai
       dividendTotals,
       sources,
     }
+  } finally {
+    conn.close()
+  }
+}
+
+export function getTaxPlanningLots(limit = 500): TaxPlanningLot[] {
+  const conn = db()
+  try {
+    return conn
+      .prepare(
+        `select
+          id,
+          market,
+          currency,
+          brokerage,
+          account,
+          ticker,
+          name,
+          acquired_date,
+          open_quantity,
+          native_cost_basis,
+          native_market_value,
+          native_unrealized_gl,
+          cost_basis_krw,
+          holding_days,
+          tax_term
+         from tax_lots
+         where open_quantity > 0
+         order by
+           case when native_market_value is null then 1 else 0 end,
+           coalesce(native_unrealized_gl, native_market_value - native_cost_basis, 0) asc,
+           coalesce(native_market_value, native_cost_basis) desc
+         limit ?`
+      )
+      .all(limit) as TaxPlanningLot[]
   } finally {
     conn.close()
   }
