@@ -21,6 +21,13 @@ function moneyOrNa(value: number | null | undefined, currency: string) {
   return value == null ? 'n/a' : fmtMoney(value, currency)
 }
 
+function eventTone(kind: string) {
+  if (kind === 'Dividend') return 'success'
+  if (kind === 'Sell') return 'warning'
+  if (kind === 'Tax lot') return 'neutral'
+  return 'info'
+}
+
 function isFreshnessItem(item: FreshnessItem | undefined): item is FreshnessItem {
   return item != null
 }
@@ -86,6 +93,72 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
       : null
   const quantityDiff = detail.totals.quantity - detail.lotTotals.open_quantity
   const baseCostDiff = detail.totals.base_cost - detail.lotTotals.cost_basis_krw
+  const hasReconIssue = Math.abs(quantityDiff) >= 0.0001 || Math.abs(baseCostDiff) >= 1
+  const accountLotProfile = detail.holdings.map((holding) => {
+    const lots = detail.lots.filter((lot) => lot.account === holding.account && lot.brokerage === holding.brokerage)
+    return {
+      id: `${holding.brokerage}:${holding.account}`,
+      brokerage: holding.brokerage,
+      account: holding.account,
+      quantity: holding.quantity,
+      native_cost: holding.native_cost,
+      native_market_value: holding.native_market_value,
+      native_unrealized_gl: holding.native_unrealized_gl,
+      lot_count: lots.length,
+      long_count: lots.filter((lot) => lot.tax_term === 'Long-term').length,
+      short_count: lots.filter((lot) => lot.tax_term === 'Short-term').length,
+      lot_cost_krw: lots.reduce((sum, lot) => sum + Number(lot.cost_basis_krw ?? 0), 0),
+    }
+  })
+  const timeline = [
+    ...detail.transactions.map((row, index) => ({
+      id: `tx:${index}:${row.date}:${row.account}:${row.type}`,
+      date: row.date,
+      kind: row.type === 'SELL' ? 'Sell' : row.type === 'BUY' ? 'Buy' : row.type || 'Transaction',
+      account: row.account,
+      brokerage: row.brokerage,
+      quantity: row.quantity,
+      amount: row.native_amount,
+      currency: row.currency,
+      source: row.source,
+      detail: row.raw_type || row.type,
+    })),
+    ...detail.dividends.map((row, index) => ({
+      id: `div:${index}:${row.date}:${row.account}`,
+      date: row.date,
+      kind: 'Dividend',
+      account: row.account,
+      brokerage: row.brokerage,
+      quantity: null,
+      amount: row.native_amount,
+      currency: row.currency,
+      source: row.source,
+      detail: row.type || 'income',
+    })),
+    ...detail.lots.map((row, index) => ({
+      id: `lot:${index}:${row.acquired_date}:${row.account}`,
+      date: row.acquired_date,
+      kind: 'Tax lot',
+      account: row.account,
+      brokerage: row.brokerage,
+      quantity: row.open_quantity,
+      amount: row.native_cost_basis,
+      currency: row.currency,
+      source: row.source,
+      detail: row.tax_term || 'open lot',
+    })),
+  ]
+    .filter((event) => event.date)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+    .slice(0, 40)
+  const lineageSummary = detail.sources.map((source) => ({
+    id: source.source,
+    label: source.file?.filename ?? source.source,
+    usage: source.usages.join(', '),
+    rows: source.file?.row_count ?? null,
+    modified: source.file ? new Date(source.file.mtime_ms).toISOString() : null,
+    status: source.file ? 'linked' : 'unlinked',
+  }))
 
   return (
     <>
@@ -105,6 +178,32 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               <FreshnessInline item={item} />
             </div>
           ))}
+        </div>
+      </Card>
+
+      <Card title="Investigation context" className="mb-5" accent={hasReconIssue}>
+        <div className="grid gap-3 lg:grid-cols-3">
+          <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
+            <div className="mb-1 flex items-center justify-between gap-3">
+              <span className="text-[12px] font-medium text-ink">Reconciliation state</span>
+              <Badge tone={hasReconIssue ? 'warning' : 'success'}>{hasReconIssue ? 'Review' : 'Matched'}</Badge>
+            </div>
+            <div className="text-[11px] leading-relaxed text-ink-3">
+              Quantity diff {fmtNumber(quantityDiff, 4)} · base cost diff {fmtMoney(baseCostDiff, 'KRW')}
+            </div>
+          </div>
+          <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
+            <div className="mb-1 text-[12px] font-medium text-ink">Evidence coverage</div>
+            <div className="text-[11px] leading-relaxed text-ink-3">
+              {fmtNumber(detail.sources.filter((source) => source.file).length)} linked source file(s), {fmtNumber(detail.sources.filter((source) => !source.file).length)} unresolved source reference(s).
+            </div>
+          </div>
+          <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
+            <div className="mb-1 text-[12px] font-medium text-ink">Activity coverage</div>
+            <div className="text-[11px] leading-relaxed text-ink-3">
+              {fmtNumber(detail.transactions.length)} transaction row(s), {fmtNumber(detail.dividends.length)} dividend row(s), {fmtNumber(detail.lots.length)} open lot row(s).
+            </div>
+          </div>
         </div>
       </Card>
 
@@ -194,7 +293,57 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
           />
         </Card>
 
-        <Card title="Data lineage">
+        <Card title="Account lot profile">
+          <DataTable
+            rows={accountLotProfile}
+            columns={[
+              { key: 'brokerage', label: 'Broker' },
+              { key: 'account', label: 'Account' },
+              { key: 'quantity', label: 'Qty', align: 'right', render: (r) => fmtNumber(r.quantity, 4) },
+              { key: 'lot_count', label: 'Lots', align: 'right', render: (r) => fmtNumber(r.lot_count) },
+              { key: 'long_count', label: 'LT', align: 'right', render: (r) => fmtNumber(r.long_count) },
+              { key: 'short_count', label: 'ST', align: 'right', render: (r) => fmtNumber(r.short_count) },
+              { key: 'lot_cost_krw', label: 'Lot Cost', align: 'right', render: (r) => fmtMoney(r.lot_cost_krw, 'KRW') },
+            ]}
+          />
+        </Card>
+      </div>
+
+      <Card title="Activity timeline" className="mb-5">
+        {timeline.length === 0 ? (
+          <EmptyState>No dated activity for this ticker</EmptyState>
+        ) : (
+          <ul className="divide-y divide-line-subtle">
+            {timeline.map((event) => (
+              <li key={event.id} className="grid gap-2 py-2.5 text-[12px] lg:grid-cols-[7rem_6rem_1fr_8rem_8rem] lg:items-center">
+                <span className="tabular-nums text-ink-3">{event.date}</span>
+                <Badge tone={eventTone(event.kind)}>{event.kind}</Badge>
+                <span className="min-w-0 truncate text-ink">
+                  {event.brokerage} · {event.account} · {event.detail}
+                </span>
+                <span className="text-right tabular-nums text-ink-3">{event.quantity == null ? 'n/a' : fmtNumber(event.quantity, 4)}</span>
+                <span className="text-right tabular-nums text-ink">{event.amount == null ? 'n/a' : fmtMoney(event.amount, event.currency)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <Card title="Source evidence summary">
+          <DataTable
+            rows={lineageSummary}
+            columns={[
+              { key: 'status', label: 'Status', render: (r) => <Badge tone={r.status === 'linked' ? 'success' : 'warning'}>{r.status}</Badge> },
+              { key: 'label', label: 'File / source', render: (r) => <span className="max-w-[20rem] break-words">{r.label}</span> },
+              { key: 'usage', label: 'Usage' },
+              { key: 'rows', label: 'Rows', align: 'right', render: (r) => (r.rows == null ? 'n/a' : fmtNumber(r.rows)) },
+              { key: 'modified', label: 'Modified', render: (r) => (r.modified ? fmtDateTime(r.modified) : 'n/a') },
+            ]}
+          />
+        </Card>
+
+        <Card title="Technical lineage">
           <DataTable
             rows={detail.sources}
             columns={[
