@@ -33,6 +33,7 @@ If `.env.local` already exists, `pnpm seed:sample` refuses to run so private-mod
 ## Main screens
 
 - `/` - global overview, allocation, largest positions, valuation freshness.
+- `/daily-briefing` - archived daily portfolio briefings, one per trading day, with a date picker; session (day-over-day) view above standing-versus-cost.
 - `/health` - refresh run history, price/FX freshness, source drift, validation checks, PDF evidence coverage.
 - `/data-map` - full source inventory with used, unused, drift, and missing classifications.
 - `/reconciliation` - holdings vs tax lots, brokerage coverage, tickerless income, and valuation breaks.
@@ -127,6 +128,35 @@ Open `/data-ops` when `/health` or `/income` surfaces tickerless rows, missing v
 Open `/review` after `/health` for the portfolio decision pass: concentration, top gains/losses, short-term exposure, and missing valuation rows.
 Open `/rebalance` for the allocation pass: market target gaps, single-position cap checks, reduce candidates, and tax-sensitive watchlists.
 Open `/income` for the cashflow pass: trailing income, YTD income, yield on market/cost, monthly trend, top income positions, and tickerless income rows.
+
+## Daily briefing archive
+
+`/daily-briefing` renders the archive written by the separate daily portfolio
+briefing pipeline (`stock-portfolio-briefing`, a scheduled job on the same
+private host). That pipeline writes one self-contained document per trading day
+and publishes the same content to its own gated URL; this page is a second
+**read-only** view of the identical files, so the local dashboard and the
+published site can never disagree about a date.
+
+- Configure the path with `STOCK_BRIEFING_ARCHIVE_DIR` in `.env.local`. Keep it
+  outside git: the documents carry position sizes.
+- When the directory is missing the page says so and names the env var, rather
+  than failing — a dev checkout without the archive stays usable.
+- The documents are already fully derived (rows parsed, aggregates and the
+  day-over-day session computed by the writer), so this app implements no
+  briefing math of its own and never writes to the archive.
+- The page leads with the **session** view — price movement since the previous
+  archived snapshot, with trades excluded and reported separately — and keeps
+  standing-versus-cost below it.
+- US and Korean holdings are rendered as separate blocks, each in its own
+  currency with its own thresholds. They are never summed: the briefing carries
+  no FX snapshot, so a combined total would be invented.
+- Documents predating a field (session, action priority) degrade to an
+  explanation rather than an error, and v1 documents — written before the
+  markets array existed — are upgraded on read so the archive is never
+  orphaned by a schema bump.
+- `pnpm seed:sample` creates a synthetic archive so the page renders in sample
+  mode and CI.
 
 ## Freshness policy
 

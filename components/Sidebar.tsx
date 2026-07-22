@@ -10,6 +10,7 @@ const SECTIONS: { label: string; items: { href: string; label: string }[] }[] = 
     label: 'Portfolio',
     items: [
       { href: '/', label: 'Overview' },
+      { href: '/daily-briefing', label: 'Daily Briefing' },
       { href: '/review', label: 'Review' },
       { href: '/reconciliation', label: 'Reconciliation' },
       { href: '/rebalance', label: 'Rebalance' },

@@ -165,3 +165,126 @@ insertMany(db, 'evidence_reports', [{ name: 'gain_loss:sample', category: 'us_ga
 
 db.close()
 console.log(`Wrote sample database: ${dbPath}`)
+
+// Synthetic briefing archive so /daily-briefing renders in sample mode and CI.
+// Real documents are written by the briefing cron on the private host; these
+// mirror that schema (fully derived: rows parsed, aggregates precomputed, one
+// block per market).
+const briefingArchiveDir = path.join(sampleDataDir, 'briefing-archive')
+
+const MARKET_META = {
+  US: { id: 'US', label: 'US', flag: '\u{1F1FA}\u{1F1F8}', currency: 'USD', symbol: '$', priceDigits: 2, moverMinCost: 300 },
+  KR: { id: 'KR', label: 'Korea', flag: '\u{1F1F0}\u{1F1F7}', currency: 'KRW', symbol: '\u20A9', priceDigits: 0, moverMinCost: 400000 },
+}
+
+function derive(meta, rows) {
+  const byTicker = new Map()
+  let cost = 0
+  let gl = 0
+  for (const r of rows) {
+    cost += r.totalCost
+    gl += r.glAmount
+    const cur = byTicker.get(r.ticker) || { ticker: r.ticker, name: r.name ?? null, cost: 0, gl: 0, quantity: 0, currentPrice: null, accounts: [] }
+    cur.cost += r.totalCost
+    cur.gl += r.glAmount
+    cur.quantity += r.quantity
+    cur.currentPrice = r.currentPrice
+    if (!cur.accounts.includes(r.account)) cur.accounts.push(r.account)
+    byTicker.set(r.ticker, cur)
+  }
+  const positions = [...byTicker.values()].map((a) => ({ ...a, pct: (a.gl / a.cost) * 100, marketValue: a.cost + a.gl }))
+  const eligible = positions.filter((p) => p.cost >= meta.moverMinCost)
+  return {
+    totals: { cost, gl, pct: (gl / cost) * 100, marketValue: cost + gl, positions: positions.length, rows: rows.length },
+    positions,
+    gainers: [...eligible].sort((a, b) => b.pct - a.pct),
+    losers: [...eligible].sort((a, b) => a.pct - b.pct),
+    largest: [...positions].sort((a, b) => b.marketValue - a.marketValue),
+  }
+}
+
+const noSession = (reason) => ({ available: false, reason, previousDate: null, marketClosed: false, totals: null, gainers: [], losers: [], activity: [] })
+
+function usRows(applePrice) {
+  return [
+    { account: 'Sample US Account', ticker: 'AAPL', name: null, quantity: 5, avgCost: 200, totalCost: 1000, currentPrice: applePrice, glAmount: (applePrice - 200) * 5, glPct: ((applePrice - 200) / 200) * 100 },
+    { account: 'Sample US Account', ticker: 'MSFT', name: null, quantity: 1, avgCost: 300, totalCost: 300, currentPrice: 255, glAmount: -45, glPct: -15 },
+    { account: 'Sample US Account 2', ticker: 'AAPL', name: null, quantity: 2, avgCost: 210, totalCost: 420, currentPrice: applePrice, glAmount: (applePrice - 210) * 2, glPct: ((applePrice - 210) / 210) * 100 },
+  ]
+}
+function krRows(chipPrice) {
+  return [
+    { account: 'Sample KR Broker', ticker: '000111', name: 'Sample Semiconductor', quantity: 10, avgCost: 100000, totalCost: 1000000, currentPrice: chipPrice, glAmount: (chipPrice - 100000) * 10, glPct: ((chipPrice - 100000) / 100000) * 100 },
+    { account: 'Sample KR Broker', ticker: '000222', name: 'Sample Motors', quantity: 4, avgCost: 250000, totalCost: 1000000, currentPrice: 150000, glAmount: -400000, glPct: -40 },
+  ]
+}
+
+function sampleBriefing(date, dateLabel, { narrativeOnly = false, applePrice = 240, chipPrice = 150000, sessions = {} } = {}) {
+  const doc = {
+    schemaVersion: 2,
+    date,
+    dateLabel,
+    generatedAt: `${date}T08:05:00.000Z`,
+    narrative: {
+      macro: `On <b>${dateLabel}</b>, synthetic markets did synthetic things. This sample exists so the page can be evaluated without private data.`,
+      moverNotes: {
+        AAPL: { why: 'Example Apple is up versus cost in the synthetic sample.', dir: 'up' },
+        MSFT: { why: 'Example Microsoft is down versus cost in the synthetic sample.', dir: 'down' },
+        '000111': { why: 'Sample Semiconductor is up versus cost in the synthetic Korean sample.', dir: 'up' },
+        '000222': { why: 'Sample Motors is down versus cost in the synthetic Korean sample.', dir: 'down' },
+      },
+      // Ordered by priority, as the briefing writer emits them.
+      actions: [
+        { kind: 'hold', priority: 'act-now', head: 'Hold Example Microsoft', body: 'Synthetic catalyst lands the next day; the sample thesis is unchanged until then.' },
+        { kind: 'watch', priority: 'this-week', head: 'Watch the sample concentration', body: 'Example Apple is the largest synthetic position.' },
+        { kind: 'trim', priority: 'fyi', head: 'Sample context', body: 'Nothing to do — this item exists to show the least urgent level.' },
+      ],
+    },
+    markets: [],
+  }
+  if (narrativeOnly) return doc
+
+  for (const [id, rows] of [['US', usRows(applePrice)], ['KR', krRows(chipPrice)]]) {
+    const meta = MARKET_META[id]
+    doc.markets.push({
+      ...meta,
+      holdings: { available: true, markdown: null, rows },
+      aggregates: derive(meta, rows),
+      session: sessions[id] ?? noSession('no-prior-snapshot'),
+    })
+  }
+  return doc
+}
+
+// Three shapes the page has to handle: a backfilled day (narrative only), the
+// first day with holdings (nothing to compare against), and a day with a full
+// session in each market.
+const priorApple = 232
+const priorChip = 140000
+const usPl = (240 - priorApple) * 7
+const krPl = (150000 - priorChip) * 10
+const sessions = {
+  US: {
+    available: true, reason: null, previousDate: '2026-01-02', marketClosed: false,
+    totals: { pl: usPl, plPct: (usPl / (priorApple * 7 + 255)) * 100, priorMarketValue: priorApple * 7 + 255, coveredPositions: 2, uncoveredPositions: 0 },
+    gainers: [{ ticker: 'AAPL', name: null, pctChange: ((240 - priorApple) / priorApple) * 100, valueChange: usPl, priceFrom: priorApple, priceTo: 240, quantity: 7, marketValue: 1680 }],
+    losers: [],
+    activity: [{ ticker: 'MSFT', kind: 'bought', quantityChange: 1, quantity: 1, cost: 300 }],
+  },
+  KR: {
+    available: true, reason: null, previousDate: '2026-01-02', marketClosed: false,
+    totals: { pl: krPl, plPct: (krPl / (priorChip * 10 + 600000)) * 100, priorMarketValue: priorChip * 10 + 600000, coveredPositions: 2, uncoveredPositions: 0 },
+    gainers: [{ ticker: '000111', name: 'Sample Semiconductor', pctChange: ((150000 - priorChip) / priorChip) * 100, valueChange: krPl, priceFrom: priorChip, priceTo: 150000, quantity: 10, marketValue: 1500000 }],
+    losers: [],
+    activity: [],
+  },
+}
+
+for (const [date, label, opts] of [
+  ['2026-01-01', 'January 1, 2026', { narrativeOnly: true }],
+  ['2026-01-02', 'January 2, 2026', { applePrice: priorApple, chipPrice: priorChip }],
+  ['2026-01-05', 'January 5, 2026', { applePrice: 240, chipPrice: 150000, sessions }],
+]) {
+  writeJson(path.join(briefingArchiveDir, `${date}.json`), sampleBriefing(date, label, opts))
+}
+console.log(`Wrote sample briefing archive: ${briefingArchiveDir}`)

@@ -18,6 +18,10 @@ export const config = {
   stockUsPdfEvidencePath: env('STOCK_US_PDF_EVIDENCE_PATH', repoPath('data/us-pdf-evidence.json')),
   stockManualMappingsPath: env('STOCK_MANUAL_MAPPINGS_PATH', repoPath('data/manual-mappings.json')),
   stockRefreshRunsPath: env('STOCK_REFRESH_RUNS_PATH', repoPath('data/refresh-runs.json')),
+  // Daily portfolio briefing archive, written by the briefing cron on the iMac.
+  // Read-only here. Private (position sizes) so the real path lives outside the
+  // repo and is set per host in .env.local; the default keeps sample mode working.
+  stockBriefingArchiveDir: env('STOCK_BRIEFING_ARCHIVE_DIR', repoPath('private-data/briefing-archive')),
   stockTaxPolicyPath: env('STOCK_TAX_POLICY_PATH', repoPath('data/tax-policy.json')),
   stockTaxPolicyExamplePath: env('STOCK_TAX_POLICY_EXAMPLE_PATH', repoPath('data/tax-policy.example.json')),
 }
