@@ -16,6 +16,7 @@
     "dev": "next dev -p 3101",
     "build": "next build",
     "start": "next start -p 3101",
+    "fetch:fx": "node scripts/fetch-fx-rates.mjs",
     "fetch:kr-prices": "node scripts/fetch-kr-prices.mjs",
     "fetch:us-prices": "node scripts/fetch-us-prices.mjs",
     "extract:us-pdf-evidence": "node scripts/extract-us-pdf-evidence.mjs",

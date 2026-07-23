@@ -62,8 +62,8 @@ cp .env.example .env.local
 
 # Configure STOCK_DATA_DIR and STOCK_DB_PATH in .env.local.
 # If your default python3 does not have pdfplumber, set STOCK_PYTHON_BIN.
-# Then create local generated-data files from public examples:
-cp data/fx-rates.example.json data/fx-rates.json
+# Then create local generated-data files from public examples
+# (fx-rates.json is fetched by pnpm refresh, not copied):
 cp data/manual-mappings.example.json data/manual-mappings.json
 cp data/us-pdf-evidence.example.json data/us-pdf-evidence.json
 cp data/kr-prices.example.json data/kr-prices.json
@@ -121,7 +121,7 @@ Refresh external valuation inputs before ingesting:
 pnpm refresh
 ```
 
-`pnpm refresh` runs KR price fetch, US PDF evidence extraction, US price fetch, and ingest in sequence. It writes local run history to `data/refresh-runs.json`.
+`pnpm refresh` runs FX fetch, KR price fetch, US PDF evidence extraction, US price fetch, and ingest in sequence. FX goes first because the ingest converts every native amount with it — a stale rate misstates the portfolio however fresh the prices are. It writes local run history to `data/refresh-runs.json`.
 
 Then open `/health` and confirm that validation checks pass, price/FX snapshots are fresh, source drift is clear, and the latest refresh run succeeded.
 Open `/data-ops` when `/health` or `/income` surfaces tickerless rows, missing valuation, stale inputs, or source drift.
@@ -183,7 +183,14 @@ published site can never disagree about a date.
 
 ## FX policy
 
-`data/fx-rates.json` is the explicit FX source of truth for base-currency conversion. It is a local ignored file. Copy `data/fx-rates.example.json`, update the rates, and rerun `pnpm ingest` to regenerate all `base_*` values.
+`data/fx-rates.json` is the FX source of truth for base-currency conversion. It is a local ignored file, refreshed by `pnpm fetch:fx` (also the first step of `pnpm refresh`) from the same provider as the price snapshots.
+
+It used to be hand-maintained, which meant it was not maintained: the private-mode file sat on the synthetic sample rate (1300) for 203 days while every global KRW figure was understated by ~13%. `/health` flagged it as stale the whole time — a number nobody edits stays stale, so it is fetched now.
+
+- `STOCK_FX_CURRENCIES` (default `USD`) lists the non-base currencies to fetch; `STOCK_BASE_CURRENCY` defaults to `KRW`.
+- A partial fetch never overwrites a good snapshot — the step fails instead, so `pnpm refresh` stops rather than ingesting against a half-written rate table.
+- Freshness reads the first rate in the file, so the fetched rate leads and the base-to-base identity is appended last (an identity rate is always "current" and would mask a stale real one).
+- Rerun `pnpm ingest` after changing rates to regenerate all `base_*` values.
 
 ## Tax planning roadmap
 

@@ -7,7 +7,11 @@ loadLocalEnv()
 
 const historyPath = process.env.STOCK_REFRESH_RUNS_PATH || path.join(process.cwd(), 'data/refresh-runs.json')
 const maxRuns = Number(process.env.STOCK_REFRESH_RUNS_LIMIT || 30)
+// FX first: the ingest converts every native amount into the base currency with
+// it, so a stale rate misstates the whole portfolio no matter how fresh the
+// prices are.
 const steps = [
+  { name: 'fetch:fx', args: ['fetch:fx'] },
   { name: 'fetch:kr-prices', args: ['fetch:kr-prices'] },
   { name: 'extract:us-pdf-evidence', args: ['extract:us-pdf-evidence'] },
   { name: 'fetch:us-prices', args: ['fetch:us-prices'] },
