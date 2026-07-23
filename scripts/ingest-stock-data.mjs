@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
 import { loadLocalEnv } from './env.mjs'
+import { resolveUsHoldingFiles, resolveUsTransactionFiles } from './source-files.mjs'
 
 loadLocalEnv()
 
@@ -25,63 +26,19 @@ const sources = {
   realized: 'realized.tsv',
 }
 
-const usHoldingFiles = [
-  {
-    brokerage: 'Chase',
-    filename: path.join(dataDir, '미국증권사 보유종목 현황 (Tax Lot 구분 포함)', 'Chase-taxlots-20260715.csv'),
-  },
-  {
-    brokerage: 'Merrill',
-    filename: path.join(
-      dataDir,
-      '미국증권사 보유종목 현황 (Tax Lot 구분 포함)',
-      'Merrill-ExportData15072026205306-20260715.csv'
-    ),
-  },
-]
+const { files: usHoldingFiles, missing: missingHoldingSources } = resolveUsHoldingFiles(dataDir)
+const { files: usTransactionFiles, missing: missingTransactionSources } = resolveUsTransactionFiles(dataDir)
 
-const usTransactionFiles = [
-  {
-    brokerage: 'Chase',
-    filename: path.join(dataDir, '미국증권사 거래내역 (CSV)', 'Chase - All Transactions - 2025 Full.csv'),
-  },
-  {
-    brokerage: 'Chase',
-    filename: path.join(dataDir, '미국증권사 거래내역 (CSV)', 'Chase - All Transactions - 20260716 Year-to-date.csv'),
-  },
-  {
-    brokerage: 'Fidelity',
-    filename: path.join(dataDir, '미국증권사 거래내역 (CSV)', 'Fidelity - All History - 2025 Full.csv'),
-  },
-  {
-    brokerage: 'Fidelity',
-    filename: path.join(dataDir, '미국증권사 거래내역 (CSV)', 'Fidelity - All History - 20260716 Year-to-date.csv'),
-  },
-  {
-    brokerage: 'Merrill',
-    filename: path.join(dataDir, '미국증권사 거래내역 (CSV)', 'Merrill - All Activities - 20260716 Year-to-date.csv'),
-  },
-  {
-    brokerage: 'Robinhood',
-    account: 'Agentic',
-    filename: path.join(dataDir, '미국증권사 거래내역 (CSV)', 'Robinhood - Agentic - 20060716 Year-to-date.csv'),
-  },
-  {
-    brokerage: 'Robinhood',
-    account: 'Long-term',
-    filename: path.join(dataDir, '미국증권사 거래내역 (CSV)', 'Robinhood - Long-term - 20060716 Year-to-date.csv'),
-  },
-  {
-    brokerage: 'Robinhood',
-    account: 'Mid-term',
-    filename: path.join(dataDir, '미국증권사 거래내역 (CSV)', 'Robinhood - Mid-term - 20060716 Year-to-date.csv'),
-  },
-  {
-    brokerage: 'Robinhood',
-    account: 'Mid-term',
-    filename: path.join(dataDir, '미국증권사 거래내역 (CSV)', 'Robinhood - Mid-term - 2024~2025.csv'),
-  },
-]
+// Resolved by pattern (see source-files.mjs), so a re-downloaded export with a
+// new date is read instead of silently ignored. `missing*Sources` names any
+// spec that matched nothing — surfaced as a validation check below rather than
+// vanishing quietly, which is how a whole brokerage used to disappear.
+for (const source of [...usHoldingFiles, ...usTransactionFiles]) {
+  console.error(`[source] ${source.brokerage}${source.account ? ` (${source.account})` : ''}: ${path.basename(source.filename)}`)
+}
+for (const gap of [...missingHoldingSources, ...missingTransactionSources]) {
+  console.error(`[source] MISSING — no file matches ${gap}`)
+}
 
 function readTsv(filename) {
   const filePath = path.join(payloadDir, filename)
@@ -1523,6 +1480,15 @@ check(
   'us_pdf_evidence_extracted',
   gainLossReports.length >= 3 && taxDocReports.length >= 5,
   `${gainLossReports.length} gain/loss report(s), ${taxDocReports.length} tax document(s)`,
+  'warning'
+)
+// A brokerage export pattern that matched nothing. The prior silent skip is
+// exactly what let stale/absent files pass unnoticed; name them on /health.
+const missingSources = [...missingHoldingSources, ...missingTransactionSources]
+check(
+  'expected_us_source_files_present',
+  missingSources.length === 0,
+  missingSources.length ? `no file matches: ${missingSources.join('; ')}` : 'all expected US brokerage exports found',
   'warning'
 )
 

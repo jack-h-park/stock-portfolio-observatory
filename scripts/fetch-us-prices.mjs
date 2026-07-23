@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { loadLocalEnv } from './env.mjs'
+import { resolveUsHoldingFiles } from './source-files.mjs'
 
 loadLocalEnv()
 
@@ -8,10 +9,10 @@ const dataDir = process.env.STOCK_DATA_DIR || path.join(process.cwd(), 'private-
 const evidencePath = process.env.STOCK_US_PDF_EVIDENCE_PATH || path.join(process.cwd(), 'data/us-pdf-evidence.json')
 const outPath = process.env.STOCK_US_PRICES_PATH || path.join(process.cwd(), 'data/us-prices.json')
 
-const usHoldingFiles = [
-  path.join(dataDir, '미국증권사 보유종목 현황 (Tax Lot 구분 포함)', 'Chase-taxlots-20260715.csv'),
-  path.join(dataDir, '미국증권사 보유종목 현황 (Tax Lot 구분 포함)', 'Merrill-ExportData15072026205306-20260715.csv'),
-]
+// Same resolver the ingest uses, so a re-downloaded holdings export is priced
+// from the current file rather than a stale hardcoded name. Entries are
+// { brokerage, filename }.
+const usHoldingFiles = resolveUsHoldingFiles(dataDir).files
 
 function text(value) {
   return value == null ? '' : String(value).trim()
@@ -81,19 +82,25 @@ function isoDateFromSeconds(seconds) {
 function collectTickers() {
   const tickers = new Set()
 
-  for (const filePath of usHoldingFiles) {
-    if (!fs.existsSync(filePath)) continue
-    if (filePath.includes('Chase-taxlots')) {
-      const rows = readCsvObjects(filePath, (r) => r.includes('Account name') && r.includes('Ticker'))
+  // Mirror the ingest's holdings filters so every position that gets ingested
+  // also gets priced: keep Chase's non-cash "Alternative Assets" (gold/covered-
+  // call ETFs), and read the leading symbol out of Merrill's annotated ticker
+  // cell ("JEPI !  Executed Buy").
+  const NON_POSITION_CLASSES = new Set(['Cash & Money Market Funds', 'Cash and Money Market Funds'])
+  for (const { brokerage, filename } of usHoldingFiles) {
+    if (!fs.existsSync(filename)) continue
+    if (brokerage === 'Chase') {
+      const rows = readCsvObjects(filename, (r) => r.includes('Account name') && r.includes('Ticker'))
       for (const row of rows) {
-        if (text(row['Asset Class']) === 'Equity' && text(row.Ticker) && text(row.Ticker) !== 'QACDS') tickers.add(text(row.Ticker))
+        const ticker = text(row.Ticker)
+        if (ticker && ticker !== 'QACDS' && !NON_POSITION_CLASSES.has(text(row['Asset Class']))) tickers.add(ticker)
       }
     } else {
-      const rows = parseCsv(fs.readFileSync(filePath, 'utf8')).filter((r) => r.some((c) => c.trim()))
+      const rows = parseCsv(fs.readFileSync(filename, 'utf8')).filter((r) => r.some((c) => c.trim()))
       for (const row of rows) {
-        const ticker = text(row[1])
-        if (/^[A-Z][A-Z0-9. -]{0,12}$/.test(ticker) && Number.isFinite(Number(text(row[2]).replace(/,/g, '')))) {
-          tickers.add(ticker)
+        const symbol = /^([A-Z][A-Z0-9.-]{0,11})\b/.exec(text(row[1]))?.[1]
+        if (symbol && Number.isFinite(Number(text(row[2]).replace(/,/g, '')))) {
+          tickers.add(symbol)
         }
       }
     }
