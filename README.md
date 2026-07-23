@@ -123,6 +123,29 @@ pnpm refresh
 
 `pnpm refresh` runs FX fetch, KR price fetch, US PDF evidence extraction, US price fetch, and ingest in sequence. FX goes first because the ingest converts every native amount with it — a stale rate misstates the portfolio however fresh the prices are. It writes local run history to `data/refresh-runs.json`.
 
+### Scheduled refresh
+
+On the private host this runs itself: a Hermes cron job (`observatory-refresh`,
+weekdays 14:00, `trader` profile) executes `pnpm refresh` after the US close, so
+the snapshot reflects a completed session.
+
+```bash
+OBSERVATORY_REPO=$PWD deploy/hermes/install-cron.sh telegram:<chat-id>
+hermes --profile trader cron resume observatory-refresh
+```
+
+It is **silent when healthy** — the positive signal is `/health`, and a daily
+"refresh ok" message would only teach you to ignore the channel. It alerts on a
+hard failure *and* on validation checks that `ingest` treats as warnings: ingest
+exits non-zero only for error-severity checks, so a missing brokerage export
+would otherwise pass unnoticed. The wrapper parses the validation line and names
+the missing source.
+
+Re-running `install-cron.sh` refreshes the wrapper and leaves an existing
+schedule alone. Hermes executes an **installed copy** of the wrapper under
+`~/.hermes/profiles/trader/scripts/`, so `git pull` alone does not update it —
+re-run the installer after editing the wrapper.
+
 Then open `/health` and confirm that validation checks pass, price/FX snapshots are fresh, source drift is clear, and the latest refresh run succeeded.
 Open `/data-ops` when `/health` or `/income` surfaces tickerless rows, missing valuation, stale inputs, or source drift.
 Open `/review` after `/health` for the portfolio decision pass: concentration, top gains/losses, short-term exposure, and missing valuation rows.
