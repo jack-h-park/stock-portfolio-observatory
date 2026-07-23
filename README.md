@@ -61,7 +61,7 @@ pnpm install
 cp .env.example .env.local
 
 # Configure STOCK_DATA_DIR and STOCK_DB_PATH in .env.local.
-# If your default python3 does not have pdfplumber, set STOCK_PYTHON_BIN.
+# Set STOCK_PYTHON_BIN to an ABSOLUTE python3 that has pdfplumber (see below).
 # Then create local generated-data files from public examples
 # (fx-rates.json is fetched by pnpm refresh, not copied):
 cp data/manual-mappings.example.json data/manual-mappings.json
@@ -133,6 +133,13 @@ the snapshot reflects a completed session.
 OBSERVATORY_REPO=$PWD deploy/hermes/install-cron.sh telegram:<chat-id>
 hermes --profile trader cron resume observatory-refresh
 ```
+
+**Pin `STOCK_PYTHON_BIN` to an absolute path.** A bare `python3` resolves through
+`PATH`, and the scheduler does not hand the job the `PATH` an interactive shell
+has: Hermes cron puts its own virtualenv first, so `python3` resolved to that
+venv's 3.11 — which has no `pdfplumber` — and the PDF extract step failed on
+every scheduled run while succeeding every time it was tested by hand. The
+interpreter that has the dependency is the system one, so name it outright.
 
 It is **silent when healthy** — the positive signal is `/health`, and a daily
 "refresh ok" message would only teach you to ignore the channel. It alerts on a
