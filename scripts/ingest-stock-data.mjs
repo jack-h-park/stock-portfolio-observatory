@@ -798,13 +798,28 @@ const dividendRows = datasets.dividends.rows.map((r) => ({
   page: number(r.Page),
 }))
 
+// Chase asset classes that are not positions. An allowlist would silently drop
+// whatever class the broker invents next; a denylist of cash-like classes fails
+// in the visible direction instead.
+const CHASE_NON_POSITION_CLASSES = new Set(['Cash & Money Market Funds', 'Cash and Money Market Funds'])
+
+// Brokers decorate the ticker cell with trade annotations — Merrill exported
+// "JEPI !  Executed Buy". Read the leading symbol rather than requiring the
+// whole cell to be one, or the annotated position vanishes.
+const TICKER_CELL = /^([A-Z][A-Z0-9.-]{0,11})\b/
+
 for (const source of usHoldingFiles) {
   if (!fs.existsSync(source.filename)) continue
   if (source.brokerage === 'Chase') {
     const rows = readCsvObjects(source.filename, (r) => r.includes('Account name') && r.includes('Ticker'))
     for (const r of rows) {
       if (!required(r.Ticker) || !required(r.Quantity)) continue
-      if (text(r['Asset Class']) !== 'Equity') continue
+      // Keep every asset class except cash. Filtering to "Equity" dropped
+      // $15,783 of real positions — Chase files gold ETFs (IAU, SGOL) and
+      // covered-call ETFs (JEPQ) under "Alternative Assets", and they are
+      // holdings like any other. Cash and money-market sweeps are not
+      // positions, so those stay out (QACDS below is the sweep ticker).
+      if (CHASE_NON_POSITION_CLASSES.has(text(r['Asset Class']))) continue
       if (normalizeTicker(r.Ticker) === 'QACDS') continue
       const quantity = number(r.Quantity) ?? 0
       const cost = number(r.Cost) ?? number(r['Orig Cost (Base)']) ?? 0
@@ -853,8 +868,9 @@ for (const source of usHoldingFiles) {
     let currentName = ''
     let asOf = '2026-07-15'
     for (const r of rows) {
-      if (r[1] && /^[A-Z][A-Z0-9. -]{0,12}$/.test(r[1]) && number(r[2]) != null && text(r[2]) !== '') {
-        currentTicker = text(r[1])
+      const symbol = TICKER_CELL.exec(text(r[1]))?.[1]
+      if (symbol && number(r[2]) != null && text(r[2]) !== '') {
+        currentTicker = symbol
         currentName = currentTicker
         const quantity = number(r[2]) ?? 0
         const cost = number(r[4]) ?? 0

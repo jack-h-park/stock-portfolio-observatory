@@ -46,20 +46,40 @@ def date_iso(value):
     return f"20{year}-{month.zfill(2)}-{day.zfill(2)}"
 
 
+def is_lot_header(cells):
+    return "Security" in cells and "Tax Cost" in cells
+
+
 def summarize_gain_loss(path):
     rows = []
     lots = []
     account_hint = extract_account(path.name)
     account = f"Robinhood {account_hint}".strip()
     with pdfplumber.open(path) as pdf:
+        # A Gain/Loss report's lot table runs across pages, and only the FIRST
+        # page repeats the column header — every continuation page begins
+        # straight at a data row. Requiring a header per table therefore dropped
+        # every page after the first: 400 lot rows became 73, and the portfolio
+        # silently showed a fraction of its cost basis.
+        #
+        # So the header carries forward. A continuation table is accepted only
+        # when its column count matches the header it would be read with,
+        # otherwise an unrelated table (a summary block, a footer) could be
+        # zipped against the wrong field names and produce plausible nonsense.
+        header = None
         for page in pdf.pages:
             for table in page.extract_tables() or []:
                 if not table:
                     continue
-                header = [str(c or "").replace("\n", " ").strip() for c in table[0]]
-                if "Security" not in header or "Tax Cost" not in header:
+                first_row = [str(c or "").replace("\n", " ").strip() for c in table[0]]
+                if is_lot_header(first_row):
+                    header = first_row
+                    body = table[1:]
+                elif header is not None and len(table[0]) == len(header):
+                    body = table  # no header on this page: row 0 is already data
+                else:
                     continue
-                for values in table[1:]:
+                for values in body:
                     row = dict(zip(header, values))
                     security = str(row.get("Security") or "").strip()
                     if not security or security.lower().startswith("total"):
