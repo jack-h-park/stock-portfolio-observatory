@@ -168,28 +168,49 @@ sequenced against.
 `RunAtLoad` also refreshes on boot, so a host that was asleep does not serve stale
 figures until the next interval comes round.
 
-> **This path is silent on failure.** launchd records the exit code and the output
-> lands in `logs/refresh.{out,err}.log`, but nothing is delivered anywhere. That is
-> the trade for the schedule; the alternative wrapper below is the one that speaks.
-> Watch `/health` — it shows freshness, source drift and validation state directly —
-> or give the launchd job a notifier before relying on it unattended.
+launchd records an exit code and delivers nothing, so the alerting is a separate
+job — see below.
 
-#### Superseded: the Hermes cron path
+### Health alerts
 
-`deploy/hermes/` installs `observatory-refresh` (weekdays 14:00, `trader` profile).
-It is **no longer the scheduler** — the host runs launchd — but it is kept because
-it is the only path that alerts: it is silent when healthy, and on failure it parses
-the validation line and names a missing brokerage export, catching the
-warning-severity checks that `ingest` exits zero on. If refresh failures need to
-reach Telegram again, this is the wrapper to reuse.
+`observatory-health` (Hermes cron, `trader` profile, daily 09:00) reads the summary
+the refresh publishes and speaks only when the situation changes.
 
 ```bash
 OBSERVATORY_REPO=$PWD deploy/hermes/install-cron.sh telegram:<chat-id>
-hermes --profile trader cron resume observatory-refresh
+hermes --profile trader cron resume observatory-health
+node scripts/summary-health.mjs        # run it by hand; prints nothing when unchanged
 ```
 
-Do not run both. Two schedulers on one `pnpm refresh` write the same database and
-the same `data/refresh-runs.json`.
+It watches the **output**, not the job, and that is the point. A job monitor reports
+a run that exited non-zero; the failure that actually hides here is the refresh
+stopping altogether — the last summary stays in place saying "success, 0 issues"
+while quietly ageing, and every consumer keeps repeating figures from days ago in
+perfect confidence. Nothing inside the document shows that. Only its age does, so
+age is checked first, with a 13h limit: two `StartInterval` periods plus slack, late
+enough not to flap on drift and early enough to report an overnight death in the
+morning.
+
+It also reports a failed refresh, any freshness or validation issue, a summary it
+cannot read, and one whose `schemaVersion` has outrun the checker.
+
+**Silent when healthy, and silent while unchanged.** These conditions persist until
+someone acts — a missing brokerage export is missing every six hours until the file
+arrives — so repeating them each run would turn the channel into furniture. Recovery
+*is* reported, because a channel that only ever brings bad news leaves you unsure
+whether silence means fixed or forgotten. State lives in
+`~/.config/stock-portfolio-observatory/summary-health-state.json`.
+
+Every day rather than weekdays: the refresh runs on its own interval regardless of
+the calendar, so a weekend failure would otherwise stay invisible until Monday.
+
+#### Superseded: refresh under Hermes cron
+
+`deploy/hermes/` also installs `observatory-refresh` (weekdays 14:00), which runs
+`pnpm refresh` itself. It is **no longer the scheduler** and is left paused; the
+wrapper stays on the host in case the schedule ever moves back. Do not resume it
+alongside launchd — two schedulers on one `pnpm refresh` write the same database
+and the same `data/refresh-runs.json`.
 
 **Pin `STOCK_PYTHON_BIN` to an absolute path.** A bare `python3` resolves through
 `PATH`, and the scheduler does not hand the job the `PATH` an interactive shell

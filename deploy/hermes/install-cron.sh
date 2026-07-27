@@ -43,24 +43,46 @@ SCRIPTS_DIR="$HOME/.hermes/profiles/$PROFILE/scripts"   # Hermes --script resolv
 PY="$HOME/.hermes/hermes-agent/venv/bin/python"
 hermes() { "$PY" -m hermes_cli.main "$@"; }
 
-JOB_NAME="observatory-refresh"
-SCHEDULE="0 14 * * 1-5"
-WRAPPER="observatory-refresh-cron.sh"
+# Job table: "<name>|<schedule>|<wrapper>"
+#
+# observatory-health is the one to enable. It reads the summary the launchd refresh
+# publishes and speaks only when the situation changes — including when the summary
+# stops being written at all, which is the failure no job monitor can see.
+#
+# Daily, and every day rather than weekdays: the launchd refresh runs on its own
+# interval regardless of the calendar, so a weekend failure would otherwise stay
+# invisible until Monday. 09:00 puts it before the 08:00 briefing's next run, so a
+# problem is known before the day's figures go out.
+#
+# observatory-refresh is SUPERSEDED — the refresh runs under launchd
+# (`make install-refresh-service`). It is still installed so the wrapper is on the
+# host if the schedule ever moves back, but do not resume it alongside launchd:
+# two schedulers write the same database and the same data/refresh-runs.json.
+JOBS=(
+  "observatory-health|0 9 * * *|observatory-health-cron.sh"
+  "observatory-refresh|0 14 * * 1-5|observatory-refresh-cron.sh"
+)
 
 mkdir -p "$SCRIPTS_DIR"
-install -m 0755 "$HERE/$WRAPPER" "$SCRIPTS_DIR/$WRAPPER"
-echo "installed wrapper -> $SCRIPTS_DIR/$WRAPPER"
 
-if hermes --profile "$PROFILE" cron list --all 2>/dev/null | grep -q "Name:  *$JOB_NAME"; then
-  echo "job '$JOB_NAME' already exists — leaving its schedule untouched"
-else
-  # `schedule` is positional; there is no --schedule flag.
-  hermes --profile "$PROFILE" cron create \
-    --name "$JOB_NAME" \
-    --no-agent \
-    --script "$WRAPPER" \
-    --deliver "$DELIVER" \
-    "$SCHEDULE"
-  echo "created job '$JOB_NAME' ($SCHEDULE, deliver=$DELIVER)"
-  echo "enable it with: hermes --profile $PROFILE cron resume $JOB_NAME"
-fi
+for spec in "${JOBS[@]}"; do
+  IFS='|' read -r JOB_NAME SCHEDULE WRAPPER <<<"$spec"
+  [ -f "$HERE/$WRAPPER" ] || { echo "wrapper not found: $HERE/$WRAPPER" >&2; exit 1; }
+
+  install -m 0755 "$HERE/$WRAPPER" "$SCRIPTS_DIR/$WRAPPER"
+  echo "installed wrapper -> $SCRIPTS_DIR/$WRAPPER"
+
+  if hermes --profile "$PROFILE" cron list --all 2>/dev/null | grep -q "Name:  *$JOB_NAME"; then
+    echo "job '$JOB_NAME' already exists — leaving its schedule untouched"
+  else
+    # `schedule` is positional; there is no --schedule flag.
+    hermes --profile "$PROFILE" cron create \
+      --name "$JOB_NAME" \
+      --no-agent \
+      --script "$WRAPPER" \
+      --deliver "$DELIVER" \
+      "$SCHEDULE"
+    echo "created job '$JOB_NAME' ($SCHEDULE, deliver=$DELIVER)"
+    echo "enable it with: hermes --profile $PROFILE cron resume $JOB_NAME"
+  fi
+done
