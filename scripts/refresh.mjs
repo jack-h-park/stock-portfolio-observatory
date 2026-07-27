@@ -111,3 +111,22 @@ writeHistory(run)
 
 console.log(`\nRefresh ${run.status}: ${run.steps.length}/${steps.length} step(s), ${run.durationMs}ms`)
 if (run.status !== 'success') process.exitCode = 1
+
+// Publish the machine-readable summary for the briefing and trading-agent crons.
+//
+// AFTER the run history is finalised, not as one of `steps` above: the summary
+// reports the refresh's own outcome, and inside the loop that outcome is still
+// 'running'.
+//
+// Runs even when the refresh FAILED. The summary is where a consumer learns the
+// data is not to be trusted, so withholding it on failure would remove the signal
+// at exactly the moment it carries the most — and leave yesterday's file in place
+// with nothing to say it is yesterday's.
+console.log('\n== summary ==')
+const summary = await runStep({ name: 'summary', args: ['summary'] })
+run.steps.push(summary)
+writeHistory(run)
+if (summary.status !== 'success') {
+  console.log('Summary publish failed — consumers will fall back to the previous document or none.')
+  process.exitCode = 1
+}

@@ -74,6 +74,30 @@ pnpm refresh
 pnpm dev
 ```
 
+## Published summary
+
+`pnpm refresh` ends by writing `briefing-summary.json` to `STOCK_BRIEFING_SUMMARY_PATH`
+(`pnpm summary` writes it on its own). It is the one file this app publishes rather
+than reads: a small machine-readable digest for the daily briefing and the trading
+agent, which run as separate jobs on the same host.
+
+It carries the FX-combined portfolio total — those consumers hold no FX snapshot, so
+this is the only place that figure exists — alongside per-market native figures, the
+three timestamps behind them (ingest, prices, FX), and a single `issues[]` list
+covering freshness, validation, and a failed refresh.
+
+A file rather than an endpoint, on purpose: a consumer's cron never depends on this
+app's server being up, and the dependency stays one-way — the Observatory already
+reads the briefing's archive under `STOCK_BRIEFING_ARCHIVE_DIR`, and calls in the
+other direction would leave each system waiting on the other.
+
+It is written on failed refreshes too, reporting the failure — a consumer needs the
+document most exactly when the data is not to be trusted. Writes are atomic
+(temp file + rename), so a half-written document is never read.
+
+Consumers must refuse a document whose `schemaVersion` is newer than the one they
+were written against, and upgrade an older one in memory.
+
 ## macOS launchd deployment
 
 Production deployments on a private macOS host can run under launchd on port

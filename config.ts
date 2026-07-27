@@ -22,6 +22,15 @@ export const config = {
   // Read-only here. Private (position sizes) so the real path lives outside the
   // repo and is set per host in .env.local; the default keeps sample mode working.
   stockBriefingArchiveDir: env('STOCK_BRIEFING_ARCHIVE_DIR', repoPath('private-data/briefing-archive')),
+  // Machine-readable portfolio summary, WRITTEN by `pnpm summary` (and by the
+  // tail of `pnpm refresh`) for the briefing and trading-agent crons to read.
+  // Published, not served: a file means those jobs never depend on this app
+  // running. Private — it carries position values — so it lives beside the
+  // database rather than in the repo.
+  stockBriefingSummaryPath: env(
+    'STOCK_BRIEFING_SUMMARY_PATH',
+    repoPath('private-data/outputs/stock-portfolio-observatory/briefing-summary.json')
+  ),
   stockTaxPolicyPath: env('STOCK_TAX_POLICY_PATH', repoPath('data/tax-policy.json')),
   stockTaxPolicyExamplePath: env('STOCK_TAX_POLICY_EXAMPLE_PATH', repoPath('data/tax-policy.example.json')),
 }

@@ -201,6 +201,30 @@ export type ReviewPosition = {
   lot_count: number
 }
 
+/**
+ * One market's figures in BOTH its own currency and the base currency.
+ *
+ * `PortfolioReview.byMarket` reports base amounts only, which is right for the
+ * review screen — every row is comparable there. Consumers outside this app want
+ * the native figure too ("US +$802"), and the pair has to be grouped together:
+ * a market's native sum is only meaningful alongside the currency it is denominated
+ * in, so `currency` is part of the grain rather than a label bolted on after.
+ */
+export type MarketBreakdown = {
+  market: string
+  currency: string
+  position_count: number
+  /** How many of those rows actually carry a market value. See `native_cost`. */
+  priced_position_count: number
+  native_cost: number
+  native_market_value: number | null
+  native_unrealized_gl: number | null
+  native_unrealized_gl_pct: number | null
+  base_cost: number
+  base_market_value: number | null
+  base_unrealized_gl: number | null
+}
+
 export type PortfolioReview = {
   totals: {
     position_count: number
@@ -921,7 +945,25 @@ export function getPortfolioReview(): PortfolioReview {
 
     const topValue = (n: number) =>
       largestPositions.slice(0, n).reduce((sum, row) => sum + Number(row.base_market_value ?? row.base_cost ?? 0), 0)
-    const denominator = totals.base_market_value || totals.base_cost || 0
+
+    // Value the whole portfolio the way the numerator values its slice: market
+    // value where there is one, cost where there is not. `totals.base_market_value`
+    // cannot serve here — it sums the column, so a position with no price adds
+    // nothing to it while still adding its cost to the numerator, and the share
+    // runs past 100%. Positions without a market value are an expected state, not
+    // an edge case: `noMarketValue` below exists to list them.
+    //
+    // Computed over the grouped select, not raw `holdings`, so the grain matches
+    // too. A ticker whose lots are only partly priced sums to that partial value
+    // on both sides; falling back per-row would put cost in the denominator that
+    // the numerator never sees.
+    const denominator = Number(
+      (
+        conn
+          .prepare(`select coalesce(sum(coalesce(base_market_value, base_cost)), 0) as base_valuation from (${baseSelect})`)
+          .get() as { base_valuation: number }
+      ).base_valuation
+    )
     const share = (value: number) => (denominator > 0 ? (value / denominator) * 100 : 0)
 
     return {
@@ -938,6 +980,43 @@ export function getPortfolioReview(): PortfolioReview {
       shortTermHeavy,
       noMarketValue,
     }
+  } finally {
+    conn.close()
+  }
+}
+
+/**
+ * Per-market totals, native and base side by side.
+ *
+ * Grouped by market AND currency deliberately. Grouping by market alone would
+ * sum native amounts across whatever currencies that market happens to hold and
+ * produce a number in no currency at all; this way a market that ever holds two
+ * reports two rows rather than one wrong one.
+ */
+export function getMarketBreakdown(): MarketBreakdown[] {
+  const conn = db()
+  try {
+    return conn
+      .prepare(
+        `select market,
+          currency,
+          count(*) as position_count,
+          sum(case when base_market_value is not null then 1 else 0 end) as priced_position_count,
+          coalesce(sum(native_cost), 0) as native_cost,
+          sum(native_market_value) as native_market_value,
+          sum(native_unrealized_gl) as native_unrealized_gl,
+          case
+            when coalesce(sum(native_cost), 0) = 0 or sum(native_unrealized_gl) is null then null
+            else sum(native_unrealized_gl) / sum(native_cost) * 100
+          end as native_unrealized_gl_pct,
+          coalesce(sum(coalesce(base_cost, total_cost_krw)), 0) as base_cost,
+          sum(base_market_value) as base_market_value,
+          sum(base_unrealized_gl) as base_unrealized_gl
+         from holdings
+         group by market, currency
+         order by base_market_value desc, base_cost desc`
+      )
+      .all() as MarketBreakdown[]
   } finally {
     conn.close()
   }
@@ -1086,15 +1165,25 @@ export function getRebalanceReview(): RebalanceReview {
          from holdings`
       )
       .get() as RebalanceReview['totals']
-    const marketRows = conn
-      .prepare(
-        `select market, coalesce(sum(base_market_value), 0) as value
-         from holdings
-         group by market`
-      )
-      .all() as { market: string; value: number }[]
-    const totalValue = totals.base_market_value || totals.base_cost || 0
-    const marketValue = (market: string) => marketRows.find((row) => row.market === market)?.value ?? 0
+    const baseSelect = reviewPositionSelect()
+    const positions = conn
+      .prepare(`select * from (${baseSelect}) order by coalesce(base_market_value, base_cost) desc`)
+      .all() as ReviewPosition[]
+
+    // Every ratio below — market gaps, position caps — divides by this, so it has
+    // to value a position the same way the numerators do: market value where there
+    // is one, cost where there is not. `sum(base_market_value)` cannot serve, as it
+    // coalesces a missing price to zero: an unpriced position would count toward a
+    // cap breach while adding nothing to the total it is measured against, pushing
+    // every share up and tipping positions over the cap that are not over it.
+    //
+    // Derived from the grouped positions rather than a second query over holdings,
+    // so the market totals and the position totals cannot drift apart at a ticker
+    // whose lots are only partly priced.
+    const positionValue = (row: ReviewPosition) => Number(row.base_market_value ?? row.base_cost ?? 0)
+    const totalValue = positions.reduce((sum, row) => sum + positionValue(row), 0)
+    const marketValue = (market: string) =>
+      positions.reduce((sum, row) => (row.market === market ? sum + positionValue(row) : sum), 0)
     const marketGaps = marketTargets.map((target) => {
       const currentValue = marketValue(target.market)
       const currentPct = totalValue > 0 ? (currentValue / totalValue) * 100 : 0
@@ -1113,14 +1202,9 @@ export function getRebalanceReview(): RebalanceReview {
       } as RebalanceReview['marketGaps'][number]
     })
 
-    const baseSelect = reviewPositionSelect()
-    const positions = conn
-      .prepare(`select * from (${baseSelect}) order by coalesce(base_market_value, base_cost) desc`)
-      .all() as ReviewPosition[]
     const reduceCandidates = positions
       .map((row) => {
-        const value = Number(row.base_market_value ?? row.base_cost ?? 0)
-        const currentPct = totalValue > 0 ? (value / totalValue) * 100 : 0
+        const currentPct = totalValue > 0 ? (positionValue(row) / totalValue) * 100 : 0
         const capGapPct = currentPct - positionCapPct
         const capGapValue = totalValue * (capGapPct / 100)
         return { ...row, currentPct, capGapPct, capGapValue }
