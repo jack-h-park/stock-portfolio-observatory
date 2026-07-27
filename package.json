@@ -22,7 +22,7 @@
     "extract:us-pdf-evidence": "node scripts/extract-us-pdf-evidence.mjs",
     "ingest": "node scripts/ingest-stock-data.mjs",
     "refresh": "node scripts/refresh.mjs",
-    "summary": "tsx scripts/write-briefing-summary.ts",
+    "summary": "tsx scripts/summary.mjs",
     "seed:sample": "node scripts/seed-sample.mjs",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"

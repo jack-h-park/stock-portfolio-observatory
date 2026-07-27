@@ -19,6 +19,11 @@
 //
 // usage: pnpm summary [--out <path>] [--stdout]
 
+// NOT the entry point — `pnpm summary` runs scripts/summary.mjs, which loads
+// .env.local before importing this module. @/config resolves every path once, at
+// module-initialisation time, so the environment has to be complete before the
+// imports below are evaluated. See that file for why the ordering lives there.
+
 import fs from 'node:fs'
 import path from 'node:path'
 import { config } from '@/config'
