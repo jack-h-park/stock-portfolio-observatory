@@ -149,14 +149,47 @@ pnpm refresh
 
 ### Scheduled refresh
 
-On the private host this runs itself: a Hermes cron job (`observatory-refresh`,
-weekdays 14:00, `trader` profile) executes `pnpm refresh` after the US close, so
-the snapshot reflects a completed session.
+On the private host this runs itself, under **launchd, every 6 hours**:
+
+```bash
+make install-refresh-service   # com.jackpark.stock-observatory.refresh
+make refresh-status            # state, run count, last exit code
+make uninstall-refresh-service
+```
+
+Six-hourly rather than once after the US close, because the snapshot has more than
+one reader now and they do not share a clock: `/health` and `/review` are opened at
+any hour, the daily briefing publishes at 08:00, and the trading review runs at
+13:30. A single afternoon refresh left the 08:00 reader looking at figures from the
+previous afternoon. The interval is `StartInterval`, so it is elapsed time and not
+a wall-clock slot — runs drift, which is fine for a snapshot nothing else is
+sequenced against.
+
+`RunAtLoad` also refreshes on boot, so a host that was asleep does not serve stale
+figures until the next interval comes round.
+
+> **This path is silent on failure.** launchd records the exit code and the output
+> lands in `logs/refresh.{out,err}.log`, but nothing is delivered anywhere. That is
+> the trade for the schedule; the alternative wrapper below is the one that speaks.
+> Watch `/health` — it shows freshness, source drift and validation state directly —
+> or give the launchd job a notifier before relying on it unattended.
+
+#### Superseded: the Hermes cron path
+
+`deploy/hermes/` installs `observatory-refresh` (weekdays 14:00, `trader` profile).
+It is **no longer the scheduler** — the host runs launchd — but it is kept because
+it is the only path that alerts: it is silent when healthy, and on failure it parses
+the validation line and names a missing brokerage export, catching the
+warning-severity checks that `ingest` exits zero on. If refresh failures need to
+reach Telegram again, this is the wrapper to reuse.
 
 ```bash
 OBSERVATORY_REPO=$PWD deploy/hermes/install-cron.sh telegram:<chat-id>
 hermes --profile trader cron resume observatory-refresh
 ```
+
+Do not run both. Two schedulers on one `pnpm refresh` write the same database and
+the same `data/refresh-runs.json`.
 
 **Pin `STOCK_PYTHON_BIN` to an absolute path.** A bare `python3` resolves through
 `PATH`, and the scheduler does not hand the job the `PATH` an interactive shell
@@ -165,12 +198,8 @@ venv's 3.11 — which has no `pdfplumber` — and the PDF extract step failed on
 every scheduled run while succeeding every time it was tested by hand. The
 interpreter that has the dependency is the system one, so name it outright.
 
-It is **silent when healthy** — the positive signal is `/health`, and a daily
-"refresh ok" message would only teach you to ignore the channel. It alerts on a
-hard failure *and* on validation checks that `ingest` treats as warnings: ingest
-exits non-zero only for error-severity checks, so a missing brokerage export
-would otherwise pass unnoticed. The wrapper parses the validation line and names
-the missing source.
+This applies to either scheduler — the launchd job inherits `.env.local` from the
+repo working directory just as the cron wrapper does.
 
 Re-running `install-cron.sh` refreshes the wrapper and leaves an existing
 schedule alone. Hermes executes an **installed copy** of the wrapper under

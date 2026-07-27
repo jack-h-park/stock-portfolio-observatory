@@ -2,6 +2,9 @@
 PLIST_LABEL := com.jackpark.stock-observatory
 PLIST_SRC   := deploy/$(PLIST_LABEL).plist
 PLIST_DST   := $(HOME)/Library/LaunchAgents/$(PLIST_LABEL).plist
+REFRESH_LABEL := $(PLIST_LABEL).refresh
+REFRESH_PLIST_SRC := deploy/$(REFRESH_LABEL).plist
+REFRESH_PLIST_DST := $(HOME)/Library/LaunchAgents/$(REFRESH_LABEL).plist
 PORT        := 3101
 
 # launchd needs an absolute pnpm path + explicit PATH because it does not run a
@@ -9,13 +12,16 @@ PORT        := 3101
 PNPM_BIN := $(shell command -v pnpm)
 NODE_BIN := $(dir $(shell command -v node))
 
-.PHONY: install ingest dev build start stop restart redeploy status wait-listen install-service uninstall-service logs typecheck
+.PHONY: install ingest refresh dev build start stop restart redeploy status refresh-status wait-listen install-service install-refresh-service uninstall-service uninstall-refresh-service logs typecheck
 
 install:
 	pnpm install
 
 ingest:
 	pnpm ingest
+
+refresh:
+	pnpm refresh
 
 dev:
 	pnpm dev
@@ -65,9 +71,26 @@ install-service: build
 	launchctl load $(PLIST_DST)
 	@echo "installed: $(PLIST_DST) -> http://localhost:$(PORT) (pnpm: $(PNPM_BIN))"
 
+install-refresh-service:
+	@test -n "$(PNPM_BIN)" || { echo "pnpm not found on PATH -- cannot generate plist"; exit 1; }
+	mkdir -p $(HOME)/Library/LaunchAgents logs
+	sed -e "s|__WORKDIR__|$(CURDIR)|g" -e "s|__HOME__|$(HOME)|g" \
+		-e "s|__PNPM__|$(PNPM_BIN)|g" -e "s|__NODE_BIN__|$(NODE_BIN)|g" $(REFRESH_PLIST_SRC) > $(REFRESH_PLIST_DST)
+	launchctl bootout gui/$(shell id -u)/$(REFRESH_LABEL) 2>/dev/null || true
+	launchctl bootstrap gui/$(shell id -u) $(REFRESH_PLIST_DST)
+	launchctl kickstart -k gui/$(shell id -u)/$(REFRESH_LABEL)
+	@echo "installed: $(REFRESH_PLIST_DST) -> refresh every 6 hours"
+
 uninstall-service:
 	-launchctl unload $(PLIST_DST)
 	rm -f $(PLIST_DST)
+
+uninstall-refresh-service:
+	-launchctl bootout gui/$(shell id -u)/$(REFRESH_LABEL)
+	rm -f $(REFRESH_PLIST_DST)
+
+refresh-status:
+	@launchctl print gui/$(shell id -u)/$(REFRESH_LABEL) 2>/dev/null | grep -E 'state|runs|last exit code|path' || echo "$(REFRESH_LABEL): not loaded"
 
 logs:
 	tail -f logs/observatory.out.log logs/observatory.err.log
