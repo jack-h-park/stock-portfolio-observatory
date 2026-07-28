@@ -5,9 +5,12 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Line,
+  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
+  Legend,
   Tooltip,
   XAxis,
   YAxis,
@@ -30,6 +33,9 @@ export function TrendBarChart({
   selectedKey,
   onBarSelect,
   xTickFormatter,
+  yAxisPrefix = '',
+  yAxisSuffix = '',
+  yAxisLabel,
 }: {
   data: Record<string, unknown>[]
   xKey: string
@@ -45,9 +51,13 @@ export function TrendBarChart({
   selectedKey?: string
   onBarSelect?: (key: string) => void
   xTickFormatter?: (value: string) => string
+  yAxisPrefix?: string
+  yAxisSuffix?: string
+  yAxisLabel?: string
 }) {
   const interactive = !!onBarSelect
   const hasSelection = selectedKey != null && selectedKey !== ''
+  const formatAxisValue = (value: number) => `${yAxisPrefix}${value.toLocaleString()}${yAxisSuffix}`
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
@@ -59,7 +69,14 @@ export function TrendBarChart({
           axisLine={{ stroke: 'var(--border-default)' }}
           tickFormatter={xTickFormatter}
         />
-        <YAxis tick={AXIS} tickLine={false} axisLine={false} allowDecimals={false} />
+        <YAxis
+          tick={AXIS}
+          tickLine={false}
+          axisLine={false}
+          allowDecimals={false}
+          tickFormatter={formatAxisValue}
+          label={yAxisLabel ? { value: yAxisLabel, angle: -90, position: 'insideLeft', style: AXIS } : undefined}
+        />
         <Tooltip
           cursor={{ fill: 'var(--bg-surface)' }}
           contentStyle={{
@@ -68,7 +85,7 @@ export function TrendBarChart({
             borderRadius: 6,
             fontSize: 12,
           }}
-          formatter={(value: number) => [value.toLocaleString(), undefined]}
+          formatter={(value: number) => [`${yAxisPrefix}${value.toLocaleString()}${yAxisSuffix}`, undefined]}
         />
         <Bar
           dataKey={yKey}
@@ -138,6 +155,115 @@ export function AllocationPieChart({
           }}
         />
       </PieChart>
+    </ResponsiveContainer>
+  )
+}
+
+export function PortfolioTrendChart({
+  data,
+  dataKey,
+  color = 'var(--brand-blue)',
+  height = 240,
+  valuePrefix = '',
+  valueSuffix = '',
+  axisLabel,
+}: {
+  data: { date: string; value: number }[]
+  dataKey: string
+  color?: string
+  height?: number
+  valuePrefix?: string
+  valueSuffix?: string
+  axisLabel?: string
+}) {
+  const formatValue = (value: number) => `${valuePrefix}${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}${valueSuffix}`
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
+        <XAxis dataKey="date" tick={AXIS} tickLine={false} axisLine={{ stroke: 'var(--border-default)' }} />
+        <YAxis
+          tick={AXIS}
+          tickLine={false}
+          axisLine={false}
+          tickFormatter={formatValue}
+          label={axisLabel ? { value: axisLabel, angle: -90, position: 'insideLeft', style: AXIS } : undefined}
+        />
+        <Tooltip
+          contentStyle={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 6,
+            fontSize: 12,
+          }}
+          formatter={(value: number) => [formatValue(value), 'Value']}
+        />
+        <Line
+          type="linear"
+          dataKey={dataKey}
+          name="Value"
+          stroke={color}
+          strokeWidth={2}
+          dot={data.length <= 80 ? { r: 2, strokeWidth: 1 } : false}
+          activeDot={{ r: 4 }}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  )
+}
+
+export function PortfolioMultiTrendChart({
+  data,
+  series,
+  height = 240,
+  valuePrefix = '₩',
+  valueSuffix = 'M',
+  axisLabel = 'KRW million',
+}: {
+  data: { date: string; [key: string]: number | string | null }[]
+  series: { dataKey: string; name: string; color: string }[]
+  height?: number
+  valuePrefix?: string
+  valueSuffix?: string
+  axisLabel?: string
+}) {
+  const formatValue = (value: number) => `${valuePrefix}${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}${valueSuffix}`
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
+        <XAxis dataKey="date" tick={AXIS} tickLine={false} axisLine={{ stroke: 'var(--border-default)' }} />
+        <YAxis
+          tick={AXIS}
+          tickLine={false}
+          axisLine={false}
+          tickFormatter={formatValue}
+          label={{ value: axisLabel, angle: -90, position: 'insideLeft', style: AXIS }}
+        />
+        <Tooltip
+          contentStyle={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 6,
+            fontSize: 12,
+          }}
+          formatter={(value: number, name: string) => [formatValue(value), name]}
+        />
+        <Legend wrapperStyle={{ fontSize: 11 }} />
+        {series.map((item) => (
+          <Line
+            key={item.dataKey}
+            type="linear"
+            dataKey={item.dataKey}
+            name={item.name}
+            stroke={item.color}
+            strokeWidth={2}
+            dot={data.length <= 80 ? { r: 2, strokeWidth: 1 } : false}
+            activeDot={{ r: 4 }}
+            connectNulls={false}
+          />
+        ))}
+      </LineChart>
     </ResponsiveContainer>
   )
 }

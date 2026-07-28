@@ -15,7 +15,9 @@ const steps = [
   { name: 'fetch:kr-prices', args: ['fetch:kr-prices'] },
   { name: 'extract:us-pdf-evidence', args: ['extract:us-pdf-evidence'] },
   { name: 'fetch:us-prices', args: ['fetch:us-prices'] },
+  { name: 'fetch:historical-prices', args: ['fetch:historical-prices'] },
   { name: 'ingest', args: ['ingest'] },
+  { name: 'backfill:history', args: ['backfill:history'] },
 ]
 
 function isoNow() {

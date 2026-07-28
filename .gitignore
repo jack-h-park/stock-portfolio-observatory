@@ -28,6 +28,9 @@ data/us-pdf-evidence.json
 data/manual-mappings.json
 data/refresh-runs.json
 data/tax-policy.json
+data/tax-plans.json
+data/historical-fx-rates.json
+data/historical-prices.json
 *.db
 *.sqlite
 *.sqlite3

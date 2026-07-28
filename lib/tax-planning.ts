@@ -1,13 +1,16 @@
 import {
+  annualProfileForYear,
   annualProfiles,
   assumptionBool,
   assumptionNumber,
   assumptionString,
+  projectedWagesUsd,
   scenarioFromTaxYearProfile,
   type FilingScenario,
   type TaxPolicy,
   type TaxYearProfile,
 } from '@/lib/tax-policy'
+import { estimateUsCapitalGainTax } from '@/lib/us-tax-engine'
 
 export type TaxPlanningLot = {
   id: number
@@ -53,7 +56,17 @@ export type TaxPlanSummary = {
   grossLossKrw: number
   usTaxUsd: number
   usTaxKrw: number
+  usFederalShortTermTaxKrw: number
+  usFederalLongTermTaxKrw: number
+  usNiitTaxKrw: number
+  usStateTaxKrw: number
+  usForeignTaxCreditLimitKrw: number
+  usForeignTaxCreditKrw: number
+  krForeignTaxCreditKrw: number
+  taxCalculationMethod: string
   krTaxKrw: number
+  estimatedTaxBeforeCreditsKrw: number
+  estimatedCrossBorderTaxCreditKrw: number
   estimatedTaxKrw: number
   estimatedAfterTaxKrw: number
   remainingKrDeductionKrw: number
@@ -76,6 +89,45 @@ export type TaxPlan = {
     krDomesticTaxable: boolean
     krForeignTaxCreditMode: string
   }
+}
+
+export type TaxCandidateAggregate = {
+  year: number
+  usdKrwRate: number
+  pricedLotCount: number
+  totalProceedsKrw: number
+  grossGainKrw: number
+  grossLossKrw: number
+  netGainKrw: number
+  lossLotProceedsKrw: number
+  lossHarvestKrw: number
+  shortLossHarvestKrw: number
+  longLossHarvestKrw: number
+  netShortGainKrw: number
+  netLongGainKrw: number
+  usTaxKrw: number
+  usTaxAfterForeignTaxCreditKrw: number
+  usFederalShortTermTaxKrw: number
+  usFederalLongTermTaxKrw: number
+  usNiitTaxKrw: number
+  usStateTaxKrw: number
+  usTaxableShortGainKrw: number
+  usTaxableLongGainKrw: number
+  usOrdinaryIncomeUsd: number
+  usForeignTaxCreditLimitKrw: number
+  usForeignTaxCreditKrw: number
+  krForeignTaxCreditKrw: number
+  taxCalculationMethod: string
+  usFederalTaxOnUsMarketGainKrw: number
+  krNetTaxableGainBeforeDeductionKrw: number
+  krDeductionAppliedKrw: number
+  krTaxableGainAfterDeductionKrw: number
+  krTaxRatePct: number
+  krTaxKrw: number
+  combinedTaxBeforeCreditsKrw: number
+  estimatedCrossBorderTaxCreditKrw: number
+  incrementalKrTaxAfterCreditKrw: number
+  combinedTaxAfterCreditsKrw: number
 }
 
 export type MultiYearStrategyKey = 'KR_FIRST' | 'US_FIRST' | 'BALANCED' | 'LOSS_FIRST'
@@ -131,6 +183,114 @@ export type MultiYearTaxPlan = {
   marketSnapshot: MarketSalePlan[]
 }
 
+export type MasterPlanStrategyKey = 'EARLIEST_LT' | 'STAGED' | 'WAIT_US_ONLY' | 'ACCELERATE_LOSSES'
+
+export type MasterPlanInstruction = {
+  id: string
+  lotId: number
+  plannedDate: string
+  yearMonth: string
+  year: number
+  market: string
+  currency: string
+  brokerage: string | null
+  account: string
+  ticker: string
+  name: string
+  acquiredDate: string
+  longTermEligibleDate: string
+  quantity: number
+  proceedsKrw: number
+  gainKrw: number
+  holdingBucket: 'short' | 'long'
+  role: 'gain' | 'loss' | 'neutral'
+  reason: string
+  washSaleRisk: boolean
+  washSaleMatches: number
+  washSaleNote: string
+}
+
+export type MasterPlanMonth = {
+  yearMonth: string
+  year: number
+  label: string
+  proceedsKrw: number
+  gainKrw: number
+  lossKrw: number
+  instructionCount: number
+  positionCount: number
+  instructions: MasterPlanInstruction[]
+}
+
+export type MasterPlanYear = {
+  year: number
+  filingScenario: FilingScenario
+  proceedsKrw: number
+  gainKrw: number
+  grossLossKrw: number
+  estimatedTaxKrw: number
+  usFederalShortTermTaxKrw: number
+  usFederalLongTermTaxKrw: number
+  usNiitTaxKrw: number
+  usStateTaxKrw: number
+  usGrossTaxKrw: number
+  krGrossTaxKrw: number
+  usForeignTaxCreditLimitKrw: number
+  usForeignTaxCreditKrw: number
+  krForeignTaxCreditKrw: number
+  estimatedCrossBorderTaxCreditKrw: number
+  incrementalKrTaxAfterCreditKrw: number
+  afterTaxKrw: number
+  instructionCount: number
+}
+
+export type MonthlySaleMasterPlan = {
+  strategy: MasterPlanStrategyKey
+  label: string
+  description: string
+  executionMonths: number
+  months: MasterPlanMonth[]
+  years: MasterPlanYear[]
+  instructions: MasterPlanInstruction[]
+  summary: {
+    startDate: string | null
+    endDate: string | null
+    proceedsKrw: number
+    gainKrw: number
+    grossLossKrw: number
+    estimatedTaxKrw: number
+    estimatedCrossBorderTaxCreditKrw: number
+    incrementalKrTaxAfterCreditKrw: number
+    afterTaxKrw: number
+    lotCount: number
+    instructionCount: number
+    longTermSalePct: number
+    shortTermSaleCount: number
+    averageWaitDays: number
+  }
+}
+
+export type MonthlySalePlanSet = {
+  asOfDate: string
+  executionMonths: number
+  selectedStrategy: MasterPlanStrategyKey
+  selectedPlan: MonthlySaleMasterPlan
+  scenarios: MonthlySaleMasterPlan[]
+  firstUsOnlyYear: number | null
+  coverage: {
+    pricedLotCount: number
+    missingValuationCount: number
+    modeledProceedsKrw: number
+  }
+  timing: {
+    alreadyLongLotCount: number
+    waitingLotCount: number
+    waitingProceedsKrw: number
+    nextLongTermDate: string | null
+    estimatedFederalTaxAvoidedKrw: number
+  }
+}
+
 function pctRate(value: number) {
   return value / 100
 }
@@ -179,6 +339,186 @@ function warningForLot(lot: TaxPlanningLot, policy: TaxPolicy, proceedsKrw: numb
   if (lot.market === 'KR' && !krTaxable(lot, policy)) warnings.push('KR domestic stock taxable scope is off by current assumptions.')
   if (lot.market !== 'KR' && lot.market !== 'US') warnings.push('No country module exists yet; treated as monitoring-only.')
   return warnings
+}
+
+function netCapitalGainBuckets(netShortGainKrw: number, netLongGainKrw: number) {
+  if (netShortGainKrw > 0 && netLongGainKrw < 0) {
+    return { taxableShortKrw: Math.max(netShortGainKrw + netLongGainKrw, 0), taxableLongKrw: 0 }
+  }
+  if (netShortGainKrw < 0 && netLongGainKrw > 0) {
+    return { taxableShortKrw: 0, taxableLongKrw: Math.max(netShortGainKrw + netLongGainKrw, 0) }
+  }
+  return {
+    taxableShortKrw: Math.max(netShortGainKrw, 0),
+    taxableLongKrw: Math.max(netLongGainKrw, 0),
+  }
+}
+
+function candidateUsdKrwRate(candidates: TaxPlanCandidate[], policy: TaxPolicy) {
+  const configured = assumptionNumber(policy, 'US', 'planningUsdKrwRate', 0)
+  if (configured > 0) return configured
+  const rates = candidates
+    .filter((row) => row.currency === 'USD' && Number(row.proceedsNative ?? 0) > 0 && Number(row.proceedsKrw ?? 0) > 0)
+    .map((row) => Number(row.proceedsKrw) / Number(row.proceedsNative))
+    .filter((rate) => Number.isFinite(rate) && rate > 0)
+    .sort((a, b) => a - b)
+  if (!rates.length) return 1_350
+  const middle = Math.floor(rates.length / 2)
+  return rates.length % 2 ? rates[middle] : (rates[middle - 1] + rates[middle]) / 2
+}
+
+export function summarizeTaxCandidates({
+  candidates,
+  policy,
+  scenario,
+  year = new Date().getFullYear(),
+}: {
+  candidates: TaxPlanCandidate[]
+  policy: TaxPolicy
+  scenario: FilingScenario
+  year?: number
+}): TaxCandidateAggregate {
+  const priced = candidates.filter((row) => row.proceedsKrw != null && row.gainKrw != null)
+  const shortRows = priced.filter((row) => row.holdingBucket === 'short')
+  const longRows = priced.filter((row) => row.holdingBucket === 'long')
+  const sumGain = (rows: TaxPlanCandidate[]) => rows.reduce((sum, row) => sum + Number(row.gainKrw ?? 0), 0)
+  const lossRows = priced.filter((row) => Number(row.gainKrw) < 0)
+  const netShortGainKrw = sumGain(shortRows)
+  const netLongGainKrw = sumGain(longRows)
+  const usdKrwRate = candidateUsdKrwRate(priced, policy)
+  const inputYear = assumptionNumber(policy, 'US', 'taxInputYear', new Date().getFullYear())
+  const yearInput = year === inputYear
+  const filingStatus = assumptionString(policy, 'US', 'filingStatus', 'MFJ')
+  const stateCode = assumptionString(policy, 'US', 'stateCode', 'CA')
+  const ordinaryIncomeUsd = projectedWagesUsd(policy, year)
+  const federalBracketInflationPct = assumptionNumber(policy, 'US', 'federalBracketInflationPct', 2.5)
+  const californiaBracketInflationPct = assumptionNumber(policy, 'US', 'californiaBracketInflationPct', 2.5)
+  const engineInput = {
+    year,
+    filingStatus,
+    stateCode,
+    ordinaryIncomeUsd,
+    shortGainUsd: netShortGainKrw / usdKrwRate,
+    longGainUsd: netLongGainKrw / usdKrwRate,
+    ytdShortGainUsd: yearInput ? assumptionNumber(policy, 'US', 'ytdRealizedShortGainLossUsd', 0) : 0,
+    ytdLongGainUsd: yearInput ? assumptionNumber(policy, 'US', 'ytdRealizedLongGainLossUsd', 0) : 0,
+    shortLossCarryoverUsd: yearInput ? assumptionNumber(policy, 'US', 'shortTermCapitalLossCarryoverUsd', 0) : 0,
+    longLossCarryoverUsd: yearInput ? assumptionNumber(policy, 'US', 'longTermCapitalLossCarryoverUsd', 0) : 0,
+    ordinaryLossDeductionLimitUsd: assumptionNumber(policy, 'US', 'lossDeductionLimitUsd', 3_000),
+    federalBracketInflationPct,
+    californiaBracketInflationPct,
+    fallbackFederalShortRatePct: assumptionNumber(policy, 'US', 'federalShortTermRatePct', 24),
+    fallbackFederalLongRatePct: assumptionNumber(policy, 'US', 'federalLongTermRatePct', 15),
+    fallbackStateRatePct: assumptionNumber(policy, 'US', 'stateRatePct', 9.3),
+    niitRatePct: assumptionNumber(policy, 'US', 'netInvestmentIncomeTaxRatePct', 3.8),
+  }
+  const baseUsEstimate = estimateUsCapitalGainTax(engineInput)
+  const baseUsTaxKrw = isScenarioEnabled(scenario, 'US')
+    ? baseUsEstimate.taxBeforeForeignTaxCreditUsd * usdKrwRate
+    : 0
+
+  const usMarketRows = priced.filter((row) => row.market === 'US')
+  const usMarketNetShortGainKrw = sumGain(usMarketRows.filter((row) => row.holdingBucket === 'short'))
+  const usMarketNetLongGainKrw = sumGain(usMarketRows.filter((row) => row.holdingBucket === 'long'))
+  const usMarketTaxable = netCapitalGainBuckets(usMarketNetShortGainKrw, usMarketNetLongGainKrw)
+  const usMarketEstimate = estimateUsCapitalGainTax({
+    ...engineInput,
+    shortGainUsd: usMarketTaxable.taxableShortKrw / usdKrwRate,
+    longGainUsd: usMarketTaxable.taxableLongKrw / usdKrwRate,
+    ytdShortGainUsd: 0,
+    ytdLongGainUsd: 0,
+    shortLossCarryoverUsd: 0,
+    longLossCarryoverUsd: 0,
+  })
+  const usFederalTaxOnUsMarketGainKrw = isScenarioEnabled(scenario, 'US')
+    ? usMarketEstimate.federalRegularTaxUsd * usdKrwRate
+    : 0
+
+  const krNetTaxableGainKrw = sumGain(priced.filter((row) => krTaxable(row, policy)))
+  const krDeductionKrw = assumptionNumber(policy, 'KR', 'stockBasicDeductionKrw', 2500000)
+  const krTaxRatePct = assumptionNumber(policy, 'KR', 'foreignStockFlatRatePct', 22)
+  const krRate = pctRate(krTaxRatePct)
+  const krNetTaxableGainBeforeDeductionKrw = Math.max(krNetTaxableGainKrw, 0)
+  const krDeductionAppliedKrw = isScenarioEnabled(scenario, 'KR')
+    ? Math.min(krNetTaxableGainBeforeDeductionKrw, krDeductionKrw)
+    : 0
+  const krTaxableGainAfterDeductionKrw = isScenarioEnabled(scenario, 'KR')
+    ? Math.max(krNetTaxableGainBeforeDeductionKrw - krDeductionAppliedKrw, 0)
+    : 0
+  const krTaxKrw = isScenarioEnabled(scenario, 'KR')
+    ? krTaxableGainAfterDeductionKrw * krRate
+    : 0
+  const creditMode = assumptionString(policy, 'KR', 'foreignTaxCreditMode', 'manual')
+  const krForeignTaxCreditKrw =
+    creditMode === 'estimated-us-source' && isScenarioEnabled(scenario, 'US') && isScenarioEnabled(scenario, 'KR')
+      ? Math.min(krTaxKrw, usFederalTaxOnUsMarketGainKrw, baseUsTaxKrw)
+      : 0
+  const ftcForeignSourceGainPct = Math.min(
+    Math.max(assumptionNumber(policy, 'US', 'ftcForeignSourceGainPct', 0), 0),
+    100
+  )
+  const usEstimate = estimateUsCapitalGainTax({
+    ...engineInput,
+    foreignSourceIncomeUsd:
+      creditMode === 'estimated-us-ftc'
+        ? (krNetTaxableGainBeforeDeductionKrw / usdKrwRate) * (ftcForeignSourceGainPct / 100)
+        : 0,
+    foreignTaxPaidUsd: creditMode === 'estimated-us-ftc' ? krTaxKrw / usdKrwRate : 0,
+    foreignTaxCreditCarryoverUsd:
+      creditMode === 'estimated-us-ftc' && yearInput
+        ? assumptionNumber(policy, 'US', 'foreignTaxCreditCarryoverUsd', 0)
+        : 0,
+  })
+  const usTaxKrw = isScenarioEnabled(scenario, 'US') ? usEstimate.taxBeforeForeignTaxCreditUsd * usdKrwRate : 0
+  const usForeignTaxCreditKrw = isScenarioEnabled(scenario, 'US')
+    ? usEstimate.foreignTaxCreditAllowedUsd * usdKrwRate
+    : 0
+  const estimatedCrossBorderTaxCreditKrw = krForeignTaxCreditKrw + usForeignTaxCreditKrw
+  const incrementalKrTaxAfterCreditKrw = Math.max(krTaxKrw - krForeignTaxCreditKrw, 0)
+  const combinedTaxBeforeCreditsKrw = usTaxKrw + krTaxKrw
+  const combinedTaxAfterCreditsKrw = Math.max(combinedTaxBeforeCreditsKrw - estimatedCrossBorderTaxCreditKrw, 0)
+
+  const grossGainKrw = priced.reduce((sum, row) => sum + Math.max(Number(row.gainKrw), 0), 0)
+  const grossLossKrw = priced.reduce((sum, row) => sum + Math.min(Number(row.gainKrw), 0), 0)
+  const lossHarvestKrw = Math.abs(grossLossKrw)
+  return {
+    year,
+    usdKrwRate,
+    pricedLotCount: priced.length,
+    totalProceedsKrw: priced.reduce((sum, row) => sum + Number(row.proceedsKrw), 0),
+    grossGainKrw,
+    grossLossKrw,
+    netGainKrw: grossGainKrw + grossLossKrw,
+    lossLotProceedsKrw: lossRows.reduce((sum, row) => sum + Number(row.proceedsKrw), 0),
+    lossHarvestKrw,
+    shortLossHarvestKrw: Math.abs(Math.min(sumGain(shortRows.filter((row) => Number(row.gainKrw) < 0)), 0)),
+    longLossHarvestKrw: Math.abs(Math.min(sumGain(longRows.filter((row) => Number(row.gainKrw) < 0)), 0)),
+    netShortGainKrw,
+    netLongGainKrw,
+    usTaxKrw,
+    usTaxAfterForeignTaxCreditKrw: Math.max(usTaxKrw - usForeignTaxCreditKrw, 0),
+    usFederalShortTermTaxKrw: usEstimate.federalShortTermTaxUsd * usdKrwRate,
+    usFederalLongTermTaxKrw: usEstimate.federalLongTermTaxUsd * usdKrwRate,
+    usNiitTaxKrw: usEstimate.niitTaxUsd * usdKrwRate,
+    usStateTaxKrw: usEstimate.stateTaxUsd * usdKrwRate,
+    usTaxableShortGainKrw: usEstimate.netting.taxableShortGainUsd * usdKrwRate,
+    usTaxableLongGainKrw: usEstimate.netting.taxableLongGainUsd * usdKrwRate,
+    usOrdinaryIncomeUsd: ordinaryIncomeUsd,
+    usForeignTaxCreditLimitKrw: usEstimate.foreignTaxCreditLimitUsd * usdKrwRate,
+    usForeignTaxCreditKrw,
+    krForeignTaxCreditKrw,
+    taxCalculationMethod: usEstimate.method,
+    usFederalTaxOnUsMarketGainKrw,
+    krNetTaxableGainBeforeDeductionKrw,
+    krDeductionAppliedKrw,
+    krTaxableGainAfterDeductionKrw,
+    krTaxRatePct,
+    krTaxKrw,
+    combinedTaxBeforeCreditsKrw,
+    estimatedCrossBorderTaxCreditKrw,
+    incrementalKrTaxAfterCreditKrw,
+    combinedTaxAfterCreditsKrw,
+  }
 }
 
 export function buildTaxPlan({
@@ -268,12 +608,13 @@ export function buildTaxPlan({
   const grossProceedsKrw = active.reduce((sum, row) => sum + Number(row.proceedsKrw ?? 0), 0)
   const grossGainKrw = active.reduce((sum, row) => sum + Math.max(Number(row.gainKrw ?? 0), 0), 0)
   const grossLossKrw = active.reduce((sum, row) => sum + Math.min(Number(row.gainKrw ?? 0), 0), 0)
-  const krTaxableGainAfterDeduction = Math.max(grossGainKrw + grossLossKrw - krBasicDeductionKrw, 0)
-  const krDeductionAdjustment = isScenarioEnabled(scenario, 'KR') ? Math.max(active.reduce((sum, row) => sum + row.krTaxKrw, 0) - krTaxableGainAfterDeduction * pctRate(krForeignStockRatePct), 0) : 0
-  const usTaxUsd = active.reduce((sum, row) => sum + row.usTaxUsd, 0)
-  const usTaxKrw = active.reduce((sum, row) => sum + row.usTaxKrw, 0)
-  const krTaxKrw = Math.max(active.reduce((sum, row) => sum + row.krTaxKrw, 0) - krDeductionAdjustment, 0)
-  const estimatedTaxKrw = usTaxKrw + krTaxKrw
+  const aggregate = summarizeTaxCandidates({ candidates: active, policy, scenario })
+  const usTaxKrw = aggregate.usTaxKrw
+  const usTaxUsd = aggregate.usdKrwRate > 0 ? usTaxKrw / aggregate.usdKrwRate : 0
+  const krTaxKrw = aggregate.krTaxKrw
+  const estimatedTaxBeforeCreditsKrw = aggregate.combinedTaxBeforeCreditsKrw
+  const estimatedCrossBorderTaxCreditKrw = aggregate.estimatedCrossBorderTaxCreditKrw
+  const estimatedTaxKrw = aggregate.combinedTaxAfterCreditsKrw
 
   return {
     candidates,
@@ -301,7 +642,17 @@ export function buildTaxPlan({
       grossLossKrw,
       usTaxUsd,
       usTaxKrw,
+      usFederalShortTermTaxKrw: aggregate.usFederalShortTermTaxKrw,
+      usFederalLongTermTaxKrw: aggregate.usFederalLongTermTaxKrw,
+      usNiitTaxKrw: aggregate.usNiitTaxKrw,
+      usStateTaxKrw: aggregate.usStateTaxKrw,
+      usForeignTaxCreditLimitKrw: aggregate.usForeignTaxCreditLimitKrw,
+      usForeignTaxCreditKrw: aggregate.usForeignTaxCreditKrw,
+      krForeignTaxCreditKrw: aggregate.krForeignTaxCreditKrw,
+      taxCalculationMethod: aggregate.taxCalculationMethod,
       krTaxKrw,
+      estimatedTaxBeforeCreditsKrw,
+      estimatedCrossBorderTaxCreditKrw,
       estimatedTaxKrw,
       estimatedAfterTaxKrw: grossProceedsKrw - estimatedTaxKrw,
       remainingKrDeductionKrw: Math.max(krBasicDeductionKrw - Math.max(grossGainKrw + grossLossKrw, 0), 0),
@@ -473,15 +824,9 @@ export function buildMultiYearTaxPlan({
       for (const market of markets) market.targetKrw = Number(targetMap[market.market] ?? 0)
       const proceedsKrw = selected.reduce((sum, row) => sum + Number(row.proceedsKrw ?? 0), 0)
       const gainKrw = selected.reduce((sum, row) => sum + Number(row.gainKrw ?? 0), 0)
-      const grossGainKrw = selected.reduce((sum, row) => sum + Math.max(Number(row.gainKrw ?? 0), 0), 0)
-      const grossLossKrw = selected.reduce((sum, row) => sum + Math.min(Number(row.gainKrw ?? 0), 0), 0)
-      const krRate = pctRate(assumptionNumber(policy, 'KR', 'foreignStockFlatRatePct', 22))
-      const krDeduction = assumptionNumber(policy, 'KR', 'stockBasicDeductionKrw', 2500000)
-      const rawKrTax = selected.reduce((sum, row) => sum + row.krTaxKrw, 0)
-      const adjustedKrTax = isScenarioEnabled(scenarioFromTaxYearProfile(profile), 'KR')
-        ? Math.max(rawKrTax - Math.max(rawKrTax - Math.max(grossGainKrw + grossLossKrw - krDeduction, 0) * krRate, 0), 0)
-        : 0
-      const taxKrw = selected.reduce((sum, row) => sum + row.usTaxKrw, 0) + adjustedKrTax
+      const yearScenario = scenarioFromTaxYearProfile(profile)
+      const aggregate = summarizeTaxCandidates({ candidates: selected, policy, scenario: yearScenario, year: profile.year })
+      const taxKrw = aggregate.combinedTaxAfterCreditsKrw
       const afterTaxKrw = proceedsKrw - taxKrw
       const rawTaxKrw = selected.reduce((sum, row) => sum + Number(row.estimatedTaxKrw ?? 0), 0)
       const marketTaxRatio = rawTaxKrw > 0 ? taxKrw / rawTaxKrw : 1
@@ -491,7 +836,7 @@ export function buildMultiYearTaxPlan({
       }
       return {
         year: profile.year,
-        filingScenario: scenarioFromTaxYearProfile(profile),
+        filingScenario: yearScenario,
         profile,
         targetCashKrw: annualTargetCashKrw,
         proceedsKrw,
@@ -533,5 +878,473 @@ export function buildMultiYearTaxPlan({
     scenarios,
     bestScenario: eligible.sort((a, b) => a.summary.taxKrw - b.summary.taxKrw || b.summary.afterTaxKrw - a.summary.afterTaxKrw)[0] ?? null,
     marketSnapshot: summarizeMarkets(buildTaxPlan({ lots, policy, scenario: policy.activeScenario, objective: 'raise-cash', targetCashKrw: 0 }).candidates),
+  }
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+function parseDateOnly(value: string) {
+  const [year, month, day] = value.slice(0, 10).split('-').map(Number)
+  return new Date(Date.UTC(year, Math.max(month - 1, 0), day || 1))
+}
+
+function dateOnly(value: Date) {
+  return value.toISOString().slice(0, 10)
+}
+
+function localDateOnly(value: Date) {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function monthKey(value: Date) {
+  return value.toISOString().slice(0, 7)
+}
+
+function monthStart(value: Date) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1))
+}
+
+function monthEnd(value: Date) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + 1, 0))
+}
+
+function addMonths(value: Date, months: number) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + months, 1))
+}
+
+function laterDate(a: Date, b: Date) {
+  return a.getTime() >= b.getTime() ? a : b
+}
+
+function longTermEligibleDate(acquiredDate: string) {
+  const acquired = parseDateOnly(acquiredDate)
+  const anniversary = new Date(acquired.getTime())
+  anniversary.setUTCFullYear(anniversary.getUTCFullYear() + 1)
+  return new Date(anniversary.getTime() + DAY_MS)
+}
+
+function firstUsOnlyYear(policy: TaxPolicy, horizonYears: number) {
+  return annualProfiles(policy, horizonYears)
+    .filter((profile) => scenarioFromTaxYearProfile(profile) === 'US_ONLY')
+    .map((profile) => profile.year)
+    .sort((a, b) => a - b)[0] ?? null
+}
+
+function masterStrategyLabel(strategy: MasterPlanStrategyKey, executionMonths: number) {
+  if (strategy === 'EARLIEST_LT') return 'Sell at long-term eligibility'
+  if (strategy === 'WAIT_US_ONLY') return 'Wait for US-only filing'
+  if (strategy === 'ACCELERATE_LOSSES') return 'Accelerate loss harvesting'
+  return `Stage sales over ${executionMonths} months`
+}
+
+function masterStrategyDescription(strategy: MasterPlanStrategyKey, executionMonths: number) {
+  if (strategy === 'EARLIEST_LT') {
+    return 'Sell each priced lot on the first available date after it becomes long-term for US tax purposes.'
+  }
+  if (strategy === 'WAIT_US_ONLY') {
+    return 'Move both gain and loss lots to the first US-only filing year so the comparison preserves same-year loss netting.'
+  }
+  if (strategy === 'ACCELERATE_LOSSES') {
+    return 'Make loss lots available now for same-year offset planning while waiting for gain lots to become long-term.'
+  }
+  return `Spread priced lots across ${executionMonths} months, prioritizing eligible loss and lower-gain lots within the monthly capacity.`
+}
+
+type ScheduleSlice = {
+  candidate: TaxPlanCandidate
+  eligibleDate: Date
+  remainingFraction: number
+}
+
+function instructionFromSlice({
+  slice,
+  fraction,
+  plannedDate,
+  sequence,
+  strategy,
+}: {
+  slice: ScheduleSlice
+  fraction: number
+  plannedDate: Date
+  sequence: number
+  strategy: MasterPlanStrategyKey
+}): MasterPlanInstruction {
+  const candidate = slice.candidate
+  const gainKrw = Number(candidate.gainKrw ?? 0) * fraction
+  const eligible = longTermEligibleDate(candidate.acquired_date)
+  const longTerm = plannedDate.getTime() >= eligible.getTime()
+  const role = gainKrw > 0 ? 'gain' : gainKrw < 0 ? 'loss' : 'neutral'
+  const reason =
+    strategy === 'WAIT_US_ONLY'
+      ? 'Held for long-term treatment and same-year netting in the first US-only filing year'
+      : strategy === 'ACCELERATE_LOSSES' && role === 'loss' && !longTerm
+        ? 'Early loss candidate for same-year gain offset; wash-sale review required'
+        : role === 'loss'
+          ? 'Loss inventory scheduled with the annual realization plan'
+          : longTerm
+            ? 'First permitted window after long-term eligibility'
+            : 'Short-term sale under the selected scenario'
+  return {
+    id: `${candidate.id}:${dateOnly(plannedDate)}:${sequence}`,
+    lotId: candidate.id,
+    plannedDate: dateOnly(plannedDate),
+    yearMonth: monthKey(plannedDate),
+    year: plannedDate.getUTCFullYear(),
+    market: candidate.market,
+    currency: candidate.currency,
+    brokerage: candidate.brokerage,
+    account: candidate.account,
+    ticker: candidate.ticker,
+    name: candidate.name,
+    acquiredDate: candidate.acquired_date,
+    longTermEligibleDate: dateOnly(eligible),
+    quantity: Number(candidate.open_quantity) * fraction,
+    proceedsKrw: Number(candidate.proceedsKrw ?? 0) * fraction,
+    gainKrw,
+    holdingBucket: longTerm ? 'long' : 'short',
+    role,
+    reason,
+    washSaleRisk: false,
+    washSaleMatches: 0,
+    washSaleNote: '',
+  }
+}
+
+function annotateWashSaleRisk(
+  instructions: MasterPlanInstruction[],
+  candidates: TaxPlanCandidate[],
+  policy: TaxPolicy
+) {
+  const beforeDays = assumptionNumber(policy, 'US', 'washSaleWindowDaysBefore', 30)
+  const afterDays = assumptionNumber(policy, 'US', 'washSaleWindowDaysAfter', 30)
+  return instructions.map((instruction) => {
+    if (instruction.gainKrw >= 0) return instruction
+    const scenario = scenarioFromTaxYearProfile(annualProfileForYear(policy, instruction.year))
+    if (!isScenarioEnabled(scenario, 'US')) return instruction
+    const saleTime = parseDateOnly(instruction.plannedDate).getTime()
+    const matches = candidates.filter((candidate) => {
+      if (candidate.id === instruction.lotId) return false
+      if (candidate.market !== instruction.market || candidate.ticker !== instruction.ticker) return false
+      const purchaseTime = parseDateOnly(candidate.acquired_date).getTime()
+      const dayDelta = (purchaseTime - saleTime) / DAY_MS
+      return dayDelta >= -beforeDays && dayDelta <= afterDays
+    })
+    if (!matches.length) return instruction
+    return {
+      ...instruction,
+      washSaleRisk: true,
+      washSaleMatches: matches.length,
+      washSaleNote: `${matches.length} open lot acquisition(s) for the same ticker fall inside the configured ${beforeDays}d before / ${afterDays}d after window. Future purchases and substantially identical securities are not modeled.`,
+    }
+  })
+}
+
+function scheduleImmediate(
+  slices: ScheduleSlice[],
+  asOf: Date,
+  strategy: MasterPlanStrategyKey,
+  usOnlyYear: number | null
+) {
+  const instructions: MasterPlanInstruction[] = []
+  let sequence = 0
+  for (const slice of slices) {
+    const gain = Number(slice.candidate.gainKrw ?? 0)
+    let plannedDate = laterDate(asOf, slice.eligibleDate)
+    if (strategy === 'WAIT_US_ONLY' && usOnlyYear != null) {
+      plannedDate = laterDate(plannedDate, new Date(Date.UTC(usOnlyYear, 0, 2)))
+    }
+    if (strategy === 'ACCELERATE_LOSSES' && gain < 0) plannedDate = asOf
+    instructions.push(instructionFromSlice({ slice, fraction: 1, plannedDate, sequence: sequence++, strategy }))
+  }
+  return instructions.sort((a, b) => a.plannedDate.localeCompare(b.plannedDate) || a.ticker.localeCompare(b.ticker))
+}
+
+function scheduleStaged(slices: ScheduleSlice[], asOf: Date, executionMonths: number) {
+  const instructions: MasterPlanInstruction[] = []
+  const totalProceedsKrw = slices.reduce((sum, slice) => sum + Number(slice.candidate.proceedsKrw ?? 0), 0)
+  const monthlyCapacityKrw = executionMonths > 0 ? totalProceedsKrw / executionMonths : totalProceedsKrw
+  let sequence = 0
+  let cursor = monthStart(asOf)
+  const maxMonths = Math.max(executionMonths + 36, 60)
+
+  for (let monthIndex = 0; monthIndex < maxMonths && slices.some((slice) => slice.remainingFraction > 1e-8); monthIndex += 1) {
+    const end = monthEnd(cursor)
+    let capacity = monthlyCapacityKrw
+    const eligible = slices
+      .filter((slice) => slice.remainingFraction > 1e-8 && slice.eligibleDate.getTime() <= end.getTime())
+      .sort((a, b) => {
+        const gainA = Number(a.candidate.gainKrw ?? 0)
+        const gainB = Number(b.candidate.gainKrw ?? 0)
+        const gainRatioA = Number(a.candidate.proceedsKrw ?? 0) > 0 ? gainA / Number(a.candidate.proceedsKrw) : 0
+        const gainRatioB = Number(b.candidate.proceedsKrw ?? 0) > 0 ? gainB / Number(b.candidate.proceedsKrw) : 0
+        return gainRatioA - gainRatioB || a.eligibleDate.getTime() - b.eligibleDate.getTime()
+      })
+
+    const losses = eligible.filter((slice) => Number(slice.candidate.gainKrw ?? 0) < 0)
+    const gains = eligible.filter((slice) => Number(slice.candidate.gainKrw ?? 0) >= 0)
+    const remainingLossProceeds = losses.reduce(
+      (sum, slice) => sum + Number(slice.candidate.proceedsKrw ?? 0) * slice.remainingFraction,
+      0
+    )
+    const remainingGainProceeds = gains.reduce(
+      (sum, slice) => sum + Number(slice.candidate.proceedsKrw ?? 0) * slice.remainingFraction,
+      0
+    )
+    const eligibleProceeds = remainingLossProceeds + remainingGainProceeds
+    const lossBudget = eligibleProceeds > 0 ? capacity * (remainingLossProceeds / eligibleProceeds) : 0
+
+    const allocate = (rows: ScheduleSlice[], budget: number) => {
+      let remainingBudget = budget
+      for (const slice of rows) {
+        if (remainingBudget <= 0) break
+        const remainingProceeds = Number(slice.candidate.proceedsKrw ?? 0) * slice.remainingFraction
+        if (remainingProceeds <= 0) {
+          slice.remainingFraction = 0
+          continue
+        }
+        const saleProceeds = Math.min(remainingProceeds, remainingBudget)
+        const fraction = saleProceeds / Number(slice.candidate.proceedsKrw)
+        const preferredDay = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth(), 15))
+        const plannedDate = laterDate(laterDate(asOf, slice.eligibleDate), preferredDay)
+        instructions.push(
+          instructionFromSlice({ slice, fraction, plannedDate, sequence: sequence++, strategy: 'STAGED' })
+        )
+        slice.remainingFraction = Math.max(slice.remainingFraction - fraction, 0)
+        remainingBudget -= saleProceeds
+      }
+      return budget - remainingBudget
+    }
+
+    const usedLoss = allocate(losses, lossBudget)
+    const usedGain = allocate(gains, capacity - usedLoss)
+    capacity -= usedLoss + usedGain
+    if (capacity > 0) allocate([...losses, ...gains], capacity)
+    cursor = addMonths(cursor, 1)
+  }
+
+  return instructions.sort((a, b) => a.plannedDate.localeCompare(b.plannedDate) || a.ticker.localeCompare(b.ticker))
+}
+
+function scheduledCandidate(
+  instruction: MasterPlanInstruction,
+  candidates: Map<number, TaxPlanCandidate>
+): TaxPlanCandidate | null {
+  const original = candidates.get(instruction.lotId)
+  if (!original || original.proceedsKrw == null || original.gainKrw == null || original.open_quantity <= 0) return null
+  const fraction = instruction.quantity / original.open_quantity
+  return {
+    ...original,
+    open_quantity: instruction.quantity,
+    native_cost_basis: original.native_cost_basis * fraction,
+    native_market_value: original.native_market_value == null ? null : original.native_market_value * fraction,
+    native_unrealized_gl: original.native_unrealized_gl == null ? null : original.native_unrealized_gl * fraction,
+    cost_basis_krw: original.cost_basis_krw * fraction,
+    proceedsNative: original.proceedsNative == null ? null : original.proceedsNative * fraction,
+    proceedsKrw: instruction.proceedsKrw,
+    gainNative: original.gainNative == null ? null : original.gainNative * fraction,
+    gainKrw: instruction.gainKrw,
+    holdingBucket: instruction.holdingBucket,
+    usTaxUsd: 0,
+    usTaxKrw: 0,
+    krTaxKrw: 0,
+    estimatedTaxKrw: 0,
+    estimatedAfterTaxKrw: instruction.proceedsKrw,
+  }
+}
+
+function assembleMasterPlan({
+  instructions,
+  candidates,
+  policy,
+  strategy,
+  executionMonths,
+  asOf,
+}: {
+  instructions: MasterPlanInstruction[]
+  candidates: TaxPlanCandidate[]
+  policy: TaxPolicy
+  strategy: MasterPlanStrategyKey
+  executionMonths: number
+  asOf: Date
+}): MonthlySaleMasterPlan {
+  const candidateMap = new Map(candidates.map((candidate) => [candidate.id, candidate]))
+  const years = Array.from(new Set(instructions.map((instruction) => instruction.year)))
+    .sort((a, b) => a - b)
+    .map((year) => {
+      const yearInstructions = instructions.filter((instruction) => instruction.year === year)
+      const yearCandidates = yearInstructions
+        .map((instruction) => scheduledCandidate(instruction, candidateMap))
+        .filter((candidate): candidate is TaxPlanCandidate => candidate != null)
+      const filingScenario = scenarioFromTaxYearProfile(annualProfileForYear(policy, year))
+      const aggregate = summarizeTaxCandidates({ candidates: yearCandidates, policy, scenario: filingScenario, year })
+      return {
+        year,
+        filingScenario,
+        proceedsKrw: aggregate.totalProceedsKrw,
+        gainKrw: aggregate.netGainKrw,
+        grossLossKrw: aggregate.grossLossKrw,
+        estimatedTaxKrw: aggregate.combinedTaxAfterCreditsKrw,
+        usFederalShortTermTaxKrw: aggregate.usFederalShortTermTaxKrw,
+        usFederalLongTermTaxKrw: aggregate.usFederalLongTermTaxKrw,
+        usNiitTaxKrw: aggregate.usNiitTaxKrw,
+        usStateTaxKrw: aggregate.usStateTaxKrw,
+        usGrossTaxKrw: aggregate.usTaxKrw,
+        krGrossTaxKrw: aggregate.krTaxKrw,
+        usForeignTaxCreditLimitKrw: aggregate.usForeignTaxCreditLimitKrw,
+        usForeignTaxCreditKrw: aggregate.usForeignTaxCreditKrw,
+        krForeignTaxCreditKrw: aggregate.krForeignTaxCreditKrw,
+        estimatedCrossBorderTaxCreditKrw: aggregate.estimatedCrossBorderTaxCreditKrw,
+        incrementalKrTaxAfterCreditKrw: aggregate.incrementalKrTaxAfterCreditKrw,
+        afterTaxKrw: aggregate.totalProceedsKrw - aggregate.combinedTaxAfterCreditsKrw,
+        instructionCount: yearInstructions.length,
+      } satisfies MasterPlanYear
+    })
+  const months = Array.from(new Set(instructions.map((instruction) => instruction.yearMonth)))
+    .sort()
+    .map((key) => {
+      const rows = instructions.filter((instruction) => instruction.yearMonth === key)
+      const gainKrw = rows.reduce((sum, row) => sum + row.gainKrw, 0)
+      return {
+        yearMonth: key,
+        year: Number(key.slice(0, 4)),
+        label: new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }).format(
+          parseDateOnly(`${key}-01`)
+        ),
+        proceedsKrw: rows.reduce((sum, row) => sum + row.proceedsKrw, 0),
+        gainKrw,
+        lossKrw: Math.abs(rows.reduce((sum, row) => sum + Math.min(row.gainKrw, 0), 0)),
+        instructionCount: rows.length,
+        positionCount: new Set(rows.map((row) => `${row.market}:${row.ticker}`)).size,
+        instructions: rows,
+      } satisfies MasterPlanMonth
+    })
+  const totalProceeds = instructions.reduce((sum, row) => sum + row.proceedsKrw, 0)
+  const longTermProceeds = instructions
+    .filter((row) => row.holdingBucket === 'long')
+    .reduce((sum, row) => sum + row.proceedsKrw, 0)
+  const weightedWaitDays = instructions.reduce((sum, row) => {
+    const waitDays = Math.max((parseDateOnly(row.plannedDate).getTime() - asOf.getTime()) / DAY_MS, 0)
+    return sum + waitDays * row.proceedsKrw
+  }, 0)
+  return {
+    strategy,
+    label: masterStrategyLabel(strategy, executionMonths),
+    description: masterStrategyDescription(strategy, executionMonths),
+    executionMonths,
+    months,
+    years,
+    instructions,
+    summary: {
+      startDate: instructions[0]?.plannedDate ?? null,
+      endDate: instructions[instructions.length - 1]?.plannedDate ?? null,
+      proceedsKrw: totalProceeds,
+      gainKrw: instructions.reduce((sum, row) => sum + row.gainKrw, 0),
+      grossLossKrw: instructions.reduce((sum, row) => sum + Math.min(row.gainKrw, 0), 0),
+      estimatedTaxKrw: years.reduce((sum, year) => sum + year.estimatedTaxKrw, 0),
+      estimatedCrossBorderTaxCreditKrw: years.reduce(
+        (sum, year) => sum + year.estimatedCrossBorderTaxCreditKrw,
+        0
+      ),
+      incrementalKrTaxAfterCreditKrw: years.reduce(
+        (sum, year) => sum + year.incrementalKrTaxAfterCreditKrw,
+        0
+      ),
+      afterTaxKrw: years.reduce((sum, year) => sum + year.afterTaxKrw, 0),
+      lotCount: new Set(instructions.map((row) => row.lotId)).size,
+      instructionCount: instructions.length,
+      longTermSalePct: totalProceeds > 0 ? (longTermProceeds / totalProceeds) * 100 : 0,
+      shortTermSaleCount: instructions.filter((row) => row.holdingBucket === 'short').length,
+      averageWaitDays: totalProceeds > 0 ? weightedWaitDays / totalProceeds : 0,
+    },
+  }
+}
+
+export function buildMonthlySalePlanSet({
+  lots,
+  policy,
+  horizonYears = policy.planningHorizonYears ?? 5,
+  executionMonths = 24,
+  selectedStrategy = 'STAGED',
+  asOfDate = localDateOnly(new Date()),
+}: {
+  lots: TaxPlanningLot[]
+  policy: TaxPolicy
+  horizonYears?: number
+  executionMonths?: number
+  selectedStrategy?: MasterPlanStrategyKey
+  asOfDate?: string
+}): MonthlySalePlanSet {
+  const asOf = parseDateOnly(asOfDate)
+  const normalizedExecutionMonths = Math.min(Math.max(Math.round(executionMonths), 1), 60)
+  const currentPlan = buildTaxPlan({
+    lots,
+    policy,
+    scenario: scenarioFromTaxYearProfile(annualProfileForYear(policy, asOf.getUTCFullYear())),
+    objective: 'raise-cash',
+    targetCashKrw: 0,
+  })
+  const candidates = currentPlan.candidates.filter(
+    (candidate) => candidate.proceedsKrw != null && candidate.gainKrw != null && Number(candidate.proceedsKrw) > 0
+  )
+  const makeSlices = () =>
+    candidates.map((candidate) => ({
+      candidate,
+      eligibleDate: longTermEligibleDate(candidate.acquired_date),
+      remainingFraction: 1,
+    }))
+  const usOnlyYear = firstUsOnlyYear(policy, horizonYears)
+  const strategies: MasterPlanStrategyKey[] = ['EARLIEST_LT', 'STAGED', 'WAIT_US_ONLY', 'ACCELERATE_LOSSES']
+  const scenarios = strategies.map((strategy) => {
+    const slices = makeSlices()
+    const rawInstructions =
+      strategy === 'STAGED'
+        ? scheduleStaged(slices, asOf, normalizedExecutionMonths)
+        : scheduleImmediate(slices, asOf, strategy, usOnlyYear)
+    const instructions = annotateWashSaleRisk(rawInstructions, candidates, policy)
+    return assembleMasterPlan({
+      instructions,
+      candidates,
+      policy,
+      strategy,
+      executionMonths: normalizedExecutionMonths,
+      asOf,
+    })
+  })
+  const selectedPlan =
+    scenarios.find((item) => item.strategy === selectedStrategy) ??
+    scenarios.find((item) => item.strategy === 'STAGED') ??
+    scenarios[0]
+  const waiting = candidates.filter((candidate) => longTermEligibleDate(candidate.acquired_date).getTime() > asOf.getTime())
+  const usShortRate = assumptionNumber(policy, 'US', 'federalShortTermRatePct', 37)
+  const usLongRate = assumptionNumber(policy, 'US', 'federalLongTermRatePct', 20)
+  return {
+    asOfDate: dateOnly(asOf),
+    executionMonths: normalizedExecutionMonths,
+    selectedStrategy,
+    selectedPlan,
+    scenarios,
+    firstUsOnlyYear: usOnlyYear,
+    coverage: {
+      pricedLotCount: candidates.length,
+      missingValuationCount: currentPlan.candidates.length - candidates.length,
+      modeledProceedsKrw: candidates.reduce((sum, candidate) => sum + Number(candidate.proceedsKrw), 0),
+    },
+    timing: {
+      alreadyLongLotCount: candidates.length - waiting.length,
+      waitingLotCount: waiting.length,
+      waitingProceedsKrw: waiting.reduce((sum, candidate) => sum + Number(candidate.proceedsKrw), 0),
+      nextLongTermDate:
+        waiting
+          .map((candidate) => dateOnly(longTermEligibleDate(candidate.acquired_date)))
+          .sort()[0] ?? null,
+      estimatedFederalTaxAvoidedKrw: waiting.reduce(
+        (sum, candidate) =>
+          sum + Math.max(Number(candidate.gainKrw), 0) * pctRate(Math.max(usShortRate - usLongRate, 0)),
+        0
+      ),
+    },
   }
 }

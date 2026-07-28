@@ -296,9 +296,13 @@ It used to be hand-maintained, which meant it was not maintained: the private-mo
 - Freshness reads the first rate in the file, so the fetched rate leads and the base-to-base identity is appended last (an identity rate is always "current" and would mask a stale real one).
 - Rerun `pnpm ingest` after changing rates to regenerate all `base_*` values.
 
-## Tax planning roadmap
+## Tax planning
 
-The planned tax realization planner should support US-only, Korea-only, and US+Korea filing scenarios without hardcoding those countries into the UI. Local tax assumptions should live in ignored `data/tax-policy.json`, bootstrapped from `data/tax-policy.example.json`.
+The tax realization planner supports US-only, Korea-only, and US+Korea filing profiles, deterministic long-term-eligibility schedules, monthly lot instructions, and saved execution plans. The US estimate uses 2026 MFJ progressive ordinary and long-term brackets, NIIT, a projected California schedule, loss carryovers, and a bounded Form 1116-style credit model. Local tax assumptions live in ignored `data/tax-policy.json`, bootstrapped from `data/tax-policy.example.json`.
+
+Saved plans are immutable calculation snapshots stored in ignored `data/tax-plans.json`. Their review and execution records are tracked separately so the original estimate remains auditable. A saved plan page also compares its snapshot with a fresh calculation from current holdings, prices, FX, and policy settings.
+
+Run `pnpm test` to verify holding-period boundaries, progressive US gain/loss taxation, NIIT, California tax, foreign-tax-credit limits, Korea taxable-scope flags, and saved-plan execution persistence.
 
 See [docs/tax-realization-planner.md](docs/tax-realization-planner.md) for the rule model, official-source baseline, manual adjustment design, and implementation stages.
 

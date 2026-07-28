@@ -180,13 +180,31 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
           <Card title="US assumptions">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Short-term federal rate" name="usFederalShortTermRatePct" defaultValue={assumptionNumber(policy, 'US', 'federalShortTermRatePct', 37)} suffix="%" />
-              <Field label="Long-term federal rate" name="usFederalLongTermRatePct" defaultValue={assumptionNumber(policy, 'US', 'federalLongTermRatePct', 20)} suffix="%" />
-              <Field label="State rate" name="usStateRatePct" defaultValue={assumptionNumber(policy, 'US', 'stateRatePct', 0)} suffix="%" />
-              <Field label="NIIT rate" name="usNiitRatePct" defaultValue={assumptionNumber(policy, 'US', 'netInvestmentIncomeTaxRatePct', 0)} suffix="%" />
+              <Field label="Fallback short-term rate" name="usFederalShortTermRatePct" defaultValue={assumptionNumber(policy, 'US', 'federalShortTermRatePct', 24)} suffix="%" />
+              <Field label="Fallback long-term rate" name="usFederalLongTermRatePct" defaultValue={assumptionNumber(policy, 'US', 'federalLongTermRatePct', 15)} suffix="%" />
+              <Field label="Fallback state rate" name="usStateRatePct" defaultValue={assumptionNumber(policy, 'US', 'stateRatePct', 9.3)} suffix="%" />
+              <Field label="NIIT rate" name="usNiitRatePct" defaultValue={assumptionNumber(policy, 'US', 'netInvestmentIncomeTaxRatePct', 3.8)} suffix="%" />
+              <Field label="Filing status" name="usFilingStatus" defaultValue={assumptionString(policy, 'US', 'filingStatus', 'MFJ')} type="text" />
+              <Field label="State" name="usStateCode" defaultValue={assumptionString(policy, 'US', 'stateCode', 'CA')} type="text" />
+              <Field label="Wage base year" name="usWageBaseYear" defaultValue={assumptionNumber(policy, 'US', 'wageBaseYear', 2025)} />
+              <Field label="W-2 wages" name="usWageBaseUsd" defaultValue={assumptionNumber(policy, 'US', 'wageBaseUsd', 0)} suffix="USD" />
+              <Field label="Annual income growth" name="usAnnualIncomeGrowthPct" defaultValue={assumptionNumber(policy, 'US', 'annualIncomeGrowthPct', 0)} suffix="%" />
+              <Field label="Federal bracket inflation" name="usFederalBracketInflationPct" defaultValue={assumptionNumber(policy, 'US', 'federalBracketInflationPct', 2.5)} suffix="%" />
+              <Field label="California bracket inflation" name="usCaliforniaBracketInflationPct" defaultValue={assumptionNumber(policy, 'US', 'californiaBracketInflationPct', 2.5)} suffix="%" />
+              <Field label="Planning USD/KRW" name="usPlanningUsdKrwRate" defaultValue={assumptionNumber(policy, 'US', 'planningUsdKrwRate', 0) || null} suffix="KRW" />
+              <Field label="Current tax input year" name="usTaxInputYear" defaultValue={assumptionNumber(policy, 'US', 'taxInputYear', new Date().getFullYear())} />
               <Field label="Loss deduction limit" name="usLossDeductionLimitUsd" defaultValue={assumptionNumber(policy, 'US', 'lossDeductionLimitUsd', 3000)} suffix="USD" />
+              <Field label="YTD realized short G/L" name="usYtdRealizedShortGainLossUsd" defaultValue={assumptionNumber(policy, 'US', 'ytdRealizedShortGainLossUsd', 0)} suffix="USD" />
+              <Field label="YTD realized long G/L" name="usYtdRealizedLongGainLossUsd" defaultValue={assumptionNumber(policy, 'US', 'ytdRealizedLongGainLossUsd', 0)} suffix="USD" />
+              <Field label="Short loss carryover" name="usShortTermCapitalLossCarryoverUsd" defaultValue={assumptionNumber(policy, 'US', 'shortTermCapitalLossCarryoverUsd', 0)} suffix="USD" />
+              <Field label="Long loss carryover" name="usLongTermCapitalLossCarryoverUsd" defaultValue={assumptionNumber(policy, 'US', 'longTermCapitalLossCarryoverUsd', 0)} suffix="USD" />
+              <Field label="FTC carryover" name="usForeignTaxCreditCarryoverUsd" defaultValue={assumptionNumber(policy, 'US', 'foreignTaxCreditCarryoverUsd', 0)} suffix="USD" />
+              <Field label="FTC foreign-source share" name="usFtcForeignSourceGainPct" defaultValue={assumptionNumber(policy, 'US', 'ftcForeignSourceGainPct', 0)} suffix="%" />
               <Field label="Wash sale before" name="usWashSaleBefore" defaultValue={assumptionNumber(policy, 'US', 'washSaleWindowDaysBefore', 30)} suffix="days" />
               <Field label="Wash sale after" name="usWashSaleAfter" defaultValue={assumptionNumber(policy, 'US', 'washSaleWindowDaysAfter', 30)} suffix="days" />
+              <div className="sm:col-span-2 rounded-md border border-line-subtle bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+                MFJ uses the official 2026 federal brackets and long-term capital-gain thresholds. Later federal years and the 2025 California schedule are inflation projections. Fallback rates apply to unsupported filing statuses or states. FTC foreign-source share must be supported by sourcing or treaty analysis; zero prevents the planner from claiming a US credit automatically.
+              </div>
             </div>
           </Card>
 
@@ -195,7 +213,15 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
               <Field label="Stock basic deduction" name="krStockBasicDeductionKrw" defaultValue={assumptionNumber(policy, 'KR', 'stockBasicDeductionKrw', 2500000)} suffix="KRW" />
               <Field label="Foreign stock rate" name="krForeignStockFlatRatePct" defaultValue={assumptionNumber(policy, 'KR', 'foreignStockFlatRatePct', 22)} suffix="%" />
               <Field label="Foreign taxable residence threshold" name="krForeignStockTaxableResidenceYearsThreshold" defaultValue={assumptionNumber(policy, 'KR', 'foreignStockTaxableResidenceYearsThreshold', 5)} suffix="years" />
-              <Field label="Foreign tax credit mode" name="krForeignTaxCreditMode" defaultValue={assumptionString(policy, 'KR', 'foreignTaxCreditMode', 'manual')} type="text" />
+              <Field label="Resident through year" name="krResidentThroughYear" defaultValue={assumptionNumber(policy, 'KR', 'residentThroughYear', 2027)} />
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">Cross-border credit model</span>
+                <select name="krForeignTaxCreditMode" defaultValue={assumptionString(policy, 'KR', 'foreignTaxCreditMode', 'manual')} className="w-full rounded-md border border-line bg-card px-3 py-2 text-[13px] text-ink outline-none">
+                  <option value="manual">No automatic credit</option>
+                  <option value="estimated-us-source">KR credit for modeled US federal tax</option>
+                  <option value="estimated-us-ftc">US Form 1116-style limit for KR tax</option>
+                </select>
+              </label>
               <div className="sm:col-span-2 grid gap-2">
                 <CheckField label="KR domestic major shareholder taxable scope" name="krDomesticMajorShareholder" defaultChecked={assumptionBool(policy, 'KR', 'domesticMajorShareholder', false)} />
                 <CheckField label="KR listed off-market sale taxable scope" name="krDomesticListedOffMarketSale" defaultChecked={assumptionBool(policy, 'KR', 'domesticListedOffMarketSale', false)} />
@@ -215,6 +241,27 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
             <button type="submit" className="rounded-md border border-line bg-ink px-4 py-2 text-[13px] font-medium text-card transition-opacity hover:opacity-90">
               Save local tax assumptions
             </button>
+          </div>
+        </Card>
+
+        <Card title="Calculation basis" info="Primary sources used by the planner. Later-year inflation and treaty sourcing remain planning assumptions, not filing conclusions.">
+          <div className="grid gap-3 text-[12px] text-ink-2 md:grid-cols-2 xl:grid-cols-4">
+            <a href="https://www.irs.gov/newsroom/irs-releases-tax-inflation-adjustments-for-tax-year-2026-including-amendments-from-the-one-big-beautiful-bill" target="_blank" rel="noreferrer" className="rounded-md border border-line-subtle bg-surface px-3 py-2 hover:border-info">
+              <span className="block font-medium text-ink">2026 federal brackets</span>
+              <span className="mt-1 block text-[11px] text-ink-3">IRS Rev. Proc. 2025-32 summary</span>
+            </a>
+            <a href="https://www.irs.gov/taxtopics/tc409" target="_blank" rel="noreferrer" className="rounded-md border border-line-subtle bg-surface px-3 py-2 hover:border-info">
+              <span className="block font-medium text-ink">Capital gain netting</span>
+              <span className="mt-1 block text-[11px] text-ink-3">IRS Topic 409</span>
+            </a>
+            <a href="https://www.irs.gov/individuals/international-taxpayers/foreign-tax-credit-how-to-figure-the-credit" target="_blank" rel="noreferrer" className="rounded-md border border-line-subtle bg-surface px-3 py-2 hover:border-info">
+              <span className="block font-medium text-ink">Foreign tax credit limit</span>
+              <span className="mt-1 block text-[11px] text-ink-3">IRS Form 1116 overview</span>
+            </a>
+            <a href="https://www.ftb.ca.gov/forms/2025/2025-540-booklet.html" target="_blank" rel="noreferrer" className="rounded-md border border-line-subtle bg-surface px-3 py-2 hover:border-info">
+              <span className="block font-medium text-ink">California schedule</span>
+              <span className="mt-1 block text-[11px] text-ink-3">2025 FTB Schedule Y</span>
+            </a>
           </div>
         </Card>
       </form>

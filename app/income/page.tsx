@@ -95,6 +95,9 @@ export default function IncomePage() {
             yKey="income"
             height={300}
             color="var(--accent-success)"
+            yAxisPrefix="₩"
+            yAxisSuffix="K"
+            yAxisLabel="KRW thousand"
           />
           <p className="mt-2 text-[11px] text-ink-3">Values are KRW thousands after applying the configured FX snapshot.</p>
         </Card>

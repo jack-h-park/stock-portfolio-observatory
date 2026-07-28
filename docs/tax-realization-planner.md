@@ -96,9 +96,43 @@ The planner now separates the strategic question from the lot execution question
 
 Current implementation is a deterministic planning estimator. It does not yet optimize partial share quantities, realized loss carryforwards, treaty positions, prior-year realized gains, or foreign tax credit limits.
 
+## Saved Execution Plans
+
+- Saving a plan freezes its calculation date, strategy, annual profile result, lot quantities, planned dates, and estimated tax summary.
+- Saved plans are local-only in ignored `data/tax-plans.json`; they must never be committed to the public repository.
+- Plan-level status is `draft`, `reviewed`, `active`, `completed`, or `archived`.
+- Instruction-level status is `planned`, `reviewed`, `executed`, or `skipped`, with optional actual proceeds, actual gain/loss, execution date, and note.
+- Execution records do not mutate the original calculation snapshot.
+- The saved-plan view recomputes the same strategy from current inputs and surfaces proceeds, tax, after-tax cash, and instruction-count drift.
+
+## Progressive US Tax Estimate
+
+The planner estimates incremental tax above projected wage income instead of multiplying gains by one blended rate:
+
+- 2026 MFJ ordinary brackets and the 0% / 15% / 20% long-term capital-gain thresholds use IRS Revenue Procedure 2025-32.
+- Short- and long-term gains, YTD amounts, and same-character carryovers are netted before cross-netting.
+- NIIT uses the configured rate and statutory MFJ threshold; California capital gains use ordinary-income brackets.
+- The California base is the 2025 FTB Schedule Y. Future brackets are projections using the editable inflation assumption because an official future schedule may not exist yet.
+- Form 1116-style credit is limited to modeled federal regular tax attributable to the manually designated foreign-source share. State tax and NIIT are not included in that federal credit limit.
+
+The W-2 projection is a planning proxy, not completed taxable income. Itemized deductions, other income, AMT, special-rate assets, exact sourcing/treaty positions, and transaction-specific wash-sale basis adjustments still require review.
+
+## Progressive US Tax Estimate
+
+The planner estimates incremental tax above projected wage income instead of multiplying gains by one blended rate:
+
+- 2026 MFJ ordinary brackets and the 0% / 15% / 20% long-term capital-gain thresholds use IRS Revenue Procedure 2025-32.
+- Short- and long-term gains, YTD amounts, and same-character carryovers are netted before cross-netting.
+- NIIT uses the configured rate and statutory MFJ threshold; California capital gains use ordinary-income brackets.
+- The California base is the 2025 FTB Schedule Y. Future brackets are projections using the editable inflation assumption because an official future schedule may not exist yet.
+- Form 1116-style credit is limited to modeled federal regular tax attributable to the manually designated foreign-source share. State tax and NIIT are not included in that federal credit limit.
+
+The W-2 projection is a planning proxy, not completed taxable income. Itemized deductions, other income, AMT, special-rate assets, exact sourcing/treaty positions, and transaction-specific wash-sale basis adjustments still require review.
+
 ## UX Shape
 
-- `/tax-planning`: Multi-year horizon, annual cash target, objective selector, annual filing profile, market timing scenario comparison, year-by-year market allocation, candidate sale table, and warnings.
+- `/tax-planning`: Deterministic strategy controls, selected-plan takeaway, scenario comparison, monthly timeline, saved-plan creation, annual tax roll-up, and warnings.
+- `/tax-planning/plans/[id]`: Immutable plan snapshot, current-data drift comparison, execution progress, and lot-level review/execution controls.
 - `/tax-settings`: Filing profile timeline, residency/taxable-scope questions, rates, deductions, wash-sale settings, FX policy, foreign tax credit mode, and manual overrides.
 - Position detail: Add a tax-lot realization panel showing best/worst lots to sell for the active scenario.
 - Data ops: Add missing cost basis, stale FX, ambiguous taxable scope, and missing account-type alerts.
@@ -113,7 +147,8 @@ Current implementation is a deterministic planning estimator. It does not yet op
 
 ## Quality Gates
 
-- Unit-test jurisdiction engines with synthetic lots for gain, loss, holding-period, deduction, and wash-sale scenarios.
+- Unit-test jurisdiction engines with synthetic lots for gain, loss, holding-period, deduction, taxable scope, and cross-border credit scenarios.
+- Unit-test saved-plan persistence and execution-state separation.
 - Snapshot-test generated plan explanations so assumptions do not disappear silently.
 - Add reconciliation checks for missing basis, quantity mismatches, stale prices, and stale FX before enabling recommendations.
 - Keep all private tax settings ignored by git; only commit synthetic examples.

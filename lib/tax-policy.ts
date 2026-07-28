@@ -161,7 +161,7 @@ export function normalizeTaxPolicy(raw: TaxPolicy): TaxPolicy {
   const horizon = Number.isInteger(raw.planningHorizonYears) ? Number(raw.planningHorizonYears) : 5
   const normalized: TaxPolicy = {
     ...raw,
-    version: Math.max(Number(raw.version || 1), 2),
+    version: Math.max(Number(raw.version || 1), 3),
     activeScenario,
     baseCurrency: String(raw.baseCurrency || 'KRW').toUpperCase(),
     planningHorizonYears: Math.min(Math.max(horizon, 1), 10),
@@ -180,7 +180,7 @@ export function policyFromFormData(formData: FormData): TaxPolicy {
   const current = getTaxPolicyState().policy
   const policy: TaxPolicy = JSON.parse(JSON.stringify(current))
   const scenario = String(formData.get('activeScenario') ?? policy.activeScenario)
-  policy.version = Math.max(Number(policy.version || 1), 2)
+  policy.version = Math.max(Number(policy.version || 1), 3)
   policy.activeScenario = validScenario(scenario, 'US_AND_KR')
   policy.baseCurrency = String(formData.get('baseCurrency') ?? (policy.baseCurrency || 'KRW')).toUpperCase()
   policy.planningHorizonYears = Math.min(Math.max(numeric(formData.get('planningHorizonYears')) ?? 5, 1), 10)
@@ -192,12 +192,28 @@ export function policyFromFormData(formData: FormData): TaxPolicy {
   setAssumption(policy, 'US', 'lossDeductionLimitUsd', numeric(formData.get('usLossDeductionLimitUsd')) ?? 3000)
   setAssumption(policy, 'US', 'washSaleWindowDaysBefore', numeric(formData.get('usWashSaleBefore')) ?? 30)
   setAssumption(policy, 'US', 'washSaleWindowDaysAfter', numeric(formData.get('usWashSaleAfter')) ?? 30)
+  setAssumption(policy, 'US', 'filingStatus', String(formData.get('usFilingStatus') ?? 'MFJ'))
+  setAssumption(policy, 'US', 'stateCode', String(formData.get('usStateCode') ?? 'CA').toUpperCase())
+  setAssumption(policy, 'US', 'wageBaseYear', numeric(formData.get('usWageBaseYear')) ?? new Date().getFullYear() - 1)
+  setAssumption(policy, 'US', 'wageBaseUsd', numeric(formData.get('usWageBaseUsd')) ?? 0)
+  setAssumption(policy, 'US', 'annualIncomeGrowthPct', numeric(formData.get('usAnnualIncomeGrowthPct')) ?? 0)
+  setAssumption(policy, 'US', 'federalBracketInflationPct', numeric(formData.get('usFederalBracketInflationPct')) ?? 2.5)
+  setAssumption(policy, 'US', 'californiaBracketInflationPct', numeric(formData.get('usCaliforniaBracketInflationPct')) ?? 2.5)
+  setAssumption(policy, 'US', 'planningUsdKrwRate', numeric(formData.get('usPlanningUsdKrwRate')))
+  setAssumption(policy, 'US', 'taxInputYear', numeric(formData.get('usTaxInputYear')) ?? new Date().getFullYear())
+  setAssumption(policy, 'US', 'ytdRealizedShortGainLossUsd', numeric(formData.get('usYtdRealizedShortGainLossUsd')) ?? 0)
+  setAssumption(policy, 'US', 'ytdRealizedLongGainLossUsd', numeric(formData.get('usYtdRealizedLongGainLossUsd')) ?? 0)
+  setAssumption(policy, 'US', 'shortTermCapitalLossCarryoverUsd', numeric(formData.get('usShortTermCapitalLossCarryoverUsd')) ?? 0)
+  setAssumption(policy, 'US', 'longTermCapitalLossCarryoverUsd', numeric(formData.get('usLongTermCapitalLossCarryoverUsd')) ?? 0)
+  setAssumption(policy, 'US', 'foreignTaxCreditCarryoverUsd', numeric(formData.get('usForeignTaxCreditCarryoverUsd')) ?? 0)
+  setAssumption(policy, 'US', 'ftcForeignSourceGainPct', numeric(formData.get('usFtcForeignSourceGainPct')) ?? 0)
 
   setAssumption(policy, 'KR', 'stockBasicDeductionKrw', numeric(formData.get('krStockBasicDeductionKrw')) ?? 2500000)
   setAssumption(policy, 'KR', 'foreignStockFlatRatePct', numeric(formData.get('krForeignStockFlatRatePct')) ?? 22)
   setAssumption(policy, 'KR', 'domesticMajorShareholder', bool(formData.get('krDomesticMajorShareholder')))
   setAssumption(policy, 'KR', 'domesticListedOffMarketSale', bool(formData.get('krDomesticListedOffMarketSale')))
   setAssumption(policy, 'KR', 'foreignStockTaxableResidenceYearsThreshold', numeric(formData.get('krForeignStockTaxableResidenceYearsThreshold')) ?? 5)
+  setAssumption(policy, 'KR', 'residentThroughYear', numeric(formData.get('krResidentThroughYear')))
   setAssumption(policy, 'KR', 'foreignTaxCreditMode', String(formData.get('krForeignTaxCreditMode') ?? 'manual'))
 
   const profileYears = formData
@@ -248,4 +264,11 @@ export function assumptionBool(policy: TaxPolicy, jurisdiction: string, key: str
 export function assumptionString(policy: TaxPolicy, jurisdiction: string, key: string, fallback: string) {
   const raw = policy.jurisdictions.find((item) => item.code === jurisdiction)?.manualAssumptions[key]
   return typeof raw === 'string' ? raw : fallback
+}
+
+export function projectedWagesUsd(policy: TaxPolicy, year: number) {
+  const baseYear = assumptionNumber(policy, 'US', 'wageBaseYear', year)
+  const baseWages = assumptionNumber(policy, 'US', 'wageBaseUsd', 0)
+  const growthRate = assumptionNumber(policy, 'US', 'annualIncomeGrowthPct', 0) / 100
+  return baseWages * Math.pow(1 + growthRate, Math.max(year - baseYear, 0))
 }

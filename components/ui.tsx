@@ -142,7 +142,7 @@ export function StatCard({
   accent?: boolean
 }) {
   return (
-    <div className="relative rounded-md border border-line bg-card px-4 py-3 shadow-card">
+    <div className="stat-card relative min-w-0 rounded-md border border-line bg-card px-4 py-3 shadow-card">
       {accent && (
         <span
           aria-hidden
@@ -155,7 +155,7 @@ export function StatCard({
         {info && <InfoTooltip label={label}>{info}</InfoTooltip>}
       </div>
       <div
-        className={clsx('mt-1 text-[24px] font-medium leading-tight tabular-nums', {
+        className={clsx('stat-card-value mt-1 max-w-full font-medium leading-tight tabular-nums', {
           'text-ink': tone === 'neutral',
           'text-info': tone === 'info',
           'text-success': tone === 'success',

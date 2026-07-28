@@ -29,6 +29,7 @@ const SECTIONS: { label: string; items: { href: string; label: string }[] }[] = 
     label: 'Records',
     items: [
       { href: '/holdings', label: 'Holdings' },
+      { href: '/cost-basis', label: 'Cost Basis' },
       { href: '/dividends', label: 'Dividends' },
       { href: '/transactions', label: 'Transactions' },
     ],

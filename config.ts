@@ -33,6 +33,7 @@ export const config = {
   ),
   stockTaxPolicyPath: env('STOCK_TAX_POLICY_PATH', repoPath('data/tax-policy.json')),
   stockTaxPolicyExamplePath: env('STOCK_TAX_POLICY_EXAMPLE_PATH', repoPath('data/tax-policy.example.json')),
+  stockTaxPlansPath: env('STOCK_TAX_PLANS_PATH', repoPath('data/tax-plans.json')),
 }
 
 export type AppConfig = typeof config

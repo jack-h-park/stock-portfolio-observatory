@@ -6,6 +6,7 @@ import { Badge, Button } from '@/components/ui'
 import { DataTable } from '@/components/DataTable'
 import { fmtMoney, fmtNumber } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
+import type { CostBasisHolding, CostBasisStatus } from '@/lib/adapters/portfolio-db'
 
 type SortDirection = 'asc' | 'desc'
 type SortConfig = { key: string; direction: SortDirection }
@@ -132,6 +133,24 @@ function SortBar({
 
 function rowMatches(row: any, filters: Record<string, string>) {
   return Object.entries(filters).every(([key, value]) => value === 'All' || row[key] === value)
+}
+
+function fmtPct(value: number | null | undefined, digits = 2) {
+  return value == null ? 'n/a' : `${fmtNumber(value, digits)}%`
+}
+
+const COST_BASIS_STATUS_LABEL: Record<CostBasisStatus, string> = {
+  ready: 'Ready',
+  missing_cost: 'Missing cost',
+  estimated: 'Estimated',
+  unpriced: 'Unpriced',
+}
+
+const COST_BASIS_STATUS_TONE: Record<CostBasisStatus, 'success' | 'warning' | 'danger' | 'neutral'> = {
+  ready: 'success',
+  missing_cost: 'danger',
+  estimated: 'warning',
+  unpriced: 'neutral',
 }
 
 export function HoldingsTable({ rows }: { rows: any[] }) {
@@ -289,6 +308,205 @@ export function HoldingsTable({ rows }: { rows: any[] }) {
           { key: 'long_term_qty', label: 'Long', align: 'right', render: (r) => fmtNumber(r.long_term_qty, 2) },
           { key: 'short_term_qty', label: 'Short', align: 'right', render: (r) => fmtNumber(r.short_term_qty, 2) },
           { key: 'lot_count', label: 'Lots', align: 'right' },
+        ]}
+      />
+    </div>
+  )
+}
+
+export function CostBasisHoldingsTable({ rows }: { rows: CostBasisHolding[] }) {
+  const [market, setMarket] = useState('All')
+  const [brokerage, setBrokerage] = useState('All')
+  const [account, setAccount] = useState('All')
+  const [status, setStatus] = useState('All')
+  const [query, setQuery] = useState('')
+  const [sort, setSort] = useState<SortConfig>({ key: 'base_market_value', direction: 'desc' })
+  const scopedRows = useMemo(() => rows.filter((r) => market === 'All' || r.market === market), [rows, market])
+  const brokerRows = useMemo(
+    () => scopedRows.filter((r) => brokerage === 'All' || r.brokerage === brokerage),
+    [scopedRows, brokerage]
+  )
+  const filtered = useMemo(
+    () =>
+      sortRows(
+        rows.filter(
+          (row) =>
+            rowMatches(row, { market, brokerage, account }) &&
+            (status === 'All' || row.cost_status === status) &&
+            includesSearch(row, query)
+        ),
+        sort
+      ),
+    [rows, market, brokerage, account, status, query, sort]
+  )
+  const totals = useMemo(
+    () =>
+      filtered.reduce(
+        (acc, row) => {
+          acc.value += Number(row.native_market_value ?? 0)
+          acc.cost += Number(row.native_cost ?? 0)
+          acc.baseValue += Number(row.base_market_value ?? 0)
+          if (row.cost_status === 'missing_cost') acc.missing += 1
+          if (row.cost_status === 'estimated') acc.estimated += 1
+          return acc
+        },
+        { value: 0, cost: 0, baseValue: 0, missing: 0, estimated: 0 }
+      ),
+    [filtered]
+  )
+  const currencies = unique(filtered.map((r) => r.currency))
+  const singleCurrency = currencies.length === 1 ? currencies[0] : null
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+        <SearchBox value={query} onChange={setQuery} placeholder="symbol, name, account, broker" />
+        <SortBar
+          value={sort}
+          onChange={setSort}
+          options={[
+            { key: 'base_market_value', label: 'Value' },
+            { key: 'native_cost', label: 'Total cost' },
+            { key: 'native_unrealized_gl', label: 'Gain $' },
+            { key: 'percent_of_total', label: '% total' },
+            { key: 'ticker', label: 'Symbol A-Z', direction: 'asc' },
+          ]}
+        />
+      </div>
+      <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+        <FilterBar label="Market" value={market} options={['All', ...unique(rows.map((r) => r.market))]} onChange={setMarket} />
+        <FilterBar
+          label="Broker"
+          value={brokerage}
+          options={['All', ...unique(scopedRows.map((r) => r.brokerage))]}
+          onChange={setBrokerage}
+        />
+        <FilterBar label="Account" value={account} options={['All', ...unique(brokerRows.map((r) => r.account))]} onChange={setAccount} />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">Status</span>
+          {(['All', ...Object.keys(COST_BASIS_STATUS_LABEL)] as string[]).map((option) => (
+            <Button
+              key={option}
+              variant={status === option ? 'solid' : 'outline'}
+              size="sm"
+              onClick={() => setStatus(option)}
+            >
+              {option === 'All' ? 'All' : COST_BASIS_STATUS_LABEL[option as CostBasisStatus]}
+            </Button>
+          ))}
+        </div>
+      </div>
+      <div className="grid gap-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] sm:grid-cols-5">
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Filtered</div>
+          <div className="font-medium tabular-nums text-ink">{fmtNumber(filtered.length)} / {fmtNumber(rows.length)}</div>
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Total value</div>
+          <div className="font-medium tabular-nums text-ink">
+            {singleCurrency ? fmtMoney(totals.value, singleCurrency) : fmtMoney(totals.baseValue, 'KRW')}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Total cost</div>
+          <div className="font-medium tabular-nums text-ink">
+            {singleCurrency ? fmtMoney(totals.cost, singleCurrency) : 'Mixed currencies'}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Missing cost</div>
+          <div className={totals.missing > 0 ? 'font-medium tabular-nums text-danger' : 'font-medium tabular-nums text-success'}>
+            {fmtNumber(totals.missing)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Estimated</div>
+          <div className={totals.estimated > 0 ? 'font-medium tabular-nums text-warning' : 'font-medium tabular-nums text-ink'}>
+            {fmtNumber(totals.estimated)}
+          </div>
+        </div>
+      </div>
+      <DataTable
+        rows={filtered}
+        columns={[
+          {
+            key: 'ticker',
+            label: 'Symbol',
+            render: (r) => (
+              <Link href={positionHref(r.market, r.ticker)} className="font-mono text-[12px] font-medium text-info hover:underline">
+                {r.ticker}
+              </Link>
+            ),
+          },
+          { key: 'name', label: 'Name', render: (r) => <div className="min-w-[14rem] max-w-[20rem] truncate text-ink">{r.name}</div> },
+          { key: 'brokerage', label: 'Broker' },
+          { key: 'account', label: 'Account', render: (r) => <span className="whitespace-nowrap">{r.account}</span> },
+          { key: 'quantity', label: 'Shares', align: 'right', render: (r) => fmtNumber(r.quantity, 6) },
+          { key: 'native_price', label: 'Price', align: 'right', render: (r) => (r.native_price == null ? 'n/a' : fmtMoney(r.native_price, r.currency)) },
+          {
+            key: 'native_market_value',
+            label: 'Value',
+            align: 'right',
+            render: (r) => (r.native_market_value == null ? 'n/a' : fmtMoney(r.native_market_value, r.currency)),
+          },
+          {
+            key: 'native_cost',
+            label: 'Total Cost',
+            align: 'right',
+            render: (r) => (r.native_cost == null ? 'n/a' : fmtMoney(r.native_cost, r.currency)),
+          },
+          {
+            key: 'native_unrealized_gl',
+            label: 'Gain $',
+            align: 'right',
+            render: (r) =>
+              r.native_unrealized_gl == null ? (
+                'n/a'
+              ) : (
+                <span className={r.native_unrealized_gl >= 0 ? 'text-success' : 'text-danger'}>
+                  {fmtMoney(r.native_unrealized_gl, r.currency)}
+                </span>
+              ),
+          },
+          {
+            key: 'native_unrealized_gl_pct',
+            label: 'Gain %',
+            align: 'right',
+            render: (r) => (
+              <span className={Number(r.native_unrealized_gl_pct ?? 0) >= 0 ? 'text-success' : 'text-danger'}>
+                {fmtPct(r.native_unrealized_gl_pct)}
+              </span>
+            ),
+          },
+          {
+            key: 'day_change',
+            label: 'Day $',
+            align: 'right',
+            render: (r) =>
+              r.day_change == null ? (
+                'n/a'
+              ) : (
+                <span className={r.day_change >= 0 ? 'text-success' : 'text-danger'}>{fmtMoney(r.day_change, r.currency)}</span>
+              ),
+          },
+          {
+            key: 'day_change_pct',
+            label: 'Day %',
+            align: 'right',
+            render: (r) => (
+              <span className={Number(r.day_change_pct ?? 0) >= 0 ? 'text-success' : 'text-danger'}>{fmtPct(r.day_change_pct)}</span>
+            ),
+          },
+          { key: 'percent_of_total', label: '% of Total', align: 'right', render: (r) => fmtPct(r.percent_of_total) },
+          {
+            key: 'cost_status',
+            label: 'Sync Status',
+            render: (r) => {
+              const costStatus = r.cost_status as CostBasisStatus
+              return <Badge tone={COST_BASIS_STATUS_TONE[costStatus]}>{COST_BASIS_STATUS_LABEL[costStatus]}</Badge>
+            },
+          },
+          { key: 'cost_note', label: 'Why', render: (r) => <div className="max-w-[20rem] text-[11px] text-ink-3">{r.cost_note}</div> },
         ]}
       />
     </div>

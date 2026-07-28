@@ -80,3 +80,13 @@ body {
 /* React Flow node overrides to match jp tokens */
 .react-flow__node { font-family: var(--font-sans); }
 .react-flow__attribution { display: none; }
+
+.stat-card {
+  container-type: inline-size;
+}
+
+.stat-card-value {
+  font-size: clamp(16px, 10.5cqw, 24px);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}

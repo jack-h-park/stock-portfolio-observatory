@@ -14,6 +14,8 @@ const dbPath = process.env.STOCK_DB_PATH || path.join(outDir, 'stock-portfolio-o
 const fxRatesPath = process.env.STOCK_FX_RATES_PATH || path.join(process.cwd(), 'data/fx-rates.json')
 const krPricesPath = process.env.STOCK_KR_PRICES_PATH || path.join(process.cwd(), 'data/kr-prices.json')
 const usPricesPath = process.env.STOCK_US_PRICES_PATH || path.join(process.cwd(), 'data/us-prices.json')
+const historicalPricesPath = process.env.STOCK_HISTORICAL_PRICES_PATH || path.join(process.cwd(), 'data/historical-prices.json')
+const historicalFxRatesPath = process.env.STOCK_HISTORICAL_FX_RATES_PATH || path.join(process.cwd(), 'data/historical-fx-rates.json')
 const usPdfEvidencePath = process.env.STOCK_US_PDF_EVIDENCE_PATH || path.join(process.cwd(), 'data/us-pdf-evidence.json')
 const manualMappingsPath = process.env.STOCK_MANUAL_MAPPINGS_PATH || path.join(process.cwd(), 'data/manual-mappings.json')
 const refreshRunsPath = process.env.STOCK_REFRESH_RUNS_PATH || path.join(process.cwd(), 'data/refresh-runs.json')
@@ -343,7 +345,19 @@ function required(value) {
 }
 
 fs.mkdirSync(outDir, { recursive: true })
-if (fs.existsSync(dbPath)) fs.rmSync(dbPath)
+let previousPortfolioSnapshots = []
+if (fs.existsSync(dbPath)) {
+  const previousDb = new Database(dbPath, { readonly: true })
+  try {
+    const hasSnapshots = previousDb
+      .prepare("select 1 from sqlite_master where type = 'table' and name = 'portfolio_snapshots'")
+      .get()
+    if (hasSnapshots) previousPortfolioSnapshots = previousDb.prepare('select * from portfolio_snapshots order by snapshot_date').all()
+  } finally {
+    previousDb.close()
+  }
+  fs.rmSync(dbPath)
+}
 
 const datasets = Object.fromEntries(Object.entries(sources).map(([name, file]) => [name, readTsv(file)]))
 const db = new Database(dbPath)
@@ -528,6 +542,55 @@ create table evidence_reports (
   row_count integer,
   metrics_json text
 );
+
+create table portfolio_snapshots (
+  id integer primary key,
+  snapshot_date text not null unique,
+  captured_at text not null,
+  global_base_cost real not null,
+  global_base_market_value real,
+  global_base_unrealized_gl real,
+  global_base_return_pct real,
+  market_value_coverage real,
+  kr_market_value real,
+  us_market_value_base real,
+  kr_cost_basis real,
+  us_cost_basis_base real,
+  kr_unrealized_gl real,
+  us_unrealized_gl_base real,
+  kr_return_pct real,
+  us_return_pct real,
+  krw_cost real not null,
+  usd_cost real not null,
+  dividends_krw real not null,
+  dividends_usd real not null,
+  holding_count integer not null,
+  share_count real not null
+);
+
+create index idx_portfolio_snapshots_date on portfolio_snapshots(snapshot_date);
+
+create table historical_prices (
+  id integer primary key,
+  market text not null,
+  ticker text not null,
+  symbol text not null,
+  currency text not null,
+  price_date text not null,
+  close real not null,
+  adj_close real,
+  source text not null,
+  unique(market, ticker, price_date)
+);
+
+create index idx_historical_prices_lookup on historical_prices(market, ticker, price_date);
+
+create table historical_fx_rates (
+  id integer primary key,
+  price_date text not null unique,
+  rate real not null,
+  source text not null
+);
 `)
 
 const now = new Date().toISOString()
@@ -537,9 +600,53 @@ db.prepare('insert into meta (key, value) values (?, ?)').run('payload_dir', pay
 db.prepare('insert into meta (key, value) values (?, ?)').run('fx_rates_path', fxRatesPath)
 db.prepare('insert into meta (key, value) values (?, ?)').run('kr_prices_path', krPricesPath)
 db.prepare('insert into meta (key, value) values (?, ?)').run('us_prices_path', usPricesPath)
+db.prepare('insert into meta (key, value) values (?, ?)').run('historical_prices_path', historicalPricesPath)
+db.prepare('insert into meta (key, value) values (?, ?)').run('historical_fx_rates_path', historicalFxRatesPath)
 db.prepare('insert into meta (key, value) values (?, ?)').run('us_pdf_evidence_path', usPdfEvidencePath)
 db.prepare('insert into meta (key, value) values (?, ?)').run('manual_mappings_path', manualMappingsPath)
 db.prepare('insert into meta (key, value) values (?, ?)').run('refresh_runs_path', refreshRunsPath)
+
+insertMany(db, 'portfolio_snapshots', previousPortfolioSnapshots, [
+  'snapshot_date',
+  'captured_at',
+  'global_base_cost',
+  'global_base_market_value',
+  'global_base_unrealized_gl',
+  'global_base_return_pct',
+  'market_value_coverage',
+  'kr_market_value',
+  'us_market_value_base',
+  'kr_cost_basis',
+  'us_cost_basis_base',
+  'kr_unrealized_gl',
+  'us_unrealized_gl_base',
+  'kr_return_pct',
+  'us_return_pct',
+  'krw_cost',
+  'usd_cost',
+  'dividends_krw',
+  'dividends_usd',
+  'holding_count',
+  'share_count',
+])
+
+const historicalPriceDocument = fs.existsSync(historicalPricesPath)
+  ? JSON.parse(fs.readFileSync(historicalPricesPath, 'utf8'))
+  : { prices: [] }
+const historicalFxDocument = fs.existsSync(historicalFxRatesPath)
+  ? JSON.parse(fs.readFileSync(historicalFxRatesPath, 'utf8'))
+  : { rates: [] }
+insertMany(db, 'historical_prices', historicalPriceDocument.prices ?? [], [
+  'market',
+  'ticker',
+  'symbol',
+  'currency',
+  'price_date',
+  'close',
+  'adj_close',
+  'source',
+])
+insertMany(db, 'historical_fx_rates', historicalFxDocument.rates ?? [], ['price_date', 'rate', 'source'])
 
 insertMany(
   db,
@@ -1493,6 +1600,39 @@ check(
 )
 
 insertMany(db, 'validation_checks', checks, ['name', 'status', 'detail', 'severity'])
+
+const snapshotDate = now.slice(0, 10)
+db.prepare(`
+  insert or replace into portfolio_snapshots (
+    snapshot_date, captured_at, global_base_cost, global_base_market_value,
+    global_base_unrealized_gl, global_base_return_pct, market_value_coverage,
+    kr_market_value, us_market_value_base, kr_cost_basis, us_cost_basis_base,
+    kr_unrealized_gl, us_unrealized_gl_base, kr_return_pct, us_return_pct,
+    krw_cost, usd_cost, dividends_krw, dividends_usd, holding_count, share_count
+  )
+  select
+    ?, ?,
+    coalesce(sum(base_cost), 0),
+    coalesce(sum(base_market_value), 0),
+    coalesce(sum(base_unrealized_gl), 0),
+    case when coalesce(sum(base_cost), 0) > 0 then coalesce(sum(base_unrealized_gl), 0) / sum(base_cost) * 100 else null end,
+    case when count(*) > 0 then avg(case when base_market_value is not null then 1.0 else 0.0 end) else 0 end,
+    coalesce(sum(case when market = 'KR' then base_market_value else 0 end), 0),
+    coalesce(sum(case when market = 'US' then base_market_value else 0 end), 0),
+    coalesce(sum(case when market = 'KR' then base_cost else 0 end), 0),
+    coalesce(sum(case when market = 'US' then base_cost else 0 end), 0),
+    coalesce(sum(case when market = 'KR' then base_unrealized_gl else 0 end), 0),
+    coalesce(sum(case when market = 'US' then base_unrealized_gl else 0 end), 0),
+    case when coalesce(sum(case when market = 'KR' then base_cost else 0 end), 0) > 0 then coalesce(sum(case when market = 'KR' then base_unrealized_gl else 0 end), 0) / sum(case when market = 'KR' then base_cost else 0 end) * 100 else null end,
+    case when coalesce(sum(case when market = 'US' then base_cost else 0 end), 0) > 0 then coalesce(sum(case when market = 'US' then base_unrealized_gl else 0 end), 0) / sum(case when market = 'US' then base_cost else 0 end) * 100 else null end,
+    coalesce(sum(case when currency = 'KRW' then native_cost else 0 end), 0),
+    coalesce(sum(case when currency = 'USD' then native_cost else 0 end), 0),
+    (select coalesce(sum(case when currency = 'KRW' then native_amount else 0 end), 0) from dividends),
+    (select coalesce(sum(case when currency = 'USD' then native_amount else 0 end), 0) from dividends),
+    count(*),
+    coalesce(sum(quantity), 0)
+  from holdings
+`).run(snapshotDate, now)
 
 db.exec(`
 create index idx_holdings_account on holdings(account);
