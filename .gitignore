@@ -40,3 +40,6 @@ public/brand/avatar-jack-square.png
 
 # OS/editor files
 .DS_Store
+
+# Agent tooling scratch — .claude/worktrees holds full repo checkouts
+.claude/
