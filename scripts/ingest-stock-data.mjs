@@ -19,6 +19,10 @@ const historicalFxRatesPath = process.env.STOCK_HISTORICAL_FX_RATES_PATH || path
 const usPdfEvidencePath = process.env.STOCK_US_PDF_EVIDENCE_PATH || path.join(process.cwd(), 'data/us-pdf-evidence.json')
 const manualMappingsPath = process.env.STOCK_MANUAL_MAPPINGS_PATH || path.join(process.cwd(), 'data/manual-mappings.json')
 const refreshRunsPath = process.env.STOCK_REFRESH_RUNS_PATH || path.join(process.cwd(), 'data/refresh-runs.json')
+// Read-only here: the ingest never writes tax policy. It reads one corner of it
+// so a hand-entered assumption can be checked against the transactions the
+// ingest actually sees — see `us_ytd_realized_assumption_reviewed` below.
+const taxPolicyPath = process.env.STOCK_TAX_POLICY_PATH || path.join(process.cwd(), 'data/tax-policy.json')
 
 const sources = {
   holdings: 'summary.noapost.tsv',
@@ -229,6 +233,18 @@ function loadManualMappings() {
     return { version: 1, incomeRules: [], dividendOverrides: [] }
   }
   return JSON.parse(fs.readFileSync(manualMappingsPath, 'utf8'))
+}
+
+// A missing or unparseable policy file is not an ingest failure — the tax pages
+// bootstrap from the example. It is reported as `null` so the check below can
+// say "no policy file" rather than silently reading the assumption as 0.
+function loadTaxPolicy() {
+  if (!fs.existsSync(taxPolicyPath)) return null
+  try {
+    return JSON.parse(fs.readFileSync(taxPolicyPath, 'utf8'))
+  } catch {
+    return null
+  }
 }
 
 function includesText(value, needle) {
@@ -1599,6 +1615,33 @@ check(
   'warning'
 )
 
+// The US year-to-date realized figures are hand-entered assumptions that the tax
+// estimate reads straight through (lib/tax-planning.ts reads
+// `ytdRealizedShortGainLossUsd` / `ytdRealizedLongGainLossUsd`). They ship as 0
+// in the example policy and nothing ever revisits them, so a year with real
+// sales is estimated as if nothing had been sold — and it fails silently,
+// because 0 is a perfectly legitimate value that no schema check can reject.
+// The ingest already knows what was actually sold, so it is the only place that
+// can tell "nothing was sold" apart from "nobody updated the number".
+const taxPolicy = loadTaxPolicy()
+const usTaxAssumptions = (taxPolicy?.jurisdictions ?? []).find((j) => j?.code === 'US')?.manualAssumptions ?? null
+const taxYear = String(usTaxAssumptions?.taxInputYear ?? new Date().getFullYear())
+const usSalesThisYear = transactionRows.filter(
+  (r) => r.market === 'US' && r.type === 'SELL' && String(r.date ?? '').slice(0, 4) === taxYear
+)
+const usSalesProceeds = usSalesThisYear.reduce((sum, r) => sum + Math.abs(Number(r.native_amount) || 0), 0)
+const ytdRealizedAssumed =
+  Number(usTaxAssumptions?.ytdRealizedShortGainLossUsd ?? 0) !== 0 ||
+  Number(usTaxAssumptions?.ytdRealizedLongGainLossUsd ?? 0) !== 0
+check(
+  'us_ytd_realized_assumption_reviewed',
+  usSalesThisYear.length === 0 || ytdRealizedAssumed,
+  usSalesThisYear.length === 0
+    ? `no ${taxYear} US sales to reconcile`
+    : `${usSalesThisYear.length} US sale(s) in ${taxYear} totalling $${usSalesProceeds.toFixed(2)} in proceeds, but ytdRealized*Usd is 0${taxPolicy ? '' : ` (no policy file at ${path.basename(taxPolicyPath)})`}`,
+  'warning'
+)
+
 insertMany(db, 'validation_checks', checks, ['name', 'status', 'detail', 'severity'])
 
 const snapshotDate = now.slice(0, 10)
@@ -1663,9 +1706,16 @@ const report = {
 fs.writeFileSync(path.join(outDir, 'validation-report.json'), JSON.stringify(report, null, 2))
 db.close()
 
+// Two different questions, deliberately answered by two different counts:
+// `failed` decides the exit code — only an ERROR aborts the refresh. The
+// printed line reports EVERY check that did not pass, warnings included,
+// because the refresh cron greps exactly this line to decide whether to alert.
+// Counting warnings as "passing" here made that alert unreachable for the one
+// class of failure it was written to catch: the survivable kind that exits 0.
 const failed = checks.filter((c) => c.status !== 'pass' && c.severity === 'error')
+const notPassing = checks.filter((c) => c.status !== 'pass')
 console.log(`Wrote ${dbPath}`)
-console.log(`Validation: ${checks.length - failed.length}/${checks.length} checks passing`)
+console.log(`Validation: ${checks.length - notPassing.length}/${checks.length} checks passing`)
 if (failed.length) {
   console.error(JSON.stringify(failed, null, 2))
   process.exitCode = 1
