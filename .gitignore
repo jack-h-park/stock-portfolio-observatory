@@ -31,6 +31,8 @@ data/tax-policy.json
 data/tax-plans.json
 data/historical-fx-rates.json
 data/historical-prices.json
+# Parsed broker certificates: every trade, with amounts. Never commit.
+data/kr-statements/
 *.db
 *.sqlite
 *.sqlite3
