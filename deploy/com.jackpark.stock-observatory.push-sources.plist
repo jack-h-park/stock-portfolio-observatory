@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Pushes broker downloads to the machine that reads them, on a timer.
+
+  Installed on the LAPTOP, not the refresh host: exports land wherever the
+  browser was logged in, and this carries them across. The downloading itself
+  stays manual — Chase, Merrill and Fidelity all want a session with MFA — so
+  this removes the second step, not the first.
+
+  A TIMER rather than WatchPaths, which looks like the obvious choice and is the
+  wrong one here. rsync is idempotent, so running it on an unchanged tree costs
+  seconds; an event, by contrast, arrives once. A laptop asleep when the file
+  lands, off the network when it fires, or holding a half-written download gets
+  no second chance from WatchPaths. The timer simply catches up, and a partial
+  file that slipped through is corrected on the next pass rather than sitting
+  wrong on the far side forever.
+
+  Failure is not silent even though this is. The refresh host's own checks —
+  expected_us_source_files_present, expected_crypto_source_files_present,
+  source_file_dates_plausible — report sources that never arrived, so a push
+  that has been broken for hours surfaces there. logs/push-sources.log says why.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.jackpark.stock-observatory.push-sources</string>
+  <key>WorkingDirectory</key>
+  <string>__WORKDIR__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__WORKDIR__/scripts/push-sources.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StartInterval</key>
+  <integer>3600</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>LowPriorityIO</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>__WORKDIR__/logs/push-sources.log</string>
+  <key>StandardErrorPath</key>
+  <string>__WORKDIR__/logs/push-sources.log</string>
+</dict>
+</plist>

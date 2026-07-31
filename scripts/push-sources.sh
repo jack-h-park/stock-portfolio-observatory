@@ -26,6 +26,21 @@
 
 set -euo pipefail
 
+# launchd starts this with almost no environment — not a login shell, so nothing
+# has read .env.local. Without this the timed run would silently use the built-in
+# defaults below while a hand-run picked up the configured paths, and the two
+# would push different trees to different places. Read it, but let a real
+# environment variable win so `--host` and one-off overrides still behave.
+ENV_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/.env.local"
+if [ -f "$ENV_FILE" ]; then
+  while IFS='=' read -r key value; do
+    case "$key" in
+      STOCK_DATA_DIR|STOCK_PROD_HOST|STOCK_PROD_DATA_DIR)
+        [ -z "${!key:-}" ] && export "$key=${value%\"}" ;;
+    esac
+  done < <(grep -E '^(STOCK_DATA_DIR|STOCK_PROD_HOST|STOCK_PROD_DATA_DIR)=' "$ENV_FILE" || true)
+fi
+
 LOCAL_DIR="${STOCK_DATA_DIR:-$HOME/workspace/data/stock-management}"
 HOST="${STOCK_PROD_HOST:-hermes-runner@imac-hermes}"
 REMOTE_DIR="${STOCK_PROD_DATA_DIR:-workspace/data/stock-management}"

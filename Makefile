@@ -5,6 +5,9 @@ PLIST_DST   := $(HOME)/Library/LaunchAgents/$(PLIST_LABEL).plist
 REFRESH_LABEL := $(PLIST_LABEL).refresh
 REFRESH_PLIST_SRC := deploy/$(REFRESH_LABEL).plist
 REFRESH_PLIST_DST := $(HOME)/Library/LaunchAgents/$(REFRESH_LABEL).plist
+PUSH_LABEL := $(PLIST_LABEL).push-sources
+PUSH_PLIST_SRC := deploy/$(PUSH_LABEL).plist
+PUSH_PLIST_DST := $(HOME)/Library/LaunchAgents/$(PUSH_LABEL).plist
 PORT        := 3101
 
 # launchd needs an absolute pnpm path + explicit PATH because it does not run a
@@ -12,7 +15,7 @@ PORT        := 3101
 PNPM_BIN := $(shell command -v pnpm)
 NODE_BIN := $(dir $(shell command -v node))
 
-.PHONY: install ingest refresh dev build start stop restart redeploy status refresh-status wait-listen install-service install-refresh-service uninstall-service uninstall-refresh-service logs typecheck
+.PHONY: install ingest refresh dev build start stop restart redeploy status refresh-status wait-listen install-service install-refresh-service uninstall-service uninstall-refresh-service install-push-service uninstall-push-service push-status push-sources logs typecheck
 
 install:
 	pnpm install
@@ -94,3 +97,24 @@ refresh-status:
 
 logs:
 	tail -f logs/observatory.out.log logs/observatory.err.log
+
+# Runs on the LAPTOP, not the refresh host: broker exports land wherever the
+# browser was logged in. Hourly rather than on file-change — rsync is idempotent,
+# so an unchanged tree costs seconds, while an event arrives once and is lost to
+# a sleeping laptop, a dropped network, or a half-written download.
+install-push-service:
+	mkdir -p $(HOME)/Library/LaunchAgents logs
+	sed -e "s|__WORKDIR__|$(CURDIR)|g" $(PUSH_PLIST_SRC) > $(PUSH_PLIST_DST)
+	-launchctl bootout gui/$(shell id -u)/$(PUSH_LABEL) 2>/dev/null
+	launchctl bootstrap gui/$(shell id -u) $(PUSH_PLIST_DST)
+	@echo "installed: $(PUSH_PLIST_DST) (hourly; log: $(CURDIR)/logs/push-sources.log)"
+
+uninstall-push-service:
+	-launchctl bootout gui/$(shell id -u)/$(PUSH_LABEL)
+	rm -f $(PUSH_PLIST_DST)
+
+push-status:
+	@launchctl print gui/$(shell id -u)/$(PUSH_LABEL) 2>/dev/null | grep -E 'state|runs|last exit code|path' || echo "$(PUSH_LABEL): not loaded"
+
+push-sources:
+	./scripts/push-sources.sh
