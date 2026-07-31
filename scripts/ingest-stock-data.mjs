@@ -805,6 +805,19 @@ function krwOn(nativeAmount, currency, date) {
   return rate == null ? null : nativeAmount * rate
 }
 
+/** Dollar amount at the trade date, for figures the US tax engine consumes. */
+function usdOn(nativeAmount, currency, date) {
+  if (nativeAmount == null) return null
+  if (currency === 'USD') return nativeAmount
+  let best = null
+  for (const entry of historicalFxDates) {
+    if (entry.date > date) break
+    best = entry
+  }
+  const rate = best?.rate ?? fxRate('USD')?.rate ?? null
+  return rate ? nativeAmount / rate : null
+}
+
 /** Won amount for a Korea row: the parser's figure when it had one, else converted. */
 function krAmount(row, krwKey, nativeKey = 'Native Amount') {
   const explicit = number(row[krwKey])
@@ -3054,16 +3067,38 @@ const ytdSalesDetail = `${usSalesThisYear.length} US sale(s) in ${taxYear} total
 // What the data says was realized, rather than only whether somebody typed
 // something. A filing supersedes the replay for a year it covers, so the
 // comparison uses whichever basis is authoritative for that year.
-const usRealizedForTaxYear = realizedRows.filter(
-  (r) => r.market === 'US' && r.tax_year === taxYear && !r.superseded_by
-)
-const computedShortUsd = usRealizedForTaxYear
-  .filter((r) => text(r.tax_term).toLowerCase().startsWith('short'))
-  .reduce((sum, r) => sum + (Number(r.native_realized_gl) || 0), 0)
-const computedLongUsd = usRealizedForTaxYear
-  .filter((r) => text(r.tax_term).toLowerCase().startsWith('long'))
-  .reduce((sum, r) => sum + (Number(r.native_realized_gl) || 0), 0)
+// WORLDWIDE, not US-market-only.
+//
+// `ytdRealized*Usd` is passed to estimateUsCapitalGainTax as `ytdShortGainUsd`,
+// where it joins the same pool as the projected gains — and that pool is every
+// priced lot regardless of market, because a US person reports worldwide capital
+// gains. The US-market-only sub-estimate that backs the foreign-tax-credit
+// limitation passes ytd 0 instead, which is the tell: scope is already decided
+// upstream, and this check only has to match it.
+//
+// Comparing a correctly worldwide assumption against a US-only replay reported a
+// disagreement that was really a scope mismatch — KRW 740,800 of Korean gains
+// read as a $573 discrepancy in a figure that was right.
+//
+// Non-USD rows convert at their own trade date, not today's rate: a gain is
+// realized in dollars on the day it is realized, and this portfolio's Korean
+// sales sit six months back.
+const realizedForTaxYear = realizedRows.filter((r) => r.tax_year === taxYear && !r.superseded_by)
+const realizedUsdOf = (r) => usdOn(Number(r.native_realized_gl) || 0, text(r.currency), text(r.sold_date))
+const unconvertible = realizedForTaxYear.filter((r) => realizedUsdOf(r) == null)
+const sumUsd = (term) =>
+  realizedForTaxYear
+    .filter((r) => text(r.tax_term).toLowerCase().startsWith(term))
+    .reduce((sum, r) => sum + (realizedUsdOf(r) ?? 0), 0)
+const computedShortUsd = sumUsd('short')
+const computedLongUsd = sumUsd('long')
+const usRealizedForTaxYear = realizedForTaxYear.filter((r) => r.market === 'US')
 const computedBasis = usRealizedForTaxYear.some((r) => r.basis === '1099b') ? '1099-B' : 'replay'
+// Named per market so a mismatch says WHERE it came from rather than only how big.
+const computedByMarket = [...new Set(realizedForTaxYear.map((r) => r.market))].sort().map((market) => {
+  const rows = realizedForTaxYear.filter((r) => r.market === market)
+  return `${market} ${rows.reduce((sum, r) => sum + (realizedUsdOf(r) ?? 0), 0).toFixed(2)}`
+})
 const assumedShortUsd = Number(usTaxAssumptions?.ytdRealizedShortGainLossUsd ?? 0)
 const assumedLongUsd = Number(usTaxAssumptions?.ytdRealizedLongGainLossUsd ?? 0)
 // A dollar: below the rounding these figures are carried at, and far below
@@ -3085,7 +3120,12 @@ db.prepare('insert or replace into meta (key, value) values (?, ?)').run(
     basis: computedBasis,
     shortUsd: Number(computedShortUsd.toFixed(2)),
     longUsd: Number(computedLongUsd.toFixed(2)),
-    lots: usRealizedForTaxYear.length,
+    lots: realizedForTaxYear.length,
+    // Worldwide, so the tax page can show which market each part came from
+    // rather than implying the whole figure is US-sourced.
+    scope: 'worldwide',
+    byMarket: computedByMarket,
+    unconvertibleLots: unconvertible.length,
   })
 )
 
@@ -3095,10 +3135,12 @@ check(
   usSalesThisYear.length === 0
     ? `no ${taxYear} US sales to reconcile`
     : ytdAgrees && ytdRealizedAssumed
-      ? `${ytdSalesDetail}; ytdRealized*Usd matches the ${computedBasis} figure ` +
-        `(${computedShortUsd.toFixed(2)} short / ${computedLongUsd.toFixed(2)} long)`
-      : `${ytdSalesDetail}; ${computedBasis} gives ${computedShortUsd.toFixed(2)} short / ` +
-        `${computedLongUsd.toFixed(2)} long but ytdRealized*Usd is ${assumedShortUsd} / ${assumedLongUsd}` +
+      ? `${ytdSalesDetail}; ytdRealized*Usd matches the worldwide ${computedBasis} figure ` +
+        `(${computedShortUsd.toFixed(2)} short / ${computedLongUsd.toFixed(2)} long — ${computedByMarket.join(', ')})`
+      : `${ytdSalesDetail}; worldwide ${computedBasis} gives ${computedShortUsd.toFixed(2)} short / ` +
+        `${computedLongUsd.toFixed(2)} long (${computedByMarket.join(', ')}) but ytdRealized*Usd is ` +
+        `${assumedShortUsd} / ${assumedLongUsd}` +
+        `${unconvertible.length ? `; ${unconvertible.length} lot(s) had no FX for their trade date` : ''}` +
         `${taxPolicy ? '' : ` (no policy file at ${path.basename(taxPolicyPath)})`}`,
   'warning'
 )
