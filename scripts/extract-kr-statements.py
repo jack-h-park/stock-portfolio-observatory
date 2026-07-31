@@ -210,10 +210,39 @@ def write_tsv(path, columns, rows):
 
 TRANSACTION_COLUMNS = [
     "Date", "Account", "Type", "Raw Type", "Ticker", "Name", "Quantity",
+    "Currency", "Native Amount", "FX Rate",
     "Amount (KRW)", "Settlement (KRW)", "Unit Price", "Fee", "Tax", "Balance",
     "Source", "Page",
 ]
-DIVIDEND_COLUMNS = ["Date", "Account", "Symbol", "Name", "Amount (KRW)", "Type", "Source", "Page"]
+DIVIDEND_COLUMNS = [
+    "Date", "Account", "Symbol", "Name", "Currency", "Native Amount", "FX Rate",
+    "Amount (KRW)", "Type", "Source", "Page",
+]
+
+
+def amount_of(row_a, row_b, row_c):
+    """(currency, native amount, fx rate, KRW amount) for one record.
+
+    The certificate uses a different column per currency: a KRW trade fills
+    거래금액 and leaves 외화거래금액 empty, a USD trade does the reverse and names
+    the currency in 통화코드. Reading only the KRW column — as the first cut of
+    this parser did — silently books every foreign trade at zero, which is worse
+    than missing them: the row is present, so nothing looks wrong.
+
+    Only the trades carry 환율; the dividends do not. Rather than invent a rate,
+    the foreign amount and its currency are passed through and the KRW column is
+    left EMPTY, not zero, so the ingest can convert with the historical FX table
+    it already owns and can tell "not converted yet" from "actually zero".
+    """
+    krw = number(row_a[6])
+    native_krw_raw = nfc(row_a[6]).strip()
+    foreign_raw = nfc(row_a[8]).strip()
+    if native_krw_raw or not foreign_raw:
+        return "KRW", krw, "", krw
+    currency = nfc(row_b[10]).strip() or "USD"
+    native = number(row_a[8])
+    rate = number(row_c[9])
+    return currency, native, (rate or ""), (round(native * rate, 2) if rate else "")
 
 
 def main():
@@ -235,6 +264,7 @@ def main():
     dividends = []
     unmapped = {}
     skipped_locked = []
+    unconverted = 0
 
     for pdf_path in pdfs:
         name = nfc(pdf_path.name)
@@ -255,6 +285,9 @@ def main():
                 if mapped is None:
                     unmapped[raw_type] = unmapped.get(raw_type, 0) + 1
                     continue
+                currency, native, rate, krw = amount_of(a, b, c)
+                if currency != "KRW" and krw == "":
+                    unconverted += 1
                 row = {
                     "Date": a[0].strip().replace("/", "-"),
                     "Account": account,
@@ -263,8 +296,11 @@ def main():
                     "Ticker": clean_ticker(a[4]),
                     "Name": clean_name(b[4]),
                     "Quantity": number(b[2]),
-                    "Amount (KRW)": number(a[6]),
-                    "Settlement (KRW)": number(b[6]) or number(a[6]),
+                    "Currency": currency,
+                    "Native Amount": native,
+                    "FX Rate": rate,
+                    "Amount (KRW)": krw,
+                    "Settlement (KRW)": number(b[6]) if currency == "KRW" else "",
                     "Unit Price": number(b[3]),
                     "Fee": number(a[5]),
                     "Tax": number(b[5]),
@@ -279,7 +315,10 @@ def main():
                         "Account": account,
                         "Symbol": row["Ticker"],
                         "Name": row["Name"],
-                        "Amount (KRW)": row["Amount (KRW)"],
+                        "Currency": currency,
+                        "Native Amount": native,
+                        "FX Rate": rate,
+                        "Amount (KRW)": krw,
                         "Type": raw_type,
                         "Source": name,
                         "Page": page_no,
@@ -293,8 +332,15 @@ def main():
     write_tsv(OUT_DIR / "transactions.tsv", TRANSACTION_COLUMNS, transactions)
     write_tsv(OUT_DIR / "dividends.tsv", DIVIDEND_COLUMNS, dividends)
 
-    print(f"\nWrote {OUT_DIR}/transactions.tsv ({len(transactions)} rows)")
+    by_currency = {}
+    for r in transactions:
+        by_currency[r["Currency"]] = by_currency.get(r["Currency"], 0) + 1
+    print(f"\nWrote {OUT_DIR}/transactions.tsv ({len(transactions)} rows: "
+          f"{', '.join(f'{c} {n}' for c, n in sorted(by_currency.items()))})")
     print(f"Wrote {OUT_DIR}/dividends.tsv ({len(dividends)} rows)")
+    if unconverted:
+        print(f"{unconverted} foreign row(s) carry no 환율 — 'Amount (KRW)' left empty "
+              f"for the ingest to convert from the historical FX table.")
 
     if skipped_locked:
         # Loud, because a skipped statement is a period of trading the portfolio
