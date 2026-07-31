@@ -130,6 +130,25 @@ const issues: SummaryIssue[] = [
         },
       ]
     : []),
+  // A degraded run is reported at WARNING, not error, and only when the run
+  // otherwise succeeded — the two branches must not both fire for one run.
+  //
+  // The distinction is the point. An optional step failing means one source is
+  // running on older data while every figure below is still complete; calling
+  // that an error told consumers to distrust the whole portfolio because a Toss
+  // credential was missing, which is how a real alarm gets trained away.
+  ...(lastRun && lastRun.status === 'success' && lastRun.degradedSteps.length > 0
+    ? [
+        {
+          key: 'refresh:degraded',
+          label: 'Observatory refresh (degraded)',
+          category: 'refresh' as const,
+          status: 'degraded',
+          detail: `Optional step(s) failed: ${lastRun.degradedSteps.join(', ')}. Figures below are complete; the source(s) behind those steps are running on their previous snapshot — see the freshness entries for how old.`,
+          severity: 'warning' as const,
+        },
+      ]
+    : []),
   ...health.items
     .filter((item) => item.status !== 'fresh')
     .map((item) => ({
@@ -197,7 +216,15 @@ const summary = {
         status: lastRun.status,
         startedAt: lastRun.startedAt,
         finishedAt: lastRun.finishedAt,
-        failedStep: lastRun.steps.find((step) => step.status === 'failed')?.name ?? null,
+        // The step that failed the run. An OPTIONAL step that failed does not
+        // appear here — it did not fail the run — because a reader seeing both
+        // `status: "success"` and a populated `failedStep` cannot tell which one
+        // to believe. Those are listed in `degradedSteps` instead.
+        failedStep:
+          lastRun.status === 'failed'
+            ? lastRun.steps.find((step) => step.status === 'failed' && !lastRun.degradedSteps.includes(step.name))?.name ?? null
+            : null,
+        degradedSteps: lastRun.degradedSteps,
       }
     : null,
 

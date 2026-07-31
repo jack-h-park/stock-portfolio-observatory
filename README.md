@@ -150,8 +150,25 @@ It is written on failed refreshes too, reporting the failure — a consumer need
 document most exactly when the data is not to be trusted. Writes are atomic
 (temp file + rename), so a half-written document is never read.
 
+`refresh.status` distinguishes a **failed** run from a **degraded** one. A step
+marked `optional` in `scripts/refresh.mjs` depends on something outside this
+machine — the Toss API can be down, its token can expire, its IP allowlist can
+stop matching — and losing it does not make the portfolio figures wrong; it makes
+one source's data older. Those runs report `status: "success"` with the step
+named in `refresh.degradedSteps`, and raise a **warning** in `health.issues`
+rather than an error. Only a required step failing sets `status: "failed"` and
+populates `failedStep`.
+
+This matters because the two used to be conflated: an unset Toss credential
+published a summary telling every consumer the whole portfolio was untrustworthy
+while every figure in it was complete and correct — which is how a real alarm
+gets trained away.
+
 Consumers must refuse a document whose `schemaVersion` is newer than the one they
-were written against, and upgrade an older one in memory.
+were written against, and upgrade an older one in memory. The degraded/failed
+split did not bump the version: no field changed shape or meaning, and a reader
+keying on `status !== "success"` simply stops distrusting data it should never
+have distrusted.
 
 ## macOS launchd deployment
 

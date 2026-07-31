@@ -175,6 +175,15 @@ export type RefreshRun = {
   finishedAt: string | null
   durationMs: number | null
   status: 'success' | 'failed' | 'running'
+  /**
+   * Optional steps that failed while the run still succeeded.
+   *
+   * A run is degraded, not failed, when only optional steps broke: the figures
+   * are complete and correct, one third-party source is just running on older
+   * data. Kept separate from `status` so a consumer asking "can I trust these
+   * numbers" and one asking "is anything stale" get different answers.
+   */
+  degradedSteps: string[]
   steps: RefreshStep[]
 }
 
@@ -824,6 +833,7 @@ function asRefreshRun(value: any): RefreshRun | null {
     finishedAt: value.finishedAt ? String(value.finishedAt) : null,
     durationMs: Number.isFinite(Number(value.durationMs)) ? Number(value.durationMs) : null,
     status,
+    degradedSteps: Array.isArray(value.degradedSteps) ? value.degradedSteps.map((name: any) => String(name)) : [],
     steps: value.steps.map((step: any) => ({
       name: String(step.name ?? ''),
       command: String(step.command ?? ''),

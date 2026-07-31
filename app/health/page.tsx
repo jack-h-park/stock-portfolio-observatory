@@ -17,8 +17,20 @@ function parseMetrics(value: string | null) {
 
 function statusTone(status: string): Tone {
   if (status === 'success') return 'success'
+  if (status === 'degraded') return 'warning'
   if (status === 'running') return 'info'
   return 'danger'
+}
+
+/**
+ * A run that succeeded but lost an optional step reads as "degraded" here.
+ *
+ * A plain "success" badge would hide that a source is running on older data,
+ * and a "failed" badge would overstate it — the figures are complete either
+ * way. The step list below still shows exactly which step failed.
+ */
+function runStatusLabel(run: { status: string; degradedSteps: string[] }) {
+  return run.status === 'success' && run.degradedSteps.length > 0 ? 'degraded' : run.status
 }
 
 export default function HealthPage() {
@@ -98,7 +110,11 @@ export default function HealthPage() {
       <Card
         title="Refresh run history"
         accent={latestRefresh?.status === 'failed'}
-        action={latestRefresh ? <Badge tone={statusTone(latestRefresh.status)}>{latestRefresh.status}</Badge> : undefined}
+        action={
+          latestRefresh ? (
+            <Badge tone={statusTone(runStatusLabel(latestRefresh))}>{runStatusLabel(latestRefresh)}</Badge>
+          ) : undefined
+        }
       >
         {!latestRefresh ? (
           <EmptyState
@@ -128,6 +144,16 @@ export default function HealthPage() {
                 <div className="font-medium tabular-nums text-ink">{fmtNumber(refreshRuns.length)} run(s)</div>
               </div>
             </div>
+
+            {latestRefresh.degradedSteps.length > 0 ? (
+              <div className="rounded-md border border-[color:var(--accent-warning)]/30 bg-[color:var(--accent-warning)]/5 px-3 py-2 text-[11px] leading-relaxed text-ink-2">
+                <span className="font-medium text-ink">Degraded, not failed.</span>{' '}
+                {latestRefresh.degradedSteps.join(', ')} failed but {latestRefresh.degradedSteps.length > 1 ? 'are' : 'is'} marked
+                optional, so the run continued and every figure is complete. The source behind{' '}
+                {latestRefresh.degradedSteps.length > 1 ? 'those steps is' : 'that step is'} running on its previous snapshot —
+                the freshness rows above say how old.
+              </div>
+            ) : null}
 
             <ul className="divide-y divide-line-subtle">
               {latestRefresh.steps.map((step) => (

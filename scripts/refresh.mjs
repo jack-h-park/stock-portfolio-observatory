@@ -33,6 +33,8 @@ const steps = [
   { name: 'backfill:history', args: ['backfill:history'] },
 ]
 
+const optionalSteps = new Set(steps.filter((step) => step.optional).map((step) => step.name))
+
 function isoNow() {
   return new Date().toISOString()
 }
@@ -106,6 +108,10 @@ const run = {
   durationMs: null,
   status: 'running',
   steps: [],
+  // Optional steps that failed. Present from the start so a consumer never has
+  // to distinguish "no degraded steps" from "an older record that predates the
+  // field".
+  degradedSteps: [],
 }
 
 writeHistory(run)
@@ -127,10 +133,35 @@ for (const step of steps) {
 
 run.finishedAt = isoNow()
 run.durationMs = Date.now() - started
-run.status = run.steps.every((step) => step.status === 'success') && run.steps.length === steps.length ? 'success' : 'failed'
+
+// An optional step that failed must not fail the RUN.
+//
+// The loop above already resets the status to 'running' and carries on, but this
+// line used to re-derive the verdict from `every(step => success)` and overwrite
+// that decision — so a step declared optional still produced a failed run. The
+// visible cost was not cosmetic: write-briefing-summary raises an `error` issue
+// on any non-success status, so an absent Toss credential published a summary
+// telling every consumer the whole portfolio was not to be trusted, while the
+// data behind it was complete and correct.
+//
+// So: required steps decide the status, and the optional ones that failed are
+// named in `degradedSteps` instead. A consumer reading `status` is told whether
+// the figures can be trusted; one reading `degradedSteps` is told which source
+// is running on older data — which is a different question, and the freshness
+// checks answer it in more detail.
+const failedOptional = run.steps.filter((step) => step.status !== 'success' && optionalSteps.has(step.name))
+const failedRequired = run.steps.filter((step) => step.status !== 'success' && !optionalSteps.has(step.name))
+run.degradedSteps = failedOptional.map((step) => step.name)
+run.status = failedRequired.length === 0 && run.steps.length === steps.length ? 'success' : 'failed'
 writeHistory(run)
 
-console.log(`\nRefresh ${run.status}: ${run.steps.length}/${steps.length} step(s), ${run.durationMs}ms`)
+console.log(
+  `\nRefresh ${run.status}${run.degradedSteps.length ? ` (degraded: ${run.degradedSteps.join(', ')})` : ''}: ` +
+  `${run.steps.length}/${steps.length} step(s), ${run.durationMs}ms`
+)
+// Exit 0 on a degraded run. The scheduler's non-zero exit is the alarm for "the
+// portfolio data is wrong"; a third-party source being unreachable is not that,
+// and paging on it teaches the operator to ignore the alarm.
 if (run.status !== 'success') process.exitCode = 1
 
 // Publish the machine-readable summary for the briefing and trading-agent crons.
