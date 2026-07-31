@@ -10,5 +10,12 @@
       "note": "Classify non-position interest income."
     }
   ],
-  "dividendOverrides": []
+  "dividendOverrides": [],
+  "tickerRenames": [
+    {
+      "from": "OLDTICK",
+      "to": "NEWTICK",
+      "note": "An issuer renamed the fund. Every ticker the ingest reads — transactions, dividends, holdings, tax lots, price snapshots — is rewritten from `from` to `to`, so older statements and the current export land on one position. Point `to` at the symbol in use today: renames are applied once, not chained, and `manual_mapping_renames_resolve` fails if one rename's target is itself renamed."
+    }
+  ]
 }

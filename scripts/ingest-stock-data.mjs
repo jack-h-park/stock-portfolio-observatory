@@ -176,8 +176,16 @@ function fingerprint(filePath) {
   }
 }
 
+// A ticker is the only thing tying a buy to the position it opened, so when an
+// issuer renames one the history splits in two: the old symbol holds lots that
+// are never closed, the new one holds shares that were never bought. State
+// Street's SPLG -> SPYM rebrand did exactly that — the 2025 Chase buy says
+// SPLG, the 2026 tax-lot export says SPYM, same CUSIP 78464A854, same share.
+// Renames are declared in the mappings file rather than here, because which
+// symbol an operator's own statements carry is data, not code.
 function normalizeTicker(value) {
-  return String(value || '').replace(/^'/, '').trim()
+  const raw = String(value || '').replace(/^'/, '').trim()
+  return tickerRenames.get(raw.toUpperCase()) ?? raw
 }
 
 function text(value) {
@@ -406,6 +414,17 @@ const usPriceConfig = loadUsPrices()
 const usPdfEvidence = loadUsPdfEvidence()
 const cryptoActivity = loadCryptoActivity()
 const cryptoPriceConfig = loadCryptoPrices()
+const manualMappings = loadManualMappings()
+// Loaded before the first normalizeTicker call: every ticker in this ingest,
+// from any source, is read through the rename table so the old and new symbol
+// land on one position. Chained renames are NOT followed — a symbol renamed
+// twice needs both entries pointed at the current symbol, which the
+// `manual_mapping_renames_resolve` check below insists on.
+const tickerRenames = new Map(
+  (manualMappings.tickerRenames ?? [])
+    .filter((r) => text(r.from) && text(r.to))
+    .map((r) => [text(r.from).replace(/^'/, '').toUpperCase(), text(r.to).replace(/^'/, '').trim()])
+)
 const krPricesByTicker = new Map((krPriceConfig.prices ?? []).map((p) => [normalizeTicker(p.ticker), p]))
 const usPricesByTicker = new Map((usPriceConfig.prices ?? []).map((p) => [normalizeTicker(p.ticker), p]))
 // Keyed by venue as well as symbol: BTC on Bithumb and BTC on Robinhood are the
@@ -413,7 +432,6 @@ const usPricesByTicker = new Map((usPriceConfig.prices ?? []).map((p) => [normal
 // them onto the symbol alone would mark one venue's position at the other's book.
 const cryptoPricesByKey = new Map((cryptoPriceConfig.prices ?? []).map((p) => [`${p.venue}\t${p.symbol}`, p]))
 const cryptoRewardCloses = new Map((cryptoPriceConfig.historical ?? []).map((h) => [`${h.venue}\t${h.symbol}\t${h.date}`, h]))
-const manualMappings = loadManualMappings()
 
 function fxRate(from, to = fxConfig.baseCurrency || 'KRW') {
   if (from === to) return { rate: 1, asOfDate: '', source: 'native', sourceUrl: '' }
@@ -926,7 +944,9 @@ if (fs.existsSync(manualMappingsPath)) {
     fp.bytes,
     fp.mtimeMs,
     fp.sha256,
-    (manualMappings.incomeRules?.length ?? 0) + (manualMappings.dividendOverrides?.length ?? 0)
+    (manualMappings.incomeRules?.length ?? 0) +
+      (manualMappings.dividendOverrides?.length ?? 0) +
+      (manualMappings.tickerRenames?.length ?? 0)
   )
 }
 for (const report of usPdfEvidence.reports ?? []) {
@@ -3174,6 +3194,24 @@ check(
   'warning'
 )
 
+// A rename whose target is itself renamed would leave the ingest with the
+// symbol halfway through the chain, splitting the position it was written to
+// join — the failure it was meant to fix, wearing a third ticker. Cheap to
+// state here, and it turns a silent half-merge into a named check.
+const unresolvedRenames = [...tickerRenames.entries()]
+  .filter(([, to]) => tickerRenames.has(to.toUpperCase()))
+  .map(([from, to]) => `${from} -> ${to} -> ${tickerRenames.get(to.toUpperCase())}`)
+check(
+  'manual_mapping_renames_resolve',
+  unresolvedRenames.length === 0,
+  tickerRenames.size === 0
+    ? 'no ticker renames declared'
+    : unresolvedRenames.length === 0
+      ? `${tickerRenames.size} ticker rename(s) point at a current symbol`
+      : `${unresolvedRenames.length} rename(s) chain instead of pointing at the current symbol: ` +
+        unresolvedRenames.slice(0, 3).join('; ')
+)
+
 // The replay is only believable if walking it forward reproduces the positions
 // the brokers report today. Anything it cannot reproduce is named here rather
 // than left for a wrong cost basis to reveal on some later sale.
@@ -3290,7 +3328,13 @@ const report = {
       ['crypto_prices', { file: cryptoPricesPath, rows: cryptoPriceConfig.prices?.length ?? 0 }],
       [
         'manual_mappings',
-        { file: manualMappingsPath, rows: (manualMappings.incomeRules?.length ?? 0) + (manualMappings.dividendOverrides?.length ?? 0) },
+        {
+          file: manualMappingsPath,
+          rows:
+            (manualMappings.incomeRules?.length ?? 0) +
+            (manualMappings.dividendOverrides?.length ?? 0) +
+            (manualMappings.tickerRenames?.length ?? 0),
+        },
       ],
     ]
   ),
