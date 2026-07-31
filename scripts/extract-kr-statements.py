@@ -1,4 +1,9 @@
-"""Parse Mirae Asset 거래내역증명서 PDFs into the normalized Korea payload TSVs.
+"""Parse Korean brokerage statements into the normalized Korea payload TSVs.
+
+Two brokers, one lot engine. The 미래에셋 거래내역증명서 layout is handled here;
+the Toss 거래내역서 layout is different enough to live in `toss_statements.py`
+and is imported. Both feed the same FIFO walk below, so a transfer OUT of
+미래에셋 and the matching transfer IN to Toss are replayed in one timeline.
 
 WHY THIS EXISTS: the Korea side of the portfolio was populated once, by hand, on
 2026-07-15 and never again — the extraction that produced
@@ -30,6 +35,7 @@ Reads STOCK_PDF_PASSWORD for the 주식종합 statements, which are encrypted. T
 ISA statements are not.
 """
 
+import json
 import os
 import re
 import sys
@@ -38,9 +44,14 @@ from pathlib import Path
 
 import pdfplumber
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import toss_statements  # noqa: E402  (needs the path above)
+
 DATA_DIR = Path(os.environ.get("STOCK_DATA_DIR", Path.cwd() / "private-data"))
 OUT_DIR = Path(os.environ.get("STOCK_KR_STATEMENTS_DIR", Path.cwd() / "data/kr-statements"))
 PDF_PASSWORD = os.environ.get("STOCK_PDF_PASSWORD", "")
+TOSS_SNAPSHOT_PATH = Path(os.environ.get("STOCK_TOSS_SNAPSHOT_PATH", Path.cwd() / "data/toss-snapshot.json"))
+TOSS_ACCOUNT = os.environ.get("STOCK_TOSS_ACCOUNT_LABEL", "토스증권")
 
 # macOS hands back decomposed Hangul from the filesystem while the literals here
 # are composed; comparing the two forms silently matches nothing.
@@ -392,6 +403,189 @@ def build_lots(transactions, as_of):
     return taxlots, realized, notes
 
 
+def share_direction(row):
+    """+1 if a row adds shares, -1 if it removes them, 0 if it moves none.
+
+    Same rule the lot walk uses: 입고/출고 in the raw label decides for the
+    corporate actions, whose normalized type says only that something happened.
+    """
+    kind = row["Type"]
+    if kind in ("STOCK_SPLIT", "CORPORATE_ACTION"):
+        if "입고" in row["Raw Type"]:
+            return 1
+        if "출고" in row["Raw Type"]:
+            return -1
+        return 0
+    if kind in OPENING_TYPES:
+        return 1
+    if kind in CLOSING_TYPES:
+        return -1
+    return 0
+
+
+def check_share_balances(rows, report):
+    """Replay each symbol against the 잔고 the statement printed for it.
+
+    Toss prints a running share count after every row, so the broker has
+    already done this sum. Comparing against it audits the parse using nothing
+    this script computed: a dropped row, a misread quantity or a cell assigned
+    to the wrong column all show up as a break, and none of them would show up
+    anywhere else — a wrong quantity still produces a perfectly plausible lot.
+
+    A break is reported rather than corrected. The printed 잔고 is evidence
+    about what the account held, not a licence to invent the row that would
+    explain it.
+    """
+    running = {}
+    breaks = 0
+    for row in sorted(rows, key=lambda r: (r["Date"], r["Source"], r["Page"])):
+        direction = share_direction(row)
+        quantity = float(row["Quantity"] or 0)
+        if not direction or not quantity or not row["Ticker"]:
+            continue
+        key = row["Ticker"]
+        expected = running.get(key, 0.0) + direction * quantity
+        printed = float(row["Balance"] or 0)
+        if abs(expected - printed) > 1e-6:
+            breaks += 1
+            report(
+                "share-balance-break",
+                f"{row['Date']} {key}: {running.get(key, 0.0):g} {direction * quantity:+g} "
+                f"= {expected:g}, but the statement prints 잔고 {printed:g} "
+                f"({row['Raw Type']}, {row['Source']} p{row['Page']})",
+            )
+        running[key] = printed
+    return breaks
+
+
+def load_toss_snapshot(report):
+    if TOSS_SNAPSHOT_PATH.exists():
+        return json.loads(TOSS_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    # Not fatal: every 2025-onward row names its security by KRX code and
+    # resolves without the snapshot. Only the ISIN-era rows and the handful of
+    # code-less names need it, and they are reported if they then fail.
+    report("no-snapshot", f"{TOSS_SNAPSHOT_PATH} not found — names and ISINs cannot be resolved to symbols")
+    return None
+
+
+def check_lots_against_snapshot(taxlots, snapshot, report):
+    """Name any open Toss lot the broker's own API does not hold.
+
+    The statements end before the snapshot does, so a lot can legitimately
+    outlive its position — but it can also be a position that quietly stopped
+    existing. This project has been caught by that once already, with a matured
+    bond the lot walk kept holding a year past redemption, so the case gets a
+    name rather than a silent row in taxlots.tsv.
+    """
+    if not snapshot:
+        return
+    held = {
+        item.get("symbol")
+        for account in snapshot.get("accounts", [])
+        for item in (account.get("holdings") or {}).get("items") or []
+    }
+    if not held:
+        return
+    for lot in taxlots:
+        if nfc(lot["Account"]) != TOSS_ACCOUNT or lot["Ticker"] in held:
+            continue
+        report(
+            "open-lot-not-held",
+            f"{lot['Ticker']} ({lot['Name']}) {lot['Open Quantity']} unit(s) acquired "
+            f"{lot['Acquired Date']} at cost {lot['Cost Basis (KRW)']} — open in the statements, "
+            f"absent from /api/v1/holdings",
+        )
+
+
+def toss_transactions(statements_dir, snapshot, report):
+    """Toss 거래내역서 rows in the shared TRANSACTION_COLUMNS shape.
+
+    `report(kind, detail)` collects everything that could not be handled, for
+    the caller to print. Nothing is dropped silently.
+
+    Both statement sections report WON — the 달러 section prints the won value
+    of a foreign trade and puts the rate in 환율 (see toss_statements.py) — so
+    `Currency` is KRW throughout and `FX Rate` is provenance rather than
+    something the ingest must multiply by.
+    """
+    pdfs = [p for p in sorted(statements_dir.glob("*.pdf")) if "토스증권" in nfc(p.name)]
+    if not pdfs:
+        return []
+
+    by_name, by_isin = toss_statements.load_symbol_index(snapshot)
+
+    out = []
+    for pdf_path in pdfs:
+        name = nfc(pdf_path.name)
+        count = 0
+        for row in toss_statements.rows(str(pdf_path), name, report):
+            mapped, _label = toss_statements.classify(row["raw_type"])
+            if mapped is None:
+                report("unmapped-type", f"{row['raw_type']} ({name} p{row['page']})")
+                continue
+
+            ticker, how = toss_statements.resolve_symbol(row["name"], row["code"], by_name, by_isin)
+            # A cash movement has no 종목: the cell holds the remitter on an
+            # 이체입금 and the deposit plan's label on an 오픈뱅킹입금, so a name
+            # that does not resolve there is expected rather than a failure.
+            # Anywhere else it IS a failure and is named, because an unresolved
+            # symbol is a lot filed under no ticker at all — and a dividend with
+            # no ticker is income the position never gets credited with.
+            #
+            # The quantity test is what makes this safe. A 타사대체입고 also maps
+            # to TRANSFER_IN, and those rows are the entire point of this parser
+            # — but they move shares, so they are never treated as cash and an
+            # unresolved one is still reported.
+            cash_only = not row["quantity"] and mapped in (
+                "TRANSFER_IN", "TRANSFER_OUT", "JOURNAL", "INTERNAL_TRANSFER",
+            )
+            if not ticker and row["name"] and not cash_only \
+                    and row["name"] not in toss_statements.NON_SECURITY_LABELS:
+                report("unresolved-symbol", f"{row['name']} ({row['raw_type']}, {name} p{row['page']})")
+            elif how == "unresolved-isin":
+                report("unresolved-isin", f"{row['name']} ({row['code']}) kept as its own ticker")
+
+            out.append({
+                "Date": row["date"],
+                "Account": TOSS_ACCOUNT,
+                "Type": mapped,
+                "Raw Type": row["raw_type"],
+                "Ticker": ticker,
+                "Name": row["name"],
+                "Quantity": row["quantity"],
+                "Currency": "KRW",
+                # 거래대금 is the consideration, and it is 0 on a 타사대체입고 —
+                # no cash changed hands. lot_cost() then falls back to
+                # quantity x 단가, which is exactly the cost the sending broker
+                # carried across, and is the whole reason the statements can
+                # rebuild these lots when the order history cannot.
+                "Native Amount": row["gross"],
+                "FX Rate": row["rate"] or "",
+                "Amount (KRW)": row["gross"],
+                "Settlement (KRW)": row["settlement"],
+                "Unit Price": row["unit_price"],
+                "Fee": row["fee"],
+                # 제세금 is the all-in withholding line and is present in both
+                # sections; 거래세 exists only in the 원화 one. They are summed
+                # rather than picked between so a Korean sale's transaction tax
+                # cannot go missing just because this account has not made one.
+                "Tax": row["tax"] + row["trade_tax"],
+                # 잔고, the running SHARE count — the same thing 미래에셋 files
+                # here as 유가잔고, not the 잔액 cash balance printed beside it.
+                # It is the broker's own count after each row, which makes it an
+                # audit of the parse that owes nothing to this script's
+                # arithmetic: see the 잔고 continuity check below.
+                "Balance": row["share_balance"],
+                "Source": name,
+                "Page": row["page"],
+            })
+            count += 1
+        print(f"[toss-statement] {name}: {count} transaction(s)")
+    breaks = check_share_balances(out, report)
+    print(f"[toss-statement] 잔고 continuity: {len(out)} row(s) checked, {breaks} break(s)")
+    return out
+
+
 def main():
     statements_dir = None
     for child in sorted(DATA_DIR.iterdir()) if DATA_DIR.exists() else []:
@@ -412,6 +606,7 @@ def main():
     unmapped = {}
     skipped_locked = []
     unconverted = 0
+    toss_problems = {}
 
     for pdf_path in pdfs:
         name = nfc(pdf_path.name)
@@ -478,11 +673,37 @@ def main():
                 count += 1
             print(f"[kr-statement] {name}: {count} transaction(s) from {len(pdf.pages)} page(s)")
 
+    def report(kind, detail):
+        toss_problems.setdefault(kind, []).append(detail)
+
+    toss_snapshot = load_toss_snapshot(report)
+    toss_rows = toss_transactions(statements_dir, toss_snapshot, report)
+    transactions.extend(toss_rows)
+    # Toss files income under 거래구분 the same way 미래에셋 does, so the same
+    # rule puts it in the income table: the ingest checks that the two counts
+    # agree, and a dividend present in one and absent from the other fails it.
+    for row in toss_rows:
+        if row["Type"] in ("DIVIDEND", "INTEREST", "OTHER_INCOME"):
+            dividends.append({
+                "Date": row["Date"],
+                "Account": row["Account"],
+                "Symbol": row["Ticker"],
+                "Name": row["Name"],
+                "Currency": row["Currency"],
+                "Native Amount": row["Native Amount"],
+                "FX Rate": row["FX Rate"],
+                "Amount (KRW)": row["Amount (KRW)"],
+                "Type": row["Raw Type"],
+                "Source": row["Source"],
+                "Page": row["Page"],
+            })
+
     transactions.sort(key=lambda r: (r["Date"], r["Source"], r["Page"]))
     dividends.sort(key=lambda r: (r["Date"], r["Source"], r["Page"]))
 
     as_of = os.environ.get("STOCK_KR_AS_OF") or (max(r["Date"] for r in transactions) if transactions else "")
     taxlots, realized, lot_notes = build_lots(transactions, as_of)
+    check_lots_against_snapshot(taxlots, toss_snapshot, report)
 
     write_tsv(OUT_DIR / "transactions.tsv", TRANSACTION_COLUMNS, transactions)
     write_tsv(OUT_DIR / "dividends.tsv", DIVIDEND_COLUMNS, dividends)
@@ -517,6 +738,18 @@ def main():
         print("\nWARNING: unmapped 거래종류 — these rows were dropped:", file=sys.stderr)
         for raw, n in sorted(unmapped.items(), key=lambda kv: -kv[1]):
             print(f"  {n:>5}  {raw}", file=sys.stderr)
+    if toss_problems:
+        # Same principle as the 미래에셋 side: an unmapped 거래구분 or an
+        # unresolved symbol is named, because either one is a trade that never
+        # reaches the portfolio and neither announces itself downstream.
+        print("\nWARNING: Toss statement issues:", file=sys.stderr)
+        for kind, details in sorted(toss_problems.items()):
+            unique = sorted(set(details))
+            print(f"  {kind}: {len(details)} row(s), {len(unique)} distinct", file=sys.stderr)
+            for detail in unique[:10]:
+                print(f"      {detail}", file=sys.stderr)
+            if len(unique) > 10:
+                print(f"      … and {len(unique) - 10} more", file=sys.stderr)
     return 0
 
 

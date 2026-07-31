@@ -960,11 +960,14 @@ let holdingRows = datasets.holdings.rows
 // kept trading, so this is the difference between a dashboard that is current
 // and one that quietly multiplies a fortnight-old quantity by today's price.
 //
-// Only `holdings` is taken here. The API's order history cannot rebuild Toss
-// lots — 18 of its 46 symbols arrived by transfer rather than by order, and a
-// transfer is not an order — so the lots stay on the payload until the sending
-// brokers' costs are carried across. That split is deliberate and is reported
-// as `toss_holdings_lots_provenance` below rather than left to be discovered.
+// Only `holdings` is taken here, and deliberately so. The API's order history
+// cannot rebuild Toss lots — 18 of its 46 symbols arrived by transfer rather
+// than by order, and a transfer is not an order — so the lots come from the
+// 거래내역서 PDFs instead, where a 타사대체입고 arrives lot by lot with the
+// sending broker's cost already carried across. The two sources are kept
+// separate because they age differently: this snapshot is refreshed hourly, a
+// statement only when one is downloaded. `toss_holdings_lots_provenance` below
+// measures the gap between them rather than papering over it.
 const tossSnapshotPath = process.env.STOCK_TOSS_SNAPSHOT_PATH || path.join(process.cwd(), 'data/toss-snapshot.json')
 const tossSnapshot = fs.existsSync(tossSnapshotPath)
   ? JSON.parse(fs.readFileSync(tossSnapshotPath, 'utf8'))
@@ -1070,10 +1073,21 @@ const taxLotRows = datasets.taxlots.rows.map((r) => {
 //
 // Long/short quantities come free here: the lots carry their own tax term, where
 // the sheet had them as a column nobody recomputed.
-if (statementAccounts.size) {
+//
+// EXCEPT where a live API already answers the question. Toss statements now
+// cover the lots, which would otherwise pull its positions onto this path too —
+// and that would be a downgrade: the Open API snapshot is refreshed hourly,
+// while the newest statement is only ever as fresh as the last one downloaded
+// by hand. Every trade after that date would silently vanish from the position.
+// So the statements supply Toss's lots and the API keeps its holdings, and the
+// two are compared rather than merged (`toss_holdings_lots_provenance`).
+const lotDerivedHoldingAccounts = new Set(
+  [...statementAccounts].filter((account) => account !== tossAccountLabel)
+)
+if (lotDerivedHoldingAccounts.size) {
   const grouped = new Map()
   for (const lot of taxLotRows) {
-    if (!statementAccounts.has(lot.account) || !(lot.open_quantity > 0)) continue
+    if (!lotDerivedHoldingAccounts.has(lot.account) || !(lot.open_quantity > 0)) continue
     const key = `${lot.account}\t${lot.ticker}`
     const cur = grouped.get(key) ?? {
       account: lot.account, ticker: lot.ticker, name: lot.name, currency: lot.currency,
@@ -1127,8 +1141,8 @@ if (statementAccounts.size) {
     }
   })
   if (derived.length) {
-    const replaced = holdingRows.filter((r) => statementAccounts.has(r.account)).length
-    holdingRows = [...holdingRows.filter((r) => !statementAccounts.has(r.account)), ...derived]
+    const replaced = holdingRows.filter((r) => lotDerivedHoldingAccounts.has(r.account)).length
+    holdingRows = [...holdingRows.filter((r) => !lotDerivedHoldingAccounts.has(r.account)), ...derived]
     console.error(`[kr-statements] holdings: ${derived.length} position(s) summed from lots replace ${replaced} payload row(s)`)
   }
 }
@@ -2760,15 +2774,17 @@ check(
     : `snapshot is ${tossSnapshotAgeHours == null ? 'undated' : `${tossSnapshotAgeHours.toFixed(1)}h old`}`,
   'warning'
 )
-// Not a data error — a stated gap, kept loud so it is closed rather than
-// forgotten. It shuts when the transferred-in lots carry their sending broker's
-// acquisition cost across and Toss lots can be rebuilt from its order history.
+// Holdings and lots come from two sources that age differently — the API
+// snapshot is hourly, the statements are as old as the last download — so this
+// is a staleness measure, not a data error. A non-zero count names the
+// positions that have traded since the newest 거래내역서 and is expected to
+// reappear whenever the account trades; it closes again on the next statement.
 check(
   'toss_holdings_lots_provenance',
   tossHoldingCount === 0 || differentProvenance.length === 0,
   tossHoldingCount === 0
     ? 'no live Toss snapshot'
-    : `${differentProvenance.length} of ${tossHoldingCount} live Toss position(s) disagree with lots still carried from the payload`,
+    : `${differentProvenance.length} of ${tossHoldingCount} live Toss position(s) disagree with the lots rebuilt from the statements`,
   'warning'
 )
 check('reconcilable_holdings_vs_taxlots_quantity', quantityMismatches.length === 0, `${quantityMismatches.length} mismatch(es)`)

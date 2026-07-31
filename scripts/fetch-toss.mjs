@@ -95,15 +95,38 @@ for (const account of list) {
     }
   } while (cursor)
 
+  // Symbol → name/ISIN for everything this account has ever touched. The
+  // statements name a security three ways — `카카오(A035720)`, an ISIN
+  // `마이크로소프트(US5949181045)`, and sometimes no code at all
+  // (`RISE 팔란티어고정테크100`) — and the last two cannot be turned into a
+  // symbol by inspection. There is no master-list endpoint to page through:
+  // `/api/v1/stocks` is a lookup that REQUIRES `symbols`, so the set is built
+  // from what the account holds and has ordered, which is the only population
+  // the statements can mention. Each record carries `isinCode`, so one fetch
+  // answers both the name and the ISIN question.
+  const symbols = [...new Set([
+    ...(holdings?.items ?? []).map((i) => i.symbol),
+    ...orders.map((o) => o.symbol),
+  ].filter(Boolean))]
+  const securities = []
+  for (let i = 0; i < symbols.length; i += 50) {
+    const query = new URLSearchParams({ symbols: symbols.slice(i, i + 50).join(',') })
+    securities.push(...((await api(`${BASE}/api/v1/stocks?${query}`, { headers })).result ?? []))
+  }
+  const unresolved = symbols.filter((s) => !securities.some((sec) => sec.symbol === s))
+  if (unresolved.length) {
+    console.error(`WARNING: ${unresolved.length} symbol(s) returned no security record: ${unresolved.join(', ')}`)
+  }
+
   const filled = orders.filter((o) => o.status === 'FILLED')
   const dates = filled.map((o) => o.execution?.filledAt ?? o.orderedAt).filter(Boolean).sort()
   console.error(
     `[toss] account ${String(account.accountNo ?? seq).slice(0, 4)}…: ` +
     `${holdings?.items?.length ?? 0} holding(s), ${orders.length} closed order(s) ` +
     `(${filled.length} filled${dates.length ? `, ${dates[0].slice(0, 10)} → ${dates[dates.length - 1].slice(0, 10)}` : ''}) ` +
-    `over ${pages} page(s)`
+    `over ${pages} page(s), ${securities.length} security record(s)`
   )
-  snapshot.accounts.push({ accountNo: account.accountNo, accountSeq: seq, accountType: account.accountType, holdings, orders })
+  snapshot.accounts.push({ accountNo: account.accountNo, accountSeq: seq, accountType: account.accountType, holdings, orders, securities })
 }
 
 fs.mkdirSync(path.dirname(OUT_PATH), { recursive: true })
