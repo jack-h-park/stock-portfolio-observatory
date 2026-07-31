@@ -245,6 +245,147 @@ def amount_of(row_a, row_b, row_c):
     return currency, native, (rate or ""), (round(native * rate, 2) if rate else "")
 
 
+TAXLOT_COLUMNS = [
+    "Account", "Ticker", "Name", "Acquired Date", "Open Quantity",
+    "Currency", "Native Cost Basis", "Native Unit Cost",
+    "Cost Basis (KRW)", "Unit Cost", "Holding Days", "As Of Date", "Tax Term", "Source",
+]
+REALIZED_COLUMNS = [
+    "Account", "Ticker", "Name", "Acquired Date", "Sold Date", "Quantity Sold",
+    "Currency", "Native Cost Basis", "Native Proceeds",
+    "Cost Basis (KRW)", "Proceeds (KRW)", "Realized G/L (KRW)",
+    "Holding Days", "Tax Term", "Source",
+]
+
+# Shares arriving and leaving. A transfer moves a position between accounts — it
+# consumes lots but is NOT a disposal, so it produces no realized gain. Booking
+# the 19 transfers to Toss as sales would invent capital gains that were never
+# realized and were never taxable.
+OPENING_TYPES = {"BUY", "REINVEST", "TRANSFER_IN"}
+CLOSING_TYPES = {"SELL", "TRANSFER_OUT"}
+# "More than a year", so a lot held exactly 365 days is still short-term. The
+# boundary is not academic: three ISA lots sit exactly on it.
+LONG_TERM_DAYS = 365
+
+
+def lot_cost(quantity, unit_price, native_amount):
+    """Total cost of a lot, preferring the amount the certificate actually booked.
+
+    quantity × unit price is not universally the cost: a Korean bond quotes 단가
+    per 10,000 of face value, so a 700,000-face purchase at 7,116 cost ₩498,120,
+    not ₩4.98 billion. The 거래금액 column is already the true consideration, so
+    it wins wherever the certificate fills it in. Transfers leave it empty — no
+    cash changed hands — and there the carried unit price is all there is.
+    """
+    if native_amount > 0:
+        return native_amount
+    return quantity * unit_price
+
+
+def days_between(start, end):
+    from datetime import date
+    y1, m1, d1 = (int(x) for x in start.split("-"))
+    y2, m2, d2 = (int(x) for x in end.split("-"))
+    return (date(y2, m2, d2) - date(y1, m1, d1)).days
+
+
+def tax_term(days):
+    return "Long-term" if days > LONG_TERM_DAYS else "Short-term"
+
+
+def build_lots(transactions, as_of):
+    """Replay every transaction in order, consuming lots first-in-first-out.
+
+    FIFO is an assumption, stated here rather than buried: the certificates
+    record what left the account, not which lot the broker chose. Where the
+    broker used a different method the per-lot split will differ from its own
+    filing — which is why the year-end statement, not this, is the tax record.
+    """
+    open_lots = {}
+    taxlots, realized, notes = [], [], []
+
+    for r in sorted(transactions, key=lambda x: (x["Date"], x["Source"], int(x["Page"]))):
+        ticker, qty = r["Ticker"], float(r["Quantity"] or 0)
+        if not ticker or qty <= 0:
+            continue
+        key = (r["Account"], ticker)
+        kind, unit = r["Type"], float(r["Unit Price"] or 0)
+
+        # A split is booked as an out and one-or-more ins, and the certificate has
+        # ALREADY restated the per-lot unit cost across them (SCHD: 19 @ 82.31017
+        # out, 57 in across four lots whose costs still sum to the same 1,563.90).
+        # So a split needs no arithmetic of its own — only the direction, which
+        # lives in the raw type rather than the normalized one. An earlier version
+        # tried to redistribute the cost itself, mistook the second inbound row for
+        # another outbound, and silently emptied the position.
+        if kind == "STOCK_SPLIT":
+            if "입고" in r["Raw Type"]:
+                kind = "TRANSFER_IN"
+            elif "출고" in r["Raw Type"]:
+                kind = "TRANSFER_OUT"
+            else:
+                continue
+
+        if kind in OPENING_TYPES:
+            cost = lot_cost(qty, unit, float(r["Native Amount"] or 0))
+            open_lots.setdefault(key, []).append({
+                "acquired": r["Date"], "qty": qty, "unit": cost / qty if qty else 0,
+                "currency": r["Currency"], "source": r["Source"], "name": r["Name"],
+            })
+        elif kind in CLOSING_TYPES:
+            remaining = qty
+            held = open_lots.get(key, [])
+            # Same reason as the cost side: the booked consideration beats
+            # quantity × price, so a bond's 단가 convention cannot distort proceeds.
+            sale_unit = lot_cost(qty, unit, float(r["Native Amount"] or 0)) / qty if qty else 0
+            while remaining > 1e-9 and held:
+                lot = held[0]
+                take = min(lot["qty"], remaining)
+                if kind == "SELL":
+                    cost = take * lot["unit"]
+                    proceeds = take * sale_unit
+                    days = days_between(lot["acquired"], r["Date"])
+                    realized.append({
+                        "Account": r["Account"], "Ticker": ticker, "Name": lot["name"] or r["Name"],
+                        "Acquired Date": lot["acquired"], "Sold Date": r["Date"],
+                        "Quantity Sold": round(take, 8),
+                        "Currency": lot["currency"],
+                        "Native Cost Basis": round(cost, 4), "Native Proceeds": round(proceeds, 4),
+                        "Cost Basis (KRW)": round(cost, 2) if lot["currency"] == "KRW" else "",
+                        "Proceeds (KRW)": round(proceeds, 2) if lot["currency"] == "KRW" else "",
+                        "Realized G/L (KRW)": round(proceeds - cost, 2) if lot["currency"] == "KRW" else "",
+                        "Holding Days": days, "Tax Term": tax_term(days), "Source": r["Source"],
+                    })
+                lot["qty"] -= take
+                remaining -= take
+                if lot["qty"] <= 1e-9:
+                    held.pop(0)
+            if remaining > 1e-6:
+                # Shares left an account that never recorded them arriving: the
+                # opening side is in a statement we do not have. Named, not
+                # silently absorbed into a zero-cost lot.
+                notes.append(f"{r['Date']} {r['Account']} {ticker}: "
+                             f"{remaining:g} unit(s) disposed with no matching open lot ({r['Raw Type']})")
+
+    for (account, ticker), held in sorted(open_lots.items()):
+        for lot in held:
+            if lot["qty"] <= 1e-9:
+                continue
+            days = days_between(lot["acquired"], as_of)
+            cost = lot["qty"] * lot["unit"]
+            taxlots.append({
+                "Account": account, "Ticker": ticker, "Name": lot["name"],
+                "Acquired Date": lot["acquired"], "Open Quantity": round(lot["qty"], 8),
+                "Currency": lot["currency"],
+                "Native Cost Basis": round(cost, 4), "Native Unit Cost": round(lot["unit"], 4),
+                "Cost Basis (KRW)": round(cost, 2) if lot["currency"] == "KRW" else "",
+                "Unit Cost": round(lot["unit"], 2) if lot["currency"] == "KRW" else "",
+                "Holding Days": days, "As Of Date": as_of,
+                "Tax Term": tax_term(days), "Source": lot["source"],
+            })
+    return taxlots, realized, notes
+
+
 def main():
     statements_dir = None
     for child in sorted(DATA_DIR.iterdir()) if DATA_DIR.exists() else []:
@@ -329,8 +470,13 @@ def main():
     transactions.sort(key=lambda r: (r["Date"], r["Source"], r["Page"]))
     dividends.sort(key=lambda r: (r["Date"], r["Source"], r["Page"]))
 
+    as_of = os.environ.get("STOCK_KR_AS_OF") or (max(r["Date"] for r in transactions) if transactions else "")
+    taxlots, realized, lot_notes = build_lots(transactions, as_of)
+
     write_tsv(OUT_DIR / "transactions.tsv", TRANSACTION_COLUMNS, transactions)
     write_tsv(OUT_DIR / "dividends.tsv", DIVIDEND_COLUMNS, dividends)
+    write_tsv(OUT_DIR / "taxlots.tsv", TAXLOT_COLUMNS, taxlots)
+    write_tsv(OUT_DIR / "realized.tsv", REALIZED_COLUMNS, realized)
 
     by_currency = {}
     for r in transactions:
@@ -338,6 +484,15 @@ def main():
     print(f"\nWrote {OUT_DIR}/transactions.tsv ({len(transactions)} rows: "
           f"{', '.join(f'{c} {n}' for c, n in sorted(by_currency.items()))})")
     print(f"Wrote {OUT_DIR}/dividends.tsv ({len(dividends)} rows)")
+    print(f"Wrote {OUT_DIR}/taxlots.tsv ({len(taxlots)} open lot(s), as of {as_of})")
+    print(f"Wrote {OUT_DIR}/realized.tsv ({len(realized)} realized lot(s))")
+    if lot_notes:
+        print(f"\nWARNING: {len(lot_notes)} lot issue(s) — a disposal with no open lot means "
+              f"the opening side is in a statement we do not have:", file=sys.stderr)
+        for note in lot_notes[:20]:
+            print(f"  {note}", file=sys.stderr)
+        if len(lot_notes) > 20:
+            print(f"  … and {len(lot_notes) - 20} more", file=sys.stderr)
     if unconverted:
         print(f"{unconverted} foreign row(s) carry no 환율 — 'Amount (KRW)' left empty "
               f"for the ingest to convert from the historical FX table.")
