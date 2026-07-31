@@ -589,7 +589,8 @@ create table realized_lots (
   superseded_by text,
   -- Dividends received on this ticker between acquisition and sale. Makes the
   -- realized figure a total return rather than a price return.
-  dividends_native real
+  dividends_native real,
+  source text
 );
 
 create table transactions (
