@@ -396,6 +396,13 @@ published site can never disagree about a date.
   weekend on purpose, which is meaningless for an asset that trades continuously —
   it would pass a crypto quote a day and a half stale.
 - FX is considered fresh for 7 days from the configured `asOfDate`.
+- Toss positions are judged against whichever source actually supplied them, so
+  the threshold follows the source rather than the row: 24 hours for an Open API
+  snapshot, 35 days for a hand-downloaded 거래내역서
+  (`STOCK_TOSS_STATEMENT_MAX_DAYS`), and never for the 2026-07-15 payload.
+  `toss_positions_fresh` reports which one answered and how old it is. The
+  payload branch cannot be cleared by waiting — no script writes that file and no
+  credential unlocks it, so the way out is `pnpm extract:kr-statements`.
 - Source files are considered drifted when their current disk size or modified time differs from the fingerprint captured at ingest.
 - Position detail pages show the relevant price snapshot and FX freshness next to the valuation numbers.
 
@@ -409,7 +416,7 @@ published site can never disagree about a date.
 
 ## Current coverage
 
-- Korea: Toss holdings and order history from its Open API via `pnpm fetch:toss`; 미래에셋 lots, transactions and dividends parsed from its 거래내역증명서 PDFs via `pnpm extract:kr-statements`, with its positions summed from those lots. `.codex_sheet_payloads` still supplies the accounts that have no parser yet, per account rather than wholesale.
+- Korea: Toss holdings and order history from its Open API via `pnpm fetch:toss`, falling back to positions summed from the lots its 거래내역서 PDFs rebuild when no snapshot could be fetched; 미래에셋 lots, transactions and dividends parsed from its 거래내역증명서 PDFs, its positions likewise summed from those lots. Both certificate paths run through `pnpm extract:kr-statements`. `.codex_sheet_payloads` supplies whatever accounts the statements on hand do not cover — the swap is per account, so the directory can appear before every account is covered.
 - US: Chase holdings/tax lots, Merrill holding summary/tax-lot detail, Robinhood Gain/Loss PDF holdings/tax lots, and Chase/Fidelity/Merrill/Robinhood transactions/dividends.
 - Crypto: Bithumb and Robinhood Crypto, under `market = 'CRYPTO'`. Neither venue publishes holdings, so positions are derived from statement activity via `pnpm extract:crypto-activity` and reconciled against a balance the venue itself printed — see [Crypto](#crypto).
 - Currency: native KRW/USD amounts are preserved separately. USD is also converted to KRW using the configured FX snapshot in `data/fx-rates.json`.

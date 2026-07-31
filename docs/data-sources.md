@@ -23,7 +23,11 @@ rebuilding the pipeline did.
 
 `STOCK_KR_STATEMENTS_DIR` rows replace payload rows **per account**, for whichever
 accounts appear in the statements. Swapping the files wholesale would delete the
-brokerages that have no parser yet — Toss is 36 of 47 Korean holdings.
+brokerages whose certificates are not on hand — which is a function of what has
+been downloaded, not of what has a parser. Toss used to be the standing example
+here at 36 of 47 Korean holdings; it has had a 거래내역서 parser since the row
+above, so the payload now holds only whatever the statements on disk have yet to
+cover.
 
 **Toss positions have two sources, and which one answered is reported.** The Open
 API is preferred because it is refreshed hourly while a 거래내역서 is only ever as
