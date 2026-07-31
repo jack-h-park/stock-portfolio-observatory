@@ -571,7 +571,7 @@ create table realized_lots (
   realized_gl_krw real,
   holding_days integer,
   tax_term text,
-  -- `basis` says where the figure came from and therefore what it can be used
+  -- basis says where the figure came from and therefore what it can be used
   -- for. 'replay' is this repo's own FIFO walk of the transactions: available
   -- year-round, and the only thing that exists for a year whose forms have not
   -- been issued yet. '1099b' is the broker's filed number, with wash sales and
