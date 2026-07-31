@@ -1747,13 +1747,19 @@ let usReplayReconcilableCount = 0
 // rows]. Needed to divide a dividend by the shares that actually earned it.
 const usPositionTimeline = new Map()
 
-/** Shares held in a position on a date, from the replayed timeline. */
+/** Shares held at the START of a date: the closing balance of the last day before it.
+ *
+ * Deliberately not the closing balance of the date itself. A dividend is paid on
+ * what was held when it was declared, and the same day's rows routinely include
+ * the disposal that ended the position — Merrill's last QQQI payment landed on
+ * the day the residual 0.5725 shares were sold, and dividing by the closing
+ * balance divided $0.38 by 0.0067 shares. */
 function usPositionAsOf(key, date) {
   const timeline = usPositionTimeline.get(key)
   if (!timeline?.length) return 0
   let held = 0
   for (const entry of timeline) {
-    if (entry.date > date) break
+    if (entry.date >= date) break
     held = entry.quantity
   }
   return held
@@ -2464,7 +2470,10 @@ const us1099bCoverage = new Map() // `${brokerage}|${year}` -> source filename
       const heldQty = usPositionAsOf(key, dividend.date)
       if (heldQty <= 0) continue
       const perShare = dividend.amount / heldQty
-      const holders = lots.filter((r) => r.acquired_date <= dividend.date && dividend.date <= r.sold_date)
+      // Strict on the acquisition side: a reinvestment lot is created BY the
+      // payment, so it cannot also have earned it. Inclusive on the sale side,
+      // because shares sold on the pay date were held when it was declared.
+      const holders = lots.filter((r) => r.acquired_date < dividend.date && dividend.date <= r.sold_date)
       if (!holders.length) continue
       for (const holder of holders) {
         // The lot's size while it was held is taken as the quantity later sold.
