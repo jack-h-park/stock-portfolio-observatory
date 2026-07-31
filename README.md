@@ -63,7 +63,9 @@ pnpm install
 cp .env.example .env.local
 
 # Configure STOCK_DATA_DIR and STOCK_DB_PATH in .env.local.
-# Set STOCK_PYTHON_BIN to an ABSOLUTE python3 that has pdfplumber (see below).
+# Set STOCK_PYTHON_BIN to an ABSOLUTE python3 that has the extract modules
+# (pdfplumber, openpyxl — see below), installing them into that interpreter:
+#   "$STOCK_PYTHON_BIN" -m pip install --user pdfplumber openpyxl
 # Then create local generated-data files from public examples
 # (fx-rates.json is fetched by pnpm refresh, not copied):
 cp data/manual-mappings.example.json data/manual-mappings.json
@@ -327,6 +329,17 @@ has: Hermes cron puts its own virtualenv first, so `python3` resolved to that
 venv's 3.11 — which has no `pdfplumber` — and the PDF extract step failed on
 every scheduled run while succeeding every time it was tested by hand. The
 interpreter that has the dependency is the system one, so name it outright.
+
+**Install every extract module into that same interpreter**, not just the one
+that fails loudly. The extracts need `pdfplumber` and `openpyxl`; a missing
+`pdfplumber` aborts the step, but a missing `openpyxl` only degrades — the
+Bithumb reason lookup returns nothing, prints one line to stderr, and the
+`crypto_cash_deposits_classified` check fails as a warning that exits 0. That is
+survivable by design, and therefore easy to run for weeks without noticing:
+
+```bash
+"$STOCK_PYTHON_BIN" -m pip install --user pdfplumber openpyxl
+```
 
 This applies to either scheduler — the launchd job inherits `.env.local` from the
 repo working directory just as the cron wrapper does.
