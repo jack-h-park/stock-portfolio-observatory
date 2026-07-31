@@ -30,6 +30,7 @@ if (!CLIENT_ID || !CLIENT_SECRET) {
   process.exit(1)
 }
 
+
 async function api(url, options = {}) {
   const res = await fetch(url, options)
   const body = await res.text()
@@ -47,6 +48,7 @@ async function api(url, options = {}) {
   return JSON.parse(body)
 }
 
+async function main() {
 const token = (await api(`${BASE}/oauth2/token`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -107,3 +109,16 @@ for (const account of list) {
 fs.mkdirSync(path.dirname(OUT_PATH), { recursive: true })
 fs.writeFileSync(OUT_PATH, `${JSON.stringify(snapshot, null, 2)}\n`)
 console.log(`Wrote ${OUT_PATH} (${snapshot.accounts.length} account(s))`)
+}
+
+// A rejected top-level await is a module-evaluation failure, not an unhandled
+// rejection, so Node prints a stack and buries the one line that says what to do
+// — and "invalid secret" versus "this machine's IP is not registered" is the
+// whole point of the message. Written with writeSync because stderr to a pipe is
+// async and process.exit() tears the process down before it drains, which under
+// a scheduler means the step fails with no reason given at all.
+main().catch((error) => {
+  fs.writeSync(2, `ERROR: ${error instanceof Error ? error.message : error}\n`)
+  if (process.env.STOCK_DEBUG && error instanceof Error) fs.writeSync(2, `${error.stack}\n`)
+  process.exit(1)
+})

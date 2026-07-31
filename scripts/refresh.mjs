@@ -10,9 +10,17 @@ const maxRuns = Number(process.env.STOCK_REFRESH_RUNS_LIMIT || 30)
 // FX first: the ingest converts every native amount into the base currency with
 // it, so a stale rate misstates the whole portfolio no matter how fresh the
 // prices are.
+// `optional` steps do not abort the run. That is reserved for a dependency
+// outside this machine: Toss can be down, its token can expire, and its IP
+// allowlist stops matching the day the ISP hands out a new address — none of
+// which is a reason to skip the price fetches and the ingest. The failure is
+// still recorded and still printed, so the cron reports it; what changes is that
+// the rest of the refresh survives it, and the ingest then works from the last
+// snapshot with a freshness check that says how old it is.
 const steps = [
   { name: 'fetch:fx', args: ['fetch:fx'] },
   { name: 'fetch:kr-prices', args: ['fetch:kr-prices'] },
+  { name: 'fetch:toss', args: ['fetch:toss'], optional: true },
   { name: 'extract:us-pdf-evidence', args: ['extract:us-pdf-evidence'] },
   { name: 'fetch:us-prices', args: ['fetch:us-prices'] },
   { name: 'fetch:historical-prices', args: ['fetch:historical-prices'] },
@@ -101,6 +109,12 @@ for (const step of steps) {
   console.log(`\n== ${step.name} ==`)
   const result = await runStep(step)
   run.steps.push(result)
+  if (result.status !== 'success' && step.optional) {
+    console.log(`(optional step ${step.name} failed — continuing; downstream freshness checks report the age of its data)`)
+    run.status = 'running'
+    writeHistory(run)
+    continue
+  }
   run.status = result.status === 'success' ? 'running' : 'failed'
   writeHistory(run)
   if (result.status !== 'success') break

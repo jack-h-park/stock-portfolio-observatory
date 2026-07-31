@@ -1757,6 +1757,22 @@ const missingUsPrices = holdingRows.filter((r) => r.market === 'US' && r.quantit
 const gainLossReports = (usPdfEvidence.reports ?? []).filter((r) => r.category === 'us_gain_loss_pdf')
 const taxDocReports = (usPdfEvidence.reports ?? []).filter((r) => r.category === 'us_tax_document_pdf')
 
+// The Toss fetch is an optional refresh step, so a failed one leaves the last
+// snapshot in place and the ingest reads it without complaint. Age is the only
+// thing that distinguishes "current" from "the API stopped answering days ago",
+// and 203 days of a frozen FX rate is this project's standing lesson in what an
+// unwatched snapshot costs.
+const tossSnapshotAgeHours = tossSnapshot?.fetchedAt
+  ? (Date.now() - Date.parse(tossSnapshot.fetchedAt)) / 3_600_000
+  : null
+check(
+  'toss_snapshot_fresh',
+  tossSnapshot == null || (tossSnapshotAgeHours != null && tossSnapshotAgeHours <= 24),
+  tossSnapshot == null
+    ? 'no Toss snapshot configured'
+    : `snapshot is ${tossSnapshotAgeHours == null ? 'undated' : `${tossSnapshotAgeHours.toFixed(1)}h old`}`,
+  'warning'
+)
 // Not a data error — a stated gap, kept loud so it is closed rather than
 // forgotten. It shuts when the transferred-in lots carry their sending broker's
 // acquisition cost across and Toss lots can be rebuilt from its order history.
