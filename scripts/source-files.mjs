@@ -3,11 +3,26 @@ import path from 'node:path'
 
 // Which brokerage export files to ingest, matched by PATTERN rather than by an
 // exact name. The exact-name list this replaces embedded the export date
-// (`Chase-taxlots-20260715.csv`), so the next download — a new date — was never
+// (`chase-holdings-20260715.csv`), so the next download — a new date — was never
 // read: the ingest kept silently using week-old data, and deleting an old file
 // made a whole brokerage vanish with no error. Same failure class as the
 // under-counting bugs this repo just fixed: nothing breaks, the number is just
 // wrong.
+//
+// Every one of these filenames is typed by hand — no broker supplies a usable
+// name — so they follow ONE grammar, and this file is the only thing that knows
+// it:
+//
+//   <broker>-<doctype>[-<account>]-<period>[-<part>][-partial].<ext>
+//
+// Lowercase ASCII, hyphen-separated. What that bought: the previous names were
+// per-broker inventions ('Chase - All Transactions - 20260723 Year-to-date.csv',
+// '빗썸-거래내역확인서-2026년1-7월.pdf') and each needed its own hand-written
+// regex. The Korean ones additionally needed Unicode normalisation to match at
+// all — macOS returns Hangul filenames decomposed (NFD), so a composed literal
+// written here matched nothing, silently and with no error. Broker and document
+// type now read straight out of the name, so the specs below are rows in a table
+// and that whole class of bug is gone rather than worked around.
 //
 // Each spec matches files in a subdir and selects among them:
 //   pick 'latest' → the newest match only. Rotating exports whose name carries a
@@ -15,54 +30,127 @@ import path from 'node:path'
 //                   Ingesting an old AND a new year-to-date file would
 //                   double-count every transaction they share.
 //   pick 'all'    → every match. Stable historical archives that coexist and
-//                   cover distinct periods (e.g. "2025 Full").
+//                   cover distinct periods (e.g. a complete year).
 //   groupBy       → with 'latest', keep the newest match PER key. Robinhood
 //                   keeps one year-to-date file per account.
 //
-// "Newest" = the last 8-digit run (YYYYMMDD) in the name, then mtime. The name
-// is authoritative when it carries a date; mtime breaks ties and orders the
-// dateless historical files. Within one spec+group every match shares the
-// pattern, so date presence is uniform and the string compare is well-defined.
+// "Newest" = the period the filename declares, then mtime. The period is
+// authoritative; mtime breaks ties. Within one spec+group every match shares the
+// pattern, so the period shape is uniform and the string compare is well-defined.
 
-const HOLDINGS_DIR = '미국증권사 보유종목 현황 (Tax Lot 구분 포함)'
-const TX_DIR = '미국증권사 거래내역 (CSV)'
+const DIR_US_HOLDINGS = 'us-holdings'
+const DIR_US_TRANSACTIONS = 'us-transactions'
+const DIR_BITHUMB = 'crypto-bithumb'
+const DIR_RH_CRYPTO = 'crypto-robinhood'
 
+// Period shapes. The period says what a file COVERS, and that is exactly what
+// decides whether the next download supersedes it or sits beside it — so the
+// shape is the selection rule, not decoration:
+//
+//   YEAR    2025               a complete year. Archives coexist → 'all'.
+//   ASOF    20260723           everything up to that date. The next export
+//                              covers the same ground plus more, so only the
+//                              newest may be read → 'latest'.
+//   MONTH   202509             one calendar month → coexist, 'all'.
+//   RANGE   2024-2025          an explicit window, for the files that are
+//           20250101-20250430  neither a whole year nor an as-of snapshot.
+//   PARTIAL 2026-partial       a period the file is known not to cover fully.
+const YEAR = String.raw`\d{4}`
+const ASOF = String.raw`\d{8}`
+const MONTH = String.raw`\d{6}`
+// Longest alternative first, so a range is never read as the year that starts it.
+const RANGE = String.raw`\d{8}-\d{8}|\d{4}-\d{4}`
+const PARTIAL = String.raw`\d{4}-partial`
+
+// Bithumb documents are none of them a clean year: some cover a half, some a
+// span of months, one is explicitly incomplete. One alternation, most specific
+// first.
+const CRYPTO_PERIOD = [PARTIAL, RANGE, YEAR].join('|')
+
+// The filename token → the account label the database has always carried. These
+// labels are the `account_type` and half the `account` on every Robinhood row,
+// so the token is lowercased to fit the filename grammar and mapped back here.
+// Renaming files must not rename accounts.
+const ROBINHOOD_STRATEGIES = { agentic: 'Agentic', longterm: 'Long-term', midterm: 'Mid-term' }
+
+// `since` is the earliest date the account could plausibly have produced, taken
+// from its first transaction. It is the lower half of the date check below; the
+// upper half is today. See `implausiblePeriod`.
 const US_HOLDING_SPECS = [
-  { brokerage: 'Chase', subdir: HOLDINGS_DIR, pattern: /^Chase-taxlots-\d{8}\.csv$/i, pick: 'latest' },
-  { brokerage: 'Merrill', subdir: HOLDINGS_DIR, pattern: /^Merrill-ExportData.*\.csv$/i, pick: 'latest' },
+  {
+    brokerage: 'Chase',
+    subdir: DIR_US_HOLDINGS,
+    broker: 'chase', doctype: 'holdings', period: ASOF, ext: 'csv',
+    pick: 'latest', since: '20250901',
+  },
+  {
+    brokerage: 'Merrill',
+    subdir: DIR_US_HOLDINGS,
+    broker: 'merrill', doctype: 'holdings', period: ASOF, ext: 'csv',
+    pick: 'latest', since: '20260301',
+  },
 ]
 
 const US_TRANSACTION_SPECS = [
-  { brokerage: 'Chase', subdir: TX_DIR, pattern: /^Chase - All Transactions - \d{4} Full\.csv$/i, pick: 'all' },
-  { brokerage: 'Chase', subdir: TX_DIR, pattern: /^Chase - All Transactions - \d{8} Year-to-date\.csv$/i, pick: 'latest' },
-  { brokerage: 'Fidelity', subdir: TX_DIR, pattern: /^Fidelity - All History - \d{4} Full\.csv$/i, pick: 'all' },
-  { brokerage: 'Fidelity', subdir: TX_DIR, pattern: /^Fidelity - All History - \d{8} Year-to-date\.csv$/i, pick: 'latest' },
-  { brokerage: 'Merrill', subdir: TX_DIR, pattern: /^Merrill - All Activities - \d{8} Year-to-date\.csv$/i, pick: 'latest' },
+  {
+    brokerage: 'Chase',
+    subdir: DIR_US_TRANSACTIONS,
+    broker: 'chase', doctype: 'transactions', period: YEAR, ext: 'csv',
+    pick: 'all', since: '20250901',
+  },
+  {
+    brokerage: 'Chase',
+    subdir: DIR_US_TRANSACTIONS,
+    broker: 'chase', doctype: 'transactions', period: ASOF, ext: 'csv',
+    pick: 'latest', since: '20250901',
+  },
+  {
+    brokerage: 'Fidelity',
+    subdir: DIR_US_TRANSACTIONS,
+    broker: 'fidelity', doctype: 'transactions', period: YEAR, ext: 'csv',
+    pick: 'all', since: '20251001',
+  },
+  {
+    brokerage: 'Fidelity',
+    subdir: DIR_US_TRANSACTIONS,
+    broker: 'fidelity', doctype: 'transactions', period: ASOF, ext: 'csv',
+    pick: 'latest', since: '20251001',
+  },
+  {
+    brokerage: 'Merrill',
+    subdir: DIR_US_TRANSACTIONS,
+    broker: 'merrill', doctype: 'transactions', period: ASOF, ext: 'csv',
+    pick: 'latest', since: '20260301',
+  },
   {
     brokerage: 'Robinhood',
-    subdir: TX_DIR,
-    pattern: /^Robinhood - (Agentic|Long-term|Mid-term) - \d{8} Year-to-date\.csv$/i,
-    account: (m) => m[1],
-    groupBy: (m) => m[1],
-    pick: 'latest',
+    subdir: DIR_US_TRANSACTIONS,
+    broker: 'robinhood', doctype: 'transactions', accounts: 'agentic|longterm|midterm', period: ASOF, ext: 'csv',
+    account: (m) => ROBINHOOD_STRATEGIES[m.groups.account.toLowerCase()],
+    groupBy: (m) => m.groups.account.toLowerCase(),
+    pick: 'latest', since: '20240601',
   },
-  { brokerage: 'Robinhood', account: 'Mid-term', subdir: TX_DIR, pattern: /^Robinhood - Mid-term - 2024~2025\.csv$/i, pick: 'all' },
+  {
+    brokerage: 'Robinhood',
+    subdir: DIR_US_TRANSACTIONS,
+    broker: 'robinhood', doctype: 'transactions', accounts: 'midterm', period: RANGE, ext: 'csv',
+    account: 'Mid-term',
+    pick: 'all', since: '20240601',
+  },
 ]
 
-const BITHUMB_DIR = '빗썸'
-const RH_CRYPTO_DIR = '미국 로빈후드 가상계좌/Monthly Statements'
-
-// Crypto sources. Both are 'all': every file covers a period the others do not,
+// Crypto sources. All are 'all': every file covers a period the others do not,
 // and no file supersedes another the way a re-downloaded year-to-date export
 // does. The risk this trades for is OVERLAP rather than staleness — two
-// 거래내역확인서 covering the same months would double-count every trade in
-// them — so the ingest asserts on the periods the documents themselves declare
-// instead of on their filenames. A filename already lied once here: a statement
-// named 2025년1-7월 held 2026-01-01~2026-07-31.
+// statements covering the same months would double-count every trade in them —
+// so the ingest asserts on the periods the documents themselves declare instead
+// of on their filenames. A filename already lied once here: a statement named
+// 2025년1-7월 held 2026-01-01~2026-07-31.
 //
-// The Bithumb .xlsx exports in the same folder are read too, but ONLY as a reason
-// lookup — never as a transaction source. They carry the same trades with no
-// running balance, so ingesting them as movements would double every position.
+// The Bithumb activity exports in the same folder are read too, but ONLY as a
+// reason lookup — never as a transaction source. They carry the same trades with
+// no running balance, so ingesting them as movements would double every
+// position.
 //
 // What they do have is 거래구분: where the PDF prints a bare 입금 with an empty
 // 비고, the .xlsx names it ('혜택존 보상 - 랜덤박스', '포인트샵 입금'). Two real
@@ -75,31 +163,82 @@ const CRYPTO_SPECS = [
     venue: 'Bithumb',
     account: 'Bithumb',
     category: 'bithumb_statement',
-    subdir: BITHUMB_DIR,
-    pattern: /^빗썸-거래내역확인서-.*\.pdf$/i,
-    pick: 'all',
+    subdir: DIR_BITHUMB,
+    broker: 'bithumb', doctype: 'statement', period: CRYPTO_PERIOD, ext: 'pdf',
+    pick: 'all', since: '20240101',
   },
   {
     venue: 'Bithumb',
     account: 'Bithumb',
     category: 'bithumb_ledger',
-    subdir: BITHUMB_DIR,
-    pattern: /^빗썸-거래내역-.*\.xlsx$/i,
-    pick: 'all',
+    subdir: DIR_BITHUMB,
+    broker: 'bithumb', doctype: 'activity', period: CRYPTO_PERIOD, ext: 'xlsx',
+    pick: 'all', since: '20240101',
   },
   {
     venue: 'Robinhood',
     account: 'Robinhood Crypto',
     category: 'robinhood_crypto_statement',
-    subdir: RH_CRYPTO_DIR,
-    pattern: /^Robinhood - Monthly Statement - \d{6}\.pdf$/i,
-    pick: 'all',
+    subdir: DIR_RH_CRYPTO,
+    broker: 'robinhood', doctype: 'crypto-statement', period: MONTH, ext: 'pdf',
+    pick: 'all', since: '20241101',
   },
 ]
 
-function dateKey(name) {
-  const runs = name.match(/\d{8}/g)
-  return runs ? runs[runs.length - 1] : ''
+// The grammar, assembled once. `accounts` is a regex fragment naming the
+// accounts this spec accepts; it is captured so the same match feeds both the
+// account label and groupBy.
+function buildPattern(spec) {
+  const segments = [spec.broker, spec.doctype]
+  if (spec.accounts) segments.push(`(?<account>${spec.accounts})`)
+  segments.push(`(?<period>${spec.period})`)
+  return new RegExp(`^${segments.join('-')}\\.${spec.ext}$`, 'i')
+}
+
+for (const spec of [...US_HOLDING_SPECS, ...US_TRANSACTION_SPECS, ...CRYPTO_SPECS]) {
+  spec.pattern = buildPattern(spec)
+}
+
+function today() {
+  const now = new Date()
+  return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
+}
+
+// What the period covers, as YYYYMMDD. `end` is null when the file itself says
+// the coverage is incomplete (`-partial`) — there is no honest end date to
+// derive, so the checks below fall back to the start.
+function periodBounds(period) {
+  let m
+  if ((m = /^(\d{4})-partial$/.exec(period))) return { start: `${m[1]}0101`, end: null }
+  if ((m = /^(\d{8})-(\d{8})$/.exec(period))) return { start: m[1], end: m[2] }
+  if ((m = /^(\d{4})-(\d{4})$/.exec(period))) return { start: `${m[1]}0101`, end: `${m[2]}1231` }
+  if (/^\d{8}$/.test(period)) return { start: period, end: period }
+  if ((m = /^(\d{4})(\d{2})$/.exec(period))) {
+    const last = new Date(Number(m[1]), Number(m[2]), 0).getDate()
+    return { start: `${period}01`, end: `${period}${String(last).padStart(2, '0')}` }
+  }
+  if (/^\d{4}$/.test(period)) return { start: `${period}0101`, end: `${period}1231` }
+  return { start: null, end: null }
+}
+
+// The date in a hand-typed filename, checked against the two things that can be
+// known without opening the file: the account did not exist before `since`, and
+// nothing can cover a period that has not happened yet.
+//
+// This is the check that was missing. `Robinhood - Agentic - 20060716
+// Year-to-date.csv` sat on the refresh machine for weeks beside a correctly
+// dated 20260716 copy — a mistyped year that only failed to matter because
+// "newest" happens to sort 2026 above 2006. Nothing looked at the date itself.
+// A uniform period is what makes looking at it possible.
+function implausiblePeriod(period, since, now) {
+  const { start, end } = periodBounds(period)
+  if (!start) return `period '${period}' is not a shape this grammar defines`
+  // The END is what must postdate the account: a complete-year archive legitimately
+  // begins before the account was opened, and only its coverage has to overlap.
+  const anchor = end ?? start
+  if (since && anchor < since) return `covers ${anchor}, before this account existed (${since})`
+  if (anchor > now) return `covers ${anchor}, which is in the future (today is ${now})`
+  return null
 }
 
 function mtimeKey(filename) {
@@ -110,7 +249,7 @@ function mtimeKey(filename) {
   }
 }
 
-function resolveSpec(dataDir, spec) {
+function resolveSpec(dataDir, spec, now) {
   const dir = path.join(dataDir, spec.subdir)
   let names = []
   try {
@@ -119,13 +258,8 @@ function resolveSpec(dataDir, spec) {
     // Directory absent — e.g. sample mode has no brokerage folders at all.
   }
 
-  // macOS hands back Hangul filenames decomposed (NFD): "빗썸" arrives as ㅂ+ㅣ+ㅅ
-  // …, which does not equal the composed "빗썸" written in the pattern above, so
-  // every Korean-named file matched nothing while the ASCII-named ones matched
-  // fine. Normalise both sides. Match on the normalised name, but keep the
-  // ORIGINAL for path.join — the on-disk entry is what we have to open.
   const matches = names
-    .map((name) => ({ name, m: spec.pattern.exec(name.normalize('NFC')) }))
+    .map((name) => ({ name, m: spec.pattern.exec(name) }))
     .filter((x) => x.m)
     .map((x) => ({ ...x, filename: path.join(dir, x.name) }))
 
@@ -138,28 +272,40 @@ function resolveSpec(dataDir, spec) {
   })
   const label = `${spec.brokerage ?? spec.venue} · ${spec.subdir}/${spec.pattern.source}`
 
-  if (matches.length === 0) return { files: [], missing: label }
-  if (spec.pick === 'all') return { files: matches.map(entry), missing: null }
+  // Every match is judged, including the ones 'latest' is about to discard: a
+  // superseded file with an impossible date is still a typo somebody should fix,
+  // and staying quiet about it is how 20060716 survived.
+  const problems = []
+  for (const x of matches) {
+    const gap = implausiblePeriod(x.m.groups.period, spec.since, now)
+    if (gap) problems.push(`${spec.subdir}/${x.name}: ${gap}`)
+  }
 
-  const rankOf = (x) => `${dateKey(x.name)}|${mtimeKey(x.filename)}`
+  if (matches.length === 0) return { files: [], missing: label, problems }
+  if (spec.pick === 'all') return { files: matches.map(entry), missing: null, problems }
+
+  const rankOf = (x) => `${x.m.groups.period}|${mtimeKey(x.filename)}`
   const best = new Map()
   for (const x of matches) {
     const key = spec.groupBy ? spec.groupBy(x.m) : '*'
     const prev = best.get(key)
     if (!prev || rankOf(x) > rankOf(prev)) best.set(key, x)
   }
-  return { files: [...best.values()].map(entry), missing: null }
+  return { files: [...best.values()].map(entry), missing: null, problems }
 }
 
 function resolve(specs, dataDir) {
+  const now = today()
   const files = []
   const missing = []
+  const problems = []
   for (const spec of specs) {
-    const { files: found, missing: gap } = resolveSpec(dataDir, spec)
-    files.push(...found)
-    if (gap) missing.push(gap)
+    const found = resolveSpec(dataDir, spec, now)
+    files.push(...found.files)
+    if (found.missing) missing.push(found.missing)
+    problems.push(...found.problems)
   }
-  return { files, missing }
+  return { files, missing, problems }
 }
 
 export function resolveUsHoldingFiles(dataDir) {

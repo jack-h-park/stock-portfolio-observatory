@@ -93,8 +93,9 @@ are the account's cash, not a position, and anything under one share is the
 fractional remainder an ACAT transfer leaves behind.
 
 When it fires, the fix is to add a holdings spec for that brokerage in
-`US_HOLDING_SPECS` and drop the positions export into
-`미국증권사 보유종목 현황 (Tax Lot 구분 포함)/`. Deriving positions from transactions
+`US_HOLDING_SPECS` and drop the positions export into `us-holdings/`, named
+`<broker>-holdings-<asof>.csv` (see [docs/data-sources.md](docs/data-sources.md)
+for the grammar). Deriving positions from transactions
 instead is not a substitute — the transaction history only reaches back as far as
 the exports do, so a position opened before that window would be understated
 without any sign of it.
@@ -111,8 +112,8 @@ only because both source documents print a balance this app did not compute:
 
 | Source | Document | Independent check it carries |
 | --- | --- | --- |
-| Bithumb | `빗썸-거래내역확인서-*.pdf` | a running per-asset and KRW balance on every row |
-| Robinhood Crypto | `Robinhood - Monthly Statement - YYYYMM.pdf` | a month-end quantity per symbol |
+| Bithumb | `crypto-bithumb/bithumb-statement-*.pdf` | a running per-asset and KRW balance on every row |
+| Robinhood Crypto | `crypto-robinhood/robinhood-crypto-statement-YYYYMM.pdf` | a month-end quantity per symbol |
 
 `crypto_positions_match_venue_balances` refuses to let the derived position
 disagree with either. Two further checks assert on the statements themselves:
@@ -122,9 +123,10 @@ timeline with no gap and no overlap (`crypto_statement_periods_contiguous`).
 Filenames are not trusted for this — one statement's name said 2025 while its
 contents covered 2026.
 
-The Bithumb `.xlsx` exports in the same folder are deliberately not read: they
-are a strict subset of the 확인서 PDFs, and ingesting both would double every
-position.
+The Bithumb `bithumb-activity-*.xlsx` exports in the same folder are deliberately
+not read as movements: they carry the same trades as the statement PDFs with no
+running balance, so ingesting both would double every position. They are read for
+one column — the 거래구분 that names a deposit the PDF leaves blank.
 
 **Each venue is priced at its own book.** A KRW-quoted BTC and a USD-quoted BTC
 are the same asset at two materially different prices — over the last 200 days

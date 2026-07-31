@@ -34,12 +34,25 @@ const sources = {
   realized: 'realized.tsv',
 }
 
-const { files: usHoldingFiles, missing: missingHoldingSources } = resolveUsHoldingFiles(dataDir)
-const { files: usTransactionFiles, missing: missingTransactionSources } = resolveUsTransactionFiles(dataDir)
+const {
+  files: usHoldingFiles, missing: missingHoldingSources, problems: holdingSourceProblems,
+} = resolveUsHoldingFiles(dataDir)
+const {
+  files: usTransactionFiles, missing: missingTransactionSources, problems: transactionSourceProblems,
+} = resolveUsTransactionFiles(dataDir)
 // Resolved here as well as in the extract step, so the PDFs behind the crypto
 // positions are fingerprinted into source_files and show up on /data-map. The
 // extract reads them; this records WHICH files were read.
-const { files: cryptoSourceFiles, missing: missingCryptoSourceFiles } = resolveCryptoFiles(dataDir)
+const {
+  files: cryptoSourceFiles, missing: missingCryptoSourceFiles, problems: cryptoSourceProblems,
+} = resolveCryptoFiles(dataDir)
+
+// Filenames whose declared period cannot be true — a date in the future, or one
+// before the account existed. Every name under STOCK_DATA_DIR is typed by hand,
+// and one of them was wrong for weeks: a Robinhood export dated 20060716 sat
+// beside the 20260716 it was meant to be. It never changed a number, but only
+// because "newest" happens to sort 2026 above 2006 — a coincidence, not a check.
+const sourceDateProblems = [...holdingSourceProblems, ...transactionSourceProblems, ...cryptoSourceProblems]
 
 // Resolved by pattern (see source-files.mjs), so a re-downloaded export with a
 // new date is read instead of silently ignored. `missing*Sources` names any
@@ -53,6 +66,9 @@ for (const source of cryptoSourceFiles) {
 }
 for (const gap of [...missingHoldingSources, ...missingTransactionSources, ...missingCryptoSourceFiles]) {
   console.error(`[source] MISSING — no file matches ${gap}`)
+}
+for (const problem of sourceDateProblems) {
+  console.error(`[source] IMPLAUSIBLE DATE — ${problem}`)
 }
 
 // Certificates parsed by scripts/extract-kr-statements.py. They cover only the
@@ -2891,6 +2907,19 @@ check(
   'expected_us_source_files_present',
   missingSources.length === 0,
   missingSources.length ? `no file matches: ${missingSources.join('; ')}` : 'all expected US brokerage exports found',
+  'warning'
+)
+
+// A filename whose period cannot be true. Covers every source directory, not
+// just the US ones, because the names are hand-typed everywhere; it is here
+// rather than beside the crypto checks because there is one grammar now and one
+// answer to give about it.
+check(
+  'source_file_dates_plausible',
+  sourceDateProblems.length === 0,
+  sourceDateProblems.length
+    ? `${sourceDateProblems.length} source file(s) with an impossible period: ${sourceDateProblems.join('; ')}`
+    : 'every source filename declares a period between the account opening and today',
   'warning'
 )
 

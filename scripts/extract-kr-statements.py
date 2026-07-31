@@ -53,8 +53,26 @@ PDF_PASSWORD = os.environ.get("STOCK_PDF_PASSWORD", "")
 TOSS_SNAPSHOT_PATH = Path(os.environ.get("STOCK_TOSS_SNAPSHOT_PATH", Path.cwd() / "data/toss-snapshot.json"))
 TOSS_ACCOUNT = os.environ.get("STOCK_TOSS_ACCOUNT_LABEL", "토스증권")
 
-# macOS hands back decomposed Hangul from the filesystem while the literals here
-# are composed; comparing the two forms silently matches nothing.
+# The certificates, under STOCK_DATA_DIR. Named, not searched for: this used to
+# scan every child of the data directory for one whose name contained 국내증권사,
+# which needed Unicode normalisation to work at all and would have quietly picked
+# the wrong folder had a second one ever matched. The directory has an ASCII name
+# now, so it can simply be said. (Not to be confused with STOCK_KR_STATEMENTS_DIR
+# above, which is where the parsed TSVs are WRITTEN.)
+STATEMENTS_DIR = DATA_DIR / "kr-statements"
+
+# Filenames follow the grammar in scripts/source-files.mjs:
+#   <broker>-<doctype>[-<account>]-<period>[-<part>].pdf
+# so the broker is the first segment and the document type the second, and both
+# are plain ASCII.
+MIRAE_PREFIX = "mirae-"
+TOSS_PREFIX = "toss-"
+BALANCE_DOCTYPE = "-balance-"
+
+# PDF text, not filenames: pdfplumber returns Hangul in whichever normalisation
+# the generator embedded, while the literals compared against it here are
+# composed. Filenames no longer need this — they are ASCII — but cell contents
+# still do, and comparing two forms silently matches nothing.
 def nfc(value):
     return unicodedata.normalize("NFC", value or "")
 
@@ -508,7 +526,7 @@ def toss_transactions(statements_dir, snapshot, report):
     `Currency` is KRW throughout and `FX Rate` is provenance rather than
     something the ingest must multiply by.
     """
-    pdfs = [p for p in sorted(statements_dir.glob("*.pdf")) if "토스증권" in nfc(p.name)]
+    pdfs = sorted(statements_dir.glob(f"{TOSS_PREFIX}*.pdf"))
     if not pdfs:
         return []
 
@@ -516,7 +534,7 @@ def toss_transactions(statements_dir, snapshot, report):
 
     out = []
     for pdf_path in pdfs:
-        name = nfc(pdf_path.name)
+        name = pdf_path.name
         count = 0
         for row in toss_statements.rows(str(pdf_path), name, report):
             mapped, _label = toss_statements.classify(row["raw_type"])
@@ -587,16 +605,12 @@ def toss_transactions(statements_dir, snapshot, report):
 
 
 def main():
-    statements_dir = None
-    for child in sorted(DATA_DIR.iterdir()) if DATA_DIR.exists() else []:
-        if child.is_dir() and "국내증권사" in nfc(child.name):
-            statements_dir = child
-            break
-    if statements_dir is None:
-        print(f"ERROR: no 국내증권사 statement directory under {DATA_DIR}", file=sys.stderr)
+    statements_dir = STATEMENTS_DIR
+    if not statements_dir.is_dir():
+        print(f"ERROR: no statement directory at {statements_dir}", file=sys.stderr)
         return 1
 
-    pdfs = [p for p in sorted(statements_dir.glob("*.pdf")) if "미래에셋" in nfc(p.name)]
+    pdfs = sorted(statements_dir.glob(f"{MIRAE_PREFIX}*.pdf"))
     if not pdfs:
         print(f"ERROR: no 미래에셋 statements in {statements_dir}", file=sys.stderr)
         return 1
@@ -609,8 +623,8 @@ def main():
     toss_problems = {}
 
     for pdf_path in pdfs:
-        name = nfc(pdf_path.name)
-        if "잔고증명서" in name:
+        name = pdf_path.name
+        if BALANCE_DOCTYPE in name:
             continue  # positions, not transactions — used separately as a checkpoint
         pdf = open_pdf(str(pdf_path))
         if pdf is None:

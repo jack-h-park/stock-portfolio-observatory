@@ -25,6 +25,54 @@ rebuilding the pipeline did.
 accounts appear in the statements. Swapping the files wholesale would delete the
 brokerages that have no parser yet — Toss is 36 of 47 Korean holdings.
 
+## How the source files are named
+
+Not one of these filenames comes from a broker. Every one is typed by hand at
+download time, which makes the name a place where a mistake can hide — so there
+is one grammar for all of them, under `STOCK_DATA_DIR`:
+
+```
+<broker>-<doctype>[-<account>]-<period>[-<part>][-partial].<ext>
+```
+
+Lowercase ASCII, hyphen-separated, in six directories: `kr-statements`,
+`us-transactions`, `us-holdings`, `us-tax-documents`, `crypto-bithumb`,
+`crypto-robinhood`. (`kr-statements` under `STOCK_DATA_DIR` holds the source
+PDFs; `STOCK_KR_STATEMENTS_DIR` is where the parsed TSVs are written. Different
+roots, same name.)
+
+The **period** is the load-bearing part, because it is what decides whether a new
+download supersedes an old file or sits beside it:
+
+| Shape | Means | Selection |
+| --- | --- | --- |
+| `2025` | a complete year | archives coexist — `pick: 'all'` |
+| `20260723` | everything up to that date | only the newest is read — `pick: 'latest'` |
+| `202509` | one calendar month | coexist |
+| `20250101-20250430`, `2024-2025` | an explicit window | coexist |
+| `2026-partial` | a period known to be incompletely covered | coexist |
+
+Two things follow from having one grammar rather than a dozen ad-hoc names.
+
+**`source_file_dates_plausible` became possible.** A period can now be compared
+against the two things knowable without opening the file: the account did not
+exist before its first transaction, and nothing covers a period that has not
+happened. That check exists because a `Robinhood - Agentic - 20060716
+Year-to-date.csv` sat on the refresh machine beside the `20260716` it was meant
+to be. It never moved a number — but only because "newest" happens to sort 2026
+above 2006, which is a coincidence and not a check.
+
+**The Unicode bug class is gone.** macOS returns Hangul filenames decomposed
+(NFD), so a composed literal in a pattern matched nothing — silently, with no
+error. Every parser carried an `nfc()` helper for that. The helpers that remain
+normalise PDF *contents*, which still need it; none of them touch a filename.
+
+Filenames are still never trusted for what a document *contains*. The crypto
+ingest asserts on the periods the statements themselves declare, because a
+filename already lied once here: one named 2025년1-7월 held 2026-01-01~2026-07-31.
+The periods in the names on disk today were read out of the documents, not
+carried over from the names they replaced.
+
 ## The Google Sheets
 
 Three sheets predate the pipeline. All nine tabs across the first two were

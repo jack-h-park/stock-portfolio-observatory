@@ -44,12 +44,12 @@ done
 # Every directory the ingest and the extractors read. Keep in step with
 # scripts/source-files.mjs, extract-kr-statements.py and extract-crypto-activity.py.
 SOURCES=(
-  "국내증권사 거래내역 (증명서)"
-  "미국증권사 거래내역 (CSV)"
-  "미국증권사 보유종목 현황 (Tax Lot 구분 포함)"
-  "미국증권사 Tax Documents"
-  "빗썸"
-  "미국 로빈후드 가상계좌"
+  kr-statements
+  us-transactions
+  us-holdings
+  us-tax-documents
+  crypto-bithumb
+  crypto-robinhood
 )
 
 [ -d "$LOCAL_DIR" ] || { echo "ERROR: no data directory at $LOCAL_DIR" >&2; exit 1; }
@@ -68,13 +68,11 @@ done
 
 echo "pushing ${#present[@]} source director(ies) to $HOST:$REMOTE_DIR/${DRY:+  (dry run)}"
 
-# --delete is deliberately ABSENT. A rotating export (`Chase-taxlots-<date>.csv`)
+# --delete is deliberately ABSENT. A rotating export (`chase-holdings-<date>.csv`)
 # is resolved by pattern on the far side, and an older file left behind costs
 # nothing; deleting one because it is no longer on this laptop could remove the
 # only copy of a period nobody re-downloads.
-# -8 keeps Korean directory names legible; without it rsync escapes every
-# non-ASCII byte and the listing a human reads becomes \#353\#257\#270…
-rsync -a --human-readable --itemize-changes -8 $DRY \
+rsync -a --human-readable --itemize-changes $DRY \
   --exclude '.DS_Store' \
   --exclude '~$*' \
   "${present[@]}" \

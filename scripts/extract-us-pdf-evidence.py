@@ -41,7 +41,13 @@ def money(value):
 
 
 def extract_account(filename):
-    match = re.match(r"(\d{4})\s+", filename)
+    """The account segment of a Gain/Loss report's name.
+
+    It is the last four of the Robinhood account number, and the ingest builds
+    the lot's account label from it ("Robinhood 1478"), so this has to keep
+    returning exactly what the old leading-digits name did.
+    """
+    match = re.match(r"robinhood-holdings-(\d{4})-", filename, re.IGNORECASE)
     return match.group(1) if match else ""
 
 
@@ -347,8 +353,15 @@ def summarize_tax_doc(path):
         }
 
 
-gain_loss_paths = sorted(DATA_DIR.glob("**/*Gain_Loss Report.pdf"))
-tax_doc_paths = sorted((p for p in DATA_DIR.glob("**/*.pdf") if "Tax Documents" in str(p)))
+# Named directories rather than a recursive sweep of STOCK_DATA_DIR. Both used to
+# be found by walking every PDF under the data root and testing a fragment of the
+# broker's own export name ("Gain_Loss Report") or of a Korean directory name, so
+# any unrelated PDF dropped anywhere below the root could be read as evidence.
+# The filename grammar in scripts/source-files.mjs makes both a plain glob:
+#   us-holdings/robinhood-holdings-<account>-<asof>.pdf
+#   us-tax-documents/<broker>-1099[-<account>]-<year>.pdf
+gain_loss_paths = sorted((DATA_DIR / "us-holdings").glob("robinhood-holdings-*.pdf"))
+tax_doc_paths = sorted((DATA_DIR / "us-tax-documents").glob("*.pdf"))
 
 reports = [summarize_gain_loss(path) for path in gain_loss_paths]
 reports.extend(summarize_tax_doc(path) for path in tax_doc_paths)
