@@ -2335,12 +2335,20 @@ const usSalesProceeds = usSalesThisYear.reduce((sum, r) => sum + Math.abs(Number
 const ytdRealizedAssumed =
   Number(usTaxAssumptions?.ytdRealizedShortGainLossUsd ?? 0) !== 0 ||
   Number(usTaxAssumptions?.ytdRealizedLongGainLossUsd ?? 0) !== 0
+// The detail has to describe the state it is actually in. It used to be built
+// for the failing case only, so once the assumption WAS filled in the row read
+// "pass … but ytdRealized*Usd is 0" — a passing check asserting the very thing
+// that would have failed it. On a page whose job is to be believed, a line that
+// contradicts its own status is worse than no line.
+const ytdSalesDetail = `${usSalesThisYear.length} US sale(s) in ${taxYear} totalling $${usSalesProceeds.toFixed(2)} in proceeds`
 check(
   'us_ytd_realized_assumption_reviewed',
   usSalesThisYear.length === 0 || ytdRealizedAssumed,
   usSalesThisYear.length === 0
     ? `no ${taxYear} US sales to reconcile`
-    : `${usSalesThisYear.length} US sale(s) in ${taxYear} totalling $${usSalesProceeds.toFixed(2)} in proceeds, but ytdRealized*Usd is 0${taxPolicy ? '' : ` (no policy file at ${path.basename(taxPolicyPath)})`}`,
+    : ytdRealizedAssumed
+      ? `${ytdSalesDetail}; ytdRealized*Usd set to ${Number(usTaxAssumptions?.ytdRealizedShortGainLossUsd ?? 0)} short / ${Number(usTaxAssumptions?.ytdRealizedLongGainLossUsd ?? 0)} long`
+      : `${ytdSalesDetail}, but ytdRealized*Usd is 0${taxPolicy ? '' : ` (no policy file at ${path.basename(taxPolicyPath)})`}`,
   'warning'
 )
 
