@@ -22,6 +22,7 @@
     "fetch:historical-prices": "node scripts/fetch-historical-prices.mjs",
     "extract:us-pdf-evidence": "node scripts/extract-us-pdf-evidence.mjs",
     "extract:kr-statements": "node scripts/extract-kr-statements.mjs",
+    "fetch:toss": "node scripts/fetch-toss.mjs",
     "ingest": "node scripts/ingest-stock-data.mjs",
     "backfill:history": "node scripts/backfill-portfolio-history.mjs",
     "refresh": "node scripts/refresh.mjs",

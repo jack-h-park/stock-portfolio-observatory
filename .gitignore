@@ -33,6 +33,8 @@ data/historical-fx-rates.json
 data/historical-prices.json
 # Parsed broker certificates: every trade, with amounts. Never commit.
 data/kr-statements/
+# Live broker snapshot: positions, order history, amounts. Never commit.
+data/toss-snapshot.json
 *.db
 *.sqlite
 *.sqlite3
