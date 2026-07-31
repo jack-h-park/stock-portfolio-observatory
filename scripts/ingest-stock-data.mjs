@@ -46,9 +46,20 @@ for (const gap of [...missingHoldingSources, ...missingTransactionSources]) {
   console.error(`[source] MISSING — no file matches ${gap}`)
 }
 
-function readTsv(filename) {
-  const filePath = path.join(payloadDir, filename)
-  const text = fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/, '').trim()
+// Certificates parsed by scripts/extract-kr-statements.py. They cover only the
+// accounts whose statements exist, so they REPLACE the hand-dumped payload rows
+// for those accounts and leave every other account (today: Toss) untouched \u2014
+// swapping the files wholesale would delete the brokerage that is not covered yet.
+const krStatementsDir = process.env.STOCK_KR_STATEMENTS_DIR || path.join(process.cwd(), 'data/kr-statements')
+
+function readTsvAt(dir, filename) {
+  const filePath = path.join(dir, filename)
+  if (!fs.existsSync(filePath)) return null
+  return parseTsv(fs.readFileSync(filePath, 'utf8'), filePath)
+}
+
+function parseTsv(raw, filePath) {
+  const text = raw.replace(/^\uFEFF/, '').trim()
   if (!text) return { columns: [], rows: [], filePath }
   const [header, ...lines] = text.split(/\r?\n/)
   const columns = header.split('\t')
@@ -63,6 +74,19 @@ function readTsv(filename) {
       return row
     })
   return { columns, rows, filePath }
+}
+
+function readTsv(filename) {
+  return parseTsv(fs.readFileSync(path.join(payloadDir, filename), 'utf8'), path.join(payloadDir, filename))
+}
+
+/** First non-empty value among aliases — the statements renamed some headers. */
+function pick(row, ...names) {
+  for (const name of names) {
+    const value = row[name]
+    if (value !== undefined && String(value).trim() !== '') return value
+  }
+  return ''
 }
 
 function parseCsv(text) {
@@ -376,6 +400,27 @@ if (fs.existsSync(dbPath)) {
 }
 
 const datasets = Object.fromEntries(Object.entries(sources).map(([name, file]) => [name, readTsv(file)]))
+
+// Certificate rows win for the accounts they cover; the payload keeps the rest.
+// `holdings` is deliberately absent from the statements — a 거래내역증명서 records
+// movements, not a position snapshot — so that dataset stays on the payload and
+// the existing holdings-vs-taxlots checks now compare the sheet against the
+// broker's own history, which is a comparison worth having.
+const krStatements = Object.fromEntries(
+  ['taxlots', 'transactions', 'dividends', 'realized'].map((name) => [name, readTsvAt(krStatementsDir, `${name}.tsv`)])
+)
+const statementAccounts = new Set((krStatements.transactions?.rows ?? []).map((r) => text(r.Account)).filter(Boolean))
+if (statementAccounts.size) {
+  for (const [name, parsed] of Object.entries(krStatements)) {
+    if (!parsed) continue
+    const kept = datasets[name].rows.filter((r) => !statementAccounts.has(text(r.Account)))
+    const dropped = datasets[name].rows.length - kept.length
+    datasets[name] = { columns: parsed.columns, rows: [...kept, ...parsed.rows], filePath: parsed.filePath }
+    console.error(`[kr-statements] ${name}: ${parsed.rows.length} certificate row(s) replace ${dropped} payload row(s)`)
+  }
+  console.error(`[kr-statements] accounts covered: ${[...statementAccounts].join(', ')}`)
+}
+
 const db = new Database(dbPath)
 db.pragma('journal_mode = WAL')
 
@@ -664,6 +709,36 @@ insertMany(db, 'historical_prices', historicalPriceDocument.prices ?? [], [
 ])
 insertMany(db, 'historical_fx_rates', historicalFxDocument.rates ?? [], ['price_date', 'rate', 'source'])
 
+// The 주식종합 account held US ETFs, so a Korean statement carries USD rows. Only
+// its trades record 환율; its 345 dividend and transfer rows do not, and the
+// parser deliberately leaves their won figure empty rather than invent one. Use
+// the rate for that date from the historical table the refresh already keeps,
+// falling back to the closest earlier date so a payout on a market holiday is
+// converted rather than silently dropped to zero.
+const historicalFxDates = (historicalFxDocument.rates ?? [])
+  .map((r) => ({ date: r.price_date, rate: Number(r.rate) }))
+  .filter((r) => r.date && Number.isFinite(r.rate))
+  .sort((a, b) => a.date.localeCompare(b.date))
+
+function krwOn(nativeAmount, currency, date) {
+  if (nativeAmount == null) return null
+  if (!currency || currency === 'KRW') return nativeAmount
+  let best = null
+  for (const entry of historicalFxDates) {
+    if (entry.date > date) break
+    best = entry
+  }
+  const rate = best?.rate ?? fxRate(currency)?.rate ?? null
+  return rate == null ? null : nativeAmount * rate
+}
+
+/** Won amount for a Korea row: the parser's figure when it had one, else converted. */
+function krAmount(row, krwKey, nativeKey = 'Native Amount') {
+  const explicit = number(row[krwKey])
+  if (explicit != null) return explicit
+  return krwOn(number(row[nativeKey]), text(row.Currency), text(row.Date) || text(row['Sold Date']))
+}
+
 insertMany(
   db,
   'fx_rates',
@@ -787,58 +862,74 @@ const holdingRows = datasets.holdings.rows
     }
   })
 
-const taxLotRows = datasets.taxlots.rows.map((r) => ({
-  market: 'KR',
-  currency: 'KRW',
-  base_currency: 'KRW',
-  fx_rate_to_base: 1,
-  brokerage: text(r.Account).split('(')[0],
-  account_type: text(r.Account).match(/\(([^)]+)\)/)?.[1] ?? '',
-  source_system: 'korea_sheet_payload',
-  as_of_date: '2026-07-15',
-  account: text(r.Account),
-  ticker: normalizeTicker(r.Ticker),
-  name: text(r.Name),
-  acquired_date: text(r['Acquired Date']),
-  open_quantity: number(r['Open Quantity']) ?? 0,
-  native_cost_basis: number(r['Cost Basis (KRW)']) ?? 0,
-  native_unit_cost: number(r['Unit Cost']),
-  native_market_value: null,
-  native_unrealized_gl: null,
-  cost_basis_krw: number(r['Cost Basis (KRW)']) ?? 0,
-  unit_cost: number(r['Unit Cost']),
-  holding_days: number(r['Holding Days as of 2026-07-15']),
-  tax_term: text(r['Tax Term']),
-  source: text(r.Source),
-}))
+const taxLotRows = datasets.taxlots.rows.map((r) => {
+  const currency = text(r.Currency) || 'KRW'
+  const costKrw = krAmount(r, 'Cost Basis (KRW)', 'Native Cost Basis') ?? 0
+  const quantity = number(r['Open Quantity']) ?? 0
+  return {
+    market: 'KR',
+    currency,
+    base_currency: 'KRW',
+    fx_rate_to_base: currency === 'KRW' ? 1 : (quantity && number(r['Native Cost Basis'])
+      ? costKrw / number(r['Native Cost Basis']) : null),
+    brokerage: text(r.Account).split('(')[0],
+    account_type: text(r.Account).match(/\(([^)]+)\)/)?.[1] ?? '',
+    source_system: text(r['As Of Date']) ? 'korea_statement' : 'korea_sheet_payload',
+    // The dumped payload froze this at its extraction date; a statement carries
+    // its own. Reading the row means the dashboard stops claiming 2026-07-15
+    // forever after the source has moved on.
+    as_of_date: text(r['As Of Date']) || '2026-07-15',
+    account: text(r.Account),
+    ticker: normalizeTicker(r.Ticker),
+    name: text(r.Name),
+    acquired_date: text(r['Acquired Date']),
+    open_quantity: quantity,
+    native_cost_basis: number(pick(r, 'Native Cost Basis', 'Cost Basis (KRW)')) ?? 0,
+    native_unit_cost: number(pick(r, 'Native Unit Cost', 'Unit Cost')),
+    native_market_value: null,
+    native_unrealized_gl: null,
+    cost_basis_krw: costKrw,
+    unit_cost: quantity ? costKrw / quantity : number(r['Unit Cost']),
+    holding_days: number(pick(r, 'Holding Days', 'Holding Days as of 2026-07-15')),
+    tax_term: text(r['Tax Term']),
+    source: text(r.Source),
+  }
+})
 
-const realizedRows = datasets.realized.rows.map((r) => ({
-  market: 'KR',
-  currency: 'KRW',
-  base_currency: 'KRW',
-  brokerage: text(r.Account).split('(')[0],
-  source_system: 'korea_sheet_payload',
-  account: text(r.Account),
-  ticker: normalizeTicker(r.Ticker),
-  name: text(r.Name),
-  acquired_date: text(r['Acquired Date']),
-  sold_date: text(r['Sold Date']),
-  quantity_sold: number(r['Quantity Sold']),
-  cost_basis_krw: number(r['Cost Basis (KRW)']),
-  proceeds_krw: number(r['Proceeds (KRW)']),
-  realized_gl_krw: number(r['Realized G/L (KRW)']),
-  holding_days: number(r['Holding Days']),
-  tax_term: text(r['Tax Term']),
-  source: text(r.Source),
-}))
+const realizedRows = datasets.realized.rows.map((r) => {
+  const currency = text(r.Currency) || 'KRW'
+  const cost = krAmount(r, 'Cost Basis (KRW)', 'Native Cost Basis')
+  const proceeds = krAmount(r, 'Proceeds (KRW)', 'Native Proceeds')
+  return {
+    market: 'KR',
+    currency,
+    base_currency: 'KRW',
+    brokerage: text(r.Account).split('(')[0],
+    source_system: currency === 'KRW' && !text(r['Native Cost Basis']) ? 'korea_sheet_payload' : 'korea_statement',
+    account: text(r.Account),
+    ticker: normalizeTicker(r.Ticker),
+    name: text(r.Name),
+    acquired_date: text(r['Acquired Date']),
+    sold_date: text(r['Sold Date']),
+    quantity_sold: number(r['Quantity Sold']),
+    cost_basis_krw: cost,
+    proceeds_krw: proceeds,
+    // Recomputed from the converted legs rather than read: a USD sale's gain in
+    // won is not its dollar gain times anything the parser knew at the time.
+    realized_gl_krw: cost == null || proceeds == null ? number(r['Realized G/L (KRW)']) : proceeds - cost,
+    holding_days: number(r['Holding Days']),
+    tax_term: text(r['Tax Term']),
+    source: text(r.Source),
+  }
+})
 
 const transactionRows = datasets.transactions.rows.map((r) => ({
   market: 'KR',
-  currency: 'KRW',
+  currency: text(r.Currency) || 'KRW',
   base_currency: 'KRW',
   brokerage: text(r.Account).split('(')[0],
   account_type: text(r.Account).match(/\(([^)]+)\)/)?.[1] ?? '',
-  source_system: 'korea_sheet_payload',
+  source_system: text(r.Currency) ? 'korea_statement' : 'korea_sheet_payload',
   date: text(r.Date),
   account: text(r.Account),
   type: text(r.Type),
@@ -846,10 +937,10 @@ const transactionRows = datasets.transactions.rows.map((r) => ({
   ticker: normalizeTicker(r.Ticker),
   name: text(r.Name),
   quantity: number(r.Quantity),
-  native_amount: number(r['Amount (KRW)']),
+  native_amount: number(pick(r, 'Native Amount', 'Amount (KRW)')),
   native_settlement: number(r['Settlement (KRW)']),
   native_unit_price: number(r['Unit Price']),
-  amount_krw: number(r['Amount (KRW)']),
+  amount_krw: krAmount(r, 'Amount (KRW)'),
   settlement_krw: number(r['Settlement (KRW)']),
   unit_price: number(r['Unit Price']),
   fee: number(r.Fee),
@@ -861,18 +952,18 @@ const transactionRows = datasets.transactions.rows.map((r) => ({
 
 const dividendRows = datasets.dividends.rows.map((r) => ({
   market: 'KR',
-  currency: 'KRW',
+  currency: text(r.Currency) || 'KRW',
   base_currency: 'KRW',
   brokerage: text(r.Account).split('(')[0],
   account_type: text(r.Account).match(/\(([^)]+)\)/)?.[1] ?? '',
-  source_system: 'korea_sheet_payload',
+  source_system: text(r.Currency) ? 'korea_statement' : 'korea_sheet_payload',
   date: text(r.Date),
   account: text(r.Account),
   ticker: normalizeTicker(r.Symbol),
   name: text(r.Name),
-  native_amount: number(r['Amount (KRW)']) ?? 0,
+  native_amount: number(pick(r, 'Native Amount', 'Amount (KRW)')) ?? 0,
   native_tax_withheld: null,
-  amount_krw: number(r['Amount (KRW)']) ?? 0,
+  amount_krw: krAmount(r, 'Amount (KRW)') ?? 0,
   type: text(r.Type),
   source: text(r.Source),
   page: number(r.Page),

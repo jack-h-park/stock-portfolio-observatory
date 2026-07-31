@@ -450,7 +450,12 @@ def main():
                     "Page": page_no,
                 }
                 transactions.append(row)
-                if mapped == "DIVIDEND":
+                # The dividends table is the income table — the US side files
+                # every isIncomeType() row there too, and the ingest checks the
+                # two counts agree. Deposit interest and tax refunds are income
+                # the portfolio should see, so they belong here with 배당; `Type`
+                # keeps the 거래종류 that distinguishes them.
+                if mapped in ("DIVIDEND", "INTEREST", "OTHER_INCOME"):
                     dividends.append({
                         "Date": row["Date"],
                         "Account": account,
