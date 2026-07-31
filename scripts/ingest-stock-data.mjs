@@ -815,7 +815,7 @@ for (const report of usPdfEvidence.reports ?? []) {
   ).run(report.name, fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, report.row_count ?? 0)
 }
 
-const holdingRows = datasets.holdings.rows
+let holdingRows = datasets.holdings.rows
   .filter((r) => text(r.Account).toLowerCase() !== 'total')
   .map((r) => {
     const ticker = normalizeTicker(r.Ticker)
@@ -861,6 +861,79 @@ const holdingRows = datasets.holdings.rows
       lot_count: number(r['Lot Count']),
     }
   })
+
+// Toss positions straight from the broker, replacing the spreadsheet's copy of
+// them. The sheet's Toss rows had not moved since 2026-07-15 while the account
+// kept trading, so this is the difference between a dashboard that is current
+// and one that quietly multiplies a fortnight-old quantity by today's price.
+//
+// Only `holdings` is taken here. The API's order history cannot rebuild Toss
+// lots — 18 of its 46 symbols arrived by transfer rather than by order, and a
+// transfer is not an order — so the lots stay on the payload until the sending
+// brokers' costs are carried across. That split is deliberate and is reported
+// as `toss_holdings_lots_provenance` below rather than left to be discovered.
+const tossSnapshotPath = process.env.STOCK_TOSS_SNAPSHOT_PATH || path.join(process.cwd(), 'data/toss-snapshot.json')
+const tossSnapshot = fs.existsSync(tossSnapshotPath)
+  ? JSON.parse(fs.readFileSync(tossSnapshotPath, 'utf8'))
+  : null
+const tossAccountLabel = process.env.STOCK_TOSS_ACCOUNT_LABEL || '토스증권'
+let tossHoldingCount = 0
+
+if (tossSnapshot?.accounts?.length) {
+  const asOf = String(tossSnapshot.fetchedAt || '').slice(0, 10)
+  const usdRate = fxRate('USD')?.rate ?? null
+  const rows = []
+  for (const account of tossSnapshot.accounts) {
+    for (const item of account.holdings?.items ?? []) {
+      const currency = text(item.currency) || 'KRW'
+      const toKrw = (value) => (value == null ? null : currency === 'KRW' ? value : usdRate == null ? null : value * usdRate)
+      const quantity = number(item.quantity) ?? 0
+      const nativeCost = number(item.marketValue?.purchaseAmount) ?? 0
+      const marketValue = number(item.marketValue?.amount)
+      const unrealized = number(item.profitLoss?.amount)
+      const rate = number(item.profitLoss?.rate)
+      rows.push({
+        market: text(item.marketCountry) === 'US' ? 'US' : 'KR',
+        currency,
+        base_currency: 'KRW',
+        fx_rate_to_base: currency === 'KRW' ? 1 : usdRate,
+        brokerage: tossAccountLabel,
+        account_type: '',
+        source_system: 'toss_open_api',
+        as_of_date: asOf,
+        account: tossAccountLabel,
+        ticker: normalizeTicker(item.symbol),
+        name: text(item.name),
+        quantity,
+        native_average_unit_cost: number(item.averagePurchasePrice),
+        native_cost: nativeCost,
+        native_price: number(item.lastPrice),
+        native_market_value: marketValue,
+        native_unrealized_gl: unrealized,
+        native_unrealized_gl_pct: rate == null ? null : rate * 100,
+        base_cost: toKrw(nativeCost),
+        base_market_value: toKrw(marketValue),
+        base_unrealized_gl: toKrw(unrealized),
+        average_unit_cost: toKrw(number(item.averagePurchasePrice)),
+        total_cost_krw: toKrw(nativeCost) ?? 0,
+        current_price: toKrw(number(item.lastPrice)),
+        pe: null,
+        eps: null,
+        unrealized_gl_krw: toKrw(unrealized),
+        unrealized_gl_pct: rate == null ? null : rate * 100,
+        long_term_qty: null,
+        short_term_qty: null,
+        lot_count: null,
+      })
+    }
+  }
+  if (rows.length) {
+    const replaced = holdingRows.filter((r) => r.account === tossAccountLabel).length
+    holdingRows = [...holdingRows.filter((r) => r.account !== tossAccountLabel), ...rows]
+    tossHoldingCount = rows.length
+    console.error(`[toss] ${rows.length} live holding(s) replace ${replaced} payload row(s) (fetched ${asOf})`)
+  }
+}
 
 const taxLotRows = datasets.taxlots.rows.map((r) => {
   const currency = text(r.Currency) || 'KRW'
@@ -1631,8 +1704,17 @@ for (const r of taxLotRows) {
 
 const quantityMismatches = []
 const costMismatches = []
+// Holdings that are live while their lots are not. Comparing the two would
+// only ever restate that fact, once per position, as an error that aborts the
+// refresh — so they are counted separately and reported as their own check.
+const differentProvenance = []
 for (const [key, holding] of holdingsByKey) {
   if (!(holding.market === 'KR' || (holding.market === 'US' && ['Chase', 'Robinhood'].includes(holding.brokerage)))) continue
+  if (holding.source_system === 'toss_open_api') {
+    const lots = lotsByKey.get(key) || { quantity: 0, cost: 0 }
+    if (Math.abs(holding.quantity - lots.quantity) > 1e-6) differentProvenance.push(key)
+    continue
+  }
   const lots = lotsByKey.get(key) || { quantity: 0, cost: 0 }
   if (Math.abs(holding.quantity - lots.quantity) > 1e-6) {
     quantityMismatches.push({ key, holding: holding.quantity, lots: lots.quantity })
@@ -1675,6 +1757,17 @@ const missingUsPrices = holdingRows.filter((r) => r.market === 'US' && r.quantit
 const gainLossReports = (usPdfEvidence.reports ?? []).filter((r) => r.category === 'us_gain_loss_pdf')
 const taxDocReports = (usPdfEvidence.reports ?? []).filter((r) => r.category === 'us_tax_document_pdf')
 
+// Not a data error — a stated gap, kept loud so it is closed rather than
+// forgotten. It shuts when the transferred-in lots carry their sending broker's
+// acquisition cost across and Toss lots can be rebuilt from its order history.
+check(
+  'toss_holdings_lots_provenance',
+  tossHoldingCount === 0 || differentProvenance.length === 0,
+  tossHoldingCount === 0
+    ? 'no live Toss snapshot'
+    : `${differentProvenance.length} of ${tossHoldingCount} live Toss position(s) disagree with lots still carried from the payload`,
+  'warning'
+)
 check('reconcilable_holdings_vs_taxlots_quantity', quantityMismatches.length === 0, `${quantityMismatches.length} mismatch(es)`)
 check('reconcilable_holdings_vs_taxlots_cost_basis', costMismatches.length === 0, `${costMismatches.length} mismatch(es)`)
 check(
