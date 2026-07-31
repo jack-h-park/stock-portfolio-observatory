@@ -2,9 +2,9 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Badge, Button } from '@/components/ui'
+import { Badge, Button , marketTone } from '@/components/ui'
 import { DataTable } from '@/components/DataTable'
-import { fmtMoney, fmtNumber } from '@/lib/format'
+import { fmtMoney, fmtNumber, fmtQuantity } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
 import type { CostBasisHolding, CostBasisStatus } from '@/lib/adapters/portfolio-db'
 
@@ -51,7 +51,7 @@ function InstrumentLabel({ row }: { row: any }) {
   return (
     <div className="min-w-[13rem]">
       <div className="flex items-center gap-2">
-        <Badge tone={row.market === 'US' ? 'info' : 'success'}>{row.market}</Badge>
+        <Badge tone={marketTone(row.market)}>{row.market}</Badge>
         <span className="font-mono text-[12px] text-ink">{row.ticker}</span>
       </div>
       <div className="mt-1 max-w-[18rem] truncate text-[12px] font-medium text-ink">{row.name}</div>
@@ -233,14 +233,14 @@ export function HoldingsTable({ rows }: { rows: any[] }) {
         <div className="flex flex-col gap-2 rounded-md border border-line-subtle bg-card px-3 py-2 text-[12px] lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <Badge tone={selected.market === 'US' ? 'info' : 'success'}>{selected.market}</Badge>
+              <Badge tone={marketTone(selected.market)}>{selected.market}</Badge>
               <span className="font-medium text-ink">{selected.name}</span>
               <span className="font-mono text-[11px] text-ink-3">{selected.ticker}</span>
             </div>
             <div className="mt-1 truncate text-[11px] text-ink-3">{selected.brokerage} · {selected.account}</div>
           </div>
           <div className="grid gap-x-5 gap-y-1 text-[11px] sm:grid-cols-5 lg:text-right">
-            <div><span className="text-ink-3">Qty </span><span className="tabular-nums text-ink">{fmtNumber(selected.quantity, 2)}</span></div>
+            <div><span className="text-ink-3">Qty </span><span className="tabular-nums text-ink">{fmtQuantity(selected.quantity, 2)}</span></div>
             <div><span className="text-ink-3">Cost </span><span className="tabular-nums text-ink">{fmtMoney(selected.native_cost, selected.currency)}</span></div>
             <div><span className="text-ink-3">Market </span><span className="tabular-nums text-ink">{selected.native_market_value == null ? 'n/a' : fmtMoney(selected.native_market_value, selected.currency)}</span></div>
             <div>
@@ -258,7 +258,7 @@ export function HoldingsTable({ rows }: { rows: any[] }) {
       <DataTable
         rows={filtered}
         columns={[
-          { key: 'market', label: 'Market', render: (r) => <Badge tone={r.market === 'US' ? 'info' : 'success'}>{r.market}</Badge> },
+          { key: 'market', label: 'Market', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
           { key: 'brokerage', label: 'Broker' },
           { key: 'account', label: 'Account' },
           {
@@ -275,7 +275,7 @@ export function HoldingsTable({ rows }: { rows: any[] }) {
               </div>
             ),
           },
-          { key: 'quantity', label: 'Qty', align: 'right', render: (r) => fmtNumber(r.quantity, 2) },
+          { key: 'quantity', label: 'Qty', align: 'right', render: (r) => fmtQuantity(r.quantity, 2) },
           { key: 'native_cost', label: 'Cost Basis', align: 'right', render: (r) => fmtMoney(r.native_cost, r.currency) },
           { key: 'base_cost', label: 'Base Cost', align: 'right', render: (r) => (r.base_cost == null ? 'n/a' : fmtMoney(r.base_cost, 'KRW')) },
           { key: 'native_market_value', label: 'Market Value', align: 'right', render: (r) => (r.native_market_value == null ? 'n/a' : fmtMoney(r.native_market_value, r.currency)) },
@@ -441,7 +441,7 @@ export function CostBasisHoldingsTable({ rows }: { rows: CostBasisHolding[] }) {
           { key: 'name', label: 'Name', render: (r) => <div className="min-w-[14rem] max-w-[20rem] truncate text-ink">{r.name}</div> },
           { key: 'brokerage', label: 'Broker' },
           { key: 'account', label: 'Account', render: (r) => <span className="whitespace-nowrap">{r.account}</span> },
-          { key: 'quantity', label: 'Shares', align: 'right', render: (r) => fmtNumber(r.quantity, 6) },
+          { key: 'quantity', label: 'Shares', align: 'right', render: (r) => fmtQuantity(r.quantity, 6) },
           { key: 'native_price', label: 'Price', align: 'right', render: (r) => (r.native_price == null ? 'n/a' : fmtMoney(r.native_price, r.currency)) },
           {
             key: 'native_market_value',
@@ -585,7 +585,7 @@ export function LotsTable({ rows }: { rows: any[] }) {
         </div>
         <div>
           <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Open quantity</div>
-          <div className="font-medium tabular-nums text-ink">{fmtNumber(totals.quantity, 2)}</div>
+          <div className="font-medium tabular-nums text-ink">{fmtQuantity(totals.quantity, 2)}</div>
         </div>
         <div>
           <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Base cost</div>
@@ -595,7 +595,7 @@ export function LotsTable({ rows }: { rows: any[] }) {
       {selectedLots.length > 0 && (
         <div className="rounded-md border border-line-subtle bg-card px-3 py-2 text-[12px]">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={selectedLots[0].market === 'US' ? 'info' : 'success'}>{selectedLots[0].market}</Badge>
+            <Badge tone={selectedLots[0].marketTone(market)}>{selectedLots[0].market}</Badge>
             <span className="font-medium text-ink">{selectedLots[0].name}</span>
             <span className="font-mono text-[11px] text-ink-3">{selectedLots[0].ticker}</span>
             <span className="text-[11px] text-ink-3">{selectedLots.length} lot(s) selected</span>
@@ -611,7 +611,7 @@ export function LotsTable({ rows }: { rows: any[] }) {
       <DataTable
         rows={filtered}
         columns={[
-          { key: 'market', label: 'Market', render: (r) => <Badge tone={r.market === 'US' ? 'info' : 'success'}>{r.market}</Badge> },
+          { key: 'market', label: 'Market', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
           { key: 'brokerage', label: 'Broker' },
           { key: 'account', label: 'Account' },
           {
@@ -661,14 +661,14 @@ export function TransactionsTable({ rows }: { rows: any[] }) {
       <DataTable
         rows={filtered}
         columns={[
-          { key: 'market', label: 'Market', render: (r) => <Badge tone={r.market === 'US' ? 'info' : 'success'}>{r.market}</Badge> },
+          { key: 'market', label: 'Market', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
           { key: 'date', label: 'Date' },
           { key: 'brokerage', label: 'Broker' },
           { key: 'account', label: 'Account' },
           { key: 'type', label: 'Type', render: (r) => <Badge tone={r.type === 'DIVIDEND' ? 'success' : r.type === 'SELL' ? 'warning' : 'info'}>{r.type}</Badge> },
           { key: 'ticker', label: 'Ticker' },
           { key: 'name', label: 'Name' },
-          { key: 'quantity', label: 'Qty', align: 'right', render: (r) => fmtNumber(r.quantity, 2) },
+          { key: 'quantity', label: 'Qty', align: 'right', render: (r) => fmtQuantity(r.quantity, 2) },
           { key: 'native_amount', label: 'Amount', align: 'right', render: (r) => fmtMoney(r.native_amount, r.currency) },
           { key: 'amount_krw', label: 'Base Amount', align: 'right', render: (r) => (r.amount_krw == null ? 'n/a' : fmtMoney(r.amount_krw, 'KRW')) },
           { key: 'source', label: 'Source' },

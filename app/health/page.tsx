@@ -66,7 +66,7 @@ export default function HealthPage() {
             </div>
           </div>
           <div className="mt-3 text-[11px] leading-relaxed text-ink-3">
-            KR/US prices turn stale after 36h. FX turns stale after 7d. Source files drift when disk size or modified time no longer matches ingest.
+            KR/US prices turn stale after 36h, crypto after 8h — a 24/7 book has no close to be as fresh as. FX turns stale after 7d. Source files drift when disk size or modified time no longer matches ingest.
           </div>
         </Card>
 

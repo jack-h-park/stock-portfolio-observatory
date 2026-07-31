@@ -111,6 +111,20 @@ const TONE_STYLES = {
 
 export type Tone = keyof typeof TONE_STYLES
 
+/**
+ * Badge tone for a market code.
+ *
+ * Call sites used to spell this as `market === 'US' ? 'info' : 'success'`, in 27
+ * places. That reads as "US or Korea", so the moment a third market existed it
+ * was drawn in Korea's colour — the same green, on every table, with only the
+ * three-letter label to tell them apart.
+ */
+export function marketTone(market: string): Tone {
+  if (market === 'US') return 'info'
+  if (market === 'KR') return 'success'
+  return 'warning'
+}
+
 export function Badge({ children, tone = 'neutral' }: { children: ReactNode; tone?: Tone }) {
   return (
     <span

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, StatCard } from '@/components/ui'
+import { Badge, Card, EmptyState, StatCard , marketTone } from '@/components/ui'
 import { getOperationalHealth, getRebalanceReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
@@ -16,7 +16,7 @@ function PositionLink({ row }: { row: ReviewPosition }) {
   return (
     <div className="min-w-[14rem]">
       <div className="flex items-center gap-2">
-        <Badge tone={row.market === 'US' ? 'info' : 'success'}>{row.market}</Badge>
+        <Badge tone={marketTone(row.market)}>{row.market}</Badge>
         <Link href={positionHref(row.market, row.ticker)} className="font-mono text-[12px] font-medium text-info hover:underline">
           {row.ticker}
         </Link>
@@ -59,7 +59,7 @@ export default function RebalancePage() {
           <DataTable
             rows={rebalance.marketGaps}
             columns={[
-              { key: 'market', label: 'Market', render: (r) => <Badge tone={r.market === 'US' ? 'info' : 'success'}>{r.market}</Badge> },
+              { key: 'market', label: 'Market', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
               { key: 'currentPct', label: 'Current', align: 'right', render: (r) => pct(r.currentPct) },
               { key: 'targetPct', label: 'Target', align: 'right', render: (r) => pct(r.targetPct) },
               { key: 'gapValue', label: 'Gap', align: 'right', render: (r) => signedKrw(r.gapValue) },
@@ -75,7 +75,7 @@ export default function RebalancePage() {
             <ul className="divide-y divide-line-subtle">
               {rebalance.addContext.map((row) => (
                 <li key={row.market} className="flex items-center gap-3 py-2 text-[12px]">
-                  <Badge tone={row.market === 'US' ? 'info' : 'success'}>{row.market}</Badge>
+                  <Badge tone={marketTone(row.market)}>{row.market}</Badge>
                   <div className="min-w-0 flex-1">
                     <div className="font-medium tabular-nums text-ink">{fmtKrw(row.gapValue)} under target</div>
                     <div className="text-[11px] text-ink-3">{pct(row.gapPct)} gap · {fmtNumber(row.candidateCount)} existing positions</div>
@@ -83,6 +83,31 @@ export default function RebalancePage() {
                 </li>
               ))}
             </ul>
+          )}
+        </Card>
+
+        <Card title="Outside the policy">
+          {rebalance.untargetedMarkets.length === 0 ? (
+            <EmptyState ok>Every market held has a target</EmptyState>
+          ) : (
+            <>
+              <ul className="divide-y divide-line-subtle">
+                {rebalance.untargetedMarkets.map((row) => (
+                  <li key={row.market} className="flex items-center gap-3 py-2 text-[12px]">
+                    <Badge tone={marketTone(row.market)}>{row.market}</Badge>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium tabular-nums text-ink">{fmtKrw(row.currentValue)}</div>
+                      <div className="text-[11px] text-ink-3">{pct(row.currentPctOfPortfolio)} of the portfolio · no target set</div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[11px] text-ink-3">
+                Held but not covered by the market policy above, so excluded from its gaps — the {rebalance.policy.marketTargets
+                  .map((row) => row.market)
+                  .join('/')} split is measured between those markets only. Single-position caps still apply here.
+              </p>
+            </>
           )}
         </Card>
 

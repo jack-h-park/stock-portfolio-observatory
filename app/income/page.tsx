@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { TrendBarChart } from '@/components/charts'
-import { Badge, Card, EmptyState, StatCard } from '@/components/ui'
+import { Badge, Card, EmptyState, StatCard , marketTone } from '@/components/ui'
 import { getIncomeReview } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
@@ -58,7 +58,7 @@ export default function IncomePage() {
           <ul className="divide-y divide-line-subtle">
             {income.byMarket.map((row) => (
               <li key={`${row.market}:${row.currency}`} className="flex items-center gap-3 py-2 text-[12px]">
-                <Badge tone={row.market === 'US' ? 'info' : 'success'}>{row.market}</Badge>
+                <Badge tone={marketTone(row.market)}>{row.market}</Badge>
                 <div className="min-w-0 flex-1">
                   <div className="font-medium tabular-nums text-ink">{fmtKrw(row.base_income)}</div>
                   <div className="text-[11px] text-ink-3">{fmtMoney(row.native_income, row.currency)} native · {fmtNumber(row.row_count)} rows</div>
@@ -127,7 +127,7 @@ export default function IncomePage() {
                 render: (r) => (
                   <div className="min-w-[14rem]">
                     <div className="flex items-center gap-2">
-                      <Badge tone={r.market === 'US' ? 'info' : 'success'}>{r.market}</Badge>
+                      <Badge tone={marketTone(r.market)}>{r.market}</Badge>
                       <Link href={positionHref(r.market, r.ticker)} className="font-mono text-[12px] font-medium text-info hover:underline">
                         {r.ticker}
                       </Link>
@@ -153,7 +153,7 @@ export default function IncomePage() {
             <DataTable
               rows={income.tickerless}
               columns={[
-                { key: 'market', label: 'Market', render: (r) => <Badge tone={r.market === 'US' ? 'info' : 'success'}>{r.market}</Badge> },
+                { key: 'market', label: 'Market', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
                 { key: 'type', label: 'Type' },
                 { key: 'name', label: 'Name' },
                 { key: 'row_count', label: 'Rows', align: 'right', render: (r) => fmtNumber(r.row_count) },

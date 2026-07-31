@@ -236,6 +236,11 @@ const summary = {
       }
     : null,
 
+  // One row per (market, currency). NOT one row per country: crypto appears as
+  // both CRYPTO/KRW and CRYPTO/USD, because it is held on a won-quoted venue and
+  // a dollar-quoted one. A consumer must iterate this list rather than reach for
+  // a KR row and a US row and treat their sum as the portfolio — `portfolio`
+  // above is the only authoritative total.
   byMarket: markets.map((m) => ({
     market: m.market,
     currency: m.currency,

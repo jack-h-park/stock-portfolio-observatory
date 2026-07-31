@@ -4,9 +4,9 @@ import { createSavedTaxPlanAction } from '@/app/tax-planning/actions'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
-import { Badge, Card, EmptyState, InfoTooltip, StatCard } from '@/components/ui'
+import { Badge, Card, EmptyState, InfoTooltip, StatCard , marketTone } from '@/components/ui'
 import { getOperationalHealth, getOverview, getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
-import { fmtDateTime, fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
+import { fmtDateTime, fmtKrw, fmtMoney, fmtNumber, fmtQuantity } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
 import {
   buildMonthlySalePlanSet,
@@ -304,7 +304,7 @@ function PositionCell({ row }: { row: TaxPlanCandidate }) {
   return (
     <div className="min-w-[14rem]">
       <div className="flex items-center gap-2">
-        <Badge tone={row.market === 'US' ? 'info' : 'success'}>{row.market}</Badge>
+        <Badge tone={marketTone(row.market)}>{row.market}</Badge>
         <Link href={positionHref(row.market, row.ticker)} className="font-mono text-[12px] font-medium text-info hover:underline">
           {row.ticker}
         </Link>
@@ -324,7 +324,7 @@ function CandidateTable({ rows }: { rows: TaxPlanCandidate[] }) {
         { key: 'account', label: 'Account', render: (r) => <span className="max-w-[12rem] truncate">{r.brokerage} · {r.account}</span> },
         { key: 'acquired_date', label: 'Acquired' },
         { key: 'holdingBucket', label: 'Term', render: (r) => <Badge tone={r.holdingBucket === 'long' ? 'success' : 'warning'}>{r.holdingBucket}</Badge> },
-        { key: 'open_quantity', label: 'Qty', align: 'right', render: (r) => fmtNumber(r.open_quantity, 4) },
+        { key: 'open_quantity', label: 'Qty', align: 'right', render: (r) => fmtQuantity(r.open_quantity, 4) },
         { key: 'proceedsNative', label: 'Proceeds', align: 'right', render: (r) => (r.proceedsNative == null ? 'n/a' : fmtMoney(r.proceedsNative, r.currency)) },
         { key: 'gainKrw', label: 'Base G/L', align: 'right', render: (r) => signedKrw(r.gainKrw) },
         { key: 'estimatedTaxKrw', label: 'Gross Lot Tax', align: 'right', render: (r) => fmtKrw(r.estimatedTaxKrw) },
@@ -1372,7 +1372,7 @@ function OpportunityTable({
               return (
                 <tr key={`${row.yearLabel}-${row.market}-${row.filingScenario}`}>
                   <td className="py-3 pr-4 font-mono text-ink">{row.yearLabel}</td>
-                  <td className="py-3 pr-4"><Badge tone={row.market === 'US' ? 'info' : 'success'}>{row.market}</Badge></td>
+                  <td className="py-3 pr-4"><Badge tone={marketTone(row.market)}>{row.market}</Badge></td>
                   <td className="py-3 pr-4"><Badge tone="neutral">{row.filingScenario}</Badge></td>
                   <td className="py-3 pr-4 text-right tabular-nums">{signedKrw(row.netGainKrw)}</td>
                   <td className="py-3 pr-4 text-right tabular-nums text-danger">{row.lossHarvestKrw > 0 ? fmtKrw(row.lossHarvestKrw) : '₩0'}</td>
@@ -1420,7 +1420,7 @@ function ScenarioTimeline({ scenario }: { scenario: MultiYearTaxScenario }) {
                 year.markets.map((market) => (
                   <div key={market.market} className="rounded-sm border border-line bg-card px-2.5 py-2 text-[11px]">
                     <div className="flex items-center justify-between gap-2">
-                      <Badge tone={market.market === 'US' ? 'info' : 'success'}>{market.market}</Badge>
+                      <Badge tone={marketTone(market.market)}>{market.market}</Badge>
                       <span className="tabular-nums text-ink">{fmtKrw(market.proceedsKrw)}</span>
                     </div>
                     <div className="mt-1 flex items-center justify-between gap-2 text-ink-3">

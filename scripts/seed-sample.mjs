@@ -86,6 +86,30 @@ writeJson(path.join(root, 'data/us-prices.json'), {
   prices: [{ ticker: 'AAPL', symbol: 'AAPL', price: 240, currency: 'USD', exchangeName: 'NMS', instrumentType: 'EQUITY', asOfDate: '2026-01-01', regularMarketTime: null, shortName: 'Example Apple', longName: 'Example Apple Inc' }],
   missing: [],
 })
+// Crypto: one KRW-quoted venue and one USD-quoted venue, because that pairing is
+// the whole reason the crypto market cannot be modelled as a single currency.
+writeJson(path.join(root, 'data/crypto-prices.json'), {
+  generatedAt: now,
+  source: 'Synthetic sample',
+  sourceUrl: '',
+  note: 'Synthetic sample crypto price snapshot.',
+  prices: [
+    { venue: 'Sample KRW Exchange', currency: 'KRW', symbol: 'BTC', ticker: 'BTC', price: 90000000, quotedAt: now, asOfDate: '2026-01-01', source: 'Synthetic sample', sourceSymbol: 'BTC_KRW' },
+    { venue: 'Sample USD Exchange', currency: 'USD', symbol: 'ETH', ticker: 'ETH', price: 2000, quotedAt: now, asOfDate: '2026-01-01', source: 'Synthetic sample', sourceSymbol: 'ETH-USD' },
+  ],
+  missing: [],
+  historical: [],
+  missingHistorical: [],
+})
+writeJson(path.join(root, 'data/crypto-activity.json'), {
+  generatedAt: now,
+  source: 'Synthetic sample',
+  documents: [
+    { name: 'bithumb_statement:sample', category: 'bithumb_statement', filename: 'sample-crypto-statement.pdf', path: path.join(sampleSourceDir, 'sample-crypto-statement.pdf'), venue: 'Sample KRW Exchange', account: 'Sample KRW Exchange', pages: 1, rowCount: 1, metrics: { periodStart: '2025-01-01', periodEnd: '2025-12-31', scopeTypes: '매수/매도/입금/출금', scopeAssets: '전체', trade_count: 1, asset_count: 1 } },
+  ],
+  transactions: [],
+  snapshots: [],
+})
 writeJson(path.join(root, 'data/manual-mappings.json'), {
   version: 1,
   description: 'Synthetic sample mappings.',
@@ -101,6 +125,7 @@ writeJson(path.join(root, 'data/refresh-runs.json'), {
   runs: [{ id: now, startedAt: now, finishedAt: now, durationMs: 1200, status: 'success', steps: [{ name: 'seed:sample', command: 'pnpm seed:sample', startedAt: now, finishedAt: now, durationMs: 1200, status: 'success', exitCode: 0, stdoutTail: 'Wrote synthetic sample database.', stderrTail: '' }] }],
 })
 fs.writeFileSync(path.join(sampleSourceDir, 'sample-gain-loss.pdf'), 'Synthetic PDF placeholder for source inventory only.\n')
+fs.writeFileSync(path.join(sampleSourceDir, 'sample-crypto-statement.pdf'), 'Synthetic PDF placeholder for source inventory only.\n')
 
 const db = new Database(dbPath)
 db.exec(`
@@ -138,22 +163,29 @@ insertMany(db, 'holdings', [
   { market: 'KR', currency: 'KRW', base_currency: 'KRW', fx_rate_to_base: 1, brokerage: 'Sample Korea Broker', account_type: 'Taxable', source_system: 'sample', as_of_date: '2026-01-01', account: 'Sample KR Account', ticker: '005930', name: 'Sample Electronics', quantity: 10, native_average_unit_cost: 70000, native_cost: 700000, native_price: 82000, native_market_value: 820000, native_unrealized_gl: 120000, native_unrealized_gl_pct: 17.1429, base_cost: 700000, base_market_value: 820000, base_unrealized_gl: 120000, average_unit_cost: 70000, total_cost_krw: 700000, current_price: 82000, unrealized_gl_krw: 120000, unrealized_gl_pct: 17.1429, long_term_qty: 10, short_term_qty: 0, lot_count: 1 },
   { market: 'US', currency: 'USD', base_currency: 'KRW', fx_rate_to_base: fxRate, brokerage: 'Sample US Broker', account_type: 'Taxable', source_system: 'sample', as_of_date: '2026-01-01', account: 'Sample US Account', ticker: 'AAPL', name: 'Example Apple', quantity: 5, native_average_unit_cost: 200, native_cost: 1000, native_price: 240, native_market_value: 1200, native_unrealized_gl: 200, native_unrealized_gl_pct: 20, base_cost: 1300000, base_market_value: 1560000, base_unrealized_gl: 260000, average_unit_cost: 260000, total_cost_krw: 1300000, current_price: 240, unrealized_gl_krw: 260000, unrealized_gl_pct: 20, long_term_qty: 5, short_term_qty: 0, lot_count: 1 },
   { market: 'US', currency: 'USD', base_currency: 'KRW', fx_rate_to_base: fxRate, brokerage: 'Sample US Broker', account_type: 'Taxable', source_system: 'sample', as_of_date: '2026-01-01', account: 'Sample US Account', ticker: 'MSFT', name: 'Example Microsoft', quantity: 1, native_average_unit_cost: 300, native_cost: 300, native_price: null, native_market_value: null, native_unrealized_gl: null, native_unrealized_gl_pct: null, base_cost: 390000, base_market_value: null, base_unrealized_gl: null, average_unit_cost: 390000, total_cost_krw: 390000, current_price: null, unrealized_gl_krw: null, unrealized_gl_pct: null, long_term_qty: 0, short_term_qty: 1, lot_count: 0 },
+  { market: 'CRYPTO', currency: 'KRW', base_currency: 'KRW', fx_rate_to_base: 1, brokerage: 'Sample KRW Exchange', account_type: 'Crypto', source_system: 'sample', as_of_date: '2026-01-01', account: 'Sample KRW Exchange', ticker: 'BTC', name: 'BTC', quantity: 0.05, native_average_unit_cost: 80000000, native_cost: 4000000, native_price: 90000000, native_market_value: 4500000, native_unrealized_gl: 500000, native_unrealized_gl_pct: 12.5, base_cost: 4000000, base_market_value: 4500000, base_unrealized_gl: 500000, average_unit_cost: 80000000, total_cost_krw: 4000000, current_price: 90000000, unrealized_gl_krw: 500000, unrealized_gl_pct: 12.5, long_term_qty: 0.05, short_term_qty: 0, lot_count: 1 },
+  { market: 'CRYPTO', currency: 'USD', base_currency: 'KRW', fx_rate_to_base: fxRate, brokerage: 'Sample USD Exchange', account_type: 'Crypto', source_system: 'sample', as_of_date: '2026-01-01', account: 'Sample USD Exchange', ticker: 'ETH', name: 'ETH', quantity: 0.4, native_average_unit_cost: 2500, native_cost: 1000, native_price: 2000, native_market_value: 800, native_unrealized_gl: -200, native_unrealized_gl_pct: -20, base_cost: 1300000, base_market_value: 1040000, base_unrealized_gl: -260000, average_unit_cost: 3250000, total_cost_krw: 1300000, current_price: 2600000, unrealized_gl_krw: -260000, unrealized_gl_pct: -20, long_term_qty: 0, short_term_qty: 0.4, lot_count: 1 },
 ], ['market', 'currency', 'base_currency', 'fx_rate_to_base', 'brokerage', 'account_type', 'source_system', 'as_of_date', 'account', 'ticker', 'name', 'quantity', 'native_average_unit_cost', 'native_cost', 'native_price', 'native_market_value', 'native_unrealized_gl', 'native_unrealized_gl_pct', 'base_cost', 'base_market_value', 'base_unrealized_gl', 'average_unit_cost', 'total_cost_krw', 'current_price', 'pe', 'eps', 'unrealized_gl_krw', 'unrealized_gl_pct', 'long_term_qty', 'short_term_qty', 'lot_count'])
 
 insertMany(db, 'tax_lots', [
   { market: 'KR', currency: 'KRW', base_currency: 'KRW', fx_rate_to_base: 1, brokerage: 'Sample Korea Broker', account_type: 'Taxable', source_system: 'sample', as_of_date: '2026-01-01', account: 'Sample KR Account', ticker: '005930', name: 'Sample Electronics', acquired_date: '2025-01-15', open_quantity: 10, native_cost_basis: 700000, native_unit_cost: 70000, native_market_value: 820000, native_unrealized_gl: 120000, cost_basis_krw: 700000, unit_cost: 70000, holding_days: 351, tax_term: 'Long-term', source: 'sample-taxlots.tsv' },
   { market: 'US', currency: 'USD', base_currency: 'KRW', fx_rate_to_base: fxRate, brokerage: 'Sample US Broker', account_type: 'Taxable', source_system: 'sample', as_of_date: '2026-01-01', account: 'Sample US Account', ticker: 'AAPL', name: 'Example Apple', acquired_date: '2025-02-10', open_quantity: 5, native_cost_basis: 1000, native_unit_cost: 200, native_market_value: 1200, native_unrealized_gl: 200, cost_basis_krw: 1300000, unit_cost: 260000, holding_days: 325, tax_term: 'Long-term', source: 'sample-taxlots.tsv' },
+  { market: 'CRYPTO', currency: 'KRW', base_currency: 'KRW', fx_rate_to_base: 1, brokerage: 'Sample KRW Exchange', account_type: 'Crypto', source_system: 'sample', as_of_date: '2026-01-01', account: 'Sample KRW Exchange', ticker: 'BTC', name: 'BTC', acquired_date: '2024-11-20', open_quantity: 0.05, native_cost_basis: 4000000, native_unit_cost: 80000000, native_market_value: 4500000, native_unrealized_gl: 500000, cost_basis_krw: 4000000, unit_cost: 80000000, holding_days: 407, tax_term: 'Long-term', source: 'sample-crypto-statement.pdf' },
+  { market: 'CRYPTO', currency: 'USD', base_currency: 'KRW', fx_rate_to_base: fxRate, brokerage: 'Sample USD Exchange', account_type: 'Crypto', source_system: 'sample', as_of_date: '2026-01-01', account: 'Sample USD Exchange', ticker: 'ETH', name: 'ETH', acquired_date: '2025-06-01', open_quantity: 0.4, native_cost_basis: 1000, native_unit_cost: 2500, native_market_value: 800, native_unrealized_gl: -200, cost_basis_krw: 1300000, unit_cost: 3250000, holding_days: 214, tax_term: 'Short-term', source: 'sample-crypto-statement.pdf' },
 ], ['market', 'currency', 'base_currency', 'fx_rate_to_base', 'brokerage', 'account_type', 'source_system', 'as_of_date', 'account', 'ticker', 'name', 'acquired_date', 'open_quantity', 'native_cost_basis', 'native_unit_cost', 'native_market_value', 'native_unrealized_gl', 'cost_basis_krw', 'unit_cost', 'holding_days', 'tax_term', 'source'])
 
 insertMany(db, 'transactions', [
   { market: 'KR', currency: 'KRW', base_currency: 'KRW', brokerage: 'Sample Korea Broker', account_type: 'Taxable', source_system: 'sample', date: '2025-01-15', account: 'Sample KR Account', type: 'BUY', raw_type: 'Buy', ticker: '005930', name: 'Sample Electronics', quantity: 10, native_amount: -700000, native_settlement: -700000, native_unit_price: 70000, amount_krw: -700000, settlement_krw: -700000, unit_price: 70000, fee: 0, tax: 0, balance: null, source: 'sample-transactions.tsv', page: null },
   { market: 'US', currency: 'USD', base_currency: 'KRW', brokerage: 'Sample US Broker', account_type: 'Taxable', source_system: 'sample', date: '2025-02-10', account: 'Sample US Account', type: 'BUY', raw_type: 'Buy', ticker: 'AAPL', name: 'Example Apple', quantity: 5, native_amount: -1000, native_settlement: -1000, native_unit_price: 200, amount_krw: -1300000, settlement_krw: -1300000, unit_price: 260000, fee: 0, tax: 0, balance: null, source: 'sample-transactions.tsv', page: null },
+  { market: 'CRYPTO', currency: 'KRW', base_currency: 'KRW', brokerage: 'Sample KRW Exchange', account_type: 'Crypto', source_system: 'sample', date: '2024-11-20', account: 'Sample KRW Exchange', type: 'BUY', raw_type: '매수', ticker: 'BTC', name: 'BTC', quantity: 0.05, native_amount: 4000000, native_settlement: -4000000, native_unit_price: 80000000, amount_krw: 4000000, settlement_krw: -4000000, unit_price: 80000000, fee: 10000, tax: null, balance: 0.05, source: 'sample-crypto-statement.pdf', page: 1 },
+  { market: 'CRYPTO', currency: 'KRW', base_currency: 'KRW', brokerage: 'Sample KRW Exchange', account_type: 'Crypto', source_system: 'sample', date: '2025-07-01', account: 'Sample KRW Exchange', type: 'STAKING_REWARD', raw_type: '입금', ticker: 'ETH', name: 'ETH', quantity: 0.001, native_amount: 4000, native_settlement: null, native_unit_price: null, amount_krw: 4000, settlement_krw: null, unit_price: null, fee: null, tax: null, balance: 0.001, source: 'sample-crypto-statement.pdf', page: 1 },
 ], ['market', 'currency', 'base_currency', 'brokerage', 'account_type', 'source_system', 'date', 'account', 'type', 'raw_type', 'ticker', 'name', 'quantity', 'native_amount', 'native_settlement', 'native_unit_price', 'amount_krw', 'settlement_krw', 'unit_price', 'fee', 'tax', 'balance', 'source', 'page'])
 
 insertMany(db, 'dividends', [
   { market: 'KR', currency: 'KRW', base_currency: 'KRW', brokerage: 'Sample Korea Broker', account_type: 'Taxable', source_system: 'sample', date: '2026-01-10', account: 'Sample KR Account', ticker: '005930', name: 'Sample Electronics', native_amount: 15000, native_tax_withheld: 2300, amount_krw: 15000, type: 'DIVIDEND', income_category: 'dividend', mapping_status: 'mapped', mapping_note: 'Synthetic sample dividend.', source: 'sample-dividends.tsv', page: null },
   { market: 'US', currency: 'USD', base_currency: 'KRW', brokerage: 'Sample US Broker', account_type: 'Taxable', source_system: 'sample', date: '2026-02-10', account: 'Sample US Account', ticker: 'AAPL', name: 'Example Apple', native_amount: 6, native_tax_withheld: 0.9, amount_krw: 7800, type: 'DIVIDEND', income_category: 'dividend', mapping_status: 'mapped', mapping_note: 'Synthetic sample dividend.', source: 'sample-dividends.tsv', page: null },
   { market: 'US', currency: 'USD', base_currency: 'KRW', brokerage: 'Sample US Broker', account_type: 'Taxable', source_system: 'sample', date: '2026-03-01', account: 'Sample US Account', ticker: null, name: 'Sample Interest', native_amount: 4, native_tax_withheld: 0, amount_krw: 5200, type: 'INTEREST', income_category: 'interest', mapping_status: 'tickerless_income_rule', mapping_note: 'Synthetic tickerless income.', source: 'sample-dividends.tsv', page: null },
+  { market: 'CRYPTO', currency: 'KRW', base_currency: 'KRW', brokerage: 'Sample KRW Exchange', account_type: 'Crypto', source_system: 'sample', date: '2025-07-01', account: 'Sample KRW Exchange', ticker: 'ETH', name: 'ETH', native_amount: 4000, native_tax_withheld: 0, amount_krw: 4000, type: 'STAKING_REWARD', income_category: 'other', mapping_status: 'mapped', mapping_note: 'Synthetic sample staking reward.', source: 'sample-crypto-statement.pdf', page: 1 },
 ], ['market', 'currency', 'base_currency', 'brokerage', 'account_type', 'source_system', 'date', 'account', 'ticker', 'name', 'native_amount', 'native_tax_withheld', 'amount_krw', 'type', 'income_category', 'mapping_status', 'mapping_note', 'source', 'page'])
 
 insertMany(db, 'realized_lots', [{ market: 'US', currency: 'USD', base_currency: 'KRW', brokerage: 'Sample US Broker', source_system: 'sample', account: 'Sample US Account', ticker: 'MSFT', name: 'Example Microsoft', acquired_date: '2025-01-01', sold_date: '2026-01-15', quantity_sold: 1, cost_basis_krw: 300000, proceeds_krw: 352000, realized_gl_krw: 52000, holding_days: 379, tax_term: 'Long-term', source: 'sample-realized.tsv' }], ['market', 'currency', 'base_currency', 'brokerage', 'source_system', 'account', 'ticker', 'name', 'acquired_date', 'sold_date', 'quantity_sold', 'cost_basis_krw', 'proceeds_krw', 'realized_gl_krw', 'holding_days', 'tax_term', 'source'])
@@ -161,7 +193,10 @@ insertMany(db, 'validation_checks', [
   { name: 'sample:source files', status: 'pass', detail: 'Synthetic source files are present.', severity: 'warning' },
   { name: 'sample:valuation coverage', status: 'pass', detail: 'Sample includes one intentional missing valuation row for Data Ops demonstration.', severity: 'warning' },
 ], ['name', 'status', 'detail', 'severity'])
-insertMany(db, 'evidence_reports', [{ name: 'gain_loss:sample', category: 'us_gain_loss_pdf', filename: 'sample-gain-loss.pdf', path: path.join(sampleSourceDir, 'sample-gain-loss.pdf'), account_hint: '', pages: 1, row_count: 1, metrics_json: JSON.stringify({ tax_cost_usd: 1000, units: 5, ticker_count: 1, terms: { lt: 1 } }) }], ['name', 'category', 'filename', 'path', 'account_hint', 'pages', 'row_count', 'metrics_json'])
+insertMany(db, 'evidence_reports', [
+  { name: 'gain_loss:sample', category: 'us_gain_loss_pdf', filename: 'sample-gain-loss.pdf', path: path.join(sampleSourceDir, 'sample-gain-loss.pdf'), account_hint: '', pages: 1, row_count: 1, metrics_json: JSON.stringify({ tax_cost_usd: 1000, units: 5, ticker_count: 1, terms: { lt: 1 } }) },
+  { name: 'bithumb_statement:sample', category: 'bithumb_statement', filename: 'sample-crypto-statement.pdf', path: path.join(sampleSourceDir, 'sample-crypto-statement.pdf'), account_hint: 'Sample KRW Exchange', pages: 1, row_count: 1, metrics_json: JSON.stringify({ periodStart: '2025-01-01', periodEnd: '2025-12-31', scopeTypes: '매수/매도/입금/출금', scopeAssets: '전체', trade_count: 1, asset_count: 1 }) },
+], ['name', 'category', 'filename', 'path', 'account_hint', 'pages', 'row_count', 'metrics_json'])
 
 db.close()
 console.log(`Wrote sample database: ${dbPath}`)

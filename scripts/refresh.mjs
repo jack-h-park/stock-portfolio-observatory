@@ -23,6 +23,11 @@ const steps = [
   { name: 'fetch:toss', args: ['fetch:toss'], optional: true },
   { name: 'extract:us-pdf-evidence', args: ['extract:us-pdf-evidence'] },
   { name: 'fetch:us-prices', args: ['fetch:us-prices'] },
+  // Extract before pricing: the crypto price step reads the activity snapshot to
+  // learn which symbols are still held, so pricing a stale snapshot would quote
+  // a position that has been exited and miss one that was just opened.
+  { name: 'extract:crypto-activity', args: ['extract:crypto-activity'] },
+  { name: 'fetch:crypto-prices', args: ['fetch:crypto-prices'] },
   { name: 'fetch:historical-prices', args: ['fetch:historical-prices'] },
   { name: 'ingest', args: ['ingest'] },
   { name: 'backfill:history', args: ['backfill:history'] },

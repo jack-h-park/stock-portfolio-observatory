@@ -2,9 +2,9 @@ import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { FreshnessRows } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, StatCard } from '@/components/ui'
+import { Badge, Card, EmptyState, StatCard , marketTone } from '@/components/ui'
 import { getOperationalHealth, getPortfolioReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
-import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
+import { fmtKrw, fmtMoney, fmtNumber, fmtQuantity } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
 
 export const dynamic = 'force-dynamic'
@@ -22,7 +22,7 @@ function PositionLink({ row }: { row: ReviewPosition }) {
   return (
     <div className="min-w-[14rem]">
       <div className="flex items-center gap-2">
-        <Badge tone={row.market === 'US' ? 'info' : 'success'}>{row.market}</Badge>
+        <Badge tone={marketTone(row.market)}>{row.market}</Badge>
         <Link href={positionHref(row.market, row.ticker)} className="font-mono text-[12px] font-medium text-info hover:underline">
           {row.ticker}
         </Link>
@@ -40,7 +40,7 @@ function PositionTable({ rows, mode }: { rows: ReviewPosition[]; mode: 'gain' | 
       columns={[
         { key: 'ticker', label: 'Position', render: (r) => <PositionLink row={r} /> },
         { key: 'account_count', label: 'Accts', align: 'right', render: (r) => fmtNumber(r.account_count) },
-        { key: 'quantity', label: 'Qty', align: 'right', render: (r) => fmtNumber(r.quantity, 4) },
+        { key: 'quantity', label: 'Qty', align: 'right', render: (r) => fmtQuantity(r.quantity, 4) },
         { key: 'native_market_value', label: 'Market', align: 'right', render: (r) => (r.native_market_value == null ? 'n/a' : fmtMoney(r.native_market_value, r.currency)) },
         { key: 'base_market_value', label: 'Base Market', align: 'right', render: (r) => (r.base_market_value == null ? 'n/a' : fmtKrw(r.base_market_value)) },
         {
@@ -96,7 +96,7 @@ export default function ReviewPage() {
           <ul className="divide-y divide-line-subtle">
             {review.byMarket.map((row) => (
               <li key={row.market} className="grid grid-cols-[4rem_1fr_auto] items-center gap-3 py-2 text-[12px]">
-                <Badge tone={row.market === 'US' ? 'info' : 'success'}>{row.market}</Badge>
+                <Badge tone={marketTone(row.market)}>{row.market}</Badge>
                 <div className="min-w-0">
                   <div className="font-medium tabular-nums text-ink">{fmtKrw(row.base_market_value)}</div>
                   <div className="text-[11px] text-ink-3">{fmtNumber(row.position_count)} positions</div>

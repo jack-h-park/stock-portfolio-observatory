@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { FreshnessRows } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, StatCard } from '@/components/ui'
+import { Badge, Card, EmptyState, StatCard , marketTone } from '@/components/ui'
 import { getDataOpsReview } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
@@ -104,7 +104,7 @@ export default function DataOpsPage() {
             <DataTable
               rows={ops.mappingSuggestions}
               columns={[
-                { key: 'market', label: 'Market', render: (r) => <Badge tone={r.market === 'US' ? 'info' : 'success'}>{r.market}</Badge> },
+                { key: 'market', label: 'Market', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
                 { key: 'brokerage', label: 'Broker' },
                 { key: 'income_category', label: 'Category' },
                 { key: 'row_count', label: 'Rows', align: 'right', render: (r) => fmtNumber(r.row_count) },
@@ -122,7 +122,7 @@ export default function DataOpsPage() {
             <DataTable
               rows={ops.valuationFixes}
               columns={[
-                { key: 'market', label: 'Market', render: (r) => <Badge tone={r.market === 'US' ? 'info' : 'success'}>{r.market}</Badge> },
+                { key: 'market', label: 'Market', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
                 {
                   key: 'ticker',
                   label: 'Position',
@@ -147,7 +147,7 @@ export default function DataOpsPage() {
           <DataTable
             rows={ops.tickerlessIncome}
             columns={[
-              { key: 'market', label: 'Market', render: (r) => <Badge tone={r.market === 'US' ? 'info' : 'success'}>{r.market}</Badge> },
+              { key: 'market', label: 'Market', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
               { key: 'income_category', label: 'Category' },
               { key: 'brokerage', label: 'Broker' },
               { key: 'name', label: 'Name' },
@@ -170,7 +170,7 @@ export default function DataOpsPage() {
             <DataTable
               rows={ops.missingValuation}
               columns={[
-                { key: 'market', label: 'Market', render: (r) => <Badge tone={r.market === 'US' ? 'info' : 'success'}>{r.market}</Badge> },
+                { key: 'market', label: 'Market', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
                 {
                   key: 'ticker',
                   label: 'Position',

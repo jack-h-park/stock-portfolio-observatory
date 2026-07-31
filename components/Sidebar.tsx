@@ -15,6 +15,7 @@ const SECTIONS: { label: string; items: { href: string; label: string }[] }[] = 
       { href: '/reconciliation', label: 'Reconciliation' },
       { href: '/rebalance', label: 'Rebalance' },
       { href: '/income', label: 'Income' },
+      { href: '/crypto-premium', label: 'Korea Premium' },
     ],
   },
   {

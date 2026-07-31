@@ -5,7 +5,7 @@ import { FreshnessInline } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, StatCard } from '@/components/ui'
 import { getOperationalHealth, getPositionDetail, type FreshnessItem } from '@/lib/adapters/portfolio-db'
-import { fmtDateTime, fmtMoney, fmtNumber, shortHash } from '@/lib/format'
+import { fmtDateTime, fmtMoney, fmtNumber, fmtQuantity, shortHash } from '@/lib/format'
 import { buildTaxPlan } from '@/lib/tax-planning'
 import { getTaxPolicyState } from '@/lib/tax-policy'
 
@@ -193,7 +193,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               <Badge tone={hasReconIssue ? 'warning' : 'success'}>{hasReconIssue ? 'Review' : 'Matched'}</Badge>
             </div>
             <div className="text-[11px] leading-relaxed text-ink-3">
-              Quantity diff {fmtNumber(quantityDiff, 4)} · base cost diff {fmtMoney(baseCostDiff, 'KRW')}
+              Quantity diff {fmtQuantity(quantityDiff, 4)} · base cost diff {fmtMoney(baseCostDiff, 'KRW')}
             </div>
           </div>
           <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
@@ -212,7 +212,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
       </Card>
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-6">
-        <StatCard label="Quantity" value={fmtNumber(detail.totals.quantity, 4)} accent />
+        <StatCard label="Quantity" value={fmtQuantity(detail.totals.quantity, 4)} accent />
         <StatCard label="Cost Basis" value={fmtMoney(detail.totals.native_cost, detail.currency)} />
         <StatCard label="Market Value" value={moneyOrNa(detail.totals.native_market_value, detail.currency)} />
         <StatCard
@@ -279,7 +279,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             columns={[
               { key: 'brokerage', label: 'Broker' },
               { key: 'account', label: 'Account' },
-              { key: 'quantity', label: 'Qty', align: 'right', render: (r) => fmtNumber(r.quantity, 4) },
+              { key: 'quantity', label: 'Qty', align: 'right', render: (r) => fmtQuantity(r.quantity, 4) },
               { key: 'native_cost', label: 'Cost', align: 'right', render: (r) => fmtMoney(r.native_cost, r.currency) },
               { key: 'native_market_value', label: 'Market', align: 'right', render: (r) => moneyOrNa(r.native_market_value, r.currency) },
               {
@@ -303,7 +303,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             columns={[
               { key: 'brokerage', label: 'Broker' },
               { key: 'account', label: 'Account' },
-              { key: 'quantity', label: 'Qty', align: 'right', render: (r) => fmtNumber(r.quantity, 4) },
+              { key: 'quantity', label: 'Qty', align: 'right', render: (r) => fmtQuantity(r.quantity, 4) },
               { key: 'lot_count', label: 'Lots', align: 'right', render: (r) => fmtNumber(r.lot_count) },
               { key: 'long_count', label: 'LT', align: 'right', render: (r) => fmtNumber(r.long_count) },
               { key: 'short_count', label: 'ST', align: 'right', render: (r) => fmtNumber(r.short_count) },
@@ -325,7 +325,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
                 <span className="min-w-0 truncate text-ink">
                   {event.brokerage} · {event.account} · {event.detail}
                 </span>
-                <span className="text-right tabular-nums text-ink-3">{event.quantity == null ? 'n/a' : fmtNumber(event.quantity, 4)}</span>
+                <span className="text-right tabular-nums text-ink-3">{event.quantity == null ? 'n/a' : fmtQuantity(event.quantity, 4)}</span>
                 <span className="text-right tabular-nums text-ink">{event.amount == null ? 'n/a' : fmtMoney(event.amount, event.currency)}</span>
               </li>
             ))}
@@ -380,7 +380,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
                 { key: 'account', label: 'Account' },
                 { key: 'acquired_date', label: 'Acquired' },
                 { key: 'holdingBucket', label: 'Term', render: (r) => <Badge tone={r.holdingBucket === 'long' ? 'success' : 'warning'}>{r.holdingBucket}</Badge> },
-                { key: 'open_quantity', label: 'Qty', align: 'right', render: (r) => fmtNumber(r.open_quantity, 4) },
+                { key: 'open_quantity', label: 'Qty', align: 'right', render: (r) => fmtQuantity(r.open_quantity, 4) },
                 { key: 'proceedsNative', label: 'Proceeds', align: 'right', render: (r) => (r.proceedsNative == null ? 'n/a' : fmtMoney(r.proceedsNative, r.currency)) },
                 {
                   key: 'gainKrw',
@@ -409,7 +409,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
                 { key: 'account', label: 'Account' },
                 { key: 'acquired_date', label: 'Acquired' },
                 { key: 'tax_term', label: 'Term' },
-                { key: 'open_quantity', label: 'Qty', align: 'right', render: (r) => fmtNumber(r.open_quantity, 4) },
+                { key: 'open_quantity', label: 'Qty', align: 'right', render: (r) => fmtQuantity(r.open_quantity, 4) },
                 { key: 'native_cost_basis', label: 'Cost', align: 'right', render: (r) => fmtMoney(r.native_cost_basis, r.currency) },
                 { key: 'cost_basis_krw', label: 'Base Cost', align: 'right', render: (r) => fmtMoney(r.cost_basis_krw, 'KRW') },
                 { key: 'source', label: 'Source' },
@@ -429,7 +429,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
                 { key: 'brokerage', label: 'Broker' },
                 { key: 'account', label: 'Account' },
                 { key: 'type', label: 'Type', render: (r) => <Badge tone={r.type === 'SELL' ? 'warning' : r.type === 'DIVIDEND' ? 'success' : 'info'}>{r.type}</Badge> },
-                { key: 'quantity', label: 'Qty', align: 'right', render: (r) => fmtNumber(r.quantity, 4) },
+                { key: 'quantity', label: 'Qty', align: 'right', render: (r) => fmtQuantity(r.quantity, 4) },
                 { key: 'native_amount', label: 'Amount', align: 'right', render: (r) => moneyOrNa(r.native_amount, r.currency) },
                 { key: 'native_unit_price', label: 'Unit', align: 'right', render: (r) => moneyOrNa(r.native_unit_price, r.currency) },
                 { key: 'source', label: 'Source' },

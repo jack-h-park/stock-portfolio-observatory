@@ -49,6 +49,39 @@ const US_TRANSACTION_SPECS = [
   { brokerage: 'Robinhood', account: 'Mid-term', subdir: TX_DIR, pattern: /^Robinhood - Mid-term - 2024~2025\.csv$/i, pick: 'all' },
 ]
 
+const BITHUMB_DIR = '빗썸'
+const RH_CRYPTO_DIR = '미국 로빈후드 가상계좌/Monthly Statements'
+
+// Crypto sources. Both are 'all': every file covers a period the others do not,
+// and no file supersedes another the way a re-downloaded year-to-date export
+// does. The risk this trades for is OVERLAP rather than staleness — two
+// 거래내역확인서 covering the same months would double-count every trade in
+// them — so the ingest asserts on the periods the documents themselves declare
+// instead of on their filenames. A filename already lied once here: a statement
+// named 2025년1-7월 held 2026-01-01~2026-07-31.
+//
+// The Bithumb .xlsx exports in the same folder are deliberately NOT read. They
+// are a strict subset of the 확인서 PDFs — same trades, no running balance — so
+// ingesting both would double every position with nothing gained.
+const CRYPTO_SPECS = [
+  {
+    venue: 'Bithumb',
+    account: 'Bithumb',
+    category: 'bithumb_statement',
+    subdir: BITHUMB_DIR,
+    pattern: /^빗썸-거래내역확인서-.*\.pdf$/i,
+    pick: 'all',
+  },
+  {
+    venue: 'Robinhood',
+    account: 'Robinhood Crypto',
+    category: 'robinhood_crypto_statement',
+    subdir: RH_CRYPTO_DIR,
+    pattern: /^Robinhood - Monthly Statement - \d{6}\.pdf$/i,
+    pick: 'all',
+  },
+]
+
 function dateKey(name) {
   const runs = name.match(/\d{8}/g)
   return runs ? runs[runs.length - 1] : ''
@@ -71,17 +104,24 @@ function resolveSpec(dataDir, spec) {
     // Directory absent — e.g. sample mode has no brokerage folders at all.
   }
 
+  // macOS hands back Hangul filenames decomposed (NFD): "빗썸" arrives as ㅂ+ㅣ+ㅅ
+  // …, which does not equal the composed "빗썸" written in the pattern above, so
+  // every Korean-named file matched nothing while the ASCII-named ones matched
+  // fine. Normalise both sides. Match on the normalised name, but keep the
+  // ORIGINAL for path.join — the on-disk entry is what we have to open.
   const matches = names
-    .map((name) => ({ name, m: spec.pattern.exec(name) }))
+    .map((name) => ({ name, m: spec.pattern.exec(name.normalize('NFC')) }))
     .filter((x) => x.m)
     .map((x) => ({ ...x, filename: path.join(dir, x.name) }))
 
   const entry = (x) => ({
     brokerage: spec.brokerage,
+    venue: spec.venue,
+    category: spec.category,
     account: typeof spec.account === 'function' ? spec.account(x.m) : spec.account,
     filename: x.filename,
   })
-  const label = `${spec.brokerage} · ${spec.subdir}/${spec.pattern.source}`
+  const label = `${spec.brokerage ?? spec.venue} · ${spec.subdir}/${spec.pattern.source}`
 
   if (matches.length === 0) return { files: [], missing: label }
   if (spec.pick === 'all') return { files: matches.map(entry), missing: null }
@@ -113,4 +153,8 @@ export function resolveUsHoldingFiles(dataDir) {
 
 export function resolveUsTransactionFiles(dataDir) {
   return resolve(US_TRANSACTION_SPECS, dataDir)
+}
+
+export function resolveCryptoFiles(dataDir) {
+  return resolve(CRYPTO_SPECS, dataDir)
 }

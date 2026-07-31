@@ -10,7 +10,7 @@ import {
   type BriefingPosition,
   type BriefingSessionMove,
 } from '@/lib/adapters/briefing-archive'
-import { fmtNumber } from '@/lib/format'
+import { fmtNumber, fmtQuantity } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
 
 export const dynamic = 'force-dynamic'
@@ -329,9 +329,9 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                       </span>
                       <Badge tone={TRADE_TONE[a.kind] ?? 'neutral'}>{a.kind}</Badge>
                       <span className="text-ink-2">
-                        {TRADE_VERB[a.kind] ?? a.kind} {fmtNumber(Math.abs(a.quantityChange), 4)} share
+                        {TRADE_VERB[a.kind] ?? a.kind} {fmtQuantity(Math.abs(a.quantityChange), 4)} share
                         {Math.abs(a.quantityChange) === 1 ? '' : 's'}
-                        {a.kind === 'closed' ? '' : ` · now holding ${fmtNumber(a.quantity, 4)}`}
+                        {a.kind === 'closed' ? '' : ` · now holding ${fmtQuantity(a.quantity, 4)}`}
                       </span>
                     </li>
                   ))}
@@ -384,7 +384,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                         <Signed value={p.pct} format={pct} />
                       </Td>
                       <Td align="right" className="tabular-nums">
-                        {fmtNumber(p.quantity, 2)}
+                        {fmtQuantity(p.quantity, 2)}
                       </Td>
                       <Td className="text-[11px] text-ink-3">{p.accounts.join(', ')}</Td>
                     </Tr>

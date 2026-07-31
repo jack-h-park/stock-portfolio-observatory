@@ -3,7 +3,7 @@ import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, StatCard, type Tone } from '@/components/ui'
 import { getReconciliationReview } from '@/lib/adapters/portfolio-db'
-import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
+import { fmtKrw, fmtMoney, fmtNumber, fmtQuantity } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
 
 export const dynamic = 'force-dynamic'
@@ -21,7 +21,7 @@ function statusTone(status: string): Tone {
 }
 
 function marketTone(market: string): Tone {
-  return market === 'US' ? 'info' : 'success'
+  return marketTone(market)
 }
 
 export default function ReconciliationPage() {
@@ -108,9 +108,9 @@ export default function ReconciliationPage() {
                   </Link>
                 ),
               },
-              { key: 'holding_quantity', label: 'Holding Qty', align: 'right', render: (r) => fmtNumber(r.holding_quantity, 4) },
-              { key: 'lot_quantity', label: 'Lot Qty', align: 'right', render: (r) => fmtNumber(r.lot_quantity, 4) },
-              { key: 'quantity_diff', label: 'Qty Diff', align: 'right', render: (r) => (r.quantity_diff == null ? 'n/a' : fmtNumber(r.quantity_diff, 4)) },
+              { key: 'holding_quantity', label: 'Holding Qty', align: 'right', render: (r) => fmtQuantity(r.holding_quantity, 4) },
+              { key: 'lot_quantity', label: 'Lot Qty', align: 'right', render: (r) => fmtQuantity(r.lot_quantity, 4) },
+              { key: 'quantity_diff', label: 'Qty Diff', align: 'right', render: (r) => (r.quantity_diff == null ? 'n/a' : fmtQuantity(r.quantity_diff, 4)) },
               { key: 'base_cost_diff', label: 'Cost Diff', align: 'right', render: (r) => (r.base_cost_diff == null ? 'n/a' : fmtKrw(r.base_cost_diff)) },
             ]}
           />

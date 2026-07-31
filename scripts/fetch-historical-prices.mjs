@@ -63,7 +63,17 @@ function rowsFromYahoo(result, market, ticker, symbol) {
 async function fetchTicker(ticker, market, startDate, endDate) {
   const start = Math.floor(Date.parse(`${startDate}T00:00:00Z`) / 1000)
   const end = Math.floor(Date.parse(`${endDate}T00:00:00Z`) / 1000)
-  const symbols = market === 'KR' ? [`${ticker}.KS`, `${ticker}.KQ`] : [yahooSymbol(ticker)]
+  // Crypto history is fetched in USD for every venue, including the KRW one.
+  //
+  // The current valuation marks each venue at its own order book, because the
+  // Korea premium is large enough to matter on today's number. History cannot
+  // work that way: Bithumb's candlestick endpoint reaches back about 200 days,
+  // far short of this portfolio's start, so a KRW series simply does not exist
+  // to fetch. USD close × that day's FX is the only complete series available,
+  // and a premium-sized error on a trend chart is a fair trade for one that
+  // starts at the beginning.
+  const symbols =
+    market === 'KR' ? [`${ticker}.KS`, `${ticker}.KQ`] : market === 'CRYPTO' ? [`${ticker}-USD`] : [yahooSymbol(ticker)]
   for (const symbol of symbols) {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${start}&period2=${end}&interval=1d&events=history`
     const payload = await fetchJson(url)

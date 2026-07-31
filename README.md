@@ -8,8 +8,9 @@ outside git or in ignored local files.
 
 ## What it does
 
-- Combines Korea and US stock holdings into one read-only portfolio view.
+- Combines Korea and US stock holdings and crypto positions into one read-only portfolio view.
 - Preserves native KRW/USD values and converts USD amounts into KRW using an explicit FX snapshot.
+- Derives crypto positions from exchange statements and reconciles each one against a balance the exchange itself printed.
 - Monitors valuation freshness, source drift, validation checks, and refresh run history.
 - Provides operating views for review, rebalancing, income, data ops, reconciliation, source inventory, and position-level investigation.
 - Supports a public synthetic sample mode so the app can be evaluated without private brokerage files.
@@ -38,6 +39,7 @@ If `.env.local` already exists, `pnpm seed:sample` refuses to run so private-mod
 - `/data-map` - full source inventory with used, unused, drift, and missing classifications.
 - `/reconciliation` - holdings vs tax lots, brokerage coverage, tickerless income, and valuation breaks.
 - `/data-ops` - operating action queue with mapping and valuation fix suggestions.
+- `/crypto-premium` - Korea premium monitor: the gap between each coin's won and dollar order books, how much portfolio value rests on it, and ~200 days of history.
 - `/positions/[market]/[ticker]` - position investigation detail with activity timeline, account lot profile, reconciliation state, and source evidence.
 
 ## Screenshots
@@ -73,6 +75,59 @@ cp data/refresh-runs.example.json data/refresh-runs.json
 pnpm refresh
 pnpm dev
 ```
+
+## Crypto
+
+Crypto sits in the same tables as the stock side, under `market = 'CRYPTO'`, with
+the venue in `brokerage` and the venue's own currency in `currency`. It is not a
+third equity market, and two things follow from that.
+
+**The position is derived.** Neither venue publishes a holdings export, so a
+position exists only as the running sum of its transactions. That is safe here
+only because both source documents print a balance this app did not compute:
+
+| Source | Document | Independent check it carries |
+| --- | --- | --- |
+| Bithumb | `빗썸-거래내역확인서-*.pdf` | a running per-asset and KRW balance on every row |
+| Robinhood Crypto | `Robinhood - Monthly Statement - YYYYMM.pdf` | a month-end quantity per symbol |
+
+`crypto_positions_match_venue_balances` refuses to let the derived position
+disagree with either. Two further checks assert on the statements themselves:
+that each was issued over all assets and all transaction types
+(`crypto_statements_unfiltered`), and that their declared periods tile the
+timeline with no gap and no overlap (`crypto_statement_periods_contiguous`).
+Filenames are not trusted for this — one statement's name said 2025 while its
+contents covered 2026.
+
+The Bithumb `.xlsx` exports in the same folder are deliberately not read: they
+are a strict subset of the 확인서 PDFs, and ingesting both would double every
+position.
+
+**Each venue is priced at its own book.** A KRW-quoted BTC and a USD-quoted BTC
+are the same asset at two materially different prices — over the last 200 days
+the gap has ranged roughly -7% to +5% on BTC. Current quotes come from Bithumb
+for the KRW venue and Yahoo for the USD venue. Historical series are the
+exception: Bithumb's candlestick endpoint reaches back only ~200 days, so `/`
+trend charts value crypto at the USD close times that day's FX throughout.
+
+Valuing each venue separately keeps the premium out of the portfolio total, which
+also makes the exposure invisible on every other screen — so `/crypto-premium`
+tracks it directly. It reports the current gap per coin, the won of portfolio
+value that rests on it, and the history. Both legs are sampled at the same
+instant: Bithumb's daily candle closes at 00:00 KST, so the dollar close is taken
+from the hourly series at that same 15:00 UTC rather than at the end of the UTC
+day. Comparing the two daily closes instead charges every overnight move to the
+premium — it put BTC's range at -7%..+9.6% when the simultaneous spot reading was
++0.01%.
+
+Cost basis includes fees, which is why the average unit cost here sits slightly
+above the figure Bithumb's own app shows. Staking rewards open a lot at their
+market value on the day received and book the same amount as income.
+
+Tax planning treats crypto as monitoring-only: the US estimate picks it up as
+property under worldwide income and correctly applies no wash-sale rule, while
+Korea has no virtual-asset module — that tax has been deferred more than once and
+a confident number here would be worse than none.
 
 ## Published summary
 
@@ -145,7 +200,7 @@ Refresh external valuation inputs before ingesting:
 pnpm refresh
 ```
 
-`pnpm refresh` runs FX fetch, KR price fetch, US PDF evidence extraction, US price fetch, and ingest in sequence. FX goes first because the ingest converts every native amount with it — a stale rate misstates the portfolio however fresh the prices are. It writes local run history to `data/refresh-runs.json`.
+`pnpm refresh` runs FX fetch, KR price fetch, US PDF evidence extraction, US price fetch, crypto activity extraction, crypto price fetch, historical prices, ingest, and history backfill in sequence. FX goes first because the ingest converts every native amount with it — a stale rate misstates the portfolio however fresh the prices are. The crypto extract precedes the crypto price fetch because that fetch reads the activity snapshot to learn which symbols are still held. It writes local run history to `data/refresh-runs.json`.
 
 ### Scheduled refresh
 

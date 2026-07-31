@@ -88,14 +88,23 @@ try {
     return positions
   }
 
+  // Columns as a list, with the placeholders counted from it. Hand-maintaining a
+  // parallel run of `?` is a standing trap: adding the four crypto columns to the
+  // SQL left the placeholder run one short, and the step died with "24 values for
+  // 25 columns" — a failure that only surfaces at run time, after every earlier
+  // step has already done its work.
+  const snapshotColumns = [
+    'snapshot_date', 'captured_at', 'global_base_cost', 'global_base_market_value',
+    'global_base_unrealized_gl', 'global_base_return_pct', 'market_value_coverage',
+    'kr_market_value', 'us_market_value_base', 'crypto_market_value_base',
+    'kr_cost_basis', 'us_cost_basis_base', 'crypto_cost_basis_base',
+    'kr_unrealized_gl', 'us_unrealized_gl_base', 'crypto_unrealized_gl_base',
+    'kr_return_pct', 'us_return_pct', 'crypto_return_pct',
+    'krw_cost', 'usd_cost', 'dividends_krw', 'dividends_usd', 'holding_count', 'share_count',
+  ]
   const insert = db.prepare(`
-    insert or replace into portfolio_snapshots (
-      snapshot_date, captured_at, global_base_cost, global_base_market_value,
-      global_base_unrealized_gl, global_base_return_pct, market_value_coverage,
-      kr_market_value, us_market_value_base, kr_cost_basis, us_cost_basis_base,
-      kr_unrealized_gl, us_unrealized_gl_base, kr_return_pct, us_return_pct,
-      krw_cost, usd_cost, dividends_krw, dividends_usd, holding_count, share_count
-    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert or replace into portfolio_snapshots (${snapshotColumns.join(', ')})
+    values (${snapshotColumns.map(() => '?').join(', ')})
   `)
 
   const rebuild = db.transaction(() => {
@@ -110,6 +119,7 @@ try {
       const lotsByMarket = (market) => [...activeOpenLots, ...activeRealizedLots].filter((lot) => lot.market === market)
       const krCost = lotsByMarket('KR').reduce((sum, lot) => sum + Number(lot.cost_basis_krw || 0), 0)
       const usCost = lotsByMarket('US').reduce((sum, lot) => sum + Number(lot.cost_basis_krw || 0), 0)
+      const cryptoCost = lotsByMarket('CRYPTO').reduce((sum, lot) => sum + Number(lot.cost_basis_krw || 0), 0)
       const krwCost = activeOpenLots.filter((lot) => lot.currency === 'KRW').reduce((sum, lot) => sum + Number(lot.native_cost_basis || 0), 0)
       const usdCost = activeOpenLots.filter((lot) => lot.currency === 'USD').reduce((sum, lot) => sum + Number(lot.native_cost_basis || 0), 0)
       const dividendsKrw = activeDividends.filter((row) => row.currency === 'KRW').reduce((sum, row) => sum + Number(row.native_amount || 0), 0)
@@ -118,9 +128,9 @@ try {
       let marketValue = 0
       let pricedShares = 0
       let totalShares = 0
-      const marketValues = { KR: 0, US: 0 }
-      const pricedSharesByMarket = { KR: 0, US: 0 }
-      const totalSharesByMarket = { KR: 0, US: 0 }
+      const marketValues = { KR: 0, US: 0, CRYPTO: 0 }
+      const pricedSharesByMarket = { KR: 0, US: 0, CRYPTO: 0 }
+      const totalSharesByMarket = { KR: 0, US: 0, CRYPTO: 0 }
       for (const [key, rawQuantity] of positions) {
         const [market, ticker] = key.split(':')
         const quantity = Math.max(0, rawQuantity)
@@ -128,7 +138,10 @@ try {
         totalShares += quantity
         totalSharesByMarket[market] += quantity
         const price = latestPrice(market, ticker, date)
-        const rate = market === 'US' ? fxRate(date) : 1
+        // Everything but the KR book is quoted in USD here — crypto included, for
+        // the reason given in fetch-historical-prices.mjs. Testing for 'US' alone
+        // would have valued the whole crypto position at 1 KRW per dollar.
+        const rate = market === 'KR' ? 1 : fxRate(date)
         if (price != null && rate != null) {
           marketValue += quantity * price * rate
           pricedShares += quantity
@@ -148,8 +161,12 @@ try {
       const usUnrealized = usMarketValueBase == null ? null : usMarketValueBase - usCost
       const krReturn = krUnrealized == null || krCost <= 0 ? null : (krUnrealized / krCost) * 100
       const usReturn = usUnrealized == null || usCost <= 0 ? null : (usUnrealized / usCost) * 100
+      const cryptoCoverage = totalSharesByMarket.CRYPTO > 0 ? pricedSharesByMarket.CRYPTO / totalSharesByMarket.CRYPTO : 0
+      const cryptoMarketValueBase = cryptoCoverage >= 0.9 ? marketValues.CRYPTO : null
+      const cryptoUnrealized = cryptoMarketValueBase == null ? null : cryptoMarketValueBase - cryptoCost
+      const cryptoReturn = cryptoUnrealized == null || cryptoCost <= 0 ? null : (cryptoUnrealized / cryptoCost) * 100
       const shareCount = totalShares || activeOpenLots.reduce((sum, lot) => sum + Number(lot.open_quantity || 0), 0)
-      insert.run(date, `${date}T23:59:59.000Z`, globalCost, completeMarketValue, unrealized, returnPct, coverage, krMarketValue, usMarketValueBase, krCost, usCost, krUnrealized, usUnrealized, krReturn, usReturn, krwCost, usdCost, dividendsKrw, dividendsUsd, positions.size, shareCount)
+      insert.run(date, `${date}T23:59:59.000Z`, globalCost, completeMarketValue, unrealized, returnPct, coverage, krMarketValue, usMarketValueBase, cryptoMarketValueBase, krCost, usCost, cryptoCost, krUnrealized, usUnrealized, cryptoUnrealized, krReturn, usReturn, cryptoReturn, krwCost, usdCost, dividendsKrw, dividendsUsd, positions.size, shareCount)
     }
   })
   rebuild()

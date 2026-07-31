@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
 import { loadLocalEnv } from './env.mjs'
-import { resolveUsHoldingFiles, resolveUsTransactionFiles } from './source-files.mjs'
+import { resolveCryptoFiles, resolveUsHoldingFiles, resolveUsTransactionFiles } from './source-files.mjs'
 
 loadLocalEnv()
 
@@ -17,6 +17,8 @@ const usPricesPath = process.env.STOCK_US_PRICES_PATH || path.join(process.cwd()
 const historicalPricesPath = process.env.STOCK_HISTORICAL_PRICES_PATH || path.join(process.cwd(), 'data/historical-prices.json')
 const historicalFxRatesPath = process.env.STOCK_HISTORICAL_FX_RATES_PATH || path.join(process.cwd(), 'data/historical-fx-rates.json')
 const usPdfEvidencePath = process.env.STOCK_US_PDF_EVIDENCE_PATH || path.join(process.cwd(), 'data/us-pdf-evidence.json')
+const cryptoActivityPath = process.env.STOCK_CRYPTO_ACTIVITY_PATH || path.join(process.cwd(), 'data/crypto-activity.json')
+const cryptoPricesPath = process.env.STOCK_CRYPTO_PRICES_PATH || path.join(process.cwd(), 'data/crypto-prices.json')
 const manualMappingsPath = process.env.STOCK_MANUAL_MAPPINGS_PATH || path.join(process.cwd(), 'data/manual-mappings.json')
 const refreshRunsPath = process.env.STOCK_REFRESH_RUNS_PATH || path.join(process.cwd(), 'data/refresh-runs.json')
 // Read-only here: the ingest never writes tax policy. It reads one corner of it
@@ -34,6 +36,10 @@ const sources = {
 
 const { files: usHoldingFiles, missing: missingHoldingSources } = resolveUsHoldingFiles(dataDir)
 const { files: usTransactionFiles, missing: missingTransactionSources } = resolveUsTransactionFiles(dataDir)
+// Resolved here as well as in the extract step, so the PDFs behind the crypto
+// positions are fingerprinted into source_files and show up on /data-map. The
+// extract reads them; this records WHICH files were read.
+const { files: cryptoSourceFiles, missing: missingCryptoSourceFiles } = resolveCryptoFiles(dataDir)
 
 // Resolved by pattern (see source-files.mjs), so a re-downloaded export with a
 // new date is read instead of silently ignored. `missing*Sources` names any
@@ -42,7 +48,10 @@ const { files: usTransactionFiles, missing: missingTransactionSources } = resolv
 for (const source of [...usHoldingFiles, ...usTransactionFiles]) {
   console.error(`[source] ${source.brokerage}${source.account ? ` (${source.account})` : ''}: ${path.basename(source.filename)}`)
 }
-for (const gap of [...missingHoldingSources, ...missingTransactionSources]) {
+for (const source of cryptoSourceFiles) {
+  console.error(`[source] ${source.venue} (crypto): ${path.basename(source.filename)}`)
+}
+for (const gap of [...missingHoldingSources, ...missingTransactionSources, ...missingCryptoSourceFiles]) {
   console.error(`[source] MISSING — no file matches ${gap}`)
 }
 
@@ -249,7 +258,11 @@ function normalizeMerrillTransactionType(description, type = '') {
 }
 
 function isIncomeType(type) {
-  return ['DIVIDEND', 'INTEREST', 'STOCK_LENDING_INCOME', 'OTHER_INCOME'].includes(type)
+  // STAKING_REWARD is its own type rather than folded into INTEREST: it is paid
+  // in coin, so it simultaneously opens a tax lot and books income, and the two
+  // are taxed on different bases. Collapsing it into an existing type would hide
+  // that from the income views.
+  return ['DIVIDEND', 'INTEREST', 'STOCK_LENDING_INCOME', 'OTHER_INCOME', 'STAKING_REWARD'].includes(type)
 }
 
 function loadManualMappings() {
@@ -350,12 +363,33 @@ function loadUsPdfEvidence() {
   return JSON.parse(fs.readFileSync(usPdfEvidencePath, 'utf8'))
 }
 
+function loadCryptoActivity() {
+  if (!fs.existsSync(cryptoActivityPath)) {
+    return { documents: [], transactions: [], snapshots: [] }
+  }
+  return JSON.parse(fs.readFileSync(cryptoActivityPath, 'utf8'))
+}
+
+function loadCryptoPrices() {
+  if (!fs.existsSync(cryptoPricesPath)) {
+    return { prices: [], missing: [], historical: [], missingHistorical: [] }
+  }
+  return JSON.parse(fs.readFileSync(cryptoPricesPath, 'utf8'))
+}
+
 const fxConfig = loadFxRates()
 const krPriceConfig = loadKrPrices()
 const usPriceConfig = loadUsPrices()
 const usPdfEvidence = loadUsPdfEvidence()
+const cryptoActivity = loadCryptoActivity()
+const cryptoPriceConfig = loadCryptoPrices()
 const krPricesByTicker = new Map((krPriceConfig.prices ?? []).map((p) => [normalizeTicker(p.ticker), p]))
 const usPricesByTicker = new Map((usPriceConfig.prices ?? []).map((p) => [normalizeTicker(p.ticker), p]))
+// Keyed by venue as well as symbol: BTC on Bithumb and BTC on Robinhood are the
+// same asset at two different prices in two different currencies, and collapsing
+// them onto the symbol alone would mark one venue's position at the other's book.
+const cryptoPricesByKey = new Map((cryptoPriceConfig.prices ?? []).map((p) => [`${p.venue}\t${p.symbol}`, p]))
+const cryptoRewardCloses = new Map((cryptoPriceConfig.historical ?? []).map((h) => [`${h.venue}\t${h.symbol}\t${h.date}`, h]))
 const manualMappings = loadManualMappings()
 
 function fxRate(from, to = fxConfig.baseCurrency || 'KRW') {
@@ -615,12 +649,16 @@ create table portfolio_snapshots (
   market_value_coverage real,
   kr_market_value real,
   us_market_value_base real,
+  crypto_market_value_base real,
   kr_cost_basis real,
   us_cost_basis_base real,
+  crypto_cost_basis_base real,
   kr_unrealized_gl real,
   us_unrealized_gl_base real,
+  crypto_unrealized_gl_base real,
   kr_return_pct real,
   us_return_pct real,
+  crypto_return_pct real,
   krw_cost real not null,
   usd_cost real not null,
   dividends_krw real not null,
@@ -664,6 +702,8 @@ db.prepare('insert into meta (key, value) values (?, ?)').run('us_prices_path', 
 db.prepare('insert into meta (key, value) values (?, ?)').run('historical_prices_path', historicalPricesPath)
 db.prepare('insert into meta (key, value) values (?, ?)').run('historical_fx_rates_path', historicalFxRatesPath)
 db.prepare('insert into meta (key, value) values (?, ?)').run('us_pdf_evidence_path', usPdfEvidencePath)
+db.prepare('insert into meta (key, value) values (?, ?)').run('crypto_activity_path', cryptoActivityPath)
+db.prepare('insert into meta (key, value) values (?, ?)').run('crypto_prices_path', cryptoPricesPath)
 db.prepare('insert into meta (key, value) values (?, ?)').run('manual_mappings_path', manualMappingsPath)
 db.prepare('insert into meta (key, value) values (?, ?)').run('refresh_runs_path', refreshRunsPath)
 
@@ -677,12 +717,19 @@ insertMany(db, 'portfolio_snapshots', previousPortfolioSnapshots, [
   'market_value_coverage',
   'kr_market_value',
   'us_market_value_base',
+  // Carried forward like every other snapshot column: the database is dropped
+  // and rebuilt on each ingest, so a column missing from this list loses its
+  // whole history on the next refresh rather than just today's value.
+  'crypto_market_value_base',
   'kr_cost_basis',
   'us_cost_basis_base',
+  'crypto_cost_basis_base',
   'kr_unrealized_gl',
   'us_unrealized_gl_base',
+  'crypto_unrealized_gl_base',
   'kr_return_pct',
   'us_return_pct',
+  'crypto_return_pct',
   'krw_cost',
   'usd_cost',
   'dividends_krw',
@@ -792,6 +839,26 @@ if (fs.existsSync(usPdfEvidencePath)) {
   db.prepare(
     'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
   ).run('us_pdf_evidence', fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, usPdfEvidence.reports?.length ?? 0)
+}
+if (fs.existsSync(cryptoActivityPath)) {
+  const fp = fingerprint(cryptoActivityPath)
+  db.prepare(
+    'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run('crypto_activity', fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, cryptoActivity.transactions?.length ?? 0)
+}
+if (fs.existsSync(cryptoPricesPath)) {
+  const fp = fingerprint(cryptoPricesPath)
+  db.prepare(
+    'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run('crypto_prices', fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, cryptoPriceConfig.prices?.length ?? 0)
+}
+for (const source of cryptoSourceFiles) {
+  if (!fs.existsSync(source.filename)) continue
+  const fp = fingerprint(source.filename)
+  const rows = (cryptoActivity.documents ?? []).find((d) => d.filename === fp.basename)?.rowCount ?? 0
+  db.prepare(
+    'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run(`${source.venue}:${fp.basename}`, fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, rows)
 }
 if (fs.existsSync(manualMappingsPath)) {
   const fp = fingerprint(manualMappingsPath)
@@ -1542,6 +1609,279 @@ for (const source of usTransactionFiles) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Crypto (Bithumb, Robinhood Crypto)
+// ---------------------------------------------------------------------------
+//
+// One market, two currencies. Every other source in this file arrives as a
+// holdings export plus a transaction log; neither crypto venue publishes
+// holdings at all, so the POSITION IS DERIVED — it is the running sum of the
+// transactions and nothing else. That is only safe because both documents print
+// a balance we did not compute (Bithumb a running balance on every row,
+// Robinhood a month-end quantity per symbol), and the checks below refuse to
+// let a derived position disagree with it.
+//
+// Costs include fees. A Bithumb 매수 moves 정산금액 out of the account and the
+// fee is the part of it that does not become coin, so excluding it would
+// understate what the position actually cost — Bithumb's own UI reports the
+// fee-exclusive figure, which is why its 평균매수가 sits below ours.
+
+const CRYPTO_MARKET = 'CRYPTO'
+const cryptoTransactionRows = []
+const cryptoHoldingRows = []
+const cryptoTaxLotRows = []
+const cryptoRealizedRows = []
+
+function cryptoTransactionType(row) {
+  if (row.type === 'BUY' || row.type === 'SELL') return row.type
+  if (row.type === 'REWARD') return 'STAKING_REWARD'
+  if (row.type === 'CASH_REWARD') {
+    // 예치금 이용료 is interest on an idle won balance; a points-shop or event
+    // credit is not. They are taxed differently, so they must not share a type.
+    return /이자|이용료/.test(row.note ?? '') ? 'INTEREST' : 'OTHER_INCOME'
+  }
+  if (row.type === 'CASH_IN' || row.type === 'TRANSFER_IN') return 'TRANSFER_IN'
+  if (row.type === 'CASH_OUT' || row.type === 'TRANSFER_OUT') return 'TRANSFER_OUT'
+  return String(row.type ?? '').toUpperCase()
+}
+
+/** Native cash value of a row, in the venue's own currency. */
+function cryptoNativeAmount(row) {
+  if (row.type === 'REWARD') {
+    // Paid in coin, so the row carries no cash figure — 거래금액 just repeats the
+    // quantity. Value it at that day's close, which is both its cost basis and
+    // the amount of income it represents.
+    if (row.currency !== 'KRW') return number(row.amount)
+    const close = cryptoRewardCloses.get(`${row.venue}\t${row.symbol}\t${row.date}`)
+    if (!close) return null
+    return (number(row.quantity) ?? 0) * close.close
+  }
+  return number(row.amount)
+}
+
+const cryptoActivityRows = cryptoActivity.transactions ?? []
+
+for (const row of cryptoActivityRows) {
+  const type = cryptoTransactionType(row)
+  const currency = row.currency
+  const fx = fxRate(currency)
+  const nativeAmount = cryptoNativeAmount(row)
+  const fee = number(row.fee)
+  const account = row.account
+  const quantity = number(row.quantity)
+
+  const transaction = {
+    market: CRYPTO_MARKET,
+    currency,
+    base_currency: fxConfig.baseCurrency || 'KRW',
+    brokerage: row.venue,
+    account_type: 'Crypto',
+    source_system: row.venue === 'Bithumb' ? 'bithumb_statement_pdf' : 'robinhood_crypto_statement_pdf',
+    date: row.date,
+    account,
+    type,
+    raw_type: row.rawType,
+    ticker: row.symbol || null,
+    name: row.symbol || (row.isCash ? currency : ''),
+    quantity,
+    native_amount: nativeAmount,
+    native_settlement: number(row.settlement),
+    native_unit_price: number(row.price),
+    amount_krw: toBase(nativeAmount, currency),
+    settlement_krw: toBase(number(row.settlement), currency),
+    unit_price: toBase(number(row.price), currency),
+    fee,
+    tax: null,
+    // The running balance the venue printed. Kept on the row so /positions can
+    // show the exchange's own figure beside ours instead of only our sum.
+    balance: row.isCash ? number(row.cashBalance) : number(row.assetBalance),
+    source: row.source,
+    page: row.page ?? null,
+  }
+  cryptoTransactionRows.push(transaction)
+
+  if (isIncomeType(type)) {
+    dividendRows.push({
+      market: CRYPTO_MARKET,
+      currency,
+      base_currency: fxConfig.baseCurrency || 'KRW',
+      brokerage: row.venue,
+      account_type: 'Crypto',
+      source_system: transaction.source_system,
+      date: row.date,
+      account,
+      ticker: row.symbol || null,
+      name: transaction.name,
+      native_amount: nativeAmount ?? 0,
+      native_tax_withheld: null,
+      amount_krw: toBase(nativeAmount ?? 0, currency) ?? 0,
+      type,
+      source: row.source,
+      page: row.page ?? null,
+    })
+  }
+
+  if (!row.symbol || row.isCash || quantity == null) continue
+
+  // Acquisitions open a lot; disposals consume open lots first-in-first-out.
+  // FIFO rather than the US default of specific-identification because neither
+  // venue reports which lot it closed, and FIFO is what Korean crypto rules
+  // assume — picking a lot we were not told about would invent a tax position.
+  const lotKey = `${row.venue}\t${account}\t${row.symbol}`
+  if (type === 'BUY' || type === 'STAKING_REWARD' || type === 'TRANSFER_IN') {
+    cryptoTaxLotRows.push({
+      market: CRYPTO_MARKET,
+      currency,
+      base_currency: fxConfig.baseCurrency || 'KRW',
+      fx_rate_to_base: fx?.rate ?? null,
+      brokerage: row.venue,
+      account_type: 'Crypto',
+      source_system: transaction.source_system,
+      as_of_date: now.slice(0, 10),
+      account,
+      ticker: row.symbol,
+      name: row.symbol,
+      acquired_date: row.date,
+      open_quantity: Math.abs(quantity),
+      native_cost_basis: (nativeAmount ?? 0) + (fee ?? 0),
+      native_unit_price: quantity ? ((nativeAmount ?? 0) + (fee ?? 0)) / Math.abs(quantity) : null,
+      native_market_value: null,
+      native_unrealized_gl: null,
+      source: row.source,
+      _key: lotKey,
+      _order: `${row.date} ${row.time ?? ''}`,
+    })
+  } else if (type === 'SELL') {
+    let remaining = Math.abs(quantity)
+    const proceeds = (nativeAmount ?? 0) - (fee ?? 0)
+    const open = cryptoTaxLotRows.filter((lot) => lot._key === lotKey && lot.open_quantity > 1e-12)
+    open.sort((a, b) => a._order.localeCompare(b._order))
+    for (const lot of open) {
+      if (remaining <= 1e-12) break
+      const take = Math.min(lot.open_quantity, remaining)
+      const share = take / Math.abs(quantity)
+      const lotCost = (lot.native_unit_price ?? 0) * take
+      const lotProceeds = proceeds * share
+      const holdingDays = Math.round(
+        (Date.parse(`${row.date}T00:00:00Z`) - Date.parse(`${lot.acquired_date}T00:00:00Z`)) / 86400000
+      )
+      cryptoRealizedRows.push({
+        market: CRYPTO_MARKET,
+        currency,
+        base_currency: fxConfig.baseCurrency || 'KRW',
+        brokerage: row.venue,
+        source_system: transaction.source_system,
+        account,
+        ticker: row.symbol,
+        name: row.symbol,
+        acquired_date: lot.acquired_date,
+        sold_date: row.date,
+        quantity_sold: take,
+        cost_basis_krw: toBase(lotCost, currency),
+        proceeds_krw: toBase(lotProceeds, currency),
+        realized_gl_krw: toBase(lotProceeds - lotCost, currency),
+        holding_days: holdingDays,
+        tax_term: holdingDays > 365 ? 'Long-term' : 'Short-term',
+        source: row.source,
+      })
+      lot.open_quantity -= take
+      lot.native_cost_basis -= lotCost
+      remaining -= take
+    }
+  }
+}
+
+const cryptoAsOfDate = now.slice(0, 10)
+for (const lot of cryptoTaxLotRows) {
+  const holdingDays = Math.round(
+    (Date.parse(`${cryptoAsOfDate}T00:00:00Z`) - Date.parse(`${lot.acquired_date}T00:00:00Z`)) / 86400000
+  )
+  lot.holding_days = holdingDays
+  lot.tax_term = holdingDays > 365 ? 'Long-term' : 'Short-term'
+  lot.cost_basis_krw = toBase(lot.native_cost_basis, lot.currency) ?? 0
+  lot.unit_cost = toBase(lot.native_unit_price, lot.currency)
+}
+
+// Positions are the open lots, grouped. Fully-closed lots stay in the table so
+// /positions can show the whole history, but contribute nothing to the holding.
+const cryptoPositions = new Map()
+for (const lot of cryptoTaxLotRows) {
+  const key = lot._key
+  const entry = cryptoPositions.get(key) ?? {
+    lot,
+    quantity: 0,
+    nativeCost: 0,
+    lotCount: 0,
+    longTermQty: 0,
+    shortTermQty: 0,
+  }
+  entry.quantity += lot.open_quantity
+  entry.nativeCost += lot.native_cost_basis
+  if (lot.open_quantity > 1e-12) {
+    entry.lotCount += 1
+    if (lot.tax_term === 'Long-term') entry.longTermQty += lot.open_quantity
+    else entry.shortTermQty += lot.open_quantity
+  }
+  cryptoPositions.set(key, entry)
+}
+
+for (const [key, entry] of cryptoPositions) {
+  if (entry.quantity <= 1e-12) continue
+  const [venue, account, symbol] = key.split('\t')
+  const lot = entry.lot
+  const currency = lot.currency
+  const fx = fxRate(currency)
+  const quote = cryptoPricesByKey.get(`${venue}\t${symbol}`)
+  const price = quote?.price ?? null
+  const marketValue = price == null ? null : price * entry.quantity
+  const unrealized = marketValue == null ? null : marketValue - entry.nativeCost
+  const averageCost = entry.quantity > 0 ? entry.nativeCost / entry.quantity : null
+
+  cryptoHoldingRows.push({
+    market: CRYPTO_MARKET,
+    currency,
+    base_currency: fxConfig.baseCurrency || 'KRW',
+    fx_rate_to_base: fx?.rate ?? null,
+    brokerage: venue,
+    account_type: 'Crypto',
+    source_system: `${lot.source_system}+${quote?.source ?? 'no_quote'}`,
+    as_of_date: quote?.asOfDate || cryptoAsOfDate,
+    account,
+    ticker: symbol,
+    name: quote?.name || symbol,
+    quantity: entry.quantity,
+    native_average_unit_cost: averageCost,
+    native_cost: entry.nativeCost,
+    native_price: price,
+    native_market_value: marketValue,
+    native_unrealized_gl: unrealized,
+    native_unrealized_gl_pct: unrealized == null || entry.nativeCost === 0 ? null : (unrealized / entry.nativeCost) * 100,
+    base_cost: toBase(entry.nativeCost, currency),
+    base_market_value: toBase(marketValue, currency),
+    base_unrealized_gl: toBase(unrealized, currency),
+    average_unit_cost: toBase(averageCost, currency),
+    total_cost_krw: toBase(entry.nativeCost, currency) ?? 0,
+    current_price: toBase(price, currency),
+    pe: null,
+    eps: null,
+    unrealized_gl_krw: toBase(unrealized, currency),
+    unrealized_gl_pct: unrealized == null || entry.nativeCost === 0 ? null : (unrealized / entry.nativeCost) * 100,
+    long_term_qty: entry.longTermQty,
+    short_term_qty: entry.shortTermQty,
+    lot_count: entry.lotCount,
+  })
+}
+
+for (const lot of cryptoTaxLotRows) {
+  delete lot._key
+  delete lot._order
+}
+
+holdingRows.push(...cryptoHoldingRows)
+taxLotRows.push(...cryptoTaxLotRows)
+realizedRows.push(...cryptoRealizedRows)
+transactionRows.push(...cryptoTransactionRows)
+
 for (let i = 0; i < dividendRows.length; i += 1) {
   dividendRows[i] = applyDividendMappings(dividendRows[i], manualMappings)
 }
@@ -1672,16 +2012,32 @@ insertMany(db, 'dividends', dividendRows, [
 insertMany(
   db,
   'evidence_reports',
-  (usPdfEvidence.reports ?? []).map((r) => ({
-    name: r.name,
-    category: r.category,
-    filename: r.filename,
-    path: r.path,
-    account_hint: r.account_hint,
-    pages: r.pages,
-    row_count: r.row_count,
-    metrics_json: JSON.stringify(r.metrics ?? {}),
-  })),
+  [
+    ...(usPdfEvidence.reports ?? []).map((r) => ({
+      name: r.name,
+      category: r.category,
+      filename: r.filename,
+      path: r.path,
+      account_hint: r.account_hint,
+      pages: r.pages,
+      row_count: r.row_count,
+      metrics_json: JSON.stringify(r.metrics ?? {}),
+    })),
+    // The crypto PDFs are evidence in the same sense the US gain/loss reports
+    // are — except here they are the ONLY source, so /health showing their
+    // coverage is the difference between "the position is backed by documents"
+    // and "the position is backed by a JSON file somebody generated".
+    ...(cryptoActivity.documents ?? []).map((d) => ({
+      name: d.name,
+      category: d.category,
+      filename: d.filename,
+      path: d.path,
+      account_hint: d.account,
+      pages: d.pages,
+      row_count: d.rowCount,
+      metrics_json: JSON.stringify(d.metrics ?? {}),
+    })),
+  ],
   ['name', 'category', 'filename', 'path', 'account_hint', 'pages', 'row_count', 'metrics_json']
 )
 
@@ -1749,6 +2105,7 @@ const unmappedTypes = transactionRows.filter(
       'INTERNAL_TRANSFER',
       'CORPORATE_ACTION',
       'FEE',
+      'STAKING_REWARD',
     ].includes(r.type)
 )
 const missingFxHoldings = holdingRows.filter((r) => r.currency !== r.base_currency && (r.fx_rate_to_base == null || r.base_cost == null))
@@ -1815,6 +2172,151 @@ check(
   'warning'
 )
 
+// --- Crypto ---------------------------------------------------------------
+//
+// The crypto position is a sum of transactions with no holdings export behind
+// it, so these checks are not belt-and-braces — they are the only thing standing
+// between a parser regression and a portfolio total that is quietly wrong. Each
+// compares our arithmetic against a figure the venue printed itself.
+
+const cryptoDocuments = cryptoActivity.documents ?? []
+const cryptoHoldingsByKey = new Map(cryptoHoldingRows.map((r) => [`${r.brokerage}\t${r.ticker}`, r]))
+
+// 1. Bithumb prints a running balance on every row. The newest row per symbol
+//    therefore states the current position outright. Document order decides
+//    which row is newest: three fills can share one timestamp.
+const bithumbBalances = new Map()
+for (const row of cryptoActivityRows) {
+  if (row.venue !== 'Bithumb' || row.isCash || !row.symbol || row.assetBalance == null) continue
+  const key = row.symbol
+  const rank = `${row.docPeriodEnd}\t${String(1e9 - (row.order ?? 0)).padStart(12, '0')}`
+  const prev = bithumbBalances.get(key)
+  if (!prev || rank > prev.rank) bithumbBalances.set(key, { rank, balance: row.assetBalance })
+}
+
+// 2. Robinhood prints a month-end quantity per symbol. The newest statement is
+//    the comparable one — earlier months describe positions since changed.
+const rhSnapshots = cryptoActivity.snapshots ?? []
+const rhLatestDate = rhSnapshots.reduce((max, s) => (s.asOfDate > max ? s.asOfDate : max), '')
+const rhLatest = new Map(rhSnapshots.filter((s) => s.asOfDate === rhLatestDate).map((s) => [s.symbol, s.quantity]))
+
+const cryptoBalanceBreaks = []
+for (const [symbol, printed] of bithumbBalances) {
+  const derived = cryptoHoldingsByKey.get(`Bithumb\t${symbol}`)?.quantity ?? 0
+  if (Math.abs(derived - printed.balance) > 1e-8) {
+    cryptoBalanceBreaks.push(`Bithumb ${symbol}: derived ${derived} vs printed ${printed.balance}`)
+  }
+}
+// Robinhood's newest statement lags the present by up to a month, so a symbol
+// bought after it was issued is expected to exceed the snapshot rather than
+// match it. Only a derived position BELOW the snapshot is a genuine break:
+// coins cannot vanish between statements without a transaction saying so.
+for (const [symbol, printed] of rhLatest) {
+  const derived = cryptoHoldingsByKey.get(`Robinhood\t${symbol}`)?.quantity ?? 0
+  if (derived + 1e-8 < printed) {
+    cryptoBalanceBreaks.push(`Robinhood ${symbol}: derived ${derived} below ${rhLatestDate} statement ${printed}`)
+  }
+}
+
+check(
+  'crypto_positions_match_venue_balances',
+  cryptoBalanceBreaks.length === 0,
+  cryptoBalanceBreaks.length
+    ? cryptoBalanceBreaks.join('; ')
+    : `${bithumbBalances.size + rhLatest.size} position(s) match the balance the venue printed`
+)
+
+// 3. The 확인서 declare the period and the filters they were issued under. A
+//    document pulled with a narrowed filter is indistinguishable from a complete
+//    one by its contents, and a filename already lied about its period once.
+const bithumbDocs = cryptoDocuments.filter((d) => d.category === 'bithumb_statement')
+const filteredDocs = bithumbDocs.filter(
+  (d) => d.metrics?.scopeAssets !== '전체' || d.metrics?.scopeTypes !== '매수/매도/입금/출금'
+)
+check(
+  'crypto_statements_unfiltered',
+  filteredDocs.length === 0,
+  filteredDocs.length
+    ? `narrowed scope in: ${filteredDocs.map((d) => `${d.filename} (${d.metrics?.scopeTypes} / ${d.metrics?.scopeAssets})`).join('; ')}`
+    : `${bithumbDocs.length} statement(s) issued over all assets and all transaction types`
+)
+
+// 4. Overlapping periods double-count every trade they share; a gap silently
+//    drops one. Both are invisible in the totals, so assert on the periods the
+//    documents declare rather than on their filenames.
+const periods = bithumbDocs
+  .map((d) => ({ filename: d.filename, start: d.metrics?.periodStart ?? '', end: d.metrics?.periodEnd ?? '' }))
+  .filter((p) => p.start && p.end)
+  .sort((a, b) => a.start.localeCompare(b.start))
+const periodBreaks = []
+for (let i = 1; i < periods.length; i += 1) {
+  const previous = periods[i - 1]
+  const current = periods[i]
+  if (current.start <= previous.end) {
+    periodBreaks.push(`${previous.filename} (…${previous.end}) overlaps ${current.filename} (${current.start}…)`)
+    continue
+  }
+  const expected = new Date(`${previous.end}T00:00:00Z`)
+  expected.setUTCDate(expected.getUTCDate() + 1)
+  const nextDay = expected.toISOString().slice(0, 10)
+  if (current.start !== nextDay) {
+    periodBreaks.push(`gap between ${previous.filename} (…${previous.end}) and ${current.filename} (${current.start}…)`)
+  }
+}
+check(
+  'crypto_statement_periods_contiguous',
+  periodBreaks.length === 0 && periods.length === bithumbDocs.length,
+  periodBreaks.length
+    ? periodBreaks.join('; ')
+    : `${periods.length} statement(s) cover ${periods[0]?.start ?? 'n/a'}..${periods[periods.length - 1]?.end ?? 'n/a'} without gap or overlap`
+)
+
+const missingCryptoPrices = cryptoHoldingRows.filter((r) => r.quantity > 0 && r.native_price == null)
+check(
+  'crypto_prices_available_for_unrealized_gl',
+  missingCryptoPrices.length === 0,
+  `${missingCryptoPrices.length} crypto holding row(s) missing current price`,
+  'warning'
+)
+
+// A reward with no close for its date has no cost basis, which understates the
+// position's cost and overstates its gain. Small in won, wrong in kind.
+const unvaluedRewards = cryptoTransactionRows.filter((r) => r.type === 'STAKING_REWARD' && r.native_amount == null)
+check(
+  'crypto_rewards_valued_at_receipt',
+  unvaluedRewards.length === 0,
+  `${unvaluedRewards.length} staking reward(s) missing a receipt-date close`,
+  'warning'
+)
+
+// A cash deposit whose 비고 the 확인서 left blank cannot be told apart from the
+// holder moving their own money in, so it is booked as a transfer and earns no
+// income row. Two real rows are like this (both promotional credits whose reason
+// the .xlsx export names and the PDF does not), and defaulting them to "not
+// income" is the conservative direction — but a silent default is how income
+// goes unreported, so name them.
+const unclassifiedCashIn = cryptoActivityRows.filter(
+  (r) => r.venue === 'Bithumb' && r.isCash && r.type === 'CASH_IN' && !String(r.note ?? '').trim()
+)
+check(
+  'crypto_cash_deposits_classified',
+  unclassifiedCashIn.length === 0,
+  unclassifiedCashIn.length
+    ? `${unclassifiedCashIn.length} deposit(s) with no counterparty or reason, booked as transfers: ${unclassifiedCashIn
+        .map((r) => `${r.date} ${r.amount}`)
+        .join(', ')}`
+    : 'every cash deposit carries a counterparty or a reason',
+  'warning'
+)
+
+const missingCryptoSources = missingCryptoSourceFiles
+check(
+  'expected_crypto_source_files_present',
+  missingCryptoSources.length === 0,
+  missingCryptoSources.length ? `no file matches: ${missingCryptoSources.join('; ')}` : 'all expected crypto exports found',
+  'warning'
+)
+
 // The US year-to-date realized figures are hand-entered assumptions that the tax
 // estimate reads straight through (lib/tax-planning.ts reads
 // `ytdRealizedShortGainLossUsd` / `ytdRealizedLongGainLossUsd`). They ship as 0
@@ -1849,8 +2351,10 @@ db.prepare(`
   insert or replace into portfolio_snapshots (
     snapshot_date, captured_at, global_base_cost, global_base_market_value,
     global_base_unrealized_gl, global_base_return_pct, market_value_coverage,
-    kr_market_value, us_market_value_base, kr_cost_basis, us_cost_basis_base,
-    kr_unrealized_gl, us_unrealized_gl_base, kr_return_pct, us_return_pct,
+    kr_market_value, us_market_value_base, crypto_market_value_base,
+    kr_cost_basis, us_cost_basis_base, crypto_cost_basis_base,
+    kr_unrealized_gl, us_unrealized_gl_base, crypto_unrealized_gl_base,
+    kr_return_pct, us_return_pct, crypto_return_pct,
     krw_cost, usd_cost, dividends_krw, dividends_usd, holding_count, share_count
   )
   select
@@ -1862,12 +2366,16 @@ db.prepare(`
     case when count(*) > 0 then avg(case when base_market_value is not null then 1.0 else 0.0 end) else 0 end,
     coalesce(sum(case when market = 'KR' then base_market_value else 0 end), 0),
     coalesce(sum(case when market = 'US' then base_market_value else 0 end), 0),
+    coalesce(sum(case when market = 'CRYPTO' then base_market_value else 0 end), 0),
     coalesce(sum(case when market = 'KR' then base_cost else 0 end), 0),
     coalesce(sum(case when market = 'US' then base_cost else 0 end), 0),
+    coalesce(sum(case when market = 'CRYPTO' then base_cost else 0 end), 0),
     coalesce(sum(case when market = 'KR' then base_unrealized_gl else 0 end), 0),
     coalesce(sum(case when market = 'US' then base_unrealized_gl else 0 end), 0),
+    coalesce(sum(case when market = 'CRYPTO' then base_unrealized_gl else 0 end), 0),
     case when coalesce(sum(case when market = 'KR' then base_cost else 0 end), 0) > 0 then coalesce(sum(case when market = 'KR' then base_unrealized_gl else 0 end), 0) / sum(case when market = 'KR' then base_cost else 0 end) * 100 else null end,
     case when coalesce(sum(case when market = 'US' then base_cost else 0 end), 0) > 0 then coalesce(sum(case when market = 'US' then base_unrealized_gl else 0 end), 0) / sum(case when market = 'US' then base_cost else 0 end) * 100 else null end,
+    case when coalesce(sum(case when market = 'CRYPTO' then base_cost else 0 end), 0) > 0 then coalesce(sum(case when market = 'CRYPTO' then base_unrealized_gl else 0 end), 0) / sum(case when market = 'CRYPTO' then base_cost else 0 end) * 100 else null end,
     coalesce(sum(case when currency = 'KRW' then native_cost else 0 end), 0),
     coalesce(sum(case when currency = 'USD' then native_cost else 0 end), 0),
     (select coalesce(sum(case when currency = 'KRW' then native_amount else 0 end), 0) from dividends),
@@ -1895,6 +2403,8 @@ const report = {
       ['kr_prices', { file: krPricesPath, rows: krPriceConfig.prices?.length ?? 0 }],
       ['us_prices', { file: usPricesPath, rows: usPriceConfig.prices?.length ?? 0 }],
       ['us_pdf_evidence', { file: usPdfEvidencePath, rows: usPdfEvidence.reports?.length ?? 0 }],
+      ['crypto_activity', { file: cryptoActivityPath, rows: cryptoActivity.transactions?.length ?? 0 }],
+      ['crypto_prices', { file: cryptoPricesPath, rows: cryptoPriceConfig.prices?.length ?? 0 }],
       [
         'manual_mappings',
         { file: manualMappingsPath, rows: (manualMappings.incomeRules?.length ?? 0) + (manualMappings.dividendOverrides?.length ?? 0) },

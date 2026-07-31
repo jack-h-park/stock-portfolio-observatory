@@ -373,6 +373,11 @@ export type RebalanceReview = {
   }[]
   watchCandidates: (ReviewPosition & { reason: string })[]
   taxSensitive: (ReviewPosition & { reason: string })[]
+  untargetedMarkets: {
+    market: string
+    currentValue: number
+    currentPctOfPortfolio: number
+  }[]
 }
 
 export type DataOpsReview = {
@@ -548,6 +553,21 @@ export function getOverview() {
           coalesce(sum(base_cost), 0) as global_base_cost,
           coalesce(sum(base_market_value), 0) as global_base_market_value,
           coalesce(sum(base_unrealized_gl), 0) as global_base_unrealized_gl,
+          -- Market-scoped totals in the base currency, alongside the
+          -- currency-scoped ones above. The two used to be interchangeable
+          -- because KR meant KRW and US meant USD. Crypto breaks that: it holds
+          -- KRW positions on Bithumb and USD positions on Robinhood, so a card
+          -- labelled "KR" that sums by CURRENCY would quietly include Korean
+          -- crypto, and one labelled "US" would include the Robinhood coins.
+          coalesce(sum(case when market = 'KR' then base_cost else 0 end), 0) as kr_base_cost,
+          coalesce(sum(case when market = 'KR' then base_market_value else 0 end), 0) as kr_base_market_value,
+          coalesce(sum(case when market = 'KR' then base_unrealized_gl else 0 end), 0) as kr_base_unrealized_gl,
+          coalesce(sum(case when market = 'US' then base_cost else 0 end), 0) as us_base_cost,
+          coalesce(sum(case when market = 'US' then base_market_value else 0 end), 0) as us_base_market_value,
+          coalesce(sum(case when market = 'US' then base_unrealized_gl else 0 end), 0) as us_base_unrealized_gl,
+          coalesce(sum(case when market = 'CRYPTO' then base_cost else 0 end), 0) as crypto_base_cost,
+          coalesce(sum(case when market = 'CRYPTO' then base_market_value else 0 end), 0) as crypto_base_market_value,
+          coalesce(sum(case when market = 'CRYPTO' then base_unrealized_gl else 0 end), 0) as crypto_base_unrealized_gl,
           coalesce(sum(long_term_qty), 0) as long_term_qty,
           coalesce(sum(short_term_qty), 0) as short_term_qty
         from holdings`
@@ -584,12 +604,16 @@ export type PortfolioSnapshot = {
   market_value_coverage: number | null
   kr_market_value: number | null
   us_market_value_base: number | null
+  crypto_market_value_base: number | null
   kr_cost_basis: number | null
   us_cost_basis_base: number | null
+  crypto_cost_basis_base: number | null
   kr_unrealized_gl: number | null
   us_unrealized_gl_base: number | null
+  crypto_unrealized_gl_base: number | null
   kr_return_pct: number | null
   us_return_pct: number | null
+  crypto_return_pct: number | null
   krw_cost: number
   usd_cost: number
   dividends_krw: number
@@ -609,8 +633,10 @@ export function getPortfolioSnapshots(days = 3650): PortfolioSnapshot[] {
       .prepare(
         `select snapshot_date, captured_at, global_base_cost, global_base_market_value,
           global_base_unrealized_gl, global_base_return_pct, market_value_coverage,
-          kr_market_value, us_market_value_base, kr_cost_basis, us_cost_basis_base,
-          kr_unrealized_gl, us_unrealized_gl_base, kr_return_pct, us_return_pct,
+          kr_market_value, us_market_value_base, crypto_market_value_base,
+          kr_cost_basis, us_cost_basis_base, crypto_cost_basis_base,
+          kr_unrealized_gl, us_unrealized_gl_base, crypto_unrealized_gl_base,
+          kr_return_pct, us_return_pct, crypto_return_pct,
           krw_cost, usd_cost, dividends_krw, dividends_usd, holding_count, share_count
          from portfolio_snapshots
          where snapshot_date >= date('now', ?)
@@ -997,9 +1023,15 @@ export function getOperationalHealth(): OperationalHealth {
     const sourceRows = conn.prepare('select * from source_files order by name').all() as any[]
     const krPrices = readJson(config.stockKrPricesPath)
     const usPrices = readJson(config.stockUsPricesPath)
+    const cryptoPrices = readJson(config.stockCryptoPricesPath)
     const fxRates = readJson(config.stockFxRatesPath)
     const fxRate = fxRates?.rates?.[0]
     const priceThresholdMs = 36 * 60 * 60 * 1000
+    // Crypto trades continuously, so a quote is never "as fresh as the last
+    // close" — it is simply old. The 36h equity threshold spans a weekend on
+    // purpose and would pass a crypto quote that is a full trading day and a
+    // half stale, which for this asset class is a different number entirely.
+    const cryptoPriceThresholdMs = 8 * 60 * 60 * 1000
     const fxThresholdMs = 7 * 24 * 60 * 60 * 1000
     const snapshots: FreshnessItem[] = [
       snapshotFreshness({
@@ -1019,6 +1051,17 @@ export function getOperationalHealth(): OperationalHealth {
         observedAt: usPrices?.generatedAt ?? statMtimeIso(config.stockUsPricesPath),
         thresholdMs: priceThresholdMs,
         detail: `${usPrices?.prices?.length ?? 0} prices · market date ${usPrices?.prices?.[0]?.asOfDate ?? 'n/a'}`,
+      }),
+      snapshotFreshness({
+        key: 'crypto_prices',
+        label: 'Crypto prices',
+        category: 'price',
+        path: config.stockCryptoPricesPath,
+        observedAt: cryptoPrices?.generatedAt ?? statMtimeIso(config.stockCryptoPricesPath),
+        thresholdMs: cryptoPriceThresholdMs,
+        detail: `${cryptoPrices?.prices?.length ?? 0} prices · ${
+          cryptoPrices?.prices?.map((price: any) => `${price.venue} ${price.symbol}`).join(', ') || 'none'
+        }`,
       }),
       snapshotFreshness({
         key: 'fx_rates',
@@ -1347,6 +1390,108 @@ export function getIncomeReview(): IncomeReview {
   }
 }
 
+export type CryptoPremium = {
+  generatedAt: string | null
+  fx: { rate: number; asOfDate: string } | null
+  /** One row per symbol quoted on both a KRW book and a USD book. */
+  spot: {
+    symbol: string
+    krwPrice: number
+    usdPrice: number
+    impliedKrw: number
+    premiumPct: number
+    krwAsOfDate: string
+    usdAsOfDate: string
+    /** Held on a KRW venue, so the premium is actually carried. */
+    heldQuantity: number
+    heldValueKrw: number
+    /** KRW of that value attributable to the premium — what reverting to parity costs. */
+    premiumValueKrw: number
+  }[]
+  history: { date: string; bySymbol: Record<string, number> }[]
+  symbols: string[]
+  /** Portfolio-level: premium-bearing value, and the part of it that is premium. */
+  exposure: { heldValueKrw: number; premiumValueKrw: number; weightedPremiumPct: number | null }
+}
+
+/**
+ * The Korea premium — the gap between a coin's won order book and its dollar one.
+ *
+ * Worth watching separately from the position itself: it is a second, independent
+ * way to lose money on a KRW-venue holding. A position can be flat in dollar
+ * terms and still fall in won if the premium compresses, and that exposure is
+ * invisible on every other screen, because each venue is marked at its own book
+ * precisely so the premium does not distort valuation.
+ */
+export function getCryptoPremium(): CryptoPremium {
+  const snapshot = readJson(config.stockCryptoPricesPath)
+  const spotRows = snapshot?.premium?.spot ?? []
+  const historyRows = snapshot?.premium?.history ?? []
+
+  // Quantities come from the database rather than the price snapshot, so exposure
+  // is measured against the positions the rest of the app reports.
+  const conn = db()
+  let held: { ticker: string; quantity: number }[] = []
+  try {
+    held = conn
+      .prepare(
+        `select ticker, coalesce(sum(quantity), 0) as quantity
+         from holdings
+         where market = 'CRYPTO' and currency = 'KRW'
+         group by ticker`
+      )
+      .all() as { ticker: string; quantity: number }[]
+  } finally {
+    conn.close()
+  }
+  const heldByTicker = new Map(held.map((row) => [String(row.ticker).toUpperCase(), Number(row.quantity) || 0]))
+
+  const spot: CryptoPremium['spot'] = spotRows.map((row: any) => {
+    const quantity = heldByTicker.get(String(row.symbol).toUpperCase()) ?? 0
+    const heldValueKrw = quantity * Number(row.krwPrice)
+    return {
+      symbol: String(row.symbol),
+      krwPrice: Number(row.krwPrice),
+      usdPrice: Number(row.usdPrice),
+      impliedKrw: Number(row.impliedKrw),
+      premiumPct: Number(row.premiumPct),
+      krwAsOfDate: String(row.krwAsOfDate ?? ''),
+      usdAsOfDate: String(row.usdAsOfDate ?? ''),
+      heldQuantity: quantity,
+      heldValueKrw,
+      premiumValueKrw: heldValueKrw - quantity * Number(row.impliedKrw),
+    }
+  })
+
+  const byDate = new Map<string, Record<string, number>>()
+  for (const row of historyRows as any[]) {
+    const bucket = byDate.get(row.date) ?? {}
+    bucket[row.symbol] = Number(row.premiumPct)
+    byDate.set(row.date, bucket)
+  }
+
+  const heldValueKrw = spot.reduce((sum, row) => sum + row.heldValueKrw, 0)
+  const premiumValueKrw = spot.reduce((sum, row) => sum + row.premiumValueKrw, 0)
+  const impliedTotal = heldValueKrw - premiumValueKrw
+
+  return {
+    generatedAt: snapshot?.generatedAt ?? null,
+    fx: spotRows[0] ? { rate: Number(spotRows[0].fxRate), asOfDate: String(spotRows[0].fxAsOfDate ?? '') } : null,
+    spot: spot.sort((a, b) => b.heldValueKrw - a.heldValueKrw || a.symbol.localeCompare(b.symbol)),
+    history: [...byDate.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, bySymbol]) => ({ date, bySymbol })),
+    symbols: [...new Set(historyRows.map((row: any) => String(row.symbol)))].sort() as string[],
+    exposure: {
+      heldValueKrw,
+      premiumValueKrw,
+      // Value-weighted, not a mean of the per-coin percentages: a 5% premium on a
+      // 10,000-won USDT position is not worth the same as 5% on 13m won of BTC.
+      weightedPremiumPct: impliedTotal > 0 ? (premiumValueKrw / impliedTotal) * 100 : null,
+    },
+  }
+}
+
 export function getRebalanceReview(): RebalanceReview {
   const conn = db()
   try {
@@ -1383,10 +1528,35 @@ export function getRebalanceReview(): RebalanceReview {
     const totalValue = positions.reduce((sum, row) => sum + positionValue(row), 0)
     const marketValue = (market: string) =>
       positions.reduce((sum, row) => (row.market === market ? sum + positionValue(row) : sum), 0)
+
+    // Market gaps are measured against the TARGETED markets only, not the whole
+    // portfolio. The 50/50 policy is a split between two equity books; a market
+    // with no target — crypto — is not a third slice of it. Dividing by the full
+    // portfolio would push both KR and US below their targets purely because
+    // crypto exists, reporting "Add" on both sides of a split that is already
+    // balanced, and the suggested amounts would be wrong by the crypto weight.
+    //
+    // Untargeted markets are returned separately rather than dropped, so a
+    // position class with no policy is visible as exactly that instead of
+    // silently missing from the rebalance view. Position caps below still divide
+    // by the full portfolio: a 15% cap is a concentration limit over everything
+    // held, and exempting crypto from it would be the wrong direction.
+    const targetedValue = marketTargets.reduce((sum, target) => sum + marketValue(target.market), 0)
+    const targetedMarkets = new Set(marketTargets.map((target) => target.market))
+    const untargetedMarkets = [...new Set(positions.map((row) => row.market))]
+      .filter((market) => !targetedMarkets.has(market))
+      .map((market) => ({
+        market,
+        currentValue: marketValue(market),
+        currentPctOfPortfolio: totalValue > 0 ? (marketValue(market) / totalValue) * 100 : 0,
+      }))
+      .filter((row) => row.currentValue > 0)
+      .sort((a, b) => b.currentValue - a.currentValue)
+
     const marketGaps = marketTargets.map((target) => {
       const currentValue = marketValue(target.market)
-      const currentPct = totalValue > 0 ? (currentValue / totalValue) * 100 : 0
-      const targetValue = totalValue * (target.targetPct / 100)
+      const currentPct = targetedValue > 0 ? (currentValue / targetedValue) * 100 : 0
+      const targetValue = targetedValue * (target.targetPct / 100)
       const gapValue = targetValue - currentValue
       const gapPct = target.targetPct - currentPct
       return {
@@ -1438,6 +1608,7 @@ export function getRebalanceReview(): RebalanceReview {
       addContext,
       watchCandidates,
       taxSensitive,
+      untargetedMarkets,
     }
   } finally {
     conn.close()
@@ -1480,8 +1651,25 @@ function mappingRuleSuggestion(row: {
   return JSON.stringify(payload)
 }
 
+/**
+ * Which price snapshot backs a market. Crypto has its own because it is priced
+ * per venue rather than per exchange listing, and because a KRW-quoted crypto
+ * holding is not in the KR equity snapshot.
+ */
+function priceSnapshotNameFor(market: string) {
+  if (market === 'KR') return 'kr_prices'
+  if (market === 'CRYPTO') return 'crypto_prices'
+  return 'us_prices'
+}
+
+function priceSnapshotPathFor(market: string) {
+  if (market === 'KR') return config.stockKrPricesPath
+  if (market === 'CRYPTO') return config.stockCryptoPricesPath
+  return config.stockUsPricesPath
+}
+
 function valuationReason(row: { market: string; ticker: string }) {
-  const prices = readJson(row.market === 'KR' ? config.stockKrPricesPath : config.stockUsPricesPath)
+  const prices = readJson(priceSnapshotPathFor(row.market))
   const tickers = new Set((prices?.prices ?? []).map((price: any) => String(price.ticker ?? '').toUpperCase()))
   if (!prices) return 'price_snapshot_missing'
   if (!tickers.has(String(row.ticker).toUpperCase())) return 'ticker_missing_from_price_snapshot'
@@ -1987,7 +2175,7 @@ export function getPositionDetail(market: string, ticker: string): PositionDetai
     const files = conn.prepare('select * from source_files order by name').all() as any[]
 
     const sourceMap = new Map<string, Set<string>>()
-    const canonicalSources = ['holdings', 'taxlots', 'transactions', 'dividends', 'fx_rates', market === 'KR' ? 'kr_prices' : 'us_prices']
+    const canonicalSources = ['holdings', 'taxlots', 'transactions', 'dividends', 'fx_rates', priceSnapshotNameFor(market)]
     canonicalSources.forEach((source) => addSource(sourceMap, source, 'snapshot'))
     lots.forEach((row) => addSource(sourceMap, row.source, 'tax lots'))
     transactions.forEach((row) => addSource(sourceMap, row.source, 'transactions'))

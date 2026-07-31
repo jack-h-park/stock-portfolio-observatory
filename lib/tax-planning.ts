@@ -337,7 +337,18 @@ function warningForLot(lot: TaxPlanningLot, policy: TaxPolicy, proceedsKrw: numb
     warnings.push(`Potential wash-sale review: ${before}d before / ${after}d after.`)
   }
   if (lot.market === 'KR' && !krTaxable(lot, policy)) warnings.push('KR domestic stock taxable scope is off by current assumptions.')
-  if (lot.market !== 'KR' && lot.market !== 'US') warnings.push('No country module exists yet; treated as monitoring-only.')
+  // Crypto reaches the planner but is deliberately not modelled by a country
+  // module. The US side still picks it up through the worldwide-income scenario
+  // below, which is right — a US person reports crypto gains like any other
+  // property, and notably WITHOUT the wash-sale rule the US branch above applies
+  // to equities. Korea is the open question: virtual-asset gains tax has been
+  // deferred more than once, and guessing an effective date here would produce a
+  // confident number nobody should act on.
+  if (lot.market === 'CRYPTO') {
+    warnings.push('Crypto: no Korea virtual-asset module; US estimate treats it as property with no wash-sale rule.')
+  } else if (lot.market !== 'KR' && lot.market !== 'US') {
+    warnings.push('No country module exists yet; treated as monitoring-only.')
+  }
   return warnings
 }
 

@@ -25,6 +25,8 @@ data/fx-rates.json
 data/kr-prices.json
 data/us-prices.json
 data/us-pdf-evidence.json
+data/crypto-activity.json
+data/crypto-prices.json
 data/manual-mappings.json
 data/refresh-runs.json
 data/tax-policy.json

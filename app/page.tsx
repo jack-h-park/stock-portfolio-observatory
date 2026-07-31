@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { FreshnessInline } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, StatCard } from '@/components/ui'
+import { Badge, Card, EmptyState, StatCard , marketTone } from '@/components/ui'
 import { AllocationPieChart, PortfolioMultiTrendChart, PortfolioTrendChart, TrendBarChart } from '@/components/charts'
 import {
   dbAvailable,
@@ -39,6 +39,7 @@ const TREND_SCOPES = [
   { key: 'global', label: 'Global' },
   { key: 'KR', label: 'Korea' },
   { key: 'US', label: 'United States' },
+  { key: 'CRYPTO', label: 'Crypto' },
 ] as const
 
 const TREND_FIELDS = {
@@ -59,6 +60,12 @@ const TREND_FIELDS = {
     cost_basis: 'us_cost_basis_base',
     unrealized_gl: 'us_unrealized_gl_base',
     return_pct: 'us_return_pct',
+  },
+  CRYPTO: {
+    market_value: 'crypto_market_value_base',
+    cost_basis: 'crypto_cost_basis_base',
+    unrealized_gl: 'crypto_unrealized_gl_base',
+    return_pct: 'crypto_return_pct',
   },
 } as const
 
@@ -114,17 +121,26 @@ export default async function OverviewPage({
 
   const totalTerm = (overview.totals.long_term_qty ?? 0) + (overview.totals.short_term_qty ?? 0)
   const longTermPct = totalTerm > 0 ? Math.round((overview.totals.long_term_qty / totalTerm) * 100) : 0
-  const krBase = overview.totals.krw_cost
-  const usBase = overview.totals.usd_cost * (usdKrw?.rate ?? 0)
+  // Market-scoped, not currency-scoped: crypto holds KRW positions on Bithumb and
+  // USD positions on Robinhood, so summing by currency would file each of them
+  // under the KR or US card.
+  const krBase = overview.totals.kr_base_cost
+  const usBase = overview.totals.us_base_cost
+  const cryptoBase = overview.totals.crypto_base_cost
   const globalBase = overview.totals.global_base_cost
   const usUnrealizedPct =
-    overview.totals.usd_cost > 0 ? (overview.totals.usd_unrealized_gl / overview.totals.usd_cost) * 100 : 0
+    overview.totals.us_base_cost > 0 ? (overview.totals.us_base_unrealized_gl / overview.totals.us_base_cost) * 100 : 0
   const krUnrealizedPct =
-    overview.totals.krw_cost > 0 ? (overview.totals.krw_unrealized_gl / overview.totals.krw_cost) * 100 : 0
+    overview.totals.kr_base_cost > 0 ? (overview.totals.kr_base_unrealized_gl / overview.totals.kr_base_cost) * 100 : 0
+  const cryptoUnrealizedPct =
+    overview.totals.crypto_base_cost > 0
+      ? (overview.totals.crypto_base_unrealized_gl / overview.totals.crypto_base_cost) * 100
+      : 0
   const globalUnrealizedPct =
     overview.totals.global_base_cost > 0 ? (overview.totals.global_base_unrealized_gl / overview.totals.global_base_cost) * 100 : 0
   const krShare = globalBase > 0 ? Math.round((krBase / globalBase) * 100) : 0
   const usShare = globalBase > 0 ? Math.round((usBase / globalBase) * 100) : 0
+  const cryptoShare = globalBase > 0 ? Math.round((cryptoBase / globalBase) * 100) : 0
   const topFiveBase = top.slice(0, 5).reduce((sum, r) => sum + (r.base_cost ?? 0), 0)
   const topFiveShare = globalBase > 0 ? Math.round((topFiveBase / globalBase) * 100) : 0
   const largestPositions = top.slice(0, 5)
@@ -195,18 +211,25 @@ export default async function OverviewPage({
         />
         <StatCard
           label="KR Unrealized G/L"
-          value={fmtKrw(overview.totals.krw_unrealized_gl)}
-          hint={`${fmtKrw(overview.totals.krw_market_value)} market · ${fmtNumber(krUnrealizedPct, 2)}%`}
-          tone={overview.totals.krw_unrealized_gl >= 0 ? 'success' : 'danger'}
+          value={fmtKrw(overview.totals.kr_base_unrealized_gl)}
+          hint={`${fmtKrw(overview.totals.kr_base_market_value)} market · ${fmtNumber(krUnrealizedPct, 2)}%`}
+          tone={overview.totals.kr_base_unrealized_gl >= 0 ? 'success' : 'danger'}
         />
         <StatCard
           label="US Unrealized G/L"
-          value={fmtMoney(overview.totals.usd_unrealized_gl, 'USD')}
-          hint={`${fmtMoney(overview.totals.usd_market_value, 'USD')} market · ${fmtNumber(usUnrealizedPct, 2)}%`}
-          tone={overview.totals.usd_unrealized_gl >= 0 ? 'success' : 'danger'}
+          value={fmtKrw(overview.totals.us_base_unrealized_gl)}
+          hint={`${fmtKrw(overview.totals.us_base_market_value)} market · ${fmtNumber(usUnrealizedPct, 2)}%`}
+          tone={overview.totals.us_base_unrealized_gl >= 0 ? 'success' : 'danger'}
         />
-        <StatCard label="KR Cost Basis" value={fmtKrw(overview.totals.krw_cost)} />
-        <StatCard label="US Cost Basis" value={fmtMoney(overview.totals.usd_cost, 'USD')} hint={`${fmtMoney(overview.totals.usd_market_value, 'USD')} market`} />
+        <StatCard
+          label="Crypto Unrealized G/L"
+          value={fmtKrw(overview.totals.crypto_base_unrealized_gl)}
+          hint={`${fmtKrw(overview.totals.crypto_base_market_value)} market · ${fmtNumber(cryptoUnrealizedPct, 2)}%`}
+          tone={overview.totals.crypto_base_unrealized_gl >= 0 ? 'success' : 'danger'}
+        />
+        <StatCard label="KR Cost Basis" value={fmtKrw(overview.totals.kr_base_cost)} />
+        <StatCard label="US Cost Basis" value={fmtKrw(overview.totals.us_base_cost)} hint={`${fmtMoney(overview.totals.usd_cost, 'USD')} native`} />
+        <StatCard label="Crypto Cost Basis" value={fmtKrw(overview.totals.crypto_base_cost)} hint={`${fmtNumber(cryptoShare)}% of portfolio`} />
         <StatCard label="Holdings" value={fmtNumber(overview.totals.holding_count)} hint={`${fmtNumber(overview.totals.share_count, 2)} shares`} />
         <StatCard label="Dividends" value={`${fmtKrw(overview.dividends.krw_amount)} / ${fmtMoney(overview.dividends.usd_amount, 'USD')}`} hint={`${fmtNumber(overview.dividends.count)} rows`} tone="success" />
       </div>
@@ -247,7 +270,7 @@ export default async function OverviewPage({
               {largestPositions.map((p) => (
                 <div key={p.id} className="flex items-center justify-between gap-3 text-[12px]">
                   <div className="flex min-w-0 items-center gap-2">
-                    <Badge tone={p.market === 'US' ? 'info' : 'success'}>{p.market}</Badge>
+                    <Badge tone={marketTone(p.market)}>{p.market}</Badge>
                     <span className="min-w-0 truncate text-ink">{p.name}</span>
                     <span className="shrink-0 font-mono text-[11px] text-ink-3">{p.ticker}</span>
                   </div>
@@ -435,7 +458,7 @@ export default async function OverviewPage({
           <ul className="divide-y divide-line-subtle">
             {largestPositions.map((h) => (
               <li key={h.id} className="flex items-center gap-3 py-2">
-                <Badge tone={h.market === 'US' ? 'info' : 'success'}>{h.market}</Badge>
+                <Badge tone={marketTone(h.market)}>{h.market}</Badge>
                 <Badge tone="neutral">{h.ticker}</Badge>
                 <Link href={positionHref(h.market, h.ticker)} className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink hover:underline">
                   {h.name}
@@ -451,7 +474,7 @@ export default async function OverviewPage({
             {txTypes.map((t) => (
               <li key={`${t.market}:${t.type}`} className="flex items-center justify-between gap-3 py-2">
                 <div className="flex min-w-0 items-center gap-2">
-                  <Badge tone={t.market === 'US' ? 'info' : 'success'}>{t.market}</Badge>
+                  <Badge tone={marketTone(t.market)}>{t.market}</Badge>
                   <Badge tone={t.type === 'DIVIDEND' ? 'success' : t.type === 'SELL' ? 'warning' : 'info'}>
                     {t.type}
                   </Badge>

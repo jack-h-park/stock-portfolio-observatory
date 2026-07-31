@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { updateSavedInstructionExecutionAction } from '@/app/tax-planning/actions'
-import { Badge, Button, Card, EmptyState } from '@/components/ui'
+import { Badge, Button, Card, EmptyState , marketTone } from '@/components/ui'
 import { fmtKrw, fmtNumber } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
 import type {
@@ -139,7 +139,7 @@ function MonthDetailCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={row.market === 'US' ? 'info' : 'success'}>{row.market}</Badge>
+            <Badge tone={marketTone(row.market)}>{row.market}</Badge>
             <Link
               href={positionHref(row.market, row.ticker)}
               className="font-mono text-[12px] font-medium text-info hover:underline"
@@ -423,7 +423,7 @@ export function TaxPlanTimeline({
                       </td>
                       <td className="min-w-[16rem] px-3 py-2.5">
                         <div className="flex items-center gap-2">
-                          <Badge tone={row.market === 'US' ? 'info' : 'success'}>{row.market}</Badge>
+                          <Badge tone={marketTone(row.market)}>{row.market}</Badge>
                           <Link
                             href={positionHref(row.market, row.ticker)}
                             className="font-mono font-medium text-info hover:underline"

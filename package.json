@@ -23,6 +23,8 @@
     "extract:us-pdf-evidence": "node scripts/extract-us-pdf-evidence.mjs",
     "extract:kr-statements": "node scripts/extract-kr-statements.mjs",
     "fetch:toss": "node scripts/fetch-toss.mjs",
+    "extract:crypto-activity": "node scripts/extract-crypto-activity.mjs",
+    "fetch:crypto-prices": "node scripts/fetch-crypto-prices.mjs",
     "ingest": "node scripts/ingest-stock-data.mjs",
     "backfill:history": "node scripts/backfill-portfolio-history.mjs",
     "refresh": "node scripts/refresh.mjs",
