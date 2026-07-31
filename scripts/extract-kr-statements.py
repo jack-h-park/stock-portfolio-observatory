@@ -318,7 +318,13 @@ def build_lots(transactions, as_of):
         # lives in the raw type rather than the normalized one. An earlier version
         # tried to redistribute the cost itself, mistook the second inbound row for
         # another outbound, and silently emptied the position.
-        if kind == "STOCK_SPLIT":
+        # Corporate actions move a position too, and 출고 means it left: a matured
+        # bond is redeemed by 채권만기상환출고, rights lapse by 신주인수권증서말소출고.
+        # Leaving them out of the lot walk left the redeemed US Treasury sitting in
+        # the account a year past maturity — a position the dashboard would show
+        # and no statement would contradict. Anything without a direction in its
+        # name (a ticker change) is neither and is skipped.
+        if kind in ("STOCK_SPLIT", "CORPORATE_ACTION"):
             if "입고" in r["Raw Type"]:
                 kind = "TRANSFER_IN"
             elif "출고" in r["Raw Type"]:

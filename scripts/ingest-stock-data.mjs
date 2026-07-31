@@ -1036,6 +1036,77 @@ const taxLotRows = datasets.taxlots.rows.map((r) => {
   }
 })
 
+// Positions for the statement accounts, summed from their own lots rather than
+// read from the spreadsheet. A 거래내역증명서 has no position snapshot, but every
+// lot in it was derived from one, so the sum is the position — and it is the
+// position the broker's own history implies rather than the one somebody last
+// typed. It found a ₩498,120 government bond the sheet never listed.
+//
+// Long/short quantities come free here: the lots carry their own tax term, where
+// the sheet had them as a column nobody recomputed.
+if (statementAccounts.size) {
+  const grouped = new Map()
+  for (const lot of taxLotRows) {
+    if (!statementAccounts.has(lot.account) || !(lot.open_quantity > 0)) continue
+    const key = `${lot.account}\t${lot.ticker}`
+    const cur = grouped.get(key) ?? {
+      account: lot.account, ticker: lot.ticker, name: lot.name, currency: lot.currency,
+      asOf: lot.as_of_date, quantity: 0, cost: 0, nativeCost: 0, long: 0, short: 0, lots: 0,
+    }
+    cur.quantity += lot.open_quantity
+    cur.cost += lot.cost_basis_krw ?? 0
+    cur.nativeCost += lot.native_cost_basis ?? 0
+    cur[lot.tax_term === 'Long-term' ? 'long' : 'short'] += lot.open_quantity
+    cur.lots += 1
+    if (lot.name) cur.name = lot.name
+    grouped.set(key, cur)
+  }
+  const derived = [...grouped.values()].map((g) => {
+    const priceSnapshot = krPricesByTicker.get(g.ticker)
+    const currentPrice = priceSnapshot?.price ?? null
+    const marketValue = currentPrice == null ? null : currentPrice * g.quantity
+    const unrealized = marketValue == null ? null : marketValue - g.cost
+    return {
+      market: 'KR',
+      currency: 'KRW',
+      base_currency: 'KRW',
+      fx_rate_to_base: 1,
+      brokerage: g.account.split('(')[0],
+      account_type: g.account.match(/\(([^)]+)\)/)?.[1] ?? '',
+      source_system: priceSnapshot ? 'korea_statement+yahoo_chart' : 'korea_statement',
+      as_of_date: priceSnapshot?.asOfDate || g.asOf,
+      account: g.account,
+      ticker: g.ticker,
+      name: g.name,
+      quantity: g.quantity,
+      native_average_unit_cost: g.quantity > 0 ? g.cost / g.quantity : null,
+      native_cost: g.cost,
+      native_price: currentPrice,
+      native_market_value: marketValue,
+      native_unrealized_gl: unrealized,
+      native_unrealized_gl_pct: unrealized == null || g.cost === 0 ? null : (unrealized / g.cost) * 100,
+      base_cost: g.cost,
+      base_market_value: marketValue,
+      base_unrealized_gl: unrealized,
+      average_unit_cost: g.quantity > 0 ? g.cost / g.quantity : null,
+      total_cost_krw: g.cost,
+      current_price: currentPrice,
+      pe: null,
+      eps: null,
+      unrealized_gl_krw: unrealized,
+      unrealized_gl_pct: unrealized == null || g.cost === 0 ? null : (unrealized / g.cost) * 100,
+      long_term_qty: g.long,
+      short_term_qty: g.short,
+      lot_count: g.lots,
+    }
+  })
+  if (derived.length) {
+    const replaced = holdingRows.filter((r) => statementAccounts.has(r.account)).length
+    holdingRows = [...holdingRows.filter((r) => !statementAccounts.has(r.account)), ...derived]
+    console.error(`[kr-statements] holdings: ${derived.length} position(s) summed from lots replace ${replaced} payload row(s)`)
+  }
+}
+
 const realizedRows = datasets.realized.rows.map((r) => {
   const currency = text(r.Currency) || 'KRW'
   const cost = krAmount(r, 'Cost Basis (KRW)', 'Native Cost Basis')
@@ -2109,7 +2180,16 @@ const unmappedTypes = transactionRows.filter(
     ].includes(r.type)
 )
 const missingFxHoldings = holdingRows.filter((r) => r.currency !== r.base_currency && (r.fx_rate_to_base == null || r.base_cost == null))
-const missingKrPrices = holdingRows.filter((r) => r.market === 'KR' && r.quantity > 0 && r.native_price == null)
+// Bonds are identified by ISIN (KR103502GA34), equities by a six-digit code, and
+// the KR price fetcher only quotes the latter. A bond with no equity quote is not
+// a coverage gap — it is an instrument this feed was never going to price — and
+// flagging it would leave a warning that can never be cleared, which is how a
+// checklist stops being read. The bond still carries its cost basis; it simply
+// has no market value here.
+const isEquityTicker = (ticker) => /^\d{6}$/.test(String(ticker ?? ''))
+const missingKrPrices = holdingRows.filter(
+  (r) => r.market === 'KR' && r.quantity > 0 && r.native_price == null && isEquityTicker(r.ticker)
+)
 const missingUsPrices = holdingRows.filter((r) => r.market === 'US' && r.quantity > 0 && r.native_market_value == null)
 const gainLossReports = (usPdfEvidence.reports ?? []).filter((r) => r.category === 'us_gain_loss_pdf')
 const taxDocReports = (usPdfEvidence.reports ?? []).filter((r) => r.category === 'us_tax_document_pdf')
