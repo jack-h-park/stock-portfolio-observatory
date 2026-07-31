@@ -2775,6 +2775,35 @@ for (const [key, holding] of holdingsByKey) {
   }
 }
 
+// Lots the statements still show open, for which the live snapshot lists no
+// position AT ALL.
+//
+// The loop above cannot see these. It walks holdings, so a lot with no holding
+// row beside it is never a key it visits — which means the one shape worth
+// noticing most, a position that disappeared from the broker, was the one shape
+// the check was structurally blind to. It found 7 of 38 quantity disagreements
+// while silently passing over an eighth position that had stopped existing.
+//
+// Deliberately Toss-only, and deliberately not folded into `quantityMismatches`
+// above. That path is `error` severity and aborts the refresh, and the same
+// union over US accounts would put every replayed lot whose holding is missing
+// into it — Chase SPLG is exactly that today, and it is already reported, as a
+// warning, by `us_realized_replay_reconciles_holdings`. Promoting a known
+// warning to a refresh-stopping error is not what closing this blind spot means.
+//
+// Only meaningful against a live snapshot: without one the positions are summed
+// FROM these lots, so a lot can never lack a position and the set is always
+// empty. The check skips that case wholesale.
+const tossOrphanLots = []
+if (tossHoldingCount > 0) {
+  for (const [key, lots] of lotsByKey) {
+    const [account, ticker] = key.split('\t')
+    if (account !== tossAccountLabel || holdingsByKey.has(key)) continue
+    if (!(lots.quantity > 1e-6)) continue
+    tossOrphanLots.push(ticker)
+  }
+}
+
 const txDividendCount = transactionRows.filter((r) => isIncomeType(r.type)).length
 const invalidHoldings = holdingRows.filter((r) => !required(r.account) || !required(r.ticker) || r.quantity < 0)
 const invalidLots = taxLotRows.filter(
@@ -2887,16 +2916,27 @@ check('toss_positions_fresh', tossPositionsOk, tossPositionsDetail, 'warning')
 // is a staleness measure, not a data error. A non-zero count names the
 // positions that have traded since the newest 거래내역서 and is expected to
 // reappear whenever the account trades; it closes again on the next statement.
+//
+// The two halves are reported separately because they mean different things. A
+// quantity that disagrees is ordinary drift — the account bought since the
+// statement. A lot with NO live position is not drift: the broker is no longer
+// carrying something the statements say is open, which is either a corporate
+// action that closed it or a position that went missing. The tickers are named
+// for that reason; there should never be many, and each one wants an answer.
 check(
   'toss_holdings_lots_provenance',
-  tossHoldingCount === 0 || differentProvenance.length === 0,
+  tossHoldingCount === 0 || (differentProvenance.length === 0 && tossOrphanLots.length === 0),
   tossHoldingCount === 0
     // Not "no snapshot, nothing to say" — this check exists to compare a LIVE
     // position against a rebuilt lot, and without a snapshot there is no second
     // provenance for the first to disagree with. That is not the same as the
     // positions being current, which is what `toss_positions_fresh` reports.
     ? 'no Open API snapshot — no second provenance to compare against (see toss_positions_fresh)'
-    : `${differentProvenance.length} of ${tossHoldingCount} live Toss position(s) disagree with the lots rebuilt from the statements`,
+    : `${differentProvenance.length} of ${tossHoldingCount} live Toss position(s) disagree with the lots rebuilt ` +
+      `from the statements` +
+      (tossOrphanLots.length
+        ? `; ${tossOrphanLots.length} open lot(s) have no live position at all (${tossOrphanLots.join(', ')})`
+        : ''),
   'warning'
 )
 check('reconcilable_holdings_vs_taxlots_quantity', quantityMismatches.length === 0, `${quantityMismatches.length} mismatch(es)`)

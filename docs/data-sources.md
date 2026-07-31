@@ -33,7 +33,10 @@ cover.
 API is preferred because it is refreshed hourly while a 거래내역서 is only ever as
 fresh as the last download, so with a snapshot the API supplies the positions, the
 statements supply the lots, and `toss_holdings_lots_provenance` measures the drift
-between them. Without a snapshot — no credentials, or an IP allowlist that stopped
+between them — both a quantity that disagrees, which is ordinary drift from
+trading since the statement, and a lot the statements still show open that the
+broker no longer lists at all, which is not drift and is named by ticker.
+Without a snapshot — no credentials, or an IP allowlist that stopped
 matching — the positions are summed from the statement lots instead. That is not
 as good as the API, but it is strictly better than the alternative it replaced:
 the 2026-07-15 payload has no refresh path at any credential, while a statement
