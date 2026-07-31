@@ -76,6 +76,29 @@ pnpm refresh
 pnpm dev
 ```
 
+## Brokerage coverage
+
+`scripts/source-files.mjs` declares a transaction spec and a holdings spec per
+brokerage, and the two are independent — a brokerage can have one without the
+other. Fidelity did: its trades, dividends and transfers were all ingested while
+its positions were structurally absent, so every screen showed a smaller
+portfolio than existed and nothing said so. At its peak that gap was about
+$51k across five tickers.
+
+`us_brokerage_positions_ingested` closes it. For any US brokerage that appears in
+transactions but has no holdings rows, it derives the position from the
+transaction history and fails when a whole share is still held. Two exclusions
+keep it honest rather than noisy: core money-market sweeps (`SPAXX` and friends)
+are the account's cash, not a position, and anything under one share is the
+fractional remainder an ACAT transfer leaves behind.
+
+When it fires, the fix is to add a holdings spec for that brokerage in
+`US_HOLDING_SPECS` and drop the positions export into
+`미국증권사 보유종목 현황 (Tax Lot 구분 포함)/`. Deriving positions from transactions
+instead is not a substitute — the transaction history only reaches back as far as
+the exports do, so a position opened before that window would be understated
+without any sign of it.
+
 ## Crypto
 
 Crypto sits in the same tables as the stock side, under `market = 'CRYPTO'`, with

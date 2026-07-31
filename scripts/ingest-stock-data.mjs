@@ -2244,6 +2244,69 @@ check(
 )
 // A brokerage export pattern that matched nothing. The prior silent skip is
 // exactly what let stale/absent files pass unnoticed; name them on /health.
+// A brokerage whose TRANSACTIONS we read but whose POSITIONS we do not.
+//
+// Fidelity was in this state and nobody noticed: source-files.mjs has a
+// transaction spec for it and no holdings spec, so its trades, dividends and
+// transfers all landed while its positions were structurally absent from the
+// portfolio total. Nothing broke — every screen simply showed a smaller
+// portfolio than existed, which is this repo's recurring failure mode.
+//
+// Only brokerages with ZERO holdings rows are evaluated, which is what makes
+// the derived position trustworthy enough to judge on: for a brokerage we do
+// price, an incomplete transaction history would make a derived quantity wrong,
+// but a brokerage we do not price at all has nothing to compare against anyway.
+//
+// It stays quiet while the derived position nets to zero — an emptied account
+// needs no holdings file, and a permanent warning about one is how a check gets
+// ignored. It fires the moment a position opens there.
+// Core money-market sweeps. A balance in one of these IS the account's cash, not
+// an equity position, so a brokerage holding nothing but its sweep is empty.
+const CASH_SWEEP_TICKERS = new Set(['SPAXX', 'FDRXX', 'SPRXX', 'FZFXX', 'FGXXX'])
+const usTransactionBrokerages = new Set(
+  transactionRows.filter((r) => r.market === 'US' && r.brokerage).map((r) => r.brokerage)
+)
+const usHoldingBrokerages = new Set(holdingRows.filter((r) => r.market === 'US' && r.brokerage).map((r) => r.brokerage))
+const uncoveredBrokerages = [...usTransactionBrokerages].filter((b) => !usHoldingBrokerages.has(b)).sort()
+
+const uncoveredDetail = []
+const uncoveredWithPositions = []
+for (const brokerage of uncoveredBrokerages) {
+  const derived = new Map()
+  for (const row of transactionRows) {
+    if (row.market !== 'US' || row.brokerage !== brokerage || !row.ticker || row.quantity == null) continue
+    if (CASH_SWEEP_TICKERS.has(String(row.ticker).toUpperCase())) continue
+    derived.set(row.ticker, (derived.get(row.ticker) ?? 0) + Number(row.quantity))
+  }
+  // Below a whole share is ACAT dust, not a position. A transfer moves whole
+  // shares and leaves the fraction behind, so an emptied account keeps a
+  // remainder like 0.008 SCHD — worth pennies, and alarming about it forever
+  // is how the check stops being read. The threshold is in shares because these
+  // are precisely the tickers we have no price for: a brokerage with no
+  // holdings source contributes nothing to the price snapshot either.
+  const open = [...derived.entries()].filter(([, quantity]) => Math.abs(quantity) >= 1)
+  const dust = [...derived.entries()].filter(([, quantity]) => Math.abs(quantity) > 1e-6 && Math.abs(quantity) < 1)
+  if (open.length === 0) {
+    uncoveredDetail.push(
+      `${brokerage}: transactions only, no whole-share position derived (account appears closed` +
+      `${dust.length ? `; ${dust.length} fractional remainder(s)` : ''})`
+    )
+    continue
+  }
+  uncoveredWithPositions.push(brokerage)
+  uncoveredDetail.push(
+    `${brokerage}: no holdings source, but ${open.length} ticker(s) hold a derived position — ` +
+    open.map(([ticker, quantity]) => `${ticker} ${Number(quantity.toFixed(6))}`).join(', ')
+  )
+}
+
+check(
+  'us_brokerage_positions_ingested',
+  uncoveredWithPositions.length === 0,
+  uncoveredDetail.length ? uncoveredDetail.join('; ') : 'every US brokerage with transactions also has positions ingested',
+  'warning'
+)
+
 const missingSources = [...missingHoldingSources, ...missingTransactionSources]
 check(
   'expected_us_source_files_present',
