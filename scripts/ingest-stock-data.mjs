@@ -1743,6 +1743,21 @@ const usRealizedRows = []
 const usReplayNotes = []
 let usReplayMismatches = []
 let usReplayReconcilableCount = 0
+// `${brokerage}|${ticker}` -> ascending [date, quantity held after that date's
+// rows]. Needed to divide a dividend by the shares that actually earned it.
+const usPositionTimeline = new Map()
+
+/** Shares held in a position on a date, from the replayed timeline. */
+function usPositionAsOf(key, date) {
+  const timeline = usPositionTimeline.get(key)
+  if (!timeline?.length) return 0
+  let held = 0
+  for (const entry of timeline) {
+    if (entry.date > date) break
+    held = entry.quantity
+  }
+  return held
+}
 
 /** Trim floating-point noise without pretending to more precision than we have. */
 function usRound(value, places) {
@@ -1822,6 +1837,15 @@ function usHoldingDays(from, to) {
     }
   }
 
+  const snapshot = (key, date) => {
+    const total = (openLots.get(key) ?? []).reduce((sum, lot) => sum + lot.qty, 0)
+    if (!usPositionTimeline.has(key)) usPositionTimeline.set(key, [])
+    const timeline = usPositionTimeline.get(key)
+    const last = timeline[timeline.length - 1]
+    if (last && last.date === date) last.quantity = total
+    else timeline.push({ date, quantity: total })
+  }
+
   for (const r of ordered) {
     const ticker = text(r.ticker)
     if (!ticker || US_CASH_EQUIVALENT_TICKERS.has(ticker)) continue
@@ -1832,10 +1856,12 @@ function usHoldingDays(from, to) {
 
     if (r.type === 'STOCK_SPLIT') {
       restate(key, lotsFor(key).reduce((s, l) => s + l.qty, 0) + qty, 'split', r.date, ticker, r.brokerage)
+      snapshot(key, r.date)
       continue
     }
     if (r.type === 'CORPORATE_ACTION') {
       if (qty > 0) restate(key, qty, text(r.raw_type) || 'corporate action', r.date, ticker, r.brokerage)
+      snapshot(key, r.date)
       continue
     }
     // Lots are pooled per brokerage, so a move between two accounts at the same
@@ -1877,6 +1903,7 @@ function usHoldingDays(from, to) {
           acquired: r.date, qty, unit: cost / qty, name: text(r.name), account: r.account,
         })
       }
+      snapshot(key, r.date)
       continue
     }
 
@@ -1935,6 +1962,7 @@ function usHoldingDays(from, to) {
             `matching open lot (${r.type}/${text(r.raw_type)})`
         )
       }
+      snapshot(key, r.date)
     }
   }
 
@@ -2428,12 +2456,22 @@ const us1099bCoverage = new Map() // `${brokerage}|${year}` -> source filename
     const lots = attributable.filter((r) => `${r.brokerage}|${r.ticker}` === key)
     if (!lots.length) continue
     for (const dividend of dividends) {
+      // A payment is divided by the shares that EARNED it, which is the whole
+      // position on that date — not just the fraction that later happened to be
+      // sold. Apportioning across the sold lots alone put $144.68 of JEPQ
+      // dividends onto a 0.786-share lot, because 0.786 shares were all this
+      // list could see of a 293-share position.
+      const heldQty = usPositionAsOf(key, dividend.date)
+      if (heldQty <= 0) continue
+      const perShare = dividend.amount / heldQty
       const holders = lots.filter((r) => r.acquired_date <= dividend.date && dividend.date <= r.sold_date)
       if (!holders.length) continue
-      const totalQty = holders.reduce((sum, r) => sum + (r.quantity_sold ?? 0), 0)
-      if (totalQty <= 0) continue
       for (const holder of holders) {
-        holder.dividends_native += dividend.amount * ((holder.quantity_sold ?? 0) / totalQty)
+        // The lot's size while it was held is taken as the quantity later sold.
+        // A split restates it mid-life, so a payment either side of one is
+        // apportioned on the post-split count; the error is small and bounded,
+        // and the alternative is to carry a per-lot quantity timeline.
+        holder.dividends_native += perShare * (holder.quantity_sold ?? 0)
       }
       attributed += 1
     }
