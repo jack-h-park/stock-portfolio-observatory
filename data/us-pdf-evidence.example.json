@@ -34,6 +34,43 @@
           "source": "example-gain-loss.pdf"
         }
       ]
+    },
+    {
+      "name": "tax_doc:example-1099",
+      "category": "us_tax_document_pdf",
+      "filename": "Example Brokerage Consolidated Form 1099.pdf",
+      "path": "/path/to/private/example-1099.pdf",
+      "account_hint": "",
+      "pages": 10,
+      "row_count": 1,
+      "metrics": {
+        "tax_year_hint": "2025",
+        "form_1099b_rows": 1,
+        "form_1099b_proceeds_usd": 504.75,
+        "form_1099b_cost_basis_usd": 503.78,
+        "form_1099b_gain_loss_usd": 0.97,
+        "form_1099b_status": "rows parsed",
+        "form_1099b_totals_mismatches": []
+      },
+      "form_1099b": [
+        {
+          "sold_date": "2025-10-22",
+          "quantity": 5.017,
+          "proceeds": 504.75,
+          "acquired_date": "Various",
+          "cost_basis": 503.78,
+          "wash_sale_disallowed": null,
+          "gain_loss": 0.97,
+          "additional_info": "Sale",
+          "term": "Short",
+          "covered_status": "Covered",
+          "form_8949_box": "Box A",
+          "description": "EXAMPLE TREASURY BOND ETF",
+          "cusip": "000000000",
+          "symbol": "",
+          "source": "Example Brokerage Consolidated Form 1099.pdf"
+        }
+      ]
     }
   ]
 }

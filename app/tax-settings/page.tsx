@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, InfoTooltip, StatCard } from '@/components/ui'
 import { fmtDateTime, fmtNumber } from '@/lib/format'
+import { getMeta } from '@/lib/adapters/portfolio-db'
 import { annualProfiles, assumptionBool, assumptionNumber, assumptionString, getTaxPolicyState } from '@/lib/tax-policy'
 import { saveTaxSettings } from './actions'
 
@@ -13,12 +14,14 @@ function Field({
   defaultValue,
   suffix,
   type = 'number',
+  hint,
 }: {
   label: string
   name: string
   defaultValue: string | number | null
   suffix?: string
   type?: 'number' | 'text'
+  hint?: string
 }) {
   return (
     <label className="block">
@@ -32,6 +35,7 @@ function Field({
         />
         {suffix && <span className="border-l border-line-subtle px-2 text-[11px] text-ink-3">{suffix}</span>}
       </span>
+      {hint && <span className="mt-1 block text-[11px] leading-snug text-ink-3">{hint}</span>}
     </label>
   )
 }
@@ -65,6 +69,25 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
   const state = getTaxPolicyState()
   const { policy } = state
   const profiles = annualProfiles(policy, policy.planningHorizonYears ?? 5)
+
+  // What the ingest computed from the actual sales, shown beside the field
+  // rather than written into it. These two assumptions drive the tax estimate
+  // directly, and the computed figure is a FIFO replay of our own wherever the
+  // year has no 1099-B yet — close enough to check an entry against, not close
+  // enough to file. The operator still decides; they just no longer have to
+  // guess, which is how both fields sat at 0 through a year of sales.
+  const ytdComputed = (() => {
+    try {
+      const raw = getMeta()?.us_ytd_realized_computed
+      return raw ? (JSON.parse(raw) as { taxYear: string; basis: string; shortUsd: number; longUsd: number; lots: number }) : null
+    } catch {
+      return null
+    }
+  })()
+  const ytdHint = (term: 'shortUsd' | 'longUsd') =>
+    ytdComputed
+      ? `${ytdComputed.basis} for ${ytdComputed.taxYear}: ${fmtNumber(ytdComputed[term], 2)} USD across ${ytdComputed.lots} lot(s)`
+      : undefined
 
   return (
     <>
@@ -194,8 +217,8 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
               <Field label="Planning USD/KRW" name="usPlanningUsdKrwRate" defaultValue={assumptionNumber(policy, 'US', 'planningUsdKrwRate', 0) || null} suffix="KRW" />
               <Field label="Current tax input year" name="usTaxInputYear" defaultValue={assumptionNumber(policy, 'US', 'taxInputYear', new Date().getFullYear())} />
               <Field label="Loss deduction limit" name="usLossDeductionLimitUsd" defaultValue={assumptionNumber(policy, 'US', 'lossDeductionLimitUsd', 3000)} suffix="USD" />
-              <Field label="YTD realized short G/L" name="usYtdRealizedShortGainLossUsd" defaultValue={assumptionNumber(policy, 'US', 'ytdRealizedShortGainLossUsd', 0)} suffix="USD" />
-              <Field label="YTD realized long G/L" name="usYtdRealizedLongGainLossUsd" defaultValue={assumptionNumber(policy, 'US', 'ytdRealizedLongGainLossUsd', 0)} suffix="USD" />
+              <Field label="YTD realized short G/L" name="usYtdRealizedShortGainLossUsd" defaultValue={assumptionNumber(policy, 'US', 'ytdRealizedShortGainLossUsd', 0)} suffix="USD" hint={ytdHint('shortUsd')} />
+              <Field label="YTD realized long G/L" name="usYtdRealizedLongGainLossUsd" defaultValue={assumptionNumber(policy, 'US', 'ytdRealizedLongGainLossUsd', 0)} suffix="USD" hint={ytdHint('longUsd')} />
               <Field label="Short loss carryover" name="usShortTermCapitalLossCarryoverUsd" defaultValue={assumptionNumber(policy, 'US', 'shortTermCapitalLossCarryoverUsd', 0)} suffix="USD" />
               <Field label="Long loss carryover" name="usLongTermCapitalLossCarryoverUsd" defaultValue={assumptionNumber(policy, 'US', 'longTermCapitalLossCarryoverUsd', 0)} suffix="USD" />
               <Field label="FTC carryover" name="usForeignTaxCreditCarryoverUsd" defaultValue={assumptionNumber(policy, 'US', 'foreignTaxCreditCarryoverUsd', 0)} suffix="USD" />
