@@ -21,6 +21,18 @@ const steps = [
   { name: 'fetch:fx', args: ['fetch:fx'] },
   { name: 'fetch:kr-prices', args: ['fetch:kr-prices'] },
   { name: 'fetch:toss', args: ['fetch:toss'], optional: true },
+  // The Korea certificates, parsed back into the payload TSVs the ingest merges.
+  //
+  // This step existed, worked, and was never run: it was in package.json but not
+  // in this list, so data/kr-statements/ stayed empty and the ingest had nothing
+  // to merge. Every Korean figure came from a hand-maintained sheet instead —
+  // last touched 2026-07-15, with no path by which it would ever update. The
+  // machinery was complete and produced nothing, and nothing said so.
+  //
+  // Before the ingest, obviously, and before fetch:historical-prices too: that
+  // step derives its ticker list from the database, so a certificate that adds a
+  // holding also needs its price history fetched on the same run.
+  { name: 'extract:kr-statements', args: ['extract:kr-statements'] },
   { name: 'extract:us-pdf-evidence', args: ['extract:us-pdf-evidence'] },
   { name: 'fetch:us-prices', args: ['fetch:us-prices'] },
   // Extract before pricing: the crypto price step reads the activity snapshot to
