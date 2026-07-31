@@ -1123,15 +1123,26 @@ const taxLotRows = datasets.taxlots.rows.map((r) => {
 // Long/short quantities come free here: the lots carry their own tax term, where
 // the sheet had them as a column nobody recomputed.
 //
-// EXCEPT where a live API already answers the question. Toss statements now
-// cover the lots, which would otherwise pull its positions onto this path too —
-// and that would be a downgrade: the Open API snapshot is refreshed hourly,
-// while the newest statement is only ever as fresh as the last one downloaded
-// by hand. Every trade after that date would silently vanish from the position.
-// So the statements supply Toss's lots and the API keeps its holdings, and the
-// two are compared rather than merged (`toss_holdings_lots_provenance`).
+// EXCEPT where a live API already answers the question. When a Toss snapshot
+// was fetched, the API keeps Toss's positions and the statements supply only its
+// lots: the snapshot is refreshed hourly while the newest 거래내역서 is only ever
+// as fresh as the last one downloaded by hand, so deriving positions from lots
+// would drop every trade made since that download. The two are then compared
+// rather than merged (`toss_holdings_lots_provenance`).
+//
+// But when no snapshot was fetched — no credentials, or an allowlist that stopped
+// matching — that reasoning inverts. The fallback is not the API, it is the
+// hand-made payload frozen at 2026-07-15, which has no refresh path at all: the
+// statements are strictly the fresher of the two and the only one a re-download
+// can move. So Toss joins this path exactly when the API did not answer.
+//
+// Safe because the two agree today, which was checked rather than assumed: the
+// statement lots reproduce all 36 payload positions to the won (₩<KR_HOLDINGS_TOTAL> on
+// both sides). The one difference is an addition — 15 units of 한화솔루션 51R
+// (<WARRANT_CODE>), a 신주인수권증서 received 2026-06-29 at zero cost that the sheet
+// never listed — the same kind of find as the ₩498,120 bond above.
 const lotDerivedHoldingAccounts = new Set(
-  [...statementAccounts].filter((account) => account !== tossAccountLabel)
+  [...statementAccounts].filter((account) => account !== tossAccountLabel || tossHoldingCount === 0)
 )
 if (lotDerivedHoldingAccounts.size) {
   const grouped = new Map()
@@ -2812,17 +2823,65 @@ const taxDocReports = (usPdfEvidence.reports ?? []).filter((r) => r.category ===
 // thing that distinguishes "current" from "the API stopped answering days ago",
 // and 203 days of a frozen FX rate is this project's standing lesson in what an
 // unwatched snapshot costs.
+//
+// WHY THIS ASKS ABOUT THE POSITIONS AND NOT THE SNAPSHOT. It used to check the
+// snapshot alone, which meant it only ever evaluated when a snapshot existed —
+// with no credentials it reported "no Toss snapshot configured" and PASSED,
+// while Toss's 36 positions (84% of Korean trades) sat on the hand-made payload
+// frozen at 2026-07-15 with nothing anywhere saying so. A freshness check whose
+// quiet case is the stale case is the silent gap it was meant to close.
+//
+// So the question is "how old is the thing the positions are actually standing
+// on", and every answer names a source and an age. The threshold follows the
+// source, because the sources are refreshed by different mechanisms and one
+// deadline for all three would either nag about a statement that is doing its
+// job or excuse a snapshot that stopped updating.
 const tossSnapshotAgeHours = tossSnapshot?.fetchedAt
   ? (Date.now() - Date.parse(tossSnapshot.fetchedAt)) / 3_600_000
   : null
-check(
-  'toss_snapshot_fresh',
-  tossSnapshot == null || (tossSnapshotAgeHours != null && tossSnapshotAgeHours <= 24),
-  tossSnapshot == null
-    ? 'no Toss snapshot configured'
-    : `snapshot is ${tossSnapshotAgeHours == null ? 'undated' : `${tossSnapshotAgeHours.toFixed(1)}h old`}`,
-  'warning'
-)
+const tossPositionRows = holdingRows.filter((r) => r.account === tossAccountLabel)
+// `source_system` carries a `+yahoo_chart` suffix once a position is priced, and
+// that suffix is about the PRICE. Backing means where the quantity came from.
+const tossBackingSystem = tossPositionRows[0]?.source_system?.split('+')[0] ?? null
+// as_of_date on a holding row is the price date, not the position date — the
+// priced branches overwrite it — so the position date is read from the lots and
+// the payload's own frozen constant instead of from the row.
+const tossLotAsOf = taxLotRows
+  .filter((r) => r.account === tossAccountLabel && r.as_of_date)
+  .reduce((max, r) => (max == null || r.as_of_date > max ? r.as_of_date : max), null)
+const daysSince = (date) => (date ? (Date.now() - Date.parse(`${date}T00:00:00Z`)) / 86_400_000 : null)
+// A hand-downloaded 거래내역서 is never hours old and demanding that it be would
+// leave a warning that can never be cleared, which is how a checklist stops
+// being read. Monthly-plus-slack is the cadence a statement can actually keep.
+const tossStatementMaxDays = Number(process.env.STOCK_TOSS_STATEMENT_MAX_DAYS || 35)
+
+let tossPositionsOk
+let tossPositionsDetail
+if (tossPositionRows.length === 0) {
+  tossPositionsOk = true
+  tossPositionsDetail = 'no Toss positions'
+} else if (tossBackingSystem === 'toss_open_api') {
+  tossPositionsOk = tossSnapshotAgeHours != null && tossSnapshotAgeHours <= 24
+  tossPositionsDetail =
+    `${tossPositionRows.length} position(s) from the Open API snapshot, ` +
+    `${tossSnapshotAgeHours == null ? 'undated' : `${tossSnapshotAgeHours.toFixed(1)}h old`}`
+} else if (tossBackingSystem === 'korea_statement') {
+  const age = daysSince(tossLotAsOf)
+  tossPositionsOk = age != null && age <= tossStatementMaxDays
+  tossPositionsDetail =
+    `${tossPositionRows.length} position(s) rebuilt from the 거래내역서, as of ${tossLotAsOf ?? 'an undated statement'}` +
+    `${age == null ? '' : ` (${age.toFixed(0)}d old)`} — no Open API snapshot, so download a newer statement to move this`
+} else {
+  // The payload has no refresh path — no script writes it and no credential
+  // unlocks it — so its age is never the point and this never passes. The way
+  // out is to run extract:kr-statements, not to wait.
+  const age = daysSince('2026-07-15')
+  tossPositionsOk = false
+  tossPositionsDetail =
+    `${tossPositionRows.length} position(s) still on the hand-maintained payload frozen at 2026-07-15` +
+    `${age == null ? '' : ` (${age.toFixed(0)}d old)`} — neither the Open API nor the 거래내역서 supplied them`
+}
+check('toss_positions_fresh', tossPositionsOk, tossPositionsDetail, 'warning')
 // Holdings and lots come from two sources that age differently — the API
 // snapshot is hourly, the statements are as old as the last download — so this
 // is a staleness measure, not a data error. A non-zero count names the
@@ -2832,7 +2891,11 @@ check(
   'toss_holdings_lots_provenance',
   tossHoldingCount === 0 || differentProvenance.length === 0,
   tossHoldingCount === 0
-    ? 'no live Toss snapshot'
+    // Not "no snapshot, nothing to say" — this check exists to compare a LIVE
+    // position against a rebuilt lot, and without a snapshot there is no second
+    // provenance for the first to disagree with. That is not the same as the
+    // positions being current, which is what `toss_positions_fresh` reports.
+    ? 'no Open API snapshot — no second provenance to compare against (see toss_positions_fresh)'
     : `${differentProvenance.length} of ${tossHoldingCount} live Toss position(s) disagree with the lots rebuilt from the statements`,
   'warning'
 )

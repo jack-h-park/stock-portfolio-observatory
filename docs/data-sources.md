@@ -13,10 +13,10 @@ rebuilding the pipeline did.
 
 | Dataset | Source | Refresh | Authority |
 | --- | --- | --- | --- |
-| Toss positions | Toss Open API `/api/v1/holdings` | every refresh (6h) | broker |
+| Toss positions | Toss Open API `/api/v1/holdings`, else summed from the lots below | every refresh (6h), else with the certificates | broker |
 | 미래에셋 positions | summed from lots (below) | with the certificates | derived |
 | 미래에셋 lots, transactions, dividends, realized | 거래내역증명서 PDFs → `pnpm extract:kr-statements` | manual, when new certificates arrive | broker |
-| Toss lots, transactions, dividends | payload dump of 2026-07-15 | **stale — see gaps** | spreadsheet |
+| Toss lots, transactions, dividends, realized | 거래내역서 PDFs → `pnpm extract:kr-statements` | manual, when new statements arrive | broker |
 | US positions and lots | brokerage CSV/PDF exports | manual download → every refresh | broker |
 | US realized gains | **nothing** | — | **see gaps** |
 | KR/US prices, FX | Yahoo / Frankfurter | every refresh | market |
@@ -24,6 +24,17 @@ rebuilding the pipeline did.
 `STOCK_KR_STATEMENTS_DIR` rows replace payload rows **per account**, for whichever
 accounts appear in the statements. Swapping the files wholesale would delete the
 brokerages that have no parser yet — Toss is 36 of 47 Korean holdings.
+
+**Toss positions have two sources, and which one answered is reported.** The Open
+API is preferred because it is refreshed hourly while a 거래내역서 is only ever as
+fresh as the last download, so with a snapshot the API supplies the positions, the
+statements supply the lots, and `toss_holdings_lots_provenance` measures the drift
+between them. Without a snapshot — no credentials, or an IP allowlist that stopped
+matching — the positions are summed from the statement lots instead. That is not
+as good as the API, but it is strictly better than the alternative it replaced:
+the 2026-07-15 payload has no refresh path at any credential, while a statement
+moves whenever one is downloaded. `toss_positions_fresh` names which source
+answered and how old it is, and fails outright if the answer is the payload.
 
 ## How the source files are named
 
@@ -168,7 +179,7 @@ three ISA lots sit precisely on the boundary.
 
 | Gap | Surfaced by | Status |
 | --- | --- | --- |
-| Toss lots still from the 2026-07-15 dump | `toss_holdings_lots_provenance` | statement parser in progress |
+| Toss positions age with the newest 거래내역서, not with the market | `toss_positions_fresh` | credential-free floor; closes on an Open API snapshot |
 | US realized gains absent | `us_ytd_realized_assumption_reviewed` | E (replay) + D (1099-B) in progress |
 | Two Toss fills missing from its API | — | inquiry drafted |
 | US sheet still an input to reconcile | — | blocked on US realized |

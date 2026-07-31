@@ -226,11 +226,14 @@ SSH aliases are not necessarily browser-resolvable DNS names.
 ## Data posture
 
 Every figure answers to a broker. Toss positions come from its Open API on each
-refresh; 미래에셋 lots, transactions and dividends are parsed from its
-거래내역증명서 PDFs and its positions summed from those lots; US positions and
-lots come from the brokerages' own CSV and PDF exports. All of it normalizes
-into the same SQLite database under `outputs/stock-portfolio-observatory/`. The
-dashboard never writes back to the source files.
+refresh, or — when no snapshot could be fetched — are summed from the lots its
+거래내역서 PDFs rebuild, so the account never falls back to the frozen
+spreadsheet without `toss_positions_fresh` saying so; 미래에셋 lots, transactions
+and dividends are parsed from its 거래내역증명서 PDFs and its positions summed
+from those lots; US positions and lots come from the brokerages' own CSV and PDF
+exports. All of it normalizes into the same SQLite database under
+`outputs/stock-portfolio-observatory/`. The dashboard never writes back to the
+source files.
 
 `.codex_sheet_payloads/*.tsv` — a spreadsheet dump taken by hand on 2026-07-15 —
 remains only for the accounts that have no parser yet, and certificate rows
