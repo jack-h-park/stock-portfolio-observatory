@@ -242,6 +242,13 @@ function normalizeMerrillTransactionType(description, type = '') {
   const explicit = text(type).toLowerCase()
   const desc = text(description).toLowerCase()
   if (explicit) return normalizeUsTransactionType(explicit, description)
+  // Structure before vocabulary. Merrill names the security inside the
+  // description, so `Security Transfer In SCHWAB US DIVIDEND EQTY` matched the
+  // `dividend` substring below and booked a 320-share ACAT receipt as a
+  // dividend — the shares vanished from the lot walk and reappeared only as a
+  // $0.00 income row. The prefix says what the row IS; the rest is a fund name.
+  if (desc.startsWith('security transfer in')) return 'TRANSFER_IN'
+  if (desc.startsWith('security transfer out')) return 'TRANSFER_OUT'
   if (desc.includes('reinvestment')) return 'REINVEST'
   if (desc.includes('dividend')) return 'DIVIDEND'
   if (desc.includes('interest')) return 'INTEREST'
@@ -564,7 +571,25 @@ create table realized_lots (
   realized_gl_krw real,
   holding_days integer,
   tax_term text,
-  source text
+  -- `basis` says where the figure came from and therefore what it can be used
+  -- for. 'replay' is this repo's own FIFO walk of the transactions: available
+  -- year-round, and the only thing that exists for a year whose forms have not
+  -- been issued yet. '1099b' is the broker's filed number, with wash sales and
+  -- return-of-capital basis adjustments already applied. They disagree by
+  -- construction, so a page that shows one must be able to say which it is.
+  basis text,
+  tax_year text,
+  native_cost_basis real,
+  native_proceeds real,
+  native_realized_gl real,
+  covered_status text,
+  form_8949_box text,
+  -- Set on a replay row whose year a filing covers: kept rather than deleted so
+  -- the estimate stays auditable next to the figure that replaced it.
+  superseded_by text,
+  -- Dividends received on this ticker between acquisition and sale. Makes the
+  -- realized figure a total return rather than a price return.
+  dividends_native real
 );
 
 create table transactions (
@@ -1130,6 +1155,16 @@ const realizedRows = datasets.realized.rows.map((r) => {
     realized_gl_krw: cost == null || proceeds == null ? number(r['Realized G/L (KRW)']) : proceeds - cost,
     holding_days: number(r['Holding Days']),
     tax_term: text(r['Tax Term']),
+    // Korea's lots are replayed too, just from certificates rather than from a
+    // transaction export. Marked so the column means the same thing everywhere.
+    basis: 'replay',
+    tax_year: text(r['Sold Date']).slice(0, 4),
+    native_cost_basis: number(r['Native Cost Basis']),
+    native_proceeds: number(r['Native Proceeds']),
+    native_realized_gl:
+      number(r['Native Proceeds']) == null || number(r['Native Cost Basis']) == null
+        ? null
+        : number(r['Native Proceeds']) - number(r['Native Cost Basis']),
     source: text(r.Source),
   }
 })
@@ -1681,6 +1716,266 @@ for (const source of usTransactionFiles) {
 }
 
 // ---------------------------------------------------------------------------
+// US realized lots, replayed from the transactions
+// ---------------------------------------------------------------------------
+//
+// Korea rebuilds its lots from certificates that go back to the account's first
+// trade. The US cannot copy that: `tax_lots` here comes from broker exports of
+// the lots that are still OPEN, so a lot that was sold is simply absent, and
+// matching a past sale against present lots is impossible. So the lots are
+// rebuilt by replaying `transactions` instead — the same FIFO walk as
+// `build_lots()` in scripts/extract-kr-statements.py, with the same stated
+// assumption: FIFO is ours, not the broker's, so where the broker chose
+// differently the per-lot split will differ. Its 1099-B, read below, is the
+// figure that files; this one is the management figure available year-round.
+//
+// Every US sale falls inside its brokerage's transaction history, so the walk
+// has an opening lot for all of them. That is asserted, not assumed:
+// `us_realized_replay_lots_matched` fails if a disposal ever runs out of lots.
+
+const US_LONG_TERM_DAYS = 365
+// Sweep money-market funds are the cash balance wearing a ticker. They are not
+// positions, they are never sold at a gain, and reconciling them against
+// `holdings` (which rightly omits them) would report a permanent mismatch.
+const US_CASH_EQUIVALENT_TICKERS = new Set(['SPAXX', 'QACDS', 'FDRXX', 'SPRXX'])
+const usRealizedRows = []
+const usReplayNotes = []
+let usReplayMismatches = []
+let usReplayReconcilableCount = 0
+
+/** Trim floating-point noise without pretending to more precision than we have. */
+function usRound(value, places) {
+  const factor = 10 ** places
+  return Math.round(value * factor) / factor
+}
+
+function usHoldingDays(from, to) {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000)
+}
+
+{
+  const rows = transactionRows.filter((r) => r.market === 'US')
+
+  // Merrill books a reinvestment as two rows: `Reinvestment Share(s)` carries
+  // the quantity with a zero amount, `Reinvestment Program` carries the cost
+  // with no quantity. Taking the share leg at face value opens the lot at zero
+  // cost, which later books the entire proceeds as gain — a QQQI sale came out
+  // at +$32.14 against a true +$1.36. Paired here rather than on the stored
+  // transaction so the two legs still sum to what Merrill actually reported.
+  const merrillReinvestCost = new Map()
+  for (const r of rows) {
+    if (r.brokerage === 'Merrill' && text(r.name).toLowerCase().startsWith('reinvestment program')) {
+      merrillReinvestCost.set(`${r.date}|${r.ticker}`, Math.abs(number(r.native_amount) ?? 0))
+    }
+  }
+  const costOf = (r) => {
+    if (r.brokerage === 'Merrill' && text(r.name).toLowerCase().startsWith('reinvestment share')) {
+      return merrillReinvestCost.get(`${r.date}|${r.ticker}`) ?? 0
+    }
+    return Math.abs(number(r.native_amount) ?? 0)
+  }
+
+  // Within one date: purchases, then disposals, then arrivals that carry no cost
+  // of their own. A delivery has to be walked before the receipt that claims it
+  // (an ACAT settles on one day at both ends), while a same-day buy still has to
+  // precede its own sale.
+  const rank = (r) => {
+    const costless = costOf(r) <= 0 && Math.abs(number(r.native_unit_price) ?? 0) <= 0
+    if (r.type === 'SELL' || r.type === 'TRANSFER_OUT') return 1
+    if (costless) return 2
+    return 0
+  }
+  const ordered = [...rows].sort(
+    (a, b) => String(a.date).localeCompare(String(b.date)) || rank(a) - rank(b)
+  )
+
+  const openLots = new Map()   // `${brokerage}|${ticker}` -> [lot]
+  const inTransit = new Map()  // ticker -> [lot] delivered out, awaiting a receive
+  const lotsFor = (key) => {
+    if (!openLots.has(key)) openLots.set(key, [])
+    return openLots.get(key)
+  }
+  const transitFor = (ticker) => {
+    if (!inTransit.has(ticker)) inTransit.set(ticker, [])
+    return inTransit.get(ticker)
+  }
+
+  // A split or a share exchange restates the share count without any money
+  // changing hands, so the position keeps its total cost and its acquisition
+  // dates and only the per-share figures move. US brokers book the shares ADDED
+  // by a split, not the resulting total; a paired corporate action books a
+  // blank-quantity leg for the old security and a quantity leg for the new one,
+  // and that quantity IS the result (Lucid's 1-for-10 reverse split turned 71
+  // shares into 7.1). Both reduce to "restate to a target quantity".
+  const restate = (key, target, label, date, ticker, brokerage) => {
+    const held = lotsFor(key)
+    const current = held.reduce((sum, lot) => sum + lot.qty, 0)
+    if (current <= 1e-9 || target <= 1e-9) {
+      usReplayNotes.push(`${date} ${brokerage} ${ticker}: ${label} with no position to restate`)
+      return
+    }
+    const factor = target / current
+    for (const lot of held) {
+      lot.qty *= factor
+      lot.unit /= factor
+    }
+  }
+
+  for (const r of ordered) {
+    const ticker = text(r.ticker)
+    if (!ticker || US_CASH_EQUIVALENT_TICKERS.has(ticker)) continue
+    const key = `${r.brokerage}|${ticker}`
+    const qty = Math.abs(number(r.quantity) ?? 0)
+    const amount = costOf(r)
+    const unitPrice = Math.abs(number(r.native_unit_price) ?? 0)
+
+    if (r.type === 'STOCK_SPLIT') {
+      restate(key, lotsFor(key).reduce((s, l) => s + l.qty, 0) + qty, 'split', r.date, ticker, r.brokerage)
+      continue
+    }
+    if (r.type === 'CORPORATE_ACTION') {
+      if (qty > 0) restate(key, qty, text(r.raw_type) || 'corporate action', r.date, ticker, r.brokerage)
+      continue
+    }
+    // Lots are pooled per brokerage, so a move between two accounts at the same
+    // broker changes nothing and needs no handling of its own.
+    if (r.type === 'INTERNAL_TRANSFER' || qty <= 0) continue
+
+    if (r.type === 'BUY' || r.type === 'REINVEST' || r.type === 'TRANSFER_IN') {
+      if (amount <= 0 && unitPrice <= 0) {
+        // A row with neither an amount nor a price is not a purchase: it is
+        // shares arriving. The type cannot settle it — Chase books an ACAT
+        // receive as `REC`, which normalizes to REINVEST — but the absence of
+        // any cost on the row can. Take the delivering broker's lots so the
+        // acquisition dates and cost survive the move, which is what decides
+        // the holding period on a later sale.
+        let remaining = qty
+        const pool = transitFor(ticker)
+        while (remaining > 1e-9 && pool.length) {
+          const lot = pool[0]
+          const take = Math.min(lot.qty, remaining)
+          lotsFor(key).push({ ...lot, qty: take })
+          lot.qty -= take
+          remaining -= take
+          if (lot.qty <= 1e-9) pool.shift()
+        }
+        if (remaining > 1e-6) {
+          // Named, not absorbed. A zero-cost lot books its whole proceeds as
+          // gain on a later sale and looks exactly like a real answer.
+          lotsFor(key).push({
+            acquired: r.date, qty: remaining, unit: 0, name: text(r.name), account: r.account,
+          })
+          usReplayNotes.push(
+            `${r.date} ${r.brokerage} ${ticker}: ${usRound(remaining, 6)} of ${usRound(qty, 6)} unit(s) ` +
+              `arrived with no cost on the row and none in transit (${r.type}/${text(r.raw_type)}) — opened at zero cost`
+          )
+        }
+      } else {
+        const cost = amount > 0 ? amount : qty * unitPrice
+        lotsFor(key).push({
+          acquired: r.date, qty, unit: cost / qty, name: text(r.name), account: r.account,
+        })
+      }
+      continue
+    }
+
+    if (r.type === 'SELL' || r.type === 'TRANSFER_OUT') {
+      let remaining = qty
+      const held = lotsFor(key)
+      const saleUnit = amount > 0 ? amount / qty : unitPrice
+      while (remaining > 1e-9 && held.length) {
+        const lot = held[0]
+        const take = Math.min(lot.qty, remaining)
+        if (r.type === 'SELL') {
+          const cost = take * lot.unit
+          const proceeds = take * saleUnit
+          const days = usHoldingDays(lot.acquired, r.date)
+          usRealizedRows.push({
+            market: 'US',
+            currency: r.currency || 'USD',
+            base_currency: fxConfig.baseCurrency || 'KRW',
+            brokerage: r.brokerage,
+            source_system: 'us_transaction_replay',
+            account: r.account,
+            ticker,
+            name: lot.name || text(r.name),
+            acquired_date: lot.acquired,
+            sold_date: r.date,
+            quantity_sold: usRound(take, 8),
+            cost_basis_krw: krwOn(cost, r.currency || 'USD', r.date),
+            proceeds_krw: krwOn(proceeds, r.currency || 'USD', r.date),
+            realized_gl_krw: krwOn(proceeds - cost, r.currency || 'USD', r.date),
+            holding_days: days,
+            tax_term: days > US_LONG_TERM_DAYS ? 'Long-term' : 'Short-term',
+            basis: 'replay',
+            tax_year: String(r.date).slice(0, 4),
+            native_cost_basis: usRound(cost, 4),
+            native_proceeds: usRound(proceeds, 4),
+            native_realized_gl: usRound(proceeds - cost, 4),
+            covered_status: '',
+            form_8949_box: '',
+            superseded_by: null,
+            dividends_native: null,
+            source: r.source,
+          })
+        } else {
+          // A transfer is not a disposal. The lot leaves this brokerage intact
+          // and waits to be claimed by the receiving one; booking it as a sale
+          // would invent a gain that was never realized and never taxable.
+          transitFor(ticker).push({ ...lot, qty: take })
+        }
+        lot.qty -= take
+        remaining -= take
+        if (lot.qty <= 1e-9) held.shift()
+      }
+      if (remaining > 1e-6) {
+        usReplayNotes.push(
+          `${r.date} ${r.brokerage} ${ticker}: ${usRound(remaining, 6)} unit(s) disposed with no ` +
+            `matching open lot (${r.type}/${text(r.raw_type)})`
+        )
+      }
+    }
+  }
+
+  // Replaying to the present should reproduce what the brokerage says it holds.
+  // Compared per brokerage rather than per account because the two sides label
+  // accounts differently — Robinhood's transactions are named by strategy
+  // ("Mid-term") and its holdings by account number ("1478") — and because lots
+  // move freely between accounts at one broker.
+  const usHoldingQty = new Map()
+  for (const h of holdingRows) {
+    if (h.market !== 'US' || US_CASH_EQUIVALENT_TICKERS.has(text(h.ticker))) continue
+    const key = `${h.brokerage}|${text(h.ticker)}`
+    usHoldingQty.set(key, (usHoldingQty.get(key) ?? 0) + (number(h.quantity) ?? 0))
+  }
+  // A brokerage with no holdings rows at all cannot be reconciled against
+  // anything; that gap is already reported by `us_brokerage_positions_ingested`
+  // and would otherwise be counted again here as one mismatch per position.
+  const reconcilableBrokerages = new Set([...usHoldingQty.keys()].map((k) => k.split('|')[0]))
+  const usReplayQty = new Map()
+  for (const [key, lots] of openLots) {
+    const total = lots.reduce((sum, lot) => sum + lot.qty, 0)
+    if (total > 1e-9) usReplayQty.set(key, total)
+  }
+  for (const key of new Set([...usReplayQty.keys(), ...usHoldingQty.keys()])) {
+    if (!reconcilableBrokerages.has(key.split('|')[0])) continue
+    const replayed = usReplayQty.get(key) ?? 0
+    const held = usHoldingQty.get(key) ?? 0
+    if (Math.abs(replayed - held) > 1e-3) {
+      usReplayMismatches.push(`${key.replace('|', ' ')}: replay ${usRound(replayed, 4)} vs holdings ${usRound(held, 4)}`)
+    }
+  }
+  usReplayReconcilableCount = new Set(
+    [...usReplayQty.keys(), ...usHoldingQty.keys()].filter((k) => reconcilableBrokerages.has(k.split('|')[0]))
+  ).size
+  console.error(
+    `[us-realized] replayed ${usRealizedRows.length} realized lot(s) from ${rows.length} US transaction(s); ` +
+      `${usReplayMismatches.length} position(s) disagree with holdings; ${usReplayNotes.length} note(s)`
+  )
+  for (const note of usReplayNotes.slice(0, 20)) console.error(`[us-realized]   ${note}`)
+}
+
+// ---------------------------------------------------------------------------
 // Crypto (Bithumb, Robinhood Crypto)
 // ---------------------------------------------------------------------------
 //
@@ -1853,6 +2148,11 @@ for (const row of cryptoActivityRows) {
         realized_gl_krw: toBase(lotProceeds - lotCost, currency),
         holding_days: holdingDays,
         tax_term: holdingDays > 365 ? 'Long-term' : 'Short-term',
+        basis: 'replay',
+        tax_year: String(row.date).slice(0, 4),
+        native_cost_basis: lotCost,
+        native_proceeds: lotProceeds,
+        native_realized_gl: lotProceeds - lotCost,
         source: row.source,
       })
       lot.open_quantity -= take
@@ -1953,6 +2253,199 @@ taxLotRows.push(...cryptoTaxLotRows)
 realizedRows.push(...cryptoRealizedRows)
 transactionRows.push(...cryptoTransactionRows)
 
+// ---------------------------------------------------------------------------
+// US realized lots as the broker filed them (Form 1099-B)
+// ---------------------------------------------------------------------------
+//
+// The replay above is an estimate the whole year round; this is the figure that
+// files. The broker has already applied wash sales and return-of-capital basis
+// adjustments, and it reports these amounts to the IRS individually, so they are
+// not recomputed here — only read, attributed to a ticker, and marked as a
+// filing so a tax page can tell the two apart.
+//
+// A form is issued annually and only after the year closes, so the current year
+// has none. That is not a gap to be filled: it is why E exists.
+
+const us1099bRows = []
+const us1099bNotes = []
+const us1099bCoverage = new Map() // `${brokerage}|${year}` -> source filename
+
+{
+  const brokerageFromFilename = (filename) => {
+    const name = String(filename ?? '').toLowerCase()
+    for (const candidate of ['Robinhood', 'Chase', 'Fidelity', 'Merrill']) {
+      if (name.includes(candidate.toLowerCase())) return candidate
+    }
+    return ''
+  }
+
+  // The consolidated forms leave the Symbol column blank and identify a security
+  // by CUSIP, which nothing else in this database carries. Rather than hand-maintain
+  // a CUSIP table, each row is matched back to the sales it reports: same
+  // brokerage, same trade date, and proceeds that agree to the cent. The broker
+  // aggregates lots of one security into a single line (two SGOV sales on
+  // 2025-10-22 are filed as one 5.017-unit row), so the comparison is against the
+  // summed proceeds per ticker for that day, which is exactly what it aggregates.
+  const salesByDay = new Map()
+  for (const r of transactionRows) {
+    if (r.market !== 'US' || r.type !== 'SELL') continue
+    const key = `${r.brokerage}|${r.date}|${text(r.ticker)}`
+    const current = salesByDay.get(key) ?? { proceeds: 0, quantity: 0, name: text(r.name), account: r.account }
+    current.proceeds += Math.abs(number(r.native_amount) ?? 0)
+    current.quantity += Math.abs(number(r.quantity) ?? 0)
+    salesByDay.set(key, current)
+  }
+
+  const resolveTicker = (brokerage, row) => {
+    if (text(row.symbol)) return { ticker: text(row.symbol), match: null }
+    const candidates = []
+    for (const [key, value] of salesByDay) {
+      const [b, date, ticker] = key.split('|')
+      if (b !== brokerage || date !== row.sold_date) continue
+      if (Math.abs(value.proceeds - Number(row.proceeds ?? 0)) <= 0.01) candidates.push({ ticker, value })
+    }
+    // Only an unambiguous match is used. Two securities sold the same day for
+    // the same amount would otherwise be assigned by luck.
+    if (candidates.length === 1) return { ticker: candidates[0].ticker, match: candidates[0].value }
+    return { ticker: '', match: null }
+  }
+
+  for (const report of (usPdfEvidence.reports ?? []).filter((r) => r.category === 'us_tax_document_pdf')) {
+    const brokerage = brokerageFromFilename(report.filename)
+    const year = text(report.metrics?.tax_year_hint)
+    const rows = report.form_1099b ?? []
+    for (const mismatch of report.metrics?.form_1099b_totals_mismatches ?? []) {
+      us1099bNotes.push(mismatch)
+    }
+    if (!brokerage && rows.length) {
+      us1099bNotes.push(`${report.filename}: ${rows.length} 1099-B row(s) but no brokerage in the filename`)
+      continue
+    }
+    // A form with no sales still records that the year WAS checked — the
+    // difference between "nothing was sold" and "nobody looked" is the whole
+    // point of this section, and four of the five forms are the former.
+    if (brokerage && year) us1099bCoverage.set(`${brokerage}|${year}`, report.filename)
+    for (const row of rows) {
+      const { ticker, match } = resolveTicker(brokerage, row)
+      if (!ticker) {
+        us1099bNotes.push(
+          `${report.filename}: ${row.sold_date} ${row.description || row.cusip} $${row.proceeds} ` +
+            `could not be matched to a recorded sale, so it carries no ticker`
+        )
+      }
+      const soldDate = row.sold_date
+      const acquired = row.acquired_date === 'Various' ? null : row.acquired_date
+      const days = acquired ? usHoldingDays(acquired, soldDate) : null
+      const proceeds = Number(row.proceeds ?? 0)
+      const cost = Number(row.cost_basis ?? 0)
+      const gain = Number(row.gain_loss ?? 0)
+      us1099bRows.push({
+        market: 'US',
+        currency: 'USD',
+        base_currency: fxConfig.baseCurrency || 'KRW',
+        brokerage,
+        source_system: 'us_form_1099b',
+        account: match?.account || `${brokerage} (1099-B)`,
+        ticker,
+        name: match?.name || text(row.description),
+        // The form aggregates lots and prints "Various" rather than a date. It
+        // is left null instead of guessed: the term is stated separately and is
+        // what the filing actually turns on.
+        acquired_date: acquired,
+        sold_date: soldDate,
+        quantity_sold: Number(row.quantity ?? 0),
+        cost_basis_krw: krwOn(cost, 'USD', soldDate),
+        proceeds_krw: krwOn(proceeds, 'USD', soldDate),
+        // Taken from the form, not recomputed: the broker's gain already carries
+        // the wash-sale and return-of-capital adjustments that make it differ
+        // from proceeds minus our cost.
+        realized_gl_krw: krwOn(gain, 'USD', soldDate),
+        holding_days: days,
+        tax_term: `${text(row.term)}-term`.replace('-term-term', '-term'),
+        basis: '1099b',
+        tax_year: year || String(soldDate).slice(0, 4),
+        native_cost_basis: cost,
+        native_proceeds: proceeds,
+        native_realized_gl: gain,
+        covered_status: text(row.covered_status),
+        form_8949_box: text(row.form_8949_box),
+        superseded_by: null,
+        dividends_native: null,
+        source: report.filename,
+      })
+    }
+  }
+
+  // The filing wins for a year it covers. The replay rows are kept and marked
+  // rather than dropped, so the estimate stays next to the number that replaced
+  // it and the difference between them can be explained instead of discovered.
+  for (const row of usRealizedRows) {
+    const filing = us1099bCoverage.get(`${row.brokerage}|${row.tax_year}`)
+    if (filing) row.superseded_by = filing
+  }
+
+  console.error(
+    `[us-1099b] ${us1099bRows.length} filed lot(s) from ` +
+      `${(usPdfEvidence.reports ?? []).filter((r) => r.category === 'us_tax_document_pdf').length} form(s); ` +
+      `${usRealizedRows.filter((r) => r.superseded_by).length} replay lot(s) superseded; ${us1099bNotes.length} note(s)`
+  )
+  for (const note of us1099bNotes.slice(0, 20)) console.error(`[us-1099b]   ${note}`)
+}
+
+// ---------------------------------------------------------------------------
+// Dividends received while a realized lot was held
+// ---------------------------------------------------------------------------
+//
+// The 「주식 매도 & 손익」 sheet records `누적배당금` against each closed position,
+// which is what makes its return figures total return rather than price return.
+// The database has both halves — dividend rows and realized lots — and has never
+// joined them, so it cannot say which closed positions actually paid.
+//
+// Ticker plus the acquired/sold window is the attribution. A dividend is
+// credited to a lot when it was paid while that lot was held, apportioned across
+// whichever lots were open on that date so a payment is counted once no matter
+// how many lots shared the position.
+
+{
+  const byTickerBrokerage = new Map()
+  for (const d of dividendRows) {
+    if (d.market !== 'US') continue
+    const ticker = text(d.ticker)
+    if (!ticker) continue
+    const key = `${d.brokerage}|${ticker}`
+    if (!byTickerBrokerage.has(key)) byTickerBrokerage.set(key, [])
+    byTickerBrokerage.get(key).push({ date: text(d.date), amount: number(d.native_amount) ?? 0 })
+  }
+
+  // Only the replay lots carry an acquisition date; a 1099-B line aggregates
+  // lots and prints "Various", so there is no window to attribute against and
+  // the field stays null rather than being filled with a guess.
+  const attributable = usRealizedRows.filter((r) => r.acquired_date && r.sold_date)
+  for (const lot of attributable) lot.dividends_native = 0
+  let attributed = 0
+  for (const [key, dividends] of byTickerBrokerage) {
+    const lots = attributable.filter((r) => `${r.brokerage}|${r.ticker}` === key)
+    if (!lots.length) continue
+    for (const dividend of dividends) {
+      const holders = lots.filter((r) => r.acquired_date <= dividend.date && dividend.date <= r.sold_date)
+      if (!holders.length) continue
+      const totalQty = holders.reduce((sum, r) => sum + (r.quantity_sold ?? 0), 0)
+      if (totalQty <= 0) continue
+      for (const holder of holders) {
+        holder.dividends_native += dividend.amount * ((holder.quantity_sold ?? 0) / totalQty)
+      }
+      attributed += 1
+    }
+  }
+  for (const lot of attributable) lot.dividends_native = usRound(lot.dividends_native, 4)
+  const paid = attributable.filter((r) => (r.dividends_native ?? 0) > 0).length
+  console.error(
+    `[us-realized] ${attributed} dividend payment(s) attributed to ${paid} of ${attributable.length} realized lot(s)`
+  )
+}
+
+realizedRows.push(...usRealizedRows, ...us1099bRows)
+
 for (let i = 0; i < dividendRows.length; i += 1) {
   dividendRows[i] = applyDividendMappings(dividendRows[i], manualMappings)
 }
@@ -2031,6 +2524,15 @@ insertMany(db, 'realized_lots', realizedRows, [
   'realized_gl_krw',
   'holding_days',
   'tax_term',
+  'basis',
+  'tax_year',
+  'native_cost_basis',
+  'native_proceeds',
+  'native_realized_gl',
+  'covered_status',
+  'form_8949_box',
+  'superseded_by',
+  'dividends_native',
   'source',
 ])
 insertMany(db, 'transactions', transactionRows, [
@@ -2484,14 +2986,109 @@ const ytdRealizedAssumed =
 // that would have failed it. On a page whose job is to be believed, a line that
 // contradicts its own status is worse than no line.
 const ytdSalesDetail = `${usSalesThisYear.length} US sale(s) in ${taxYear} totalling $${usSalesProceeds.toFixed(2)} in proceeds`
+
+// What the data says was realized, rather than only whether somebody typed
+// something. A filing supersedes the replay for a year it covers, so the
+// comparison uses whichever basis is authoritative for that year.
+const usRealizedForTaxYear = realizedRows.filter(
+  (r) => r.market === 'US' && r.tax_year === taxYear && !r.superseded_by
+)
+const computedShortUsd = usRealizedForTaxYear
+  .filter((r) => text(r.tax_term).toLowerCase().startsWith('short'))
+  .reduce((sum, r) => sum + (Number(r.native_realized_gl) || 0), 0)
+const computedLongUsd = usRealizedForTaxYear
+  .filter((r) => text(r.tax_term).toLowerCase().startsWith('long'))
+  .reduce((sum, r) => sum + (Number(r.native_realized_gl) || 0), 0)
+const computedBasis = usRealizedForTaxYear.some((r) => r.basis === '1099b') ? '1099-B' : 'replay'
+const assumedShortUsd = Number(usTaxAssumptions?.ytdRealizedShortGainLossUsd ?? 0)
+const assumedLongUsd = Number(usTaxAssumptions?.ytdRealizedLongGainLossUsd ?? 0)
+// A dollar: below the rounding these figures are carried at, and far below
+// anything that moves a tax bracket.
+const ytdAgrees =
+  Math.abs(assumedShortUsd - computedShortUsd) <= 1 && Math.abs(assumedLongUsd - computedLongUsd) <= 1
+
+// The computed figure is published for the tax pages but deliberately NOT wired
+// into `ytdRealized*Usd` itself. It is a FIFO replay of our own, and where the
+// broker applied a return-of-capital basis adjustment the two genuinely differ
+// — CONY 2025 is -$86.70 replayed against -$30.26 filed. An assumption that
+// quietly rewrites itself to an estimate would be believed precisely because
+// nobody entered it. So the operator still types the number, and this check
+// tells them what the data makes it and when the two have drifted apart.
+db.prepare('insert or replace into meta (key, value) values (?, ?)').run(
+  'us_ytd_realized_computed',
+  JSON.stringify({
+    taxYear,
+    basis: computedBasis,
+    shortUsd: Number(computedShortUsd.toFixed(2)),
+    longUsd: Number(computedLongUsd.toFixed(2)),
+    lots: usRealizedForTaxYear.length,
+  })
+)
+
 check(
   'us_ytd_realized_assumption_reviewed',
-  usSalesThisYear.length === 0 || ytdRealizedAssumed,
+  usSalesThisYear.length === 0 || (ytdRealizedAssumed && ytdAgrees),
   usSalesThisYear.length === 0
     ? `no ${taxYear} US sales to reconcile`
-    : ytdRealizedAssumed
-      ? `${ytdSalesDetail}; ytdRealized*Usd set to ${Number(usTaxAssumptions?.ytdRealizedShortGainLossUsd ?? 0)} short / ${Number(usTaxAssumptions?.ytdRealizedLongGainLossUsd ?? 0)} long`
-      : `${ytdSalesDetail}, but ytdRealized*Usd is 0${taxPolicy ? '' : ` (no policy file at ${path.basename(taxPolicyPath)})`}`,
+    : ytdAgrees && ytdRealizedAssumed
+      ? `${ytdSalesDetail}; ytdRealized*Usd matches the ${computedBasis} figure ` +
+        `(${computedShortUsd.toFixed(2)} short / ${computedLongUsd.toFixed(2)} long)`
+      : `${ytdSalesDetail}; ${computedBasis} gives ${computedShortUsd.toFixed(2)} short / ` +
+        `${computedLongUsd.toFixed(2)} long but ytdRealized*Usd is ${assumedShortUsd} / ${assumedLongUsd}` +
+        `${taxPolicy ? '' : ` (no policy file at ${path.basename(taxPolicyPath)})`}`,
+  'warning'
+)
+
+// The replay is only believable if walking it forward reproduces the positions
+// the brokers report today. Anything it cannot reproduce is named here rather
+// than left for a wrong cost basis to reveal on some later sale.
+check(
+  'us_realized_replay_reconciles_holdings',
+  usReplayMismatches.length === 0,
+  usReplayReconcilableCount === 0
+    ? 'no US holdings to reconcile the replay against'
+    : usReplayMismatches.length === 0
+      ? `all ${usReplayReconcilableCount} replayed US position(s) match holdings`
+      : `${usReplayMismatches.length} of ${usReplayReconcilableCount} position(s) disagree: ${usReplayMismatches
+          .slice(0, 5)
+          .join('; ')}`,
+  'warning'
+)
+
+// A disposal with no open lot behind it means the opening side is outside the
+// history we hold, and its proceeds would otherwise be booked entirely as gain.
+const usUnmatchedDisposals = usReplayNotes.filter((n) => n.includes('no matching open lot'))
+check(
+  'us_realized_replay_lots_matched',
+  usUnmatchedDisposals.length === 0,
+  usUnmatchedDisposals.length === 0
+    ? `${usRealizedRows.length} US realized lot(s) replayed, every disposal matched to an opening lot`
+    : `${usUnmatchedDisposals.length} disposal(s) with no opening lot: ${usUnmatchedDisposals.slice(0, 3).join('; ')}`
+)
+
+// Shares that arrived carrying no cost — neither on the row nor from a
+// delivering broker — sit at zero cost until the gap is closed. Harmless while
+// they are held, and a fictitious gain the day they are sold.
+const usZeroCostArrivals = usReplayNotes.filter((n) => n.includes('opened at zero cost'))
+check(
+  'us_replay_arrivals_carry_cost',
+  usZeroCostArrivals.length === 0,
+  usZeroCostArrivals.length === 0
+    ? 'every replayed arrival carries a cost'
+    : `${usZeroCostArrivals.length} arrival(s) opened at zero cost: ${usZeroCostArrivals.slice(0, 3).join('; ')}`,
+  'warning'
+)
+
+// A 1099-B line that could not be tied to a recorded sale has no ticker, so it
+// can be totalled but not attributed to a position.
+check(
+  'us_1099b_rows_attributed',
+  us1099bNotes.length === 0,
+  us1099bRows.length === 0
+    ? 'no 1099-B sales in any filed form'
+    : us1099bNotes.length === 0
+      ? `${us1099bRows.length} filed 1099-B lot(s) matched to recorded sales across ${us1099bCoverage.size} broker-year(s)`
+      : `${us1099bNotes.length} issue(s): ${us1099bNotes.slice(0, 3).join('; ')}`,
   'warning'
 )
 
