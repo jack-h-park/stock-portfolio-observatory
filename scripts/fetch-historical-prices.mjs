@@ -88,11 +88,36 @@ async function fetchTicker(ticker, market, startDate, endDate) {
 try {
   const transactions = db.prepare('select market, ticker, min(date) as first_date, max(date) as last_date from transactions where ticker is not null and ticker != \'\' group by market, ticker order by market, ticker').all()
   const holdings = db.prepare('select distinct market, ticker from holdings where ticker is not null and ticker != \'\'').all()
+  // A Korean ACCOUNT is not a Korean SECURITY. The 주식종합 certificates brought
+  // US equities and foreign bonds into the ledger under market='KR' — the market
+  // of the account that held them — and this fetcher only knows how to ask Yahoo
+  // for `<ticker>.KS` / `.KQ`. It asked for `NVDA.KS` and `US912810SN90.KS`,
+  // found nothing, counted 33 misses and failed the step, which stopped the
+  // ingest and left the whole refresh short.
+  //
+  // A KRX code is six characters of digits and uppercase letters (005930, and
+  // ETFs like 0047R0). US tickers are one to five letters, and an ISIN is twelve
+  // — so length alone separates them, without a list to keep up to date.
+  const isKrxCode = (ticker) => /^[0-9A-Z]{6}$/.test(String(ticker).toUpperCase());
+  const skipped = [];
   const tickerMap = new Map(
     [...transactions, ...holdings]
       .filter((row) => String(row.ticker).toUpperCase() !== 'QACDS')
+      .filter((row) => {
+        if (String(row.market) !== 'KR' || isKrxCode(row.ticker)) return true
+        skipped.push(String(row.ticker))
+        return false
+      })
       .map((row) => [`${row.market}:${row.ticker}`, row])
   )
+  if (skipped.length) {
+    // Named, not silent: these are real securities whose history this feed will
+    // never carry, and a reader counting rows should know why they are absent.
+    console.error(
+      `[historical] skipping ${new Set(skipped).size} non-KRX instrument(s) held in Korean accounts ` +
+      `(no KRX quote exists for them): ${[...new Set(skipped)].sort().join(', ')}`
+    )
+  }
   const firstDate = dateOnly(transactions.reduce((min, row) => (!min || row.first_date < min ? row.first_date : min), ''))
   const endDate = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
   const prices = []
