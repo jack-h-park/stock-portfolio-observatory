@@ -259,7 +259,9 @@ Refresh external valuation inputs before ingesting:
 pnpm refresh
 ```
 
-`pnpm refresh` runs FX fetch, KR price fetch, US PDF evidence extraction, US price fetch, crypto activity extraction, crypto price fetch, historical prices, ingest, and history backfill in sequence. FX goes first because the ingest converts every native amount with it — a stale rate misstates the portfolio however fresh the prices are. The crypto extract precedes the crypto price fetch because that fetch reads the activity snapshot to learn which symbols are still held. It writes local run history to `data/refresh-runs.json`.
+`pnpm refresh` runs FX fetch, KR price fetch, Toss fetch, Korea certificate extraction, US PDF evidence extraction, US price fetch, crypto activity extraction, crypto price fetch, historical prices, ingest, and history backfill in sequence. Three orderings are deliberate. FX goes first because the ingest converts every native amount with it — a stale rate misstates the portfolio however fresh the prices are. The Korea certificate extract precedes both the ingest and the historical price fetch, because a certificate that adds a holding also needs that holding's price history fetched on the same run. The crypto extract precedes the crypto price fetch because that fetch reads the activity snapshot to learn which symbols are still held. It writes local run history to `data/refresh-runs.json`.
+
+The Toss fetch is the one `optional` step — see the degraded-versus-failed split under [Published summary](#published-summary).
 
 ### Scheduled refresh
 
@@ -390,6 +392,9 @@ published site can never disagree about a date.
 ## Freshness policy
 
 - KR and US price snapshots are considered fresh for 36 hours from their `generatedAt` timestamp.
+- Crypto price snapshots get their own 8 hours. The 36-hour equity window spans a
+  weekend on purpose, which is meaningless for an asset that trades continuously —
+  it would pass a crypto quote a day and a half stale.
 - FX is considered fresh for 7 days from the configured `asOfDate`.
 - Source files are considered drifted when their current disk size or modified time differs from the fingerprint captured at ingest.
 - Position detail pages show the relevant price snapshot and FX freshness next to the valuation numbers.
@@ -404,10 +409,11 @@ published site can never disagree about a date.
 
 ## Current coverage
 
-- Korea: holdings, tax lots, transactions, dividends, realized lots from `.codex_sheet_payloads`.
+- Korea: Toss holdings and order history from its Open API via `pnpm fetch:toss`; 미래에셋 lots, transactions and dividends parsed from its 거래내역증명서 PDFs via `pnpm extract:kr-statements`, with its positions summed from those lots. `.codex_sheet_payloads` still supplies the accounts that have no parser yet, per account rather than wholesale.
 - US: Chase holdings/tax lots, Merrill holding summary/tax-lot detail, Robinhood Gain/Loss PDF holdings/tax lots, and Chase/Fidelity/Merrill/Robinhood transactions/dividends.
+- Crypto: Bithumb and Robinhood Crypto, under `market = 'CRYPTO'`. Neither venue publishes holdings, so positions are derived from statement activity via `pnpm extract:crypto-activity` and reconciled against a balance the venue itself printed — see [Crypto](#crypto).
 - Currency: native KRW/USD amounts are preserved separately. USD is also converted to KRW using the configured FX snapshot in `data/fx-rates.json`.
-- Prices: KR current prices are stored in `data/kr-prices.json` via `pnpm fetch:kr-prices`; US current prices are stored in `data/us-prices.json` via `pnpm fetch:us-prices`. Brokerage export values are preserved when supplied.
+- Prices: KR current prices are stored in `data/kr-prices.json` via `pnpm fetch:kr-prices`; US current prices in `data/us-prices.json` via `pnpm fetch:us-prices`; crypto in `data/crypto-prices.json` via `pnpm fetch:crypto-prices`, each venue quoted at its own book. Brokerage export values are preserved when supplied.
 - PDF evidence: US Gain/Loss reports and 1099 PDFs are summarized into `data/us-pdf-evidence.json` via `pnpm extract:us-pdf-evidence`.
 
 ## FX policy
