@@ -29,6 +29,7 @@ from pathlib import Path
 import pdfplumber
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
 TIME_RE = re.compile(r"^\d{2}:\d{2}:\d{2}$")
 CONTROL_RE = re.compile(r"[\x00-\x1f]")
 
@@ -210,7 +211,48 @@ def bithumb_issue_info(page):
     }
 
 
-def parse_bithumb(path, venue, account):
+def load_bithumb_ledger(paths):
+    """Reason lookup from the .xlsx exports, keyed by timestamp and amount.
+
+    The 확인서 PDF is the transaction source; this only supplies 거래구분 for rows
+    whose 비고 the PDF left blank. Deliberately not a movement source — the two
+    files describe the same trades, so reading both as movements would double
+    every position.
+
+    Best-effort by design: openpyxl travels with pdfplumber in the interpreter
+    STOCK_PYTHON_BIN points at, but if either the module or the files are absent
+    the extract still produces every transaction, just without the reasons. The
+    ingest's crypto_cash_deposits_classified check then reports the rows it could
+    not place, which is the same outcome as before this lookup existed.
+    """
+    try:
+        import openpyxl
+    except ImportError:
+        print("openpyxl unavailable — Bithumb deposit reasons will be left blank", file=sys.stderr)
+        return {}
+
+    ledger = {}
+    for path in paths:
+        try:
+            # NOT read_only: openpyxl's read-only mode trusts the sheet
+            # dimension declared in the file, and Bithumb's generator declares a
+            # single cell. It returned 1 row per workbook instead of ~40, and the
+            # lookup came back empty with no error at all. These exports are a
+            # few kilobytes, so loading them fully costs nothing.
+            sheet = openpyxl.load_workbook(path, data_only=True).worksheets[0]
+        except Exception as exc:  # a corrupt or renamed export must not stop the extract
+            print(f"could not read {path.name}: {exc}", file=sys.stderr)
+            continue
+        for row in sheet.iter_rows(values_only=True):
+            stamp, asset, kind = (clean(row[0]), clean(row[1]), clean(row[2])) if len(row) > 2 else ("", "", "")
+            if not DATETIME_RE.match(stamp) or not kind:
+                continue
+            amount = number(re.sub(r"[^\d.\-]", "", clean(row[5]).split()[0])) if len(row) > 5 and clean(row[5]) else None
+            ledger[(stamp, asset, amount)] = kind
+    return ledger
+
+
+def parse_bithumb(path, venue, account, ledger=None):
     transactions = []
     info = {}
     with pdfplumber.open(path) as pdf:
@@ -229,14 +271,14 @@ def parse_bithumb(path, venue, account):
                 len(BITHUMB_HEADERS),
             )
             for record in records:
-                row = parse_bithumb_record(record, venue, account, path.name, page_index + 1)
+                row = parse_bithumb_record(record, venue, account, path.name, page_index + 1, ledger or {})
                 if row:
                     transactions.append(row)
 
     return transactions, info, pages
 
 
-def parse_bithumb_record(record, venue, account, filename, page):
+def parse_bithumb_record(record, venue, account, filename, page, ledger):
     stamp = record[0]
     date = next((t for t in stamp if DATE_RE.match(t)), "")
     time = next((t for t in stamp if TIME_RE.match(t)), "")
@@ -255,6 +297,16 @@ def parse_bithumb_record(record, venue, account, filename, page):
     asset_balance = number(numeric_cell(record, 7))
     cash_balance = number(numeric_cell(record, 8))
     note = " ".join(record[9]) if record[9] else ""
+
+    # The PDF's 비고 wins; the ledger only fills a blank. Matched on timestamp,
+    # asset and amount together — a timestamp alone repeats across the parts of
+    # one split fill, and those rows carry a 비고 anyway.
+    note_source = "statement" if note else ""
+    if not note:
+        fallback = ledger.get((f"{date} {time}", "원화" if asset == "KRW" else asset, amount))
+        if fallback:
+            note = fallback
+            note_source = "ledger"
 
     is_cash = asset == "KRW"
     kind = BITHUMB_TYPES[raw_type]
@@ -294,6 +346,7 @@ def parse_bithumb_record(record, venue, account, filename, page):
         "assetBalance": asset_balance,
         "cashBalance": cash_balance,
         "note": note,
+        "noteSource": note_source,
         "source": filename,
         "page": page,
     }
@@ -440,6 +493,15 @@ def main():
     transactions = []
     snapshots = []
 
+    # Built before the statements are parsed, because the reason has to be in
+    # hand when a row is CLASSIFIED — filling 비고 afterwards would leave the
+    # type already decided from a blank.
+    ledger_paths = [
+        Path(e["filename"]) for e in request.get("files", [])
+        if e["category"] == "bithumb_ledger" and Path(e["filename"]).exists()
+    ]
+    ledger = load_bithumb_ledger(ledger_paths)
+
     def stamp_document_order(rows, period_end):
         """Record each row's position within its document, newest first.
 
@@ -462,8 +524,10 @@ def main():
         venue = entry["venue"]
         account = entry.get("account") or venue
 
+        if entry["category"] == "bithumb_ledger":
+            continue  # a reason lookup, not a movement source — see source-files.mjs
         if entry["category"] == "bithumb_statement":
-            rows, info, pages = parse_bithumb(path, venue, account)
+            rows, info, pages = parse_bithumb(path, venue, account, ledger)
             stamp_document_order(rows, info.get("periodEnd", ""))
             transactions.extend(rows)
             documents.append(
@@ -480,6 +544,7 @@ def main():
                         **info,
                         "trade_count": sum(1 for r in rows if r["type"] in ("BUY", "SELL")),
                         "asset_count": len({r["symbol"] for r in rows if r["symbol"]}),
+                        "reasons_from_ledger": sum(1 for r in rows if r.get("noteSource") == "ledger"),
                     },
                 }
             )
@@ -518,9 +583,11 @@ def main():
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    from_ledger = sum(1 for r in transactions if r.get("noteSource") == "ledger")
     print(
         f"Wrote {out_path}: {len(documents)} document(s), "
-        f"{len(transactions)} transaction(s), {len(snapshots)} month-end snapshot row(s)"
+        f"{len(transactions)} transaction(s), {len(snapshots)} month-end snapshot row(s), "
+        f"{from_ledger} reason(s) filled from the .xlsx ledger"
     )
 
 

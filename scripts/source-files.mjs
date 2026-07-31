@@ -60,9 +60,16 @@ const RH_CRYPTO_DIR = '미국 로빈후드 가상계좌/Monthly Statements'
 // instead of on their filenames. A filename already lied once here: a statement
 // named 2025년1-7월 held 2026-01-01~2026-07-31.
 //
-// The Bithumb .xlsx exports in the same folder are deliberately NOT read. They
-// are a strict subset of the 확인서 PDFs — same trades, no running balance — so
-// ingesting both would double every position with nothing gained.
+// The Bithumb .xlsx exports in the same folder are read too, but ONLY as a reason
+// lookup — never as a transaction source. They carry the same trades with no
+// running balance, so ingesting them as movements would double every position.
+//
+// What they do have is 거래구분: where the PDF prints a bare 입금 with an empty
+// 비고, the .xlsx names it ('혜택존 보상 - 랜덤박스', '포인트샵 입금'). Two real
+// deposits are like that, and without the reason they cannot be told apart from
+// the holder moving their own money in — so they were booked as transfers and
+// their income went unrecorded. The subset claim held for movements and was
+// wrong about this one column.
 const CRYPTO_SPECS = [
   {
     venue: 'Bithumb',
@@ -70,6 +77,14 @@ const CRYPTO_SPECS = [
     category: 'bithumb_statement',
     subdir: BITHUMB_DIR,
     pattern: /^빗썸-거래내역확인서-.*\.pdf$/i,
+    pick: 'all',
+  },
+  {
+    venue: 'Bithumb',
+    account: 'Bithumb',
+    category: 'bithumb_ledger',
+    subdir: BITHUMB_DIR,
+    pattern: /^빗썸-거래내역-.*\.xlsx$/i,
     pick: 'all',
   },
   {
