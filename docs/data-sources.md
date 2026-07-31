@@ -35,6 +35,9 @@ is one grammar for all of them, under `STOCK_DATA_DIR`:
 <broker>-<doctype>[-<account>]-<period>[-<part>][-partial].<ext>
 ```
 
+Examples: `mirae-isa-transactions-2025.pdf`, `toss-transactions-2023-1of2.pdf`,
+`chase-holdings-20260723.csv`, `bithumb-activity-20260501-20260731-partial.xlsx`.
+
 Lowercase ASCII, hyphen-separated, in six directories: `kr-statements`,
 `us-transactions`, `us-holdings`, `us-tax-documents`, `crypto-bithumb`,
 `crypto-robinhood`. (`kr-statements` under `STOCK_DATA_DIR` holds the source
@@ -50,7 +53,13 @@ download supersedes an old file or sits beside it:
 | `20260723` | everything up to that date | only the newest is read — `pick: 'latest'` |
 | `202509` | one calendar month | coexist |
 | `20250101-20250430`, `2024-2025` | an explicit window | coexist |
-| `2026-partial` | a period known to be incompletely covered | coexist |
+
+A period is never a *summary* of the coverage — it **is** the coverage, to the
+day. `-partial` is a suffix on top of one, never a replacement for one:
+`bithumb-activity-20260501-20260731-partial.xlsx`, never `bithumb-activity-2026-partial.xlsx`.
+Collapsing the window to its year would throw away the months, which is the one
+thing the name is for. The suffix carries only what the export itself declared —
+빗썸's 일부: the window is not final and the next download will extend it.
 
 Two things follow from having one grammar rather than a dozen ad-hoc names.
 

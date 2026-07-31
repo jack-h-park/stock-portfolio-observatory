@@ -54,18 +54,22 @@ const DIR_RH_CRYPTO = 'crypto-robinhood'
 //   MONTH   202509             one calendar month → coexist, 'all'.
 //   RANGE   2024-2025          an explicit window, for the files that are
 //           20250101-20250430  neither a whole year nor an as-of snapshot.
-//   PARTIAL 2026-partial       a period the file is known not to cover fully.
+//
+// A period is never a summary of the coverage — it IS the coverage. `-partial`
+// is a SUFFIX on top of one, never a replacement for one: a Bithumb export
+// covering 2026-05-01~07-31 is `20260501-20260731-partial`, not `2026-partial`.
+// Collapsing it to the year would throw away the months, which is the one thing
+// the name is for; the suffix carries only the extra fact the export itself
+// declared — 일부, the window is not final and the next download will extend it.
 const YEAR = String.raw`\d{4}`
 const ASOF = String.raw`\d{8}`
 const MONTH = String.raw`\d{6}`
 // Longest alternative first, so a range is never read as the year that starts it.
 const RANGE = String.raw`\d{8}-\d{8}|\d{4}-\d{4}`
-const PARTIAL = String.raw`\d{4}-partial`
 
-// Bithumb documents are none of them a clean year: some cover a half, some a
-// span of months, one is explicitly incomplete. One alternation, most specific
-// first.
-const CRYPTO_PERIOD = [PARTIAL, RANGE, YEAR].join('|')
+// Not one Bithumb document is a clean year: some cover a half, some a span of
+// months, one a whole year. One alternation, most specific first.
+const CRYPTO_PERIOD = [RANGE, YEAR].join('|')
 
 // The filename token → the account label the database has always carried. These
 // labels are the `account_type` and half the `account` on every Robinhood row,
@@ -192,7 +196,9 @@ function buildPattern(spec) {
   const segments = [spec.broker, spec.doctype]
   if (spec.accounts) segments.push(`(?<account>${spec.accounts})`)
   segments.push(`(?<period>${spec.period})`)
-  return new RegExp(`^${segments.join('-')}\\.${spec.ext}$`, 'i')
+  // Optional on every spec: whether an export is final is a property of the
+  // download, not of the broker, so any of them can arrive marked incomplete.
+  return new RegExp(`^${segments.join('-')}(?<partial>-partial)?\\.${spec.ext}$`, 'i')
 }
 
 for (const spec of [...US_HOLDING_SPECS, ...US_TRANSACTION_SPECS, ...CRYPTO_SPECS]) {
@@ -204,12 +210,11 @@ function today() {
   return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
 }
 
-// What the period covers, as YYYYMMDD. `end` is null when the file itself says
-// the coverage is incomplete (`-partial`) — there is no honest end date to
-// derive, so the checks below fall back to the start.
+// What the period covers, as YYYYMMDD. Every shape yields a real window — a
+// `-partial` file still names the window it covers, the suffix only says more
+// will be appended to it later.
 function periodBounds(period) {
   let m
-  if ((m = /^(\d{4})-partial$/.exec(period))) return { start: `${m[1]}0101`, end: null }
   if ((m = /^(\d{8})-(\d{8})$/.exec(period))) return { start: m[1], end: m[2] }
   if ((m = /^(\d{4})-(\d{4})$/.exec(period))) return { start: `${m[1]}0101`, end: `${m[2]}1231` }
   if (/^\d{8}$/.test(period)) return { start: period, end: period }
@@ -235,9 +240,8 @@ function implausiblePeriod(period, since, now) {
   if (!start) return `period '${period}' is not a shape this grammar defines`
   // The END is what must postdate the account: a complete-year archive legitimately
   // begins before the account was opened, and only its coverage has to overlap.
-  const anchor = end ?? start
-  if (since && anchor < since) return `covers ${anchor}, before this account existed (${since})`
-  if (anchor > now) return `covers ${anchor}, which is in the future (today is ${now})`
+  if (since && end < since) return `covers ${end}, before this account existed (${since})`
+  if (end > now) return `covers ${end}, which is in the future (today is ${now})`
   return null
 }
 
