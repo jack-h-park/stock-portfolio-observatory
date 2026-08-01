@@ -3437,6 +3437,199 @@ function check(name, ok, detail, severity = 'error') {
   checks.push({ name, status: ok ? 'pass' : 'fail', detail, severity })
 }
 
+// Shares leaving one of these accounts should arrive in another of them, and
+// when they do not, the cost basis they were carrying is somewhere this
+// pipeline cannot see.
+//
+// Found by hand once already, expensively: 22 삼성전자 vested into the RSU
+// account on 2026-07-08 and left it on 2026-07-16, three days after the Toss
+// statement stops covering. The outbound leg was recorded, the inbound leg was
+// not, and nothing asked where the shares went — it surfaced as a live position
+// 22 units larger than its lots, and took a walk through four accounts to
+// explain.
+//
+// Quantities are consumed rather than matched one to one, because a
+// 타사대체입고 arrives lot by lot: one outbound row for 57 shares becomes four
+// inbound rows carrying each lot's own cost. Requiring equal rows would call
+// every real transfer a break, which is how a check earns its way to being
+// ignored.
+//
+// Only the outbound direction is judged. An arrival with no departure is
+// ordinary — shares come in from institutions this pipeline has never seen —
+// and where it matters, `us_replay_arrivals_carry_cost` already reports the
+// ones that landed without a cost.
+const TRANSFER_PAIR_WINDOW_DAYS = 14
+const transferInPool = transactionRows
+  .filter((r) => r.type === 'TRANSFER_IN' && text(r.ticker) && r.quantity > 0 && r.date)
+  .map((r) => ({ row: r, left: r.quantity }))
+const unpairedTransferOut = []
+for (const out of transactionRows
+  .filter((r) => r.type === 'TRANSFER_OUT' && text(r.ticker) && r.quantity > 0 && r.date)
+  .sort((a, b) => a.date.localeCompare(b.date))) {
+  let need = out.quantity
+  for (const candidate of transferInPool) {
+    if (need <= 1e-9) break
+    const { row, left } = candidate
+    if (left <= 1e-9 || row.ticker !== out.ticker || row.account === out.account) continue
+    const days = Math.abs(Date.parse(row.date) - Date.parse(out.date)) / 86_400_000
+    if (days > TRANSFER_PAIR_WINDOW_DAYS) continue
+    const taken = Math.min(left, need)
+    candidate.left -= taken
+    need -= taken
+  }
+  if (need > 1e-6) unpairedTransferOut.push({ row: out, missing: need })
+}
+
+// Carrying the basis across, rather than waiting for the receiving broker to
+// print a statement.
+//
+// The departing row already says what the shares cost — 삼성증권's 타사출고
+// carries 단가 277,500 — so the only thing missing is somewhere to put it. The
+// destination is not named on the outbound row (the receiving side names the
+// sender, never the other way round), so it is identified by elimination:
+// exactly one account whose LIVE position exceeds its lots by exactly this
+// quantity of exactly this security. Both halves have to be unambiguous, and
+// when they are not, nothing is written and the check below says so.
+//
+// This is the one place the pipeline records a lot no document asserts, so the
+// conditions are deliberately narrow:
+//
+//   - the receiving account must have a live position feed, because the
+//     shortfall it is matched against is only meaningful against a live number
+//   - exactly one candidate account, and exactly one unpaired leg for that
+//     ticker — a tie is ambiguous and stays unwritten
+//   - the outbound row must carry a unit price; without one there is no basis
+//     to carry and a zero-cost lot would be worse than a missing one
+//
+// Self-superseding: the lot exists only while the shortfall does. Download the
+// receiving statement and its own 타사대체입고 rows fill the gap, the shortfall
+// closes, and this stops firing — there is no state to clean up and no way to
+// double count, because the condition that creates the lot is the absence of
+// the real one.
+//
+// Holding period travels with the shares. A transfer between two of your own
+// accounts does not restart the clock, so the acquired date comes from
+// replaying the SENDING account's own history for that security and reading
+// which lots the departure consumed — not from the transfer date, which would
+// turn a five-year holding into a one-day one and move it to short-term.
+const OPENING_TRANSFER_TYPES = new Set(['BUY', 'TRANSFER_IN', 'REINVEST'])
+const CLOSING_TRANSFER_TYPES = new Set(['SELL', 'TRANSFER_OUT'])
+const transferCarriedLots = []
+const transferCarryDeclined = []
+let transferCarriedLegs = 0
+if (unpairedTransferOut.length) {
+  const liveAccounts = new Set(
+    holdingRows.filter((r) => r.source_system === 'toss_open_api').map((r) => r.account)
+  )
+  const lotQty = new Map()
+  for (const lot of taxLotRows) {
+    const key = `${lot.account}\t${lot.ticker}`
+    lotQty.set(key, (lotQty.get(key) ?? 0) + (lot.open_quantity ?? 0))
+  }
+
+  for (const { row: out, missing } of unpairedTransferOut) {
+    const candidates = holdingRows.filter(
+      (h) =>
+        liveAccounts.has(h.account) &&
+        h.ticker === out.ticker &&
+        h.account !== out.account &&
+        Math.abs(h.quantity - (lotQty.get(`${h.account}\t${h.ticker}`) ?? 0) - missing) <= 1e-6
+    )
+    const sameTicker = unpairedTransferOut.filter((u) => u.row.ticker === out.ticker)
+    const unitPrice = number(out.native_unit_price) ?? number(out.unit_price)
+    if (candidates.length !== 1 || sameTicker.length !== 1 || !unitPrice) {
+      transferCarryDeclined.push(
+        `${out.date} ${out.account} ${out.ticker} ${missing}: ` +
+          (!unitPrice
+            ? 'the outbound row carries no unit price'
+            : sameTicker.length !== 1
+              ? `${sameTicker.length} unpaired legs for this security`
+              : `${candidates.length} account(s) short by this amount`)
+      )
+      continue
+    }
+    const destination = candidates[0]
+
+    // FIFO over the sending account's own rows, to learn when the departing
+    // shares were acquired rather than assuming they were acquired on the way
+    // out.
+    const queue = []
+    let acquired = []
+    for (const r of transactionRows
+      .filter((r) => r.account === out.account && r.ticker === out.ticker && r.date && r.quantity > 0)
+      .sort((a, b) => a.date.localeCompare(b.date))) {
+      if (OPENING_TRANSFER_TYPES.has(r.type)) {
+        queue.push({ date: r.date, qty: r.quantity })
+        continue
+      }
+      if (!CLOSING_TRANSFER_TYPES.has(r.type)) continue
+      let need = r.quantity
+      const consumed = []
+      while (need > 1e-9 && queue.length) {
+        const head = queue[0]
+        const taken = Math.min(head.qty, need)
+        consumed.push({ date: head.date, qty: taken })
+        head.qty -= taken
+        need -= taken
+        if (head.qty <= 1e-9) queue.shift()
+      }
+      if (r === out) acquired = consumed
+    }
+    // A departure the sending account's own history cannot account for means
+    // the sending side is itself incomplete; carrying a date guessed from
+    // nothing would be worse than leaving the shortfall visible.
+    const accountedFor = acquired.reduce((sum, a) => sum + a.qty, 0)
+    if (accountedFor < missing - 1e-6) {
+      transferCarryDeclined.push(
+        `${out.date} ${out.account} ${out.ticker} ${missing}: the sending account's own lots only ` +
+          `account for ${accountedFor}, so the acquired date is unknown`
+      )
+      continue
+    }
+
+    let left = missing
+    transferCarriedLegs += 1
+    for (const slice of acquired) {
+      if (left <= 1e-9) break
+      const qty = Math.min(slice.qty, left)
+      left -= qty
+      const cost = qty * unitPrice
+      taxLotRows.push({
+        market: destination.market,
+        currency: out.currency || destination.currency,
+        base_currency: 'KRW',
+        fx_rate_to_base: destination.fx_rate_to_base ?? 1,
+        brokerage: destination.brokerage,
+        account_type: destination.account_type,
+        source_system: 'transfer_basis_carry',
+        as_of_date: out.date,
+        account: destination.account,
+        ticker: out.ticker,
+        name: out.name || destination.name,
+        acquired_date: slice.date,
+        open_quantity: qty,
+        native_cost_basis: cost,
+        native_unit_cost: unitPrice,
+        native_market_value: null,
+        native_unrealized_gl: null,
+        cost_basis_krw: cost,
+        unit_cost: unitPrice,
+        holding_days: null,
+        tax_term: '',
+        source: `carried from ${out.account} 타사출고 ${out.date}`,
+      })
+      transferCarriedLots.push(
+        `${out.ticker} ${qty} unit(s) acquired ${slice.date} at ${unitPrice}, ` +
+          `${out.account} -> ${destination.account} on ${out.date}`
+      )
+    }
+  }
+  if (transferCarriedLots.length) {
+    console.error(`[transfer] ${transferCarriedLots.length} lot(s) carried across an unrecorded arrival`)
+    for (const note of transferCarriedLots) console.error(`[transfer]   ${note}`)
+  }
+}
+
 const holdingsByKey = new Map()
 for (const r of holdingRows) holdingsByKey.set(`${r.account}\t${r.ticker}`, r)
 
@@ -4201,60 +4394,39 @@ check(
   'warning'
 )
 
-// Shares leaving one of these accounts should arrive in another of them, and
-// when they do not, the cost basis they were carrying is somewhere this
-// pipeline cannot see.
-//
-// Found by hand once already, expensively: 22 삼성전자 vested into the RSU
-// account on 2026-07-08 and left it on 2026-07-16, three days after the Toss
-// statement stops covering. The outbound leg was recorded, the inbound leg was
-// not, and nothing asked where the shares went — it surfaced as a live position
-// 22 units larger than its lots, and took a walk through four accounts to
-// explain. This check is that walk, done every refresh.
-//
-// Quantities are consumed rather than matched one to one, because a
-// 타사대체입고 arrives lot by lot: one outbound row for 57 shares becomes four
-// inbound rows carrying each lot's own cost. Requiring equal rows would call
-// every real transfer a break, which is how a check earns its way to being
-// ignored.
-//
-// Only the outbound direction is judged. An arrival with no departure is
-// ordinary — shares come in from institutions this pipeline has never seen —
-// and where it matters, `us_replay_arrivals_carry_cost` already reports the
-// ones that landed without a cost.
-const TRANSFER_PAIR_WINDOW_DAYS = 14
-const transferInPool = transactionRows
-  .filter((r) => r.type === 'TRANSFER_IN' && text(r.ticker) && r.quantity > 0 && r.date)
-  .map((r) => ({ row: r, left: r.quantity }))
-const unpairedTransferOut = []
-for (const out of transactionRows
-  .filter((r) => r.type === 'TRANSFER_OUT' && text(r.ticker) && r.quantity > 0 && r.date)
-  .sort((a, b) => a.date.localeCompare(b.date))) {
-  let need = out.quantity
-  for (const candidate of transferInPool) {
-    if (need <= 1e-9) break
-    const { row, left } = candidate
-    if (left <= 1e-9 || row.ticker !== out.ticker || row.account === out.account) continue
-    const days = Math.abs(Date.parse(row.date) - Date.parse(out.date)) / 86_400_000
-    if (days > TRANSFER_PAIR_WINDOW_DAYS) continue
-    const taken = Math.min(left, need)
-    candidate.left -= taken
-    need -= taken
-  }
-  if (need > 1e-6) {
-    unpairedTransferOut.push(
-      `${out.date} ${out.account} ${out.ticker}: ${out.quantity} left, ${need} never arrived`
-    )
-  }
-}
+// Reported where the walk ends rather than where it starts: by here the carry
+// above has had its chance, so a leg that still counts is one nothing could
+// complete. A leg whose basis WAS carried is named but does not warn — the
+// document gap is real and the numbers are no longer wrong because of it, and a
+// warning that stands until someone downloads a statement is a warning people
+// learn to scroll past.
 check(
   'transfer_legs_pair_across_accounts',
-  unpairedTransferOut.length === 0,
+  unpairedTransferOut.length === transferCarriedLegs,
   unpairedTransferOut.length === 0
-    ? 'every outbound transfer lands in another account'
+    ? transferCarriedLegs === 0
+      ? 'every outbound transfer lands in another account'
+      : `every outbound transfer is accounted for; ${transferCarriedLegs} by carrying the basis rather than by an arrival record`
     : `${unpairedTransferOut.length} outbound transfer(s) with no matching arrival within ` +
       `${TRANSFER_PAIR_WINDOW_DAYS}d — the receiving account's statement is older than the move, ` +
-      `so its lots are short by that much: ${unpairedTransferOut.slice(0, 5).join('; ')}`,
+      `so its lots were short by that much: ` +
+      unpairedTransferOut.map((u) => `${u.row.date} ${u.row.account} ${u.row.ticker}: ${u.missing}`).slice(0, 5).join('; ') +
+      (transferCarriedLegs ? `; ${transferCarriedLegs} had their basis carried across (see transfer_basis_carried_on_arrival)` : ''),
+  'warning'
+)
+
+// The carry writes lots no document asserts, so it says so out loud every run.
+// A decline is the louder half: it means a transfer's basis is genuinely
+// unaccounted for and the shortfall stays in the numbers until a statement
+// closes it.
+check(
+  'transfer_basis_carried_on_arrival',
+  transferCarryDeclined.length === 0,
+  transferCarryDeclined.length === 0
+    ? transferCarriedLots.length === 0
+      ? 'no transfer needed its basis carried'
+      : `${transferCarriedLots.length} lot(s) carried from the sending account's own row: ${transferCarriedLots.slice(0, 5).join('; ')}`
+    : `${transferCarryDeclined.length} transfer(s) could not have their basis carried: ${transferCarryDeclined.slice(0, 5).join('; ')}`,
   'warning'
 )
 
