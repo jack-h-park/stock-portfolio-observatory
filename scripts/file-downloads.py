@@ -653,10 +653,13 @@ def detect_robinhood_gain_loss(doc):
     generator wrote — not the filename someone typed. The page body carries no
     account number at all, which is why the title is what is read.
 
-    A separate task is replacing these PDFs with an MCP snapshot. They are still
-    a source today — scripts/extract-us-pdf-evidence.py reads them and builds a
-    lot's account label from the four digits in the name — so they are filed;
-    when that lands, delete this detector rather than re-pointing it.
+    The MCP snapshot has since taken over as the source of Robinhood lots, and
+    these still belong here: they are the only record of those positions before
+    the snapshot existed, `us_pdf_evidence_extracted` asserts on them, and
+    scripts/extract-us-pdf-evidence.py still builds a lot's account label from
+    the four digits in the name. They are also a download by the test in
+    docs/data-sources.md — a human had to email customer support and wait for
+    them — so `us-holdings/` is the right side of that boundary.
     """
     text = doc.page_text(0)
     if "OPEN LONGS" not in text or "WS Cost Adj" not in text:
