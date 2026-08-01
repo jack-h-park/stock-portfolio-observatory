@@ -9,10 +9,16 @@
 # the dashboard showed no crypto at all, because the extractor was looking at a
 # directory that did not have them.
 #
+# It files the inbox first (scripts/file-downloads.py), so the manual step is
+# now "drop the download in one folder" rather than "type the name the
+# convention wants". Naming by hand is where the two mistakes this repo has
+# already found came from.
+#
 # ONE WAY, SOURCES ONLY. This is not a sync. The two sides are not mirrors of
 # each other:
 #
 #   sources  — arrive here, are read there            → pushed
+#   inbox/   — a staging area, filed then emptied      → never pushed
 #   outputs/ — written there by every refresh          → never touched
 #   briefing-archive/ — written there by the briefing  → never touched
 #
@@ -31,14 +37,15 @@ set -euo pipefail
 # defaults below while a hand-run picked up the configured paths, and the two
 # would push different trees to different places. Read it, but let a real
 # environment variable win so `--host` and one-off overrides still behave.
-ENV_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/.env.local"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="$REPO_DIR/.env.local"
 if [ -f "$ENV_FILE" ]; then
   while IFS='=' read -r key value; do
     case "$key" in
-      STOCK_DATA_DIR|STOCK_PROD_HOST|STOCK_PROD_DATA_DIR)
+      STOCK_DATA_DIR|STOCK_PROD_HOST|STOCK_PROD_DATA_DIR|STOCK_PYTHON_BIN)
         [ -z "${!key:-}" ] && export "$key=${value%\"}" ;;
     esac
-  done < <(grep -E '^(STOCK_DATA_DIR|STOCK_PROD_HOST|STOCK_PROD_DATA_DIR)=' "$ENV_FILE" || true)
+  done < <(grep -E '^(STOCK_DATA_DIR|STOCK_PROD_HOST|STOCK_PROD_DATA_DIR|STOCK_PYTHON_BIN)=' "$ENV_FILE" || true)
 fi
 
 LOCAL_DIR="${STOCK_DATA_DIR:-$HOME/workspace/data/stock-management}"
@@ -58,6 +65,9 @@ done
 
 # Every directory the ingest and the extractors read. Keep in step with
 # scripts/source-files.mjs, extract-kr-statements.py and extract-crypto-activity.py.
+# `inbox` is deliberately not here: a file nothing could identify stays there,
+# and pushing it would put an unnamed document beside the named ones on the
+# machine that reads them.
 SOURCES=(
   kr-statements
   us-transactions
@@ -68,6 +78,24 @@ SOURCES=(
 )
 
 [ -d "$LOCAL_DIR" ] || { echo "ERROR: no data directory at $LOCAL_DIR" >&2; exit 1; }
+
+# File the inbox BEFORE pushing, so a download dropped in there reaches the
+# refresh host correctly named within the hour with no step for a person at all.
+# Safe to run unattended precisely because it never guesses: a file it cannot
+# identify stays in the inbox, which is not one of the directories below and so
+# never travels.
+#
+# `|| true` on purpose. Filing is a convenience; carrying the files that are
+# already named correctly is the job, and a broken pdfplumber install or one
+# malformed download must not stop the push that everything downstream depends
+# on. Whatever it says lands in logs/push-sources.log either way.
+PYTHON_BIN="${STOCK_PYTHON_BIN:-python3}"
+if [ -x "$PYTHON_BIN" ] || command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+  STOCK_DATA_DIR="$LOCAL_DIR" "$PYTHON_BIN" "$REPO_DIR/scripts/file-downloads.py" ${DRY:+--dry-run} || true
+  echo
+else
+  echo "note: $PYTHON_BIN not found, skipping the inbox — set STOCK_PYTHON_BIN" >&2
+fi
 
 present=()
 for dir in "${SOURCES[@]}"; do

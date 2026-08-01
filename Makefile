@@ -15,7 +15,7 @@ PORT        := 3101
 PNPM_BIN := $(shell command -v pnpm)
 NODE_BIN := $(dir $(shell command -v node))
 
-.PHONY: install ingest refresh dev build start stop restart redeploy status refresh-status wait-listen install-service install-refresh-service uninstall-service uninstall-refresh-service install-push-service uninstall-push-service push-status push-sources logs typecheck
+.PHONY: install ingest refresh dev build start stop restart redeploy status refresh-status wait-listen install-service install-refresh-service uninstall-service uninstall-refresh-service install-push-service uninstall-push-service push-status push-sources file-downloads file-downloads-dry logs typecheck
 
 install:
 	pnpm install
@@ -118,3 +118,14 @@ push-status:
 
 push-sources:
 	./scripts/push-sources.sh
+
+# Identify whatever is in $(STOCK_DATA_DIR)/inbox by its CONTENTS, rename it to
+# the convention in docs/data-sources.md and move it to the directory that owns
+# it. The hourly push runs this first, so this target is for the impatient and
+# for the dry run — which is worth doing every time, since it prints the same
+# plan and moves nothing.
+file-downloads-dry:
+	pnpm file:downloads --dry-run
+
+file-downloads:
+	pnpm file:downloads

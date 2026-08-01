@@ -151,6 +151,108 @@ filename already lied once here: one named 2025년1-7월 held 2026-01-01~2026-07
 The periods in the names on disk today were read out of the documents, not
 carried over from the names they replaced.
 
+## Where do I put this? — the inbox
+
+`$STOCK_DATA_DIR/inbox/`. Drop the download there and nothing else is asked of
+you: `scripts/file-downloads.py` opens it, works out what it is **from the
+contents**, gives it the name the grammar above defines, and moves it to the
+directory that owns it. The hourly push runs it first, so a file dropped in the
+inbox is filed and on the refresh host within the hour with no step for a
+person at all.
+
+```bash
+make file-downloads-dry     # the plan, moving nothing — worth doing every time
+make file-downloads         # or: pnpm file:downloads
+```
+
+Automating this is the point rather than a convenience. The names above are the
+one place in the pipeline where a human types a fact, and both of the mistakes
+this document keeps citing — the 20060716 that should have been 20260716, the
+2025년1-7월 that held 2026 — were typing, not parsing. A rule that has to be
+remembered at download time is a rule that holds only for the downloads someone
+checked.
+
+**What each document is recognised by, and where it lands.** Every marker below
+was confirmed against the files already on disk.
+
+| Document | Recognised by | Lands in |
+| --- | --- | --- |
+| 미래에셋 거래내역증명서 | `거래내역 증 명 서` + `계좌유형` ISA/종합 on page 2 | `kr-statements/mirae-<isa\|general>-transactions-<period>[-<발급번호>]` |
+| 미래에셋 잔고증명서 | `잔 고 증 명 서` + a known 계좌번호 | `kr-statements/mirae-<kind>-balance-<기준일자>-<발급번호>` |
+| 토스 거래내역서 | `거래내역서` + `발급번호` + 계좌 `137-…` | `kr-statements/toss-transactions-<period>[-NofM]` |
+| 삼성 주식보상 | `계좌거래내역` + `종합(주식보상)` | `kr-statements/samsung-rsu-transactions-<계좌 last 5>` |
+| Robinhood Crypto 명세서 | first line `Crypto Statement` + `MM-YYYY` | `crypto-robinhood/robinhood-crypto-statement-<YYYYMM>` |
+| Robinhood Gain/Loss | `OPEN LONGS` + `WS Cost Adj`; account and as-of from the PDF **title** | `us-holdings/robinhood-holdings-<acct>-<asof>` |
+| Consolidated 1099 | broker mark + `Form 1099`; Fidelity's also carries the account | `us-tax-documents/<broker>-1099-[<acct>-]<year>` |
+| 빗썸 거래내역확인서 | `거래내역확인서` + `조회기간` | `crypto-bithumb/bithumb-statement-<period>[-partial]` |
+| 빗썸 기간별 거래 내역 | `Bithumb 기간별 거래 내역` + `기간 :` | `crypto-bithumb/bithumb-activity-<period>[-partial]` |
+| Chase CSV | `Account name,Account number,…` vs `Trade Date,Post Date,…` | `us-holdings/` or `us-transactions/` |
+| Fidelity CSV | `Run Date,Action,Symbol,…` + `Date downloaded` footer | `us-transactions/` |
+| Merrill CSV | `Exported on:` + the transactions vs holdings header | `us-holdings/` or `us-transactions/` |
+
+**The period always comes from inside the document.** 미래에셋 prints `제공내역`,
+Toss `조회 기간`, 빗썸 `조회기간` / `기간 :`, Fidelity `Date downloaded`, Merrill
+`Exported on:`, the Robinhood crypto statement its own month, a Gain/Loss report
+its account and as-of date in the PDF title. Those windows are then mapped onto
+the shapes in the table above: 1 Jan–31 Dec is `2025`, several whole years are
+`2022-2023`, a window that starts on 1 January and stops short is the as-of
+`20260716`, anything else is the explicit `20250101-20250430`. `-partial` is
+added only where the export's own window reaches the day it was taken, which is
+the same fact 빗썸's 일부 records.
+
+**Two exports declare no date at all,** and only those two fall back to the
+file's own timestamp — which for something just downloaded into the inbox *is*
+the download time. Chase's CSVs carry row dates and an `As of` column that
+trails the download by a day, and the 빗썸 .xlsx says which window it covers but
+not when it was pulled, which is what decides whether that window is final.
+Every line built on a timestamp says so, so a stale copy dragged in from
+somewhere else is visible rather than silent.
+
+**Four rules, in the order they matter.** *Never guess* — an unidentified file
+stays in the inbox and the run prints what it was and which signals were
+missing, because filing something into the wrong directory under a confident
+name is worse than leaving it alone. *Never overwrite* — a destination that
+exists is compared byte for byte: identical means already filed, different is a
+conflict to report. *Idempotent* — identity is checked by content hash against
+the whole destination directory, not just the target name, so re-filing a
+document already there under a different name is a skip rather than a duplicate
+(the KR extractor reads every `mirae-*` file it finds and would count a
+duplicate twice). *Say what it did* — every move prints `<from> → <to>` with the
+evidence the name was built from.
+
+Nothing in `inbox/` is pushed or read by the pipeline, so a file left there is
+inert rather than lost. An unidentified file therefore never holds up the push:
+the files that were filed travel on schedule and the one that was not waits for
+a person.
+
+Two things it will not do, both deliberate:
+
+- **A Robinhood transactions CSV is reported, not filed.** The export is nine
+  columns of activity with no account column, no header, no footer and no
+  metadata; which of the three strategy accounts it came from exists only in
+  the name someone typed. Those tokens are half the `account` on every
+  Robinhood row in the database, so a wrong one would mislabel real holdings.
+  Name it by hand.
+- **A single part of a split Toss statement cannot be numbered.** Parts share a
+  발급번호 and a 조회 기간 and differ only in their rows, so `-1of3` is a property
+  of the set: drop the whole set in at once and the run numbers it by first
+  transaction date. One part on its own gets the plain name, and if a numbered
+  set is already filed for that period it lands as a conflict rather than
+  quietly replacing it.
+
+**Five files on disk have names this would not reproduce, and the script is the
+one that is right.** The 미래에셋 종합 certificates are all named `20260716`,
+which is the day they were *issued*, not what they cover: `…-5707` holds
+2022/01/01~2023/12/31 and `…-5708` holds 2024/01/01~2025/12/31, and the two
+잔고증명서 are balances as of 2025-09-11 and 2026-01-09. Run against them, the
+filer produces `mirae-general-transactions-2022-2023-5707`,
+`…-2024-2025-5708`, `mirae-general-balance-20250911-5705` and
+`…-20260109-5706` — periods that are the coverage, as the grammar says they
+must be. The files have not been renamed, because nothing reads their period
+today and a rename is a separate change with its own risk; re-filing them
+through the inbox is safe whenever that is done, since the content hash
+recognises them as already present under the old names.
+
 ## The Google Sheets
 
 Three sheets predate the pipeline. All nine tabs across the first two were

@@ -250,7 +250,11 @@ the Toss API each get wrong.
 
 Real source files and generated artifacts are private by default:
 
-- Source exports and PDFs live under `STOCK_DATA_DIR`.
+- Source exports and PDFs live under `STOCK_DATA_DIR`. Drop a fresh download in
+  `$STOCK_DATA_DIR/inbox/` and `make file-downloads` identifies it from its
+  contents, names it to the convention and files it — see
+  [docs/data-sources.md](docs/data-sources.md#where-do-i-put-this--the-inbox).
+  Nothing it cannot identify is moved.
 - The generated SQLite database lives at `STOCK_DB_PATH`.
 - `data/*.json` runtime snapshots are ignored by git.
 - `data/*.example.json` files are synthetic public bootstrapping examples only.
