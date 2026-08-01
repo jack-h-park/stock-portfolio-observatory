@@ -1,9 +1,12 @@
 """Parse Korean brokerage statements into the normalized Korea payload TSVs.
 
-Two brokers, one lot engine. The 미래에셋 거래내역증명서 layout is handled here;
-the Toss 거래내역서 layout is different enough to live in `toss_statements.py`
-and is imported. Both feed the same FIFO walk below, so a transfer OUT of
-미래에셋 and the matching transfer IN to Toss are replayed in one timeline.
+Three brokers, one lot engine. The 미래에셋 거래내역증명서 layout is handled here;
+the Toss 거래내역서 and the 삼성증권 주식보상 거래내역확인서 are different enough
+to live in `toss_statements.py` and `samsung_statements.py` and are imported. All
+three feed the same FIFO walk below, so a transfer OUT of one broker and the
+matching transfer IN to another are replayed in one timeline — which is what lets
+52 삼성전자 shares leave the RSU account and arrive at Toss without either side
+inventing a purchase or a sale.
 
 WHY THIS EXISTS: the Korea side of the portfolio was populated once, by hand, on
 2026-07-15 and never again — the extraction that produced
@@ -45,6 +48,7 @@ from pathlib import Path
 import pdfplumber
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import samsung_statements  # noqa: E402  (needs the path above)
 import toss_statements  # noqa: E402  (needs the path above)
 
 DATA_DIR = Path(os.environ.get("STOCK_DATA_DIR", Path.cwd() / "private-data"))
@@ -67,6 +71,7 @@ STATEMENTS_DIR = DATA_DIR / "kr-statements"
 # are plain ASCII.
 MIRAE_PREFIX = "mirae-"
 TOSS_PREFIX = "toss-"
+SAMSUNG_PREFIX = "samsung-"
 BALANCE_DOCTYPE = "-balance-"
 
 # PDF text, not filenames: pdfplumber returns Hangul in whichever normalisation
@@ -604,6 +609,84 @@ def toss_transactions(statements_dir, snapshot, report):
     return out
 
 
+def samsung_transactions(statements_dir, known_tickers, report):
+    """삼성증권 주식보상 rows in the shared TRANSACTION_COLUMNS shape.
+
+    The statement names its security and never numbers it — there is no 종목번호
+    column at all — so the ticker is resolved by NAME against the statements
+    already parsed, which do carry both. `삼성전자` appears there thousands of
+    times against 005930 and nowhere against anything else.
+
+    Resolved this way rather than from the Toss symbol index on purpose. That
+    index comes from the Open API snapshot, which needs credentials the account
+    owner supplies and an IP allowlist that can stop matching; hanging a Korean
+    dividend's ticker off it would mean this account silently loses its income
+    attribution on exactly the days Toss is unreachable. The other statements are
+    on disk and need nothing.
+
+    An ambiguous name is refused, not guessed. 삼성전자 and 삼성전자우 are one
+    character apart and are different securities with different prices.
+    """
+    pdfs = sorted(statements_dir.glob(f"{SAMSUNG_PREFIX}*.pdf"))
+    if not pdfs:
+        return []
+
+    out = []
+    for pdf_path in pdfs:
+        name = pdf_path.name
+        rows, totals, account = samsung_statements.parse(str(pdf_path), name, PDF_PASSWORD, report)
+        samsung_statements.check_totals(rows, totals, name, report)
+        count = 0
+        for row in rows:
+            mapped = samsung_statements.classify(row["raw_type"])
+            if mapped is None:
+                report("samsung-unmapped-type", f"{row['raw_type']} ({name} p{row['page']})")
+                continue
+
+            ticker = ""
+            if row["name"]:
+                candidates = known_tickers.get(row["name"], set())
+                if len(candidates) == 1:
+                    ticker = next(iter(candidates))
+                else:
+                    report(
+                        "samsung-unresolved-symbol",
+                        f"{row['name']} matched {len(candidates)} ticker(s) in the other statements "
+                        f"({row['raw_type']}, {name} p{row['page']})",
+                    )
+
+            out.append({
+                "Date": row["date"],
+                "Account": account,
+                "Type": mapped,
+                "Raw Type": row["raw_type"],
+                "Ticker": ticker,
+                "Name": row["name"],
+                "Quantity": row["quantity"],
+                "Currency": "KRW",
+                # 0 on a vest and on a transfer — no cash moved — which is what
+                # sends lot_cost() to quantity × 단가, the vest-date price the
+                # statement carries. On a dividend it is the GROSS, matching the
+                # 미래에셋 side where 거래금액 is also pre-withholding.
+                "Native Amount": row["gross"],
+                "FX Rate": "",
+                "Amount (KRW)": row["gross"],
+                "Settlement (KRW)": row["settlement"],
+                "Unit Price": row["unit_price"],
+                "Fee": row["fee"],
+                "Tax": row["tax"],
+                # 잔고수량, the running SHARE count — not 현금잔액 beside it.
+                "Balance": row["share_balance"],
+                "Source": name,
+                "Page": row["page"],
+            })
+            count += 1
+        print(f"[samsung-statement] {name}: {count} transaction(s) → {account}")
+    breaks = check_share_balances(out, report)
+    print(f"[samsung-statement] 잔고수량 continuity: {len(out)} row(s) checked, {breaks} break(s)")
+    return out
+
+
 def main():
     statements_dir = STATEMENTS_DIR
     if not statements_dir.is_dir():
@@ -620,7 +703,7 @@ def main():
     unmapped = {}
     skipped_locked = []
     unconverted = 0
-    toss_problems = {}
+    parser_problems = {}
 
     for pdf_path in pdfs:
         name = pdf_path.name
@@ -688,7 +771,7 @@ def main():
             print(f"[kr-statement] {name}: {count} transaction(s) from {len(pdf.pages)} page(s)")
 
     def report(kind, detail):
-        toss_problems.setdefault(kind, []).append(detail)
+        parser_problems.setdefault(kind, []).append(detail)
 
     toss_snapshot = load_toss_snapshot(report)
     toss_rows = toss_transactions(statements_dir, toss_snapshot, report)
@@ -697,6 +780,32 @@ def main():
     # rule puts it in the income table: the ingest checks that the two counts
     # agree, and a dividend present in one and absent from the other fails it.
     for row in toss_rows:
+        if row["Type"] in ("DIVIDEND", "INTEREST", "OTHER_INCOME"):
+            dividends.append({
+                "Date": row["Date"],
+                "Account": row["Account"],
+                "Symbol": row["Ticker"],
+                "Name": row["Name"],
+                "Currency": row["Currency"],
+                "Native Amount": row["Native Amount"],
+                "FX Rate": row["FX Rate"],
+                "Amount (KRW)": row["Amount (KRW)"],
+                "Type": row["Raw Type"],
+                "Source": row["Source"],
+                "Page": row["Page"],
+            })
+
+    # 삼성증권 last, because it is the one statement with no 종목번호 column and
+    # resolves its security by name against everything parsed above.
+    known_tickers = {}
+    for row in transactions:
+        if row["Name"] and row["Ticker"]:
+            known_tickers.setdefault(row["Name"], set()).add(row["Ticker"])
+    samsung_rows = samsung_transactions(statements_dir, known_tickers, report)
+    transactions.extend(samsung_rows)
+    # Same income rule as the other two brokers; the ingest checks that the
+    # transaction and dividend counts agree.
+    for row in samsung_rows:
         if row["Type"] in ("DIVIDEND", "INTEREST", "OTHER_INCOME"):
             dividends.append({
                 "Date": row["Date"],
@@ -752,12 +861,12 @@ def main():
         print("\nWARNING: unmapped 거래종류 — these rows were dropped:", file=sys.stderr)
         for raw, n in sorted(unmapped.items(), key=lambda kv: -kv[1]):
             print(f"  {n:>5}  {raw}", file=sys.stderr)
-    if toss_problems:
+    if parser_problems:
         # Same principle as the 미래에셋 side: an unmapped 거래구분 or an
         # unresolved symbol is named, because either one is a trade that never
         # reaches the portfolio and neither announces itself downstream.
-        print("\nWARNING: Toss statement issues:", file=sys.stderr)
-        for kind, details in sorted(toss_problems.items()):
+        print("\nWARNING: statement parser issues:", file=sys.stderr)
+        for kind, details in sorted(parser_problems.items()):
             unique = sorted(set(details))
             print(f"  {kind}: {len(details)} row(s), {len(unique)} distinct", file=sys.stderr)
             for detail in unique[:10]:
