@@ -4201,6 +4201,63 @@ check(
   'warning'
 )
 
+// Shares leaving one of these accounts should arrive in another of them, and
+// when they do not, the cost basis they were carrying is somewhere this
+// pipeline cannot see.
+//
+// Found by hand once already, expensively: 22 삼성전자 vested into the RSU
+// account on 2026-07-08 and left it on 2026-07-16, three days after the Toss
+// statement stops covering. The outbound leg was recorded, the inbound leg was
+// not, and nothing asked where the shares went — it surfaced as a live position
+// 22 units larger than its lots, and took a walk through four accounts to
+// explain. This check is that walk, done every refresh.
+//
+// Quantities are consumed rather than matched one to one, because a
+// 타사대체입고 arrives lot by lot: one outbound row for 57 shares becomes four
+// inbound rows carrying each lot's own cost. Requiring equal rows would call
+// every real transfer a break, which is how a check earns its way to being
+// ignored.
+//
+// Only the outbound direction is judged. An arrival with no departure is
+// ordinary — shares come in from institutions this pipeline has never seen —
+// and where it matters, `us_replay_arrivals_carry_cost` already reports the
+// ones that landed without a cost.
+const TRANSFER_PAIR_WINDOW_DAYS = 14
+const transferInPool = transactionRows
+  .filter((r) => r.type === 'TRANSFER_IN' && text(r.ticker) && r.quantity > 0 && r.date)
+  .map((r) => ({ row: r, left: r.quantity }))
+const unpairedTransferOut = []
+for (const out of transactionRows
+  .filter((r) => r.type === 'TRANSFER_OUT' && text(r.ticker) && r.quantity > 0 && r.date)
+  .sort((a, b) => a.date.localeCompare(b.date))) {
+  let need = out.quantity
+  for (const candidate of transferInPool) {
+    if (need <= 1e-9) break
+    const { row, left } = candidate
+    if (left <= 1e-9 || row.ticker !== out.ticker || row.account === out.account) continue
+    const days = Math.abs(Date.parse(row.date) - Date.parse(out.date)) / 86_400_000
+    if (days > TRANSFER_PAIR_WINDOW_DAYS) continue
+    const taken = Math.min(left, need)
+    candidate.left -= taken
+    need -= taken
+  }
+  if (need > 1e-6) {
+    unpairedTransferOut.push(
+      `${out.date} ${out.account} ${out.ticker}: ${out.quantity} left, ${need} never arrived`
+    )
+  }
+}
+check(
+  'transfer_legs_pair_across_accounts',
+  unpairedTransferOut.length === 0,
+  unpairedTransferOut.length === 0
+    ? 'every outbound transfer lands in another account'
+    : `${unpairedTransferOut.length} outbound transfer(s) with no matching arrival within ` +
+      `${TRANSFER_PAIR_WINDOW_DAYS}d — the receiving account's statement is older than the move, ` +
+      `so its lots are short by that much: ${unpairedTransferOut.slice(0, 5).join('; ')}`,
+  'warning'
+)
+
 // A 1099-B line that could not be tied to a recorded sale has no ticker, so it
 // can be totalled but not attributed to a position.
 check(
