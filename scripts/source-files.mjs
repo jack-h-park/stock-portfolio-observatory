@@ -254,8 +254,28 @@ function implausiblePeriod(period, since, now) {
   // The END is what must postdate the account: a complete-year archive legitimately
   // begins before the account was opened, and only its coverage has to overlap.
   if (since && end < since) return `covers ${end}, before this account existed (${since})`
-  if (end > now) return `covers ${end}, which is in the future (today is ${now})`
+  // One day of slack, because the broker's clock is not this machine's. Merrill
+  // stamps `Exported on: 08/01/2026 02:51 AM ET` on a file downloaded while it
+  // was still 31 July here, and the period is read out of the document, so the
+  // name legitimately reads a day ahead. Any US export pulled after the close
+  // from an Asian evening does the same.
+  //
+  // A day is enough to absorb every timezone on earth and nowhere near enough to
+  // hide what this check exists for: `20060716` beside a `20260716` is off by
+  // twenty years, and a period that has genuinely not happened is off by more
+  // than a night.
+  if (end > addDays(now, 1)) return `covers ${end}, which is in the future (today is ${now})`
   return null
+}
+
+/** `YYYYMMDD` shifted by whole days, via UTC so no local offset can round it. */
+function addDays(yyyymmdd, days) {
+  const at = Date.UTC(
+    Number(yyyymmdd.slice(0, 4)),
+    Number(yyyymmdd.slice(4, 6)) - 1,
+    Number(yyyymmdd.slice(6, 8))
+  )
+  return new Date(at + days * 86400000).toISOString().slice(0, 10).replace(/-/g, '')
 }
 
 function mtimeKey(filename) {
