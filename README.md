@@ -203,6 +203,12 @@ Production deployments on a private macOS host can run under launchd on port
 3101. Keep real brokerage exports, generated databases, and runtime JSON files
 outside git or in ignored local files.
 
+There are **three** launchd jobs across **two** machines. The web service below
+and the [scheduled refresh](#scheduled-refresh) run on the host; the
+[source push](#source-push) runs on the laptop where the broker exports land.
+Installing only the host pair leaves the pipeline reading a directory nothing
+delivers to.
+
 **First-time install on the host:**
 
 ```bash
@@ -262,6 +268,46 @@ pnpm refresh
 `pnpm refresh` runs FX fetch, KR price fetch, Toss fetch, Korea certificate extraction, US PDF evidence extraction, US price fetch, crypto activity extraction, crypto price fetch, historical prices, ingest, and history backfill in sequence. Three orderings are deliberate. FX goes first because the ingest converts every native amount with it — a stale rate misstates the portfolio however fresh the prices are. The Korea certificate extract precedes both the ingest and the historical price fetch, because a certificate that adds a holding also needs that holding's price history fetched on the same run. The crypto extract precedes the crypto price fetch because that fetch reads the activity snapshot to learn which symbols are still held. It writes local run history to `data/refresh-runs.json`.
 
 The Toss fetch is the one `optional` step — see the degraded-versus-failed split under [Published summary](#published-summary).
+
+### Source push
+
+Broker exports land on whichever machine held the browser session, and the
+refresh reads them on the host. `scripts/push-sources.sh` bridges the two, on the
+**laptop**, under launchd **hourly**:
+
+```bash
+make install-push-service   # com.jackpark.stock-observatory.push-sources
+make push-status            # state, run count, last exit code
+make push-sources           # run it by hand
+make uninstall-push-service
+```
+
+Configure `STOCK_PROD_HOST` and `STOCK_PROD_DATA_DIR` in `.env.local`; the script
+reads that file itself, because launchd hands it almost no environment and never
+a login shell.
+
+Downloading stays manual — Chase, Merrill and Fidelity all want a browser session
+with MFA. This automates the second step, not the first.
+
+**One way, sources only, allowlisted.** The two sides are not mirrors: sources
+travel host-ward, while `outputs/` and the briefing archive are written on the
+host and never touched. The directory list is an allowlist rather than a set of
+excludes, so a new source folder has to be named to travel — that failure leaves
+a file behind, where the opposite one would copy a stale local database over the
+live one. `rsync --delete` is deliberately absent for the same reason.
+
+A timer rather than `WatchPaths`, which looks like the obvious choice and is not:
+rsync is idempotent, so a pass over an unchanged tree costs seconds, while an
+event fires once and is lost to a sleeping laptop, a dropped network, or a
+half-written download. The timer catches up, and a partial file that slipped
+through is corrected on the next pass.
+
+Skipping this step has already cost real data once: Bithumb statements going back
+to 2024 sat on a laptop for months while the dashboard showed no crypto at all,
+because the extractor was reading a directory that did not have them. The host
+side reports it — `expected_us_source_files_present` and
+`expected_crypto_source_files_present` name the exports that never arrived — but
+those are warnings about a symptom whose cause is on the other machine.
 
 ### Scheduled refresh
 
