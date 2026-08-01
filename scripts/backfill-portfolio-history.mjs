@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3'
 import path from 'node:path'
 import { loadLocalEnv } from './env.mjs'
-import { valuePortfolio } from './portfolio-snapshot.mjs'
+import { snapshotSeriesRows, valuePortfolio } from './portfolio-snapshot.mjs'
 
 loadLocalEnv()
 
@@ -26,6 +26,33 @@ function monthEnds(firstDate, lastDate) {
 }
 
 try {
+  db.exec(`
+    create table if not exists portfolio_snapshot_series (
+      id integer primary key,
+      snapshot_date text not null,
+      captured_at text not null,
+      scope_key text not null,
+      total_cost real not null,
+      priced_cost real not null,
+      market_value real not null,
+      unrealized_gl real not null,
+      return_pct real,
+      cost_coverage real not null,
+      position_coverage real not null,
+      position_count integer not null,
+      priced_position_count integer not null,
+      fx_rate real,
+      fx_as_of_date text,
+      fx_source text,
+      unique(snapshot_date, scope_key)
+    );
+    create index if not exists idx_portfolio_snapshot_series_scope_date
+      on portfolio_snapshot_series(scope_key, snapshot_date);
+  `)
+  const seriesColumnsPresent = new Set(db.prepare('pragma table_info(portfolio_snapshot_series)').all().map((column) => column.name))
+  for (const [column, type] of [['fx_rate', 'real'], ['fx_as_of_date', 'text'], ['fx_source', 'text']]) {
+    if (!seriesColumnsPresent.has(column)) db.exec(`alter table portfolio_snapshot_series add column ${column} ${type}`)
+  }
   const snapshotColumnsPresent = new Set(db.prepare('pragma table_info(portfolio_snapshots)').all().map((column) => column.name))
   for (const column of [
     'priced_base_cost',
@@ -48,14 +75,15 @@ try {
   const currentDate = dateOnly(current?.date)
   if (!firstDate || !currentDate) throw new Error('Cannot determine portfolio history date range.')
 
-  const openLots = db.prepare('select market, account, ticker, acquired_date, currency, open_quantity, native_cost_basis, cost_basis_krw from tax_lots').all()
-  const realizedLots = db.prepare('select market, account, ticker, acquired_date, sold_date, quantity_sold, cost_basis_krw from realized_lots').all()
+  const openLots = db.prepare('select market, brokerage, account, ticker, acquired_date, currency, open_quantity, native_cost_basis, cost_basis_krw from tax_lots').all()
+  const realizedLots = db.prepare('select market, brokerage, account, ticker, acquired_date, sold_date, quantity_sold, cost_basis_krw from realized_lots').all()
   const dividends = db.prepare('select date, currency, native_amount from dividends').all()
   const historicalPrices = db.prepare('select market, ticker, currency, price_date, close from historical_prices order by market, ticker, price_date').all()
-  const historicalFxRates = db.prepare('select price_date, rate from historical_fx_rates order by price_date').all()
+  const historicalFxRates = db.prepare('select price_date, rate, source from historical_fx_rates order by price_date').all()
+  const currentFx = db.prepare("select rate, as_of_date as asOfDate, source from fx_rates where from_currency = 'USD' and to_currency = 'KRW' order by as_of_date desc limit 1").get()
   const dates = monthEnds(firstDate, currentDate)
   const currentPositions = db
-    .prepare('select market, base_cost as cost, base_market_value as marketValue from holdings where quantity != 0')
+    .prepare('select market, brokerage, account, base_cost as cost, base_market_value as marketValue from holdings where quantity != 0')
     .all()
 
   const pricesByTicker = new Map()
@@ -77,14 +105,19 @@ try {
     return result
   }
 
-  function fxRate(date) {
-    if (fxByDate.has(date)) return fxByDate.get(date)
+  function fxSnapshot(date) {
+    if (fxByDate.has(date)) {
+      const row = historicalFxRates.find((item) => item.price_date === date)
+      return { rate: fxByDate.get(date), asOfDate: date, source: row?.source ?? 'Historical FX' }
+    }
     let result = null
     for (const row of historicalFxRates) {
       if (row.price_date > date) break
-      result = Number(row.rate)
+      result = row
     }
-    return result ?? latestFx
+    return result
+      ? { rate: Number(result.rate), asOfDate: result.price_date, source: result.source }
+      : latestFx == null ? null : { rate: latestFx, asOfDate: historicalFxRates.at(-1)?.price_date, source: historicalFxRates.at(-1)?.source }
   }
 
   function positionsAt(date) {
@@ -93,7 +126,7 @@ try {
       const acquiredDate = dateOnly(lot.acquired_date)
       if (!acquiredDate || acquiredDate > date) continue
       const key = `${lot.market}\t${lot.account}\t${lot.ticker}`
-      const position = positions.get(key) ?? { quantity: 0, cost: 0 }
+      const position = positions.get(key) ?? { market: lot.market, brokerage: lot.brokerage, account: lot.account, quantity: 0, cost: 0 }
       position.quantity += Number(lot.open_quantity || 0)
       position.cost += Number(lot.cost_basis_krw || 0)
       positions.set(key, position)
@@ -102,7 +135,7 @@ try {
       const acquiredDate = dateOnly(lot.acquired_date)
       if (!acquiredDate || acquiredDate > date || (lot.sold_date && dateOnly(lot.sold_date) <= date)) continue
       const key = `${lot.market}\t${lot.account}\t${lot.ticker}`
-      const position = positions.get(key) ?? { quantity: 0, cost: 0 }
+      const position = positions.get(key) ?? { market: lot.market, brokerage: lot.brokerage, account: lot.account, quantity: 0, cost: 0 }
       position.quantity += Number(lot.quantity_sold || 0)
       position.cost += Number(lot.cost_basis_krw || 0)
       positions.set(key, position)
@@ -130,9 +163,25 @@ try {
     insert or replace into portfolio_snapshots (${snapshotColumns.join(', ')})
     values (${snapshotColumns.map(() => '?').join(', ')})
   `)
+  const seriesColumns = [
+    'snapshot_date', 'captured_at', 'scope_key', 'total_cost', 'priced_cost',
+    'market_value', 'unrealized_gl', 'return_pct', 'cost_coverage',
+    'position_coverage', 'position_count', 'priced_position_count',
+    'fx_rate', 'fx_as_of_date', 'fx_source',
+  ]
+  const insertSeries = db.prepare(`
+    insert or replace into portfolio_snapshot_series (${seriesColumns.join(', ')})
+    values (${seriesColumns.map(() => '?').join(', ')})
+  `)
+  const writeSeries = (snapshotDate, capturedAt, valuation, fx) => {
+    for (const row of snapshotSeriesRows(snapshotDate, capturedAt, valuation, fx)) {
+      insertSeries.run(seriesColumns.map((column) => row[column]))
+    }
+  }
 
   const rebuild = db.transaction(() => {
     db.prepare('delete from portfolio_snapshots where snapshot_date < ?').run(currentDate)
+    db.prepare('delete from portfolio_snapshot_series where snapshot_date <= ?').run(currentDate)
     for (const date of dates) {
       const activeOpenLots = openLots.filter((lot) => dateOnly(lot.acquired_date) && dateOnly(lot.acquired_date) <= date)
       const activeRealizedLots = realizedLots.filter(
@@ -155,9 +204,12 @@ try {
         // Quote currency, not the account's market, decides whether FX applies.
         // A US security held in a Korean account is stored under market=KR so its
         // lots stay with that account, while its historical quote is still USD.
-        const rate = price?.currency === 'KRW' ? 1 : fxRate(date)
+        const fx = fxSnapshot(date)
+        const rate = price?.currency === 'KRW' ? 1 : fx?.rate
         valuationPositions.push({
           market,
+          account: rawPosition.account,
+          brokerage: rawPosition.brokerage,
           cost: rawPosition.cost,
           marketValue: price != null && rate != null ? quantity * Number(price.close) * rate : null,
         })
@@ -175,6 +227,7 @@ try {
         valuation.KR.returnPct, valuation.US.returnPct, valuation.CRYPTO.returnPct,
         krwCost, usdCost, dividendsKrw, dividendsUsd, valuation.global.positionCount, shareCount
       )
+      writeSeries(date, `${date}T23:59:59.000Z`, valuation, fxSnapshot(date))
     }
     // A standalone backfill may be the first command run against an older DB.
     // Upgrade its preserved current row too; the normal production refresh has
@@ -205,6 +258,10 @@ try {
       currentValuation.US.returnPct, currentValuation.CRYPTO.returnPct,
       currentValuation.global.positionCount, currentDate
     )
+    const currentCapturedAt = db.prepare('select captured_at from portfolio_snapshots where snapshot_date = ?').get(currentDate)?.captured_at
+      ?? `${currentDate}T23:59:59.000Z`
+    writeSeries(currentDate, currentCapturedAt, currentValuation, currentFx)
+    db.prepare("insert or replace into meta (key, value) values ('portfolio_snapshot_version', '4')").run()
   })
   rebuild()
   console.log(`Backfilled ${dates.length} monthly portfolio snapshot(s) from ${firstDate} to ${currentDate}.`)

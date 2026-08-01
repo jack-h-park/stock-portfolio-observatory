@@ -12,8 +12,9 @@ loadLocalEnv()
 // understated by ~13% while the dashboard looked fine — /health flagged it as
 // stale, but a number nobody edits stays stale.
 //
-// Same provider and shape as the price snapshots, so all three age together and
-// one stale check covers them.
+// Use the same daily reference-rate provider as historical-fx-rates.json. This
+// prevents the latest trend point from switching from a Frankfurter close to a
+// separately timed Yahoo spot quote solely because it is the current snapshot.
 
 const outPath = process.env.STOCK_FX_RATES_PATH || path.join(process.cwd(), 'data/fx-rates.json')
 const baseCurrency = process.env.STOCK_BASE_CURRENCY || 'KRW'
@@ -23,41 +24,24 @@ const quoteCurrencies = (process.env.STOCK_FX_CURRENCIES || 'USD')
   .map((c) => c.trim().toUpperCase())
   .filter(Boolean)
 
-const SOURCE = 'Yahoo Finance chart API'
-const SOURCE_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=5d&interval=1d'
-
-/**
- * Yahoo quotes USD/KRW as the bare `KRW=X`; every other pair is `<FROM><TO>=X`.
- */
-function fxSymbol(from, to) {
-  return from === 'USD' ? `${to}=X` : `${from}${to}=X`
-}
-
-function isoDateFromSeconds(seconds) {
-  if (!seconds) return ''
-  return new Date(seconds * 1000).toISOString().slice(0, 10)
-}
+const SOURCE = 'Frankfurter API'
+const SOURCE_URL = 'https://api.frankfurter.app/latest?from={from}&to={to}'
 
 async function fetchRate(from, to) {
-  const symbol = fxSymbol(from, to)
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d`
+  const url = SOURCE_URL.replace('{from}', from).replace('{to}', to)
   const res = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0' } })
   if (!res.ok) return null
   const json = await res.json()
-  const meta = json.chart?.result?.[0]?.meta
-  const rate = Number(meta?.regularMarketPrice)
-  if (!meta || !Number.isFinite(rate) || rate <= 0) return null
-  // The response must actually be priced in the currency we asked for —
-  // a wrong-but-plausible rate silently misstates the whole portfolio.
-  if (meta.currency && meta.currency.toUpperCase() !== to) return null
+  const rate = Number(json?.rates?.[to])
+  if (String(json?.base || '').toUpperCase() !== from || !Number.isFinite(rate) || rate <= 0) return null
   return {
     from,
     to,
     rate: Math.round(rate * 100) / 100,
-    asOfDate: isoDateFromSeconds(meta.regularMarketTime),
+    asOfDate: String(json.date || ''),
     source: SOURCE,
-    sourceUrl: SOURCE_URL.replace('{symbol}', symbol),
-    note: `${from}/${to} spot (${symbol}). Same provider as the price snapshots.`,
+    sourceUrl: url,
+    note: `${from}/${to} daily reference rate. Same provider as the historical trend FX series.`,
   }
 }
 
