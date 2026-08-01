@@ -2182,6 +2182,7 @@ const US_LONG_TERM_DAYS = 365
 const usRealizedRows = []
 const usReplayNotes = []
 let usReplayMismatches = []
+let usReplayAsOfSkew = []
 // Robinhood's holdings can come from the MCP snapshot, which answers live,
 // while the replay is only ever as current as the last downloaded transaction
 // CSV. A trade the CSV has not caught up to yet is not a wrong replay — it is
@@ -2439,11 +2440,52 @@ function usHoldingDays(from, to) {
     const total = lots.reduce((sum, lot) => sum + lot.qty, 0)
     if (total > 1e-9) usReplayQty.set(key, total)
   }
+  // A holdings export is a photograph, and the transactions run past it. Chase
+  // stamped its 2026-07-31 tax-lot file as of 07-30 and a 5-share AAPL buy
+  // settled on the 31st, so the replay held 47 against the file's 42 — both
+  // correct, a day apart. Left undistinguished, that reads exactly like a
+  // basis error, and the only way to tell was to open the account and count.
+  //
+  // So the arithmetic that settles it is done here instead: net the movements
+  // dated after the snapshot and see whether they are the whole difference.
+  // What remains is what the clock cannot explain.
+  const brokerageAsOf = new Map()
+  for (const h of holdingRows) {
+    if (h.market !== 'US' || !h.as_of_date) continue
+    const seen = brokerageAsOf.get(h.brokerage)
+    if (!seen || h.as_of_date > seen) brokerageAsOf.set(h.brokerage, h.as_of_date)
+  }
+  const OPENS = new Set(['BUY', 'REINVEST', 'TRANSFER_IN', 'STOCK_SPLIT'])
+  const CLOSES = new Set(['SELL', 'TRANSFER_OUT'])
+  const postSnapshotNet = new Map()
+  for (const r of rows) {
+    const asOf = brokerageAsOf.get(r.brokerage)
+    if (!asOf || !r.date || r.date <= asOf) continue
+    const ticker = text(r.ticker)
+    if (!ticker) continue
+    const qty = number(r.quantity) ?? 0
+    const signed = OPENS.has(r.type) ? qty : CLOSES.has(r.type) ? -qty : 0
+    if (!signed) continue
+    const key = `${r.brokerage}|${ticker}`
+    postSnapshotNet.set(key, (postSnapshotNet.get(key) ?? 0) + signed)
+  }
+
   for (const key of new Set([...usReplayQty.keys(), ...usHoldingQty.keys()])) {
     if (!reconcilableBrokerages.has(key.split('|')[0])) continue
     const replayed = usReplayQty.get(key) ?? 0
     const held = usHoldingQty.get(key) ?? 0
     if (Math.abs(replayed - held) > 1e-3) {
+      const since = postSnapshotNet.get(key) ?? 0
+      const asOf = brokerageAsOf.get(key.split('|')[0])
+      // Explained only when the post-snapshot movement accounts for the gap in
+      // full. A partial match is still a discrepancy — it just has a plausible
+      // story attached, which is the shape a real error would also wear.
+      if (Math.abs(replayed - held - since) <= 1e-3) {
+        usReplayAsOfSkew.push(
+          `${key.replace('|', ' ')}: ${usRound(since, 4)} traded after the ${asOf} snapshot`
+        )
+        continue
+      }
       const entry = `${key.replace('|', ' ')}: replay ${usRound(replayed, 4)} vs holdings ${usRound(held, 4)}`
       if (key.startsWith('Robinhood|') && robinhoodSnapshotLotCount > 0) robinhoodReplayMismatches.push(entry)
       else usReplayMismatches.push(entry)
@@ -2454,7 +2496,7 @@ function usHoldingDays(from, to) {
   ).size
   console.error(
     `[us-realized] replayed ${usRealizedRows.length} realized lot(s) from ${rows.length} US transaction(s); ` +
-      `${usReplayMismatches.length} position(s) disagree with holdings, ${robinhoodReplayMismatches.length} more Robinhood-only (see robinhood_holdings_replay_provenance); ${usReplayNotes.length} note(s)`
+      `${usReplayMismatches.length} position(s) disagree with holdings, ${usReplayAsOfSkew.length} explained by post-snapshot trades, ${robinhoodReplayMismatches.length} more Robinhood-only (see robinhood_holdings_replay_provenance); ${usReplayNotes.length} note(s)`
   )
   for (const note of usReplayNotes.slice(0, 20)) console.error(`[us-realized]   ${note}`)
 }
@@ -3811,10 +3853,12 @@ check(
   usReplayReconcilableCount === 0
     ? 'no US holdings to reconcile the replay against'
     : usReplayMismatches.length === 0
-      ? `all ${usReplayReconcilableCount} replayed US position(s) match holdings`
+      ? `all ${usReplayReconcilableCount} replayed US position(s) match holdings` +
+        (usReplayAsOfSkew.length ? ` (${usReplayAsOfSkew.length} after allowing for trades since the snapshot: ${usReplayAsOfSkew.slice(0, 3).join('; ')})` : '')
       : `${usReplayMismatches.length} of ${usReplayReconcilableCount} position(s) disagree: ${usReplayMismatches
           .slice(0, 5)
-          .join('; ')}`,
+          .join('; ')}` +
+        (usReplayAsOfSkew.length ? `; ${usReplayAsOfSkew.length} more explained by trades since the snapshot` : ''),
   'warning'
 )
 
