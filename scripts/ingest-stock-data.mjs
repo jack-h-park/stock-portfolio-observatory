@@ -541,6 +541,24 @@ const krAsOfPath = path.join(krStatementsDir, 'as-of.json')
 const krAsOfByAccount = fs.existsSync(krAsOfPath)
   ? JSON.parse(fs.readFileSync(krAsOfPath, 'utf8'))?.accounts ?? {}
   : {}
+
+// What the statement parser could not handle, written beside the TSVs.
+//
+// Read here because a row the parser drops never reaches a TSV, and every check
+// in this file works on rows that did. `transaction_types_mapped` counts
+// unmapped rows among the ones it was handed — these are the ones it was not
+// handed, so it passes while the transaction is gone. That is not hypothetical:
+// the refresh printed `unmapped-type: 신주인수권증서출고`, dropped the row that
+// closes a 신주인수권 lot, and reported every check passing.
+//
+// stderr is where findings go to die. This is the same findings, as data.
+const krExtractReportPath = path.join(krStatementsDir, 'extract-report.json')
+const krExtractReport = fs.existsSync(krExtractReportPath)
+  ? JSON.parse(fs.readFileSync(krExtractReportPath, 'utf8'))
+  : null
+const krExtractFindings = krExtractReport?.findings ?? []
+const krDroppedRowFindings = krExtractFindings.filter((f) => f.drops_rows && f.rows > 0)
+const krKeptRowFindings = krExtractFindings.filter((f) => !f.drops_rows && f.rows > 0)
 if (statementAccounts.size) {
   for (const [name, parsed] of Object.entries(krStatements)) {
     if (!parsed) continue
@@ -3923,6 +3941,46 @@ check('taxlots_required_fields', invalidLots.length === 0, `${invalidLots.length
 check('transactions_required_fields', invalidTransactions.length === 0, `${invalidTransactions.length} invalid transaction row(s)`)
 check('dividends_required_fields', invalidDividends.length === 0, `${invalidDividends.length} invalid dividend row(s)`)
 check('transaction_types_mapped', unmappedTypes.length === 0, `${unmappedTypes.length} unmapped transaction type row(s)`, 'warning')
+
+// The other half of that question, asked of the rows this file never received.
+// A dropped row is worse than an unmapped one: unmapped is a row whose meaning
+// is unknown, dropped is a transaction the portfolio has no idea happened, and
+// only the parser knows. Severity is deliberately the same as its in-band twin
+// above — a new Korean word must not stop a refresh — but it is now a check that
+// fails rather than a line in a log that scrolled past.
+check(
+  'kr_statement_rows_all_reach_the_ingest',
+  krDroppedRowFindings.length === 0,
+  krExtractReport == null
+    ? 'no statement extract report — run extract:kr-statements'
+    : krDroppedRowFindings.length === 0
+      ? 'the statement parser dropped no rows'
+      : `${krDroppedRowFindings.reduce((n, f) => n + f.rows, 0)} row(s) dropped before reaching the ingest: ` +
+        krDroppedRowFindings.map((f) => `${f.kind} — ${f.samples.slice(0, 3).join(', ')}`).join('; '),
+  'warning'
+)
+
+// Findings that kept their row. Named separately so they cannot dilute the one
+// above: an ISIN that stayed its own ticker is a note, and 2,211 of them must
+// not read as the same kind of event as one lost transaction.
+check(
+  'kr_statement_parse_notes',
+  krKeptRowFindings.length === 0,
+  krKeptRowFindings.length === 0
+    ? 'the statement parser reported nothing it had to work around'
+    : krKeptRowFindings.map((f) => `${f.kind}: ${f.rows} row(s), ${f.distinct} distinct`).join('; '),
+  'warning'
+)
+
+// Locked statements are neither: the file was never opened, so its rows are
+// absent without even a finding to describe them.
+check(
+  'kr_statements_all_opened',
+  (krExtractReport?.lockedStatements ?? []).length === 0,
+  (krExtractReport?.lockedStatements ?? []).length === 0
+    ? 'every statement opened'
+    : `${krExtractReport.lockedStatements.length} statement(s) could not be opened (set STOCK_PDF_PASSWORD): ${krExtractReport.lockedStatements.join(', ')}`
+)
 check('fx_rates_available_for_non_base_holdings', missingFxHoldings.length === 0, `${missingFxHoldings.length} holding row(s) missing FX/base cost`)
 check('kr_prices_available_for_unrealized_gl', missingKrPrices.length === 0, `${missingKrPrices.length} KR holding row(s) missing current price`, 'warning')
 check('us_prices_available_for_unrealized_gl', missingUsPrices.length === 0, `${missingUsPrices.length} US holding row(s) missing market value`, 'warning')

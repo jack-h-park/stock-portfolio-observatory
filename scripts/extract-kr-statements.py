@@ -243,6 +243,12 @@ def statement_coverage(path, report):
     with pdf:
         text = pdf.pages[0].extract_text() if pdf.pages else ""
     start, end = coverage_period(text)
+    # A 잔고증명서 states a position at an instant, not activity over a period,
+    # so having no 조회기간 is what it IS rather than something missing from it.
+    # Reporting it would put a finding on every run that no download can clear,
+    # and a permanent warning is one people learn to scroll past.
+    if end is None and BALANCE_DOCTYPE in path.name:
+        return start, end
     if end is None:
         # Not fatal — the account simply falls back to its last transaction,
         # which is the old behaviour. Named because that fallback UNDERSTATES
@@ -251,6 +257,11 @@ def statement_coverage(path, report):
         report("no-coverage-period", f"{path.name}: page 1 declares no 조회기간 — falling back to its last transaction date")
     return start, end
 
+
+# Finding kinds that mean a row was DROPPED rather than kept with a note. The
+# distinction is the whole point of the report file: an unresolved ISIN still
+# produces a transaction, an unmapped 거래종류 produces nothing at all.
+DROPPING_KINDS = {"unmapped-type", "samsung-unmapped-type", "mirae-unmapped-type"}
 
 PART_SUFFIX_RE = re.compile(r"-\d+of\d+$")
 TRAILING_NUMBER_RE = re.compile(r"-\d+$")
@@ -1116,6 +1127,46 @@ def main():
                 print(f"      {detail}", file=sys.stderr)
             if len(unique) > 10:
                 print(f"      … and {len(unique) - 10} more", file=sys.stderr)
+
+    # Everything above went to stderr, and stderr is where findings go to die.
+    #
+    # A row this parser cannot map is DROPPED — it never reaches a TSV — so the
+    # ingest's own `transaction_types_mapped` cannot see it either: that check
+    # counts unmapped rows among the rows it was given, and these are the rows it
+    # was not given. The refresh printed `unmapped-type: 신주인수권증서출고` and
+    # went on to report every check passing, while a 신주인수권 lapse silently
+    # failed to close its lot. The pipeline dropped a transaction and nothing
+    # failed.
+    #
+    # So the findings are written down as data, and ingest-stock-data.mjs turns
+    # them into named checks like everything else. `drops_rows` is the part that
+    # matters: an unresolved ISIN keeps its row and is a note, an unmapped type
+    # loses one and is a fault.
+    findings = []
+    for kind, details in sorted(parser_problems.items()):
+        unique = sorted(set(details))
+        findings.append({
+            "kind": kind,
+            "rows": len(details),
+            "distinct": len(unique),
+            "drops_rows": kind in DROPPING_KINDS,
+            "samples": unique[:10],
+        })
+    if unmapped:
+        findings.append({
+            "kind": "mirae-unmapped-type",
+            "rows": sum(unmapped.values()),
+            "distinct": len(unmapped),
+            "drops_rows": True,
+            "samples": [f"{raw} ({n} row(s))" for raw, n in sorted(unmapped.items(), key=lambda kv: -kv[1])[:10]],
+        })
+    report_path = OUT_DIR / "extract-report.json"
+    report_path.write_text(json.dumps({
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "findings": findings,
+        "lockedStatements": sorted(skipped_locked),
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"[kr-statements] wrote {report_path}: {len(findings)} finding kind(s)")
     return 0
 
 
