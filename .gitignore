@@ -37,6 +37,8 @@ data/historical-prices.json
 data/kr-statements/
 # Live broker snapshot: positions, order history, amounts. Never commit.
 data/toss-snapshot.json
+# Live broker snapshot: every open Robinhood lot, with cost basis. Never commit.
+data/robinhood-snapshot.json
 *.db
 *.sqlite
 *.sqlite3
