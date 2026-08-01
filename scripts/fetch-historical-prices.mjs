@@ -8,9 +8,12 @@ loadLocalEnv()
 const dbPath = process.env.STOCK_DB_PATH || path.join(process.cwd(), 'private-data/outputs/stock-portfolio-observatory/stock-portfolio-observatory.db')
 const pricesPath = process.env.STOCK_HISTORICAL_PRICES_PATH || path.join(process.cwd(), 'data/historical-prices.json')
 const fxPath = process.env.STOCK_HISTORICAL_FX_RATES_PATH || path.join(process.cwd(), 'data/historical-fx-rates.json')
+const manualMappingsPath = process.env.STOCK_MANUAL_MAPPINGS_PATH || path.join(process.cwd(), 'data/manual-mappings.json')
+const tossSnapshotPath = process.env.STOCK_TOSS_SNAPSHOT_PATH || path.join(process.cwd(), 'data/toss-snapshot.json')
 if (!process.env.FORCE_HISTORICAL_PRICES && fs.existsSync(pricesPath)) {
   const ageMs = Date.now() - fs.statSync(pricesPath).mtimeMs
-  if (ageMs < 20 * 60 * 60 * 1000) {
+  const existing = JSON.parse(fs.readFileSync(pricesPath, 'utf8'))
+  if (ageMs < 20 * 60 * 60 * 1000 && Number(existing.valuationVersion || 0) >= 2) {
     console.log(`Historical prices are current (${Math.round(ageMs / 3600000)}h old); skipping full refetch.`)
     process.exit(0)
   }
@@ -60,7 +63,7 @@ function rowsFromYahoo(result, market, ticker, symbol) {
     .filter((row) => Number.isFinite(row.close) && row.close > 0)
 }
 
-async function fetchTicker(ticker, market, startDate, endDate) {
+async function fetchTicker(ticker, market, quoteMarket, quoteTicker, startDate, endDate) {
   const start = Math.floor(Date.parse(`${startDate}T00:00:00Z`) / 1000)
   const end = Math.floor(Date.parse(`${endDate}T00:00:00Z`) / 1000)
   // Crypto history is fetched in USD for every venue, including the KRW one.
@@ -73,14 +76,14 @@ async function fetchTicker(ticker, market, startDate, endDate) {
   // and a premium-sized error on a trend chart is a fair trade for one that
   // starts at the beginning.
   const symbols =
-    market === 'KR' ? [`${ticker}.KS`, `${ticker}.KQ`] : market === 'CRYPTO' ? [`${ticker}-USD`] : [yahooSymbol(ticker)]
+    quoteMarket === 'KR' ? [`${quoteTicker}.KS`, `${quoteTicker}.KQ`] : quoteMarket === 'CRYPTO' ? [`${quoteTicker}-USD`] : [yahooSymbol(quoteTicker)]
   for (const symbol of symbols) {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${start}&period2=${end}&interval=1d&events=history`
     const payload = await fetchJson(url)
     const result = payload?.chart?.result?.[0]
     if (!result) continue
     const rows = rowsFromYahoo(result, market, ticker, symbol)
-    if (rows.length > 0 && (market !== 'KR' || result.meta?.currency === 'KRW')) return rows
+    if (rows.length > 0 && (quoteMarket !== 'KR' || result.meta?.currency === 'KRW')) return rows
   }
   return []
 }
@@ -88,26 +91,50 @@ async function fetchTicker(ticker, market, startDate, endDate) {
 try {
   const transactions = db.prepare('select market, ticker, min(date) as first_date, max(date) as last_date from transactions where ticker is not null and ticker != \'\' group by market, ticker order by market, ticker').all()
   const holdings = db.prepare('select distinct market, ticker from holdings where ticker is not null and ticker != \'\'').all()
-  // A Korean ACCOUNT is not a Korean SECURITY. The 주식종합 certificates brought
-  // US equities and foreign bonds into the ledger under market='KR' — the market
-  // of the account that held them — and this fetcher only knows how to ask Yahoo
-  // for `<ticker>.KS` / `.KQ`. It asked for `NVDA.KS` and `US912810SN90.KS`,
-  // found nothing, counted 33 misses and failed the step, which stopped the
-  // ingest and left the whole refresh short.
-  //
-  // A KRX code is six characters of digits and uppercase letters (005930, and
-  // ETFs like 0047R0). US tickers are one to five letters, and an ISIN is twelve
-  // — so length alone separates them, without a list to keep up to date.
+  const currentHoldingKeys = new Set(holdings.map((row) => `${row.market}:${row.ticker}`))
+  // Account market and quote market are different dimensions. Korean statements
+  // contain US securities; keep their stored market/account identity but fetch
+  // the quote as USD and let the backfill apply historical FX from its currency.
   const isKrxCode = (ticker) => /^[0-9A-Z]{6}$/.test(String(ticker).toUpperCase());
+  const isUsTicker = (ticker) => /^[A-Z][A-Z.]{0,4}$/.test(String(ticker).toUpperCase())
+  const mappings = fs.existsSync(manualMappingsPath) ? JSON.parse(fs.readFileSync(manualMappingsPath, 'utf8')) : {}
+  const aliases = new Map(
+    (mappings.instrumentAliases ?? []).map((item) => [String(item.from ?? '').toUpperCase(), {
+      ticker: String(item.to ?? ''),
+      market: String(item.quoteMarket ?? 'US').toUpperCase(),
+    }])
+  )
+  if (fs.existsSync(tossSnapshotPath)) {
+    const toss = JSON.parse(fs.readFileSync(tossSnapshotPath, 'utf8'))
+    for (const account of toss.accounts ?? []) {
+      for (const security of account.securities ?? []) {
+        if (security.isinCode && security.symbol) {
+          aliases.set(String(security.isinCode).toUpperCase(), {
+            ticker: String(security.symbol),
+            market: isKrxCode(security.symbol) ? 'KR' : 'US',
+          })
+        }
+      }
+    }
+  }
   const skipped = [];
   const tickerMap = new Map(
     [...transactions, ...holdings]
       .filter((row) => String(row.ticker).toUpperCase() !== 'QACDS')
-      .filter((row) => {
-        if (String(row.market) !== 'KR' || isKrxCode(row.ticker)) return true
-        skipped.push(String(row.ticker))
-        return false
+      .map((row) => {
+        const ticker = String(row.ticker)
+        const alias = aliases.get(ticker.toUpperCase())
+        const quote = alias ?? (row.market !== 'KR'
+          ? { ticker, market: row.market }
+          : isKrxCode(ticker)
+            ? { ticker, market: 'KR' }
+            : isUsTicker(ticker)
+              ? { ticker, market: 'US' }
+              : null)
+        if (!quote) skipped.push(ticker)
+        return quote ? { ...row, quoteTicker: quote.ticker, quoteMarket: quote.market } : null
       })
+      .filter(Boolean)
       .map((row) => [`${row.market}:${row.ticker}`, row])
   )
   if (skipped.length) {
@@ -115,7 +142,7 @@ try {
     // never carry, and a reader counting rows should know why they are absent.
     console.error(
       `[historical] skipping ${new Set(skipped).size} non-KRX instrument(s) held in Korean accounts ` +
-      `(no KRX quote exists for them): ${[...new Set(skipped)].sort().join(', ')}`
+      `(no quote alias exists for them): ${[...new Set(skipped)].sort().join(', ')}`
     )
   }
   const firstDate = dateOnly(transactions.reduce((min, row) => (!min || row.first_date < min ? row.first_date : min), ''))
@@ -125,9 +152,9 @@ try {
   const entries = [...tickerMap.values()]
   for (let index = 0; index < entries.length; index += 1) {
     const row = entries[index]
-    const result = await fetchTicker(String(row.ticker), String(row.market), firstDate, endDate)
+    const result = await fetchTicker(String(row.ticker), String(row.market), String(row.quoteMarket), String(row.quoteTicker), firstDate, endDate)
     if (result.length === 0) {
-      missing.push({ market: row.market, ticker: row.ticker })
+      missing.push({ market: row.market, ticker: row.ticker, currentHolding: currentHoldingKeys.has(`${row.market}:${row.ticker}`) })
       console.warn(`Historical price missing: ${row.market} ${row.ticker}`)
     } else {
       prices.push(...result)
@@ -141,12 +168,19 @@ try {
     .map(([price_date, values]) => ({ price_date, rate: Number(values.KRW), source: 'Frankfurter API' }))
     .filter((row) => Number.isFinite(row.rate) && row.rate > 0)
 
-  fs.mkdirSync(path.dirname(pricesPath), { recursive: true })
-  fs.writeFileSync(pricesPath, `${JSON.stringify({ generatedAt: new Date().toISOString(), startDate: firstDate, endDate, prices, missing }, null, 2)}\n`)
-  fs.writeFileSync(fxPath, `${JSON.stringify({ generatedAt: new Date().toISOString(), startDate: firstDate, endDate, rates: fxRates }, null, 2)}\n`)
-  console.log(`Wrote ${pricesPath}: ${prices.length} historical price rows, ${missing.length} missing tickers`)
-  console.log(`Wrote ${fxPath}: ${fxRates.length} historical FX rows`)
-  if (missing.length > 0) process.exitCode = 1
+  const missingCurrentHoldings = missing.filter((row) => row.currentHolding)
+  if (missingCurrentHoldings.length > 0 || fxRates.length === 0) {
+    console.error(
+      `Historical refresh incomplete (${missingCurrentHoldings.length} current holding price miss(es), ${fxRates.length} FX row(s)); preserving the previous complete snapshot.`
+    )
+    process.exitCode = 1
+  } else {
+    fs.mkdirSync(path.dirname(pricesPath), { recursive: true })
+    fs.writeFileSync(pricesPath, `${JSON.stringify({ valuationVersion: 2, generatedAt: new Date().toISOString(), startDate: firstDate, endDate, prices, missing }, null, 2)}\n`)
+    fs.writeFileSync(fxPath, `${JSON.stringify({ generatedAt: new Date().toISOString(), startDate: firstDate, endDate, rates: fxRates }, null, 2)}\n`)
+    console.log(`Wrote ${pricesPath}: ${prices.length} historical price rows, ${missing.length} missing tickers`)
+    console.log(`Wrote ${fxPath}: ${fxRates.length} historical FX rows`)
+  }
 } finally {
   db.close()
 }

@@ -3,9 +3,13 @@ import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
 import { loadLocalEnv } from './env.mjs'
+import { portfolioDate, valuePortfolio } from './portfolio-snapshot.mjs'
 import { resolveCryptoFiles, resolveUsHoldingFiles, resolveUsTransactionFiles } from './source-files.mjs'
 
 loadLocalEnv()
+
+const now = new Date().toISOString()
+const snapshotDate = portfolioDate(new Date(now))
 
 const dataDir = process.env.STOCK_DATA_DIR || path.join(process.cwd(), 'private-data')
 const payloadDir = path.join(dataDir, '.codex_sheet_payloads')
@@ -763,6 +767,11 @@ create table portfolio_snapshots (
   global_base_unrealized_gl real,
   global_base_return_pct real,
   market_value_coverage real,
+  priced_base_cost real,
+  position_coverage real,
+  kr_market_value_coverage real,
+  us_market_value_coverage real,
+  crypto_market_value_coverage real,
   kr_market_value real,
   us_market_value_base real,
   crypto_market_value_base real,
@@ -808,7 +817,6 @@ create table historical_fx_rates (
 );
 `)
 
-const now = new Date().toISOString()
 db.prepare('insert into meta (key, value) values (?, ?)').run('ingested_at', now)
 db.prepare('insert into meta (key, value) values (?, ?)').run('data_dir', dataDir)
 db.prepare('insert into meta (key, value) values (?, ?)').run('payload_dir', payloadDir)
@@ -823,8 +831,13 @@ db.prepare('insert into meta (key, value) values (?, ?)').run('crypto_activity_p
 db.prepare('insert into meta (key, value) values (?, ?)').run('crypto_prices_path', cryptoPricesPath)
 db.prepare('insert into meta (key, value) values (?, ?)').run('manual_mappings_path', manualMappingsPath)
 db.prepare('insert into meta (key, value) values (?, ?)').run('refresh_runs_path', refreshRunsPath)
+db.prepare('insert into meta (key, value) values (?, ?)').run('portfolio_snapshot_version', '2')
 
-insertMany(db, 'portfolio_snapshots', previousPortfolioSnapshots, [
+// Drop today's prior observation and any UTC-dated "tomorrow" row from the old
+// implementation. On the iMac, a refresh after 17:00 Pacific used to write the
+// next UTC date; preserving it would leave a stale future row ahead of the new
+// portfolio-local snapshot forever.
+insertMany(db, 'portfolio_snapshots', previousPortfolioSnapshots.filter((row) => row.snapshot_date < snapshotDate), [
   'snapshot_date',
   'captured_at',
   'global_base_cost',
@@ -832,6 +845,11 @@ insertMany(db, 'portfolio_snapshots', previousPortfolioSnapshots, [
   'global_base_unrealized_gl',
   'global_base_return_pct',
   'market_value_coverage',
+  'priced_base_cost',
+  'position_coverage',
+  'kr_market_value_coverage',
+  'us_market_value_coverage',
+  'crypto_market_value_coverage',
   'kr_market_value',
   'us_market_value_base',
   // Carried forward like every other snapshot column: the database is dropped
@@ -1013,7 +1031,8 @@ if (fs.existsSync(manualMappingsPath)) {
     fp.sha256,
     (manualMappings.incomeRules?.length ?? 0) +
       (manualMappings.dividendOverrides?.length ?? 0) +
-      (manualMappings.tickerRenames?.length ?? 0)
+      (manualMappings.tickerRenames?.length ?? 0) +
+      (manualMappings.instrumentAliases?.length ?? 0)
   )
 }
 for (const report of usPdfEvidence.reports ?? []) {
@@ -3973,44 +3992,55 @@ check(
 
 insertMany(db, 'validation_checks', checks, ['name', 'status', 'detail', 'severity'])
 
-const snapshotDate = now.slice(0, 10)
+const currentValuation = valuePortfolio(
+  holdingRows.map((row) => ({
+    market: row.market,
+    cost: row.base_cost,
+    marketValue: row.base_market_value,
+  }))
+)
+const nativeKrwCost = holdingRows
+  .filter((row) => row.currency === 'KRW')
+  .reduce((sum, row) => sum + Number(row.native_cost || 0), 0)
+const nativeUsdCost = holdingRows
+  .filter((row) => row.currency === 'USD')
+  .reduce((sum, row) => sum + Number(row.native_cost || 0), 0)
+const dividendsKrw = dividendRows
+  .filter((row) => row.currency === 'KRW')
+  .reduce((sum, row) => sum + Number(row.native_amount || 0), 0)
+const dividendsUsd = dividendRows
+  .filter((row) => row.currency === 'USD')
+  .reduce((sum, row) => sum + Number(row.native_amount || 0), 0)
+
 db.prepare(`
   insert or replace into portfolio_snapshots (
     snapshot_date, captured_at, global_base_cost, global_base_market_value,
     global_base_unrealized_gl, global_base_return_pct, market_value_coverage,
+    priced_base_cost, position_coverage, kr_market_value_coverage,
+    us_market_value_coverage, crypto_market_value_coverage,
     kr_market_value, us_market_value_base, crypto_market_value_base,
     kr_cost_basis, us_cost_basis_base, crypto_cost_basis_base,
     kr_unrealized_gl, us_unrealized_gl_base, crypto_unrealized_gl_base,
     kr_return_pct, us_return_pct, crypto_return_pct,
     krw_cost, usd_cost, dividends_krw, dividends_usd, holding_count, share_count
-  )
-  select
-    ?, ?,
-    coalesce(sum(base_cost), 0),
-    coalesce(sum(base_market_value), 0),
-    coalesce(sum(base_unrealized_gl), 0),
-    case when coalesce(sum(base_cost), 0) > 0 then coalesce(sum(base_unrealized_gl), 0) / sum(base_cost) * 100 else null end,
-    case when count(*) > 0 then avg(case when base_market_value is not null then 1.0 else 0.0 end) else 0 end,
-    coalesce(sum(case when market = 'KR' then base_market_value else 0 end), 0),
-    coalesce(sum(case when market = 'US' then base_market_value else 0 end), 0),
-    coalesce(sum(case when market = 'CRYPTO' then base_market_value else 0 end), 0),
-    coalesce(sum(case when market = 'KR' then base_cost else 0 end), 0),
-    coalesce(sum(case when market = 'US' then base_cost else 0 end), 0),
-    coalesce(sum(case when market = 'CRYPTO' then base_cost else 0 end), 0),
-    coalesce(sum(case when market = 'KR' then base_unrealized_gl else 0 end), 0),
-    coalesce(sum(case when market = 'US' then base_unrealized_gl else 0 end), 0),
-    coalesce(sum(case when market = 'CRYPTO' then base_unrealized_gl else 0 end), 0),
-    case when coalesce(sum(case when market = 'KR' then base_cost else 0 end), 0) > 0 then coalesce(sum(case when market = 'KR' then base_unrealized_gl else 0 end), 0) / sum(case when market = 'KR' then base_cost else 0 end) * 100 else null end,
-    case when coalesce(sum(case when market = 'US' then base_cost else 0 end), 0) > 0 then coalesce(sum(case when market = 'US' then base_unrealized_gl else 0 end), 0) / sum(case when market = 'US' then base_cost else 0 end) * 100 else null end,
-    case when coalesce(sum(case when market = 'CRYPTO' then base_cost else 0 end), 0) > 0 then coalesce(sum(case when market = 'CRYPTO' then base_unrealized_gl else 0 end), 0) / sum(case when market = 'CRYPTO' then base_cost else 0 end) * 100 else null end,
-    coalesce(sum(case when currency = 'KRW' then native_cost else 0 end), 0),
-    coalesce(sum(case when currency = 'USD' then native_cost else 0 end), 0),
-    (select coalesce(sum(case when currency = 'KRW' then native_amount else 0 end), 0) from dividends),
-    (select coalesce(sum(case when currency = 'USD' then native_amount else 0 end), 0) from dividends),
-    count(*),
-    coalesce(sum(quantity), 0)
-  from holdings
-`).run(snapshotDate, now)
+  ) values (${Array.from({ length: 30 }, () => '?').join(', ')})
+`).run(
+  snapshotDate, now,
+  currentValuation.global.totalCost, currentValuation.global.partialMarketValue,
+  currentValuation.global.unrealizedGl, currentValuation.global.returnPct,
+  currentValuation.global.costCoverage, currentValuation.global.pricedCost,
+  currentValuation.global.positionCoverage, currentValuation.KR.costCoverage,
+  currentValuation.US.costCoverage, currentValuation.CRYPTO.costCoverage,
+  currentValuation.KR.partialMarketValue, currentValuation.US.partialMarketValue,
+  currentValuation.CRYPTO.partialMarketValue, currentValuation.KR.totalCost,
+  currentValuation.US.totalCost, currentValuation.CRYPTO.totalCost,
+  currentValuation.KR.unrealizedGl, currentValuation.US.unrealizedGl,
+  currentValuation.CRYPTO.unrealizedGl, currentValuation.KR.returnPct,
+  currentValuation.US.returnPct, currentValuation.CRYPTO.returnPct,
+  nativeKrwCost, nativeUsdCost, dividendsKrw, dividendsUsd,
+  currentValuation.global.positionCount,
+  holdingRows.reduce((sum, row) => sum + Number(row.quantity || 0), 0)
+)
 
 db.exec(`
 create index idx_holdings_account on holdings(account);
@@ -4040,7 +4070,8 @@ const report = {
           rows:
             (manualMappings.incomeRules?.length ?? 0) +
             (manualMappings.dividendOverrides?.length ?? 0) +
-            (manualMappings.tickerRenames?.length ?? 0),
+            (manualMappings.tickerRenames?.length ?? 0) +
+            (manualMappings.instrumentAliases?.length ?? 0),
         },
       ],
     ]

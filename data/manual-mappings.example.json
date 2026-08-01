@@ -11,6 +11,14 @@
     }
   ],
   "dividendOverrides": [],
+  "instrumentAliases": [
+    {
+      "from": "US5949181045",
+      "to": "MSFT",
+      "quoteMarket": "US",
+      "note": "Optional quote alias for a broker statement that identifies a security by ISIN instead of ticker. Toss aliases are discovered automatically from data/toss-snapshot.json."
+    }
+  ],
   "tickerRenames": [
     {
       "from": "OLDTICK",

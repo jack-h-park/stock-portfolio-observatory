@@ -31,7 +31,7 @@
     "refresh": "node scripts/refresh.mjs",
     "summary": "tsx scripts/summary.mjs",
     "seed:sample": "node scripts/seed-sample.mjs",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "tsx --test tests/*.test.ts tests/*.test.mjs",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },

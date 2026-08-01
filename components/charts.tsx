@@ -168,7 +168,7 @@ export function PortfolioTrendChart({
   valueSuffix = '',
   axisLabel,
 }: {
-  data: { date: string; value: number }[]
+  data: { date: string; value: number | null }[]
   dataKey: string
   color?: string
   height?: number
@@ -202,6 +202,7 @@ export function PortfolioTrendChart({
           type="linear"
           dataKey={dataKey}
           name="Value"
+          connectNulls={false}
           stroke={color}
           strokeWidth={2}
           dot={data.length <= 80 ? { r: 2, strokeWidth: 1 } : false}
@@ -256,11 +257,11 @@ export function PortfolioMultiTrendChart({
             type="linear"
             dataKey={item.dataKey}
             name={item.name}
+            connectNulls={false}
             stroke={item.color}
             strokeWidth={2}
             dot={data.length <= 80 ? { r: 2, strokeWidth: 1 } : false}
             activeDot={{ r: 4 }}
-            connectNulls={false}
           />
         ))}
       </LineChart>

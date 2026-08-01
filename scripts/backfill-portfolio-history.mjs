@@ -1,10 +1,11 @@
 import Database from 'better-sqlite3'
 import path from 'node:path'
 import { loadLocalEnv } from './env.mjs'
+import { valuePortfolio } from './portfolio-snapshot.mjs'
 
 loadLocalEnv()
 
-const dbPath = process.env.STOCK_DB_PATH || path.join(process.cwd(), 'outputs/stock-portfolio-observatory/stock-portfolio-observatory.db')
+const dbPath = process.env.STOCK_DB_PATH || path.join(process.cwd(), 'private-data/outputs/stock-portfolio-observatory/stock-portfolio-observatory.db')
 const db = new Database(dbPath)
 
 function dateOnly(value) {
@@ -25,6 +26,16 @@ function monthEnds(firstDate, lastDate) {
 }
 
 try {
+  const snapshotColumnsPresent = new Set(db.prepare('pragma table_info(portfolio_snapshots)').all().map((column) => column.name))
+  for (const column of [
+    'priced_base_cost',
+    'position_coverage',
+    'kr_market_value_coverage',
+    'us_market_value_coverage',
+    'crypto_market_value_coverage',
+  ]) {
+    if (!snapshotColumnsPresent.has(column)) db.exec(`alter table portfolio_snapshots add column ${column} real`)
+  }
   const current = db.prepare('select max(snapshot_date) as date from portfolio_snapshots').get()
   const first = db.prepare(`
     select min(date) as date from (
@@ -37,12 +48,15 @@ try {
   const currentDate = dateOnly(current?.date)
   if (!firstDate || !currentDate) throw new Error('Cannot determine portfolio history date range.')
 
-  const openLots = db.prepare('select market, ticker, acquired_date, currency, open_quantity, native_cost_basis, cost_basis_krw from tax_lots').all()
-  const realizedLots = db.prepare('select market, ticker, acquired_date, sold_date, quantity_sold, cost_basis_krw from realized_lots').all()
+  const openLots = db.prepare('select market, account, ticker, acquired_date, currency, open_quantity, native_cost_basis, cost_basis_krw from tax_lots').all()
+  const realizedLots = db.prepare('select market, account, ticker, acquired_date, sold_date, quantity_sold, cost_basis_krw from realized_lots').all()
   const dividends = db.prepare('select date, currency, native_amount from dividends').all()
-  const historicalPrices = db.prepare('select market, ticker, price_date, close from historical_prices order by market, ticker, price_date').all()
+  const historicalPrices = db.prepare('select market, ticker, currency, price_date, close from historical_prices order by market, ticker, price_date').all()
   const historicalFxRates = db.prepare('select price_date, rate from historical_fx_rates order by price_date').all()
   const dates = monthEnds(firstDate, currentDate)
+  const currentPositions = db
+    .prepare('select market, base_cost as cost, base_market_value as marketValue from holdings where quantity != 0')
+    .all()
 
   const pricesByTicker = new Map()
   for (const row of historicalPrices) {
@@ -58,7 +72,7 @@ try {
     let result = null
     for (const row of rows) {
       if (row.price_date > date) break
-      result = Number(row.close)
+      result = row
     }
     return result
   }
@@ -76,14 +90,22 @@ try {
   function positionsAt(date) {
     const positions = new Map()
     for (const lot of openLots) {
-      if (dateOnly(lot.acquired_date) > date) continue
-      const key = `${lot.market}:${lot.ticker}`
-      positions.set(key, (positions.get(key) ?? 0) + Number(lot.open_quantity || 0))
+      const acquiredDate = dateOnly(lot.acquired_date)
+      if (!acquiredDate || acquiredDate > date) continue
+      const key = `${lot.market}\t${lot.account}\t${lot.ticker}`
+      const position = positions.get(key) ?? { quantity: 0, cost: 0 }
+      position.quantity += Number(lot.open_quantity || 0)
+      position.cost += Number(lot.cost_basis_krw || 0)
+      positions.set(key, position)
     }
     for (const lot of realizedLots) {
-      if (dateOnly(lot.acquired_date) > date || (lot.sold_date && dateOnly(lot.sold_date) <= date)) continue
-      const key = `${lot.market}:${lot.ticker}`
-      positions.set(key, (positions.get(key) ?? 0) + Number(lot.quantity_sold || 0))
+      const acquiredDate = dateOnly(lot.acquired_date)
+      if (!acquiredDate || acquiredDate > date || (lot.sold_date && dateOnly(lot.sold_date) <= date)) continue
+      const key = `${lot.market}\t${lot.account}\t${lot.ticker}`
+      const position = positions.get(key) ?? { quantity: 0, cost: 0 }
+      position.quantity += Number(lot.quantity_sold || 0)
+      position.cost += Number(lot.cost_basis_krw || 0)
+      positions.set(key, position)
     }
     return positions
   }
@@ -96,6 +118,8 @@ try {
   const snapshotColumns = [
     'snapshot_date', 'captured_at', 'global_base_cost', 'global_base_market_value',
     'global_base_unrealized_gl', 'global_base_return_pct', 'market_value_coverage',
+    'priced_base_cost', 'position_coverage', 'kr_market_value_coverage',
+    'us_market_value_coverage', 'crypto_market_value_coverage',
     'kr_market_value', 'us_market_value_base', 'crypto_market_value_base',
     'kr_cost_basis', 'us_cost_basis_base', 'crypto_cost_basis_base',
     'kr_unrealized_gl', 'us_unrealized_gl_base', 'crypto_unrealized_gl_base',
@@ -110,64 +134,77 @@ try {
   const rebuild = db.transaction(() => {
     db.prepare('delete from portfolio_snapshots where snapshot_date < ?').run(currentDate)
     for (const date of dates) {
-      const activeOpenLots = openLots.filter((lot) => dateOnly(lot.acquired_date) <= date)
+      const activeOpenLots = openLots.filter((lot) => dateOnly(lot.acquired_date) && dateOnly(lot.acquired_date) <= date)
       const activeRealizedLots = realizedLots.filter(
-        (lot) => dateOnly(lot.acquired_date) <= date && (!lot.sold_date || dateOnly(lot.sold_date) > date)
+        (lot) => dateOnly(lot.acquired_date) && dateOnly(lot.acquired_date) <= date && (!lot.sold_date || dateOnly(lot.sold_date) > date)
       )
       const activeDividends = dividends.filter((dividend) => dateOnly(dividend.date) <= date)
-      const globalCost = activeOpenLots.reduce((sum, lot) => sum + Number(lot.cost_basis_krw || 0), 0) + activeRealizedLots.reduce((sum, lot) => sum + Number(lot.cost_basis_krw || 0), 0)
-      const lotsByMarket = (market) => [...activeOpenLots, ...activeRealizedLots].filter((lot) => lot.market === market)
-      const krCost = lotsByMarket('KR').reduce((sum, lot) => sum + Number(lot.cost_basis_krw || 0), 0)
-      const usCost = lotsByMarket('US').reduce((sum, lot) => sum + Number(lot.cost_basis_krw || 0), 0)
-      const cryptoCost = lotsByMarket('CRYPTO').reduce((sum, lot) => sum + Number(lot.cost_basis_krw || 0), 0)
       const krwCost = activeOpenLots.filter((lot) => lot.currency === 'KRW').reduce((sum, lot) => sum + Number(lot.native_cost_basis || 0), 0)
       const usdCost = activeOpenLots.filter((lot) => lot.currency === 'USD').reduce((sum, lot) => sum + Number(lot.native_cost_basis || 0), 0)
       const dividendsKrw = activeDividends.filter((row) => row.currency === 'KRW').reduce((sum, row) => sum + Number(row.native_amount || 0), 0)
       const dividendsUsd = activeDividends.filter((row) => row.currency === 'USD').reduce((sum, row) => sum + Number(row.native_amount || 0), 0)
       const positions = positionsAt(date)
-      let marketValue = 0
-      let pricedShares = 0
       let totalShares = 0
-      const marketValues = { KR: 0, US: 0, CRYPTO: 0 }
-      const pricedSharesByMarket = { KR: 0, US: 0, CRYPTO: 0 }
-      const totalSharesByMarket = { KR: 0, US: 0, CRYPTO: 0 }
-      for (const [key, rawQuantity] of positions) {
-        const [market, ticker] = key.split(':')
-        const quantity = Math.max(0, rawQuantity)
+      const valuationPositions = []
+      for (const [key, rawPosition] of positions) {
+        const [market, , ticker] = key.split('\t')
+        const quantity = Math.max(0, rawPosition.quantity)
         if (!quantity) continue
         totalShares += quantity
-        totalSharesByMarket[market] += quantity
         const price = latestPrice(market, ticker, date)
-        // Everything but the KR book is quoted in USD here — crypto included, for
-        // the reason given in fetch-historical-prices.mjs. Testing for 'US' alone
-        // would have valued the whole crypto position at 1 KRW per dollar.
-        const rate = market === 'KR' ? 1 : fxRate(date)
-        if (price != null && rate != null) {
-          marketValue += quantity * price * rate
-          pricedShares += quantity
-          marketValues[market] += quantity * price * rate
-          pricedSharesByMarket[market] += quantity
-        }
+        // Quote currency, not the account's market, decides whether FX applies.
+        // A US security held in a Korean account is stored under market=KR so its
+        // lots stay with that account, while its historical quote is still USD.
+        const rate = price?.currency === 'KRW' ? 1 : fxRate(date)
+        valuationPositions.push({
+          market,
+          cost: rawPosition.cost,
+          marketValue: price != null && rate != null ? quantity * Number(price.close) * rate : null,
+        })
       }
-      const coverage = totalShares > 0 ? pricedShares / totalShares : 0
-      const completeMarketValue = coverage >= 0.9 ? marketValue : null
-      const unrealized = completeMarketValue == null ? null : completeMarketValue - globalCost
-      const returnPct = unrealized == null || globalCost <= 0 ? null : (unrealized / globalCost) * 100
-      const krCoverage = totalSharesByMarket.KR > 0 ? pricedSharesByMarket.KR / totalSharesByMarket.KR : 0
-      const usCoverage = totalSharesByMarket.US > 0 ? pricedSharesByMarket.US / totalSharesByMarket.US : 0
-      const krMarketValue = krCoverage >= 0.9 ? marketValues.KR : null
-      const usMarketValueBase = usCoverage >= 0.9 ? marketValues.US : null
-      const krUnrealized = krMarketValue == null ? null : krMarketValue - krCost
-      const usUnrealized = usMarketValueBase == null ? null : usMarketValueBase - usCost
-      const krReturn = krUnrealized == null || krCost <= 0 ? null : (krUnrealized / krCost) * 100
-      const usReturn = usUnrealized == null || usCost <= 0 ? null : (usUnrealized / usCost) * 100
-      const cryptoCoverage = totalSharesByMarket.CRYPTO > 0 ? pricedSharesByMarket.CRYPTO / totalSharesByMarket.CRYPTO : 0
-      const cryptoMarketValueBase = cryptoCoverage >= 0.9 ? marketValues.CRYPTO : null
-      const cryptoUnrealized = cryptoMarketValueBase == null ? null : cryptoMarketValueBase - cryptoCost
-      const cryptoReturn = cryptoUnrealized == null || cryptoCost <= 0 ? null : (cryptoUnrealized / cryptoCost) * 100
+      const valuation = valuePortfolio(valuationPositions)
       const shareCount = totalShares || activeOpenLots.reduce((sum, lot) => sum + Number(lot.open_quantity || 0), 0)
-      insert.run(date, `${date}T23:59:59.000Z`, globalCost, completeMarketValue, unrealized, returnPct, coverage, krMarketValue, usMarketValueBase, cryptoMarketValueBase, krCost, usCost, cryptoCost, krUnrealized, usUnrealized, cryptoUnrealized, krReturn, usReturn, cryptoReturn, krwCost, usdCost, dividendsKrw, dividendsUsd, positions.size, shareCount)
+      insert.run(
+        date, `${date}T23:59:59.000Z`, valuation.global.totalCost,
+        valuation.global.partialMarketValue, valuation.global.unrealizedGl, valuation.global.returnPct,
+        valuation.global.costCoverage, valuation.global.pricedCost, valuation.global.positionCoverage,
+        valuation.KR.costCoverage, valuation.US.costCoverage, valuation.CRYPTO.costCoverage,
+        valuation.KR.partialMarketValue, valuation.US.partialMarketValue, valuation.CRYPTO.partialMarketValue,
+        valuation.KR.totalCost, valuation.US.totalCost, valuation.CRYPTO.totalCost,
+        valuation.KR.unrealizedGl, valuation.US.unrealizedGl, valuation.CRYPTO.unrealizedGl,
+        valuation.KR.returnPct, valuation.US.returnPct, valuation.CRYPTO.returnPct,
+        krwCost, usdCost, dividendsKrw, dividendsUsd, valuation.global.positionCount, shareCount
+      )
     }
+    // A standalone backfill may be the first command run against an older DB.
+    // Upgrade its preserved current row too; the normal production refresh has
+    // already written these values during ingest, so this is idempotent there.
+    const currentValuation = valuePortfolio(currentPositions)
+    db.prepare(`
+      update portfolio_snapshots set
+        global_base_cost = ?, global_base_market_value = ?,
+        global_base_unrealized_gl = ?, global_base_return_pct = ?,
+        market_value_coverage = ?, priced_base_cost = ?, position_coverage = ?,
+        kr_market_value_coverage = ?, us_market_value_coverage = ?, crypto_market_value_coverage = ?,
+        kr_market_value = ?, us_market_value_base = ?, crypto_market_value_base = ?,
+        kr_cost_basis = ?, us_cost_basis_base = ?, crypto_cost_basis_base = ?,
+        kr_unrealized_gl = ?, us_unrealized_gl_base = ?, crypto_unrealized_gl_base = ?,
+        kr_return_pct = ?, us_return_pct = ?, crypto_return_pct = ?, holding_count = ?
+      where snapshot_date = ?
+    `).run(
+      currentValuation.global.totalCost, currentValuation.global.partialMarketValue,
+      currentValuation.global.unrealizedGl, currentValuation.global.returnPct,
+      currentValuation.global.costCoverage, currentValuation.global.pricedCost,
+      currentValuation.global.positionCoverage, currentValuation.KR.costCoverage,
+      currentValuation.US.costCoverage, currentValuation.CRYPTO.costCoverage,
+      currentValuation.KR.partialMarketValue, currentValuation.US.partialMarketValue,
+      currentValuation.CRYPTO.partialMarketValue, currentValuation.KR.totalCost,
+      currentValuation.US.totalCost, currentValuation.CRYPTO.totalCost,
+      currentValuation.KR.unrealizedGl, currentValuation.US.unrealizedGl,
+      currentValuation.CRYPTO.unrealizedGl, currentValuation.KR.returnPct,
+      currentValuation.US.returnPct, currentValuation.CRYPTO.returnPct,
+      currentValuation.global.positionCount, currentDate
+    )
   })
   rebuild()
   console.log(`Backfilled ${dates.length} monthly portfolio snapshot(s) from ${firstDate} to ${currentDate}.`)

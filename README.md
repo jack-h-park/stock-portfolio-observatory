@@ -270,6 +270,8 @@ pnpm refresh
 
 `pnpm refresh` runs FX fetch, KR price fetch, Toss fetch, Korea certificate extraction, US PDF evidence extraction, US price fetch, crypto activity extraction, crypto price fetch, historical prices, ingest, and history backfill in sequence. Three orderings are deliberate. FX goes first because the ingest converts every native amount with it — a stale rate misstates the portfolio however fresh the prices are. The Korea certificate extract precedes both the ingest and the historical price fetch, because a certificate that adds a holding also needs that holding's price history fetched on the same run. The crypto extract precedes the crypto price fetch because that fetch reads the activity snapshot to learn which symbols are still held. It writes local run history to `data/refresh-runs.json`.
 
+Portfolio snapshot dates use `STOCK_TIME_ZONE` (default `America/Los_Angeles`), not UTC. Historical valuation coverage is cost-basis weighted; position-count coverage is stored separately. Values below 90% cost coverage are retained in SQLite as partial valuations but rendered as gaps in the Overview trend, while 90–95% is visibly marked partial.
+
 The Toss fetch is the one `optional` step — see the degraded-versus-failed split under [Published summary](#published-summary).
 
 ### Source push
@@ -321,6 +323,8 @@ make install-refresh-service   # com.jackpark.stock-observatory.refresh
 make refresh-status            # state, run count, last exit code
 make uninstall-refresh-service
 ```
+
+The production host (`hermes-runner@imac-runner`) should deploy this change with a full `pnpm refresh` after the application build. The ingest recreates the SQLite schema compatibly and the following history-backfill step rewrites the monthly snapshots with the unified coverage formula; restarting only the web process leaves the old trend rows in place until that refresh completes.
 
 Six-hourly rather than once after the US close, because the snapshot has more than
 one reader now and they do not share a clock: `/health` and `/review` are opened at

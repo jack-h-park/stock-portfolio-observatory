@@ -395,6 +395,7 @@ export type DataOpsReview = {
     version: number | null
     incomeRuleCount: number
     overrideCount: number
+    instrumentAliasCount: number
   }
   mappingSummary: {
     mapping_status: string
@@ -560,8 +561,9 @@ export function getOverview() {
           coalesce(sum(case when currency = 'USD' then native_market_value else 0 end), 0) as usd_market_value,
           coalesce(sum(case when currency = 'USD' then native_unrealized_gl else 0 end), 0) as usd_unrealized_gl,
           coalesce(sum(base_cost), 0) as global_base_cost,
+          coalesce(sum(case when base_market_value is not null then base_cost else 0 end), 0) as global_priced_base_cost,
           coalesce(sum(base_market_value), 0) as global_base_market_value,
-          coalesce(sum(base_unrealized_gl), 0) as global_base_unrealized_gl,
+          coalesce(sum(case when base_market_value is not null then base_market_value - base_cost else 0 end), 0) as global_base_unrealized_gl,
           -- Market-scoped totals in the base currency, alongside the
           -- currency-scoped ones above. The two used to be interchangeable
           -- because KR meant KRW and US meant USD. Crypto breaks that: it holds
@@ -569,14 +571,17 @@ export function getOverview() {
           -- labelled "KR" that sums by CURRENCY would quietly include Korean
           -- crypto, and one labelled "US" would include the Robinhood coins.
           coalesce(sum(case when market = 'KR' then base_cost else 0 end), 0) as kr_base_cost,
+          coalesce(sum(case when market = 'KR' and base_market_value is not null then base_cost else 0 end), 0) as kr_priced_base_cost,
           coalesce(sum(case when market = 'KR' then base_market_value else 0 end), 0) as kr_base_market_value,
-          coalesce(sum(case when market = 'KR' then base_unrealized_gl else 0 end), 0) as kr_base_unrealized_gl,
+          coalesce(sum(case when market = 'KR' and base_market_value is not null then base_market_value - base_cost else 0 end), 0) as kr_base_unrealized_gl,
           coalesce(sum(case when market = 'US' then base_cost else 0 end), 0) as us_base_cost,
+          coalesce(sum(case when market = 'US' and base_market_value is not null then base_cost else 0 end), 0) as us_priced_base_cost,
           coalesce(sum(case when market = 'US' then base_market_value else 0 end), 0) as us_base_market_value,
-          coalesce(sum(case when market = 'US' then base_unrealized_gl else 0 end), 0) as us_base_unrealized_gl,
+          coalesce(sum(case when market = 'US' and base_market_value is not null then base_market_value - base_cost else 0 end), 0) as us_base_unrealized_gl,
           coalesce(sum(case when market = 'CRYPTO' then base_cost else 0 end), 0) as crypto_base_cost,
+          coalesce(sum(case when market = 'CRYPTO' and base_market_value is not null then base_cost else 0 end), 0) as crypto_priced_base_cost,
           coalesce(sum(case when market = 'CRYPTO' then base_market_value else 0 end), 0) as crypto_base_market_value,
-          coalesce(sum(case when market = 'CRYPTO' then base_unrealized_gl else 0 end), 0) as crypto_base_unrealized_gl,
+          coalesce(sum(case when market = 'CRYPTO' and base_market_value is not null then base_market_value - base_cost else 0 end), 0) as crypto_base_unrealized_gl,
           coalesce(sum(long_term_qty), 0) as long_term_qty,
           coalesce(sum(short_term_qty), 0) as short_term_qty
         from holdings`
@@ -611,6 +616,11 @@ export type PortfolioSnapshot = {
   global_base_unrealized_gl: number | null
   global_base_return_pct: number | null
   market_value_coverage: number | null
+  priced_base_cost: number | null
+  position_coverage: number | null
+  kr_market_value_coverage: number | null
+  us_market_value_coverage: number | null
+  crypto_market_value_coverage: number | null
   kr_market_value: number | null
   us_market_value_base: number | null
   crypto_market_value_base: number | null
@@ -638,10 +648,19 @@ export function getPortfolioSnapshots(days = 3650): PortfolioSnapshot[] {
       .prepare("select 1 from sqlite_master where type = 'table' and name = 'portfolio_snapshots'")
       .get()
     if (!table) return []
+    const columns = new Set(
+      (conn.prepare('pragma table_info(portfolio_snapshots)').all() as { name: string }[]).map((column) => column.name)
+    )
+    const optional = (name: string, fallback = 'null') => columns.has(name) ? name : `${fallback} as ${name}`
+    const costCoverage = columns.has('priced_base_cost') ? 'market_value_coverage' : 'null as market_value_coverage'
     return conn
       .prepare(
         `select snapshot_date, captured_at, global_base_cost, global_base_market_value,
-          global_base_unrealized_gl, global_base_return_pct, market_value_coverage,
+          global_base_unrealized_gl, global_base_return_pct, ${costCoverage},
+          ${optional('priced_base_cost')}, ${optional('position_coverage')},
+          ${optional('kr_market_value_coverage')},
+          ${optional('us_market_value_coverage')},
+          ${optional('crypto_market_value_coverage')},
           kr_market_value, us_market_value_base, crypto_market_value_base,
           kr_cost_basis, us_cost_basis_base, crypto_cost_basis_base,
           kr_unrealized_gl, us_unrealized_gl_base, crypto_unrealized_gl_base,
@@ -1815,6 +1834,7 @@ export function getDataOpsReview(): DataOpsReview {
         version: typeof manualMappings.version === 'number' ? manualMappings.version : null,
         incomeRuleCount: manualMappings.incomeRules?.length ?? 0,
         overrideCount: manualMappings.dividendOverrides?.length ?? 0,
+        instrumentAliasCount: manualMappings.instrumentAliases?.length ?? 0,
       },
       mappingSummary,
       tickerlessIncome,
