@@ -329,6 +329,136 @@ export function resolveUsHoldingFiles(dataDir) {
   return resolve(US_HOLDING_SPECS, dataDir)
 }
 
+// ---------------------------------------------------------------------------
+// Which tickers the US holdings files hold.
+//
+// This lives here, beside the resolver, because it had drifted from the ingest
+// and drifted silently. `fetch-us-prices.mjs` carried its own copy that read
+// Merrill by fixed column offsets — column 1 for the symbol — which is right for
+// the tax-lot layout and reads the DESCRIPTION column of the flat one. The
+// moment a flat Merrill export was filed, the price fetch went looking for
+// quotes on `JPMORGAN`, `SCHWAB`, `INVESCO` and `ML`, failed to find four
+// "tickers" that were never tickers, and exited non-zero — taking the whole
+// refresh down before the ingest ran.
+//
+// A second parser for a format is a second parser to keep in step. This one is
+// shared, header-driven, and tested against all three layouts on disk.
+// ---------------------------------------------------------------------------
+
+function parseCsv(body) {
+  const rows = []
+  let row = []
+  let cell = ''
+  let quoted = false
+  const src = body.replace(/^﻿/, '')
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i]
+    if (quoted) {
+      if (ch === '"' && src[i + 1] === '"') {
+        cell += '"'
+        i++
+      } else if (ch === '"') quoted = false
+      else cell += ch
+    } else if (ch === '"') quoted = true
+    else if (ch === ',') {
+      row.push(cell.trim())
+      cell = ''
+    } else if (ch === '\n') {
+      row.push(cell.trim())
+      rows.push(row)
+      row = []
+      cell = ''
+    } else if (ch !== '\r') cell += ch
+  }
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell.trim())
+    rows.push(row)
+  }
+  return rows
+}
+
+function csvObjects(rows, headerMatcher) {
+  const headerIndex = rows.findIndex(headerMatcher)
+  if (headerIndex < 0) return []
+  const header = rows[headerIndex]
+  return rows
+    .slice(headerIndex + 1)
+    .filter((r) => r.some((c) => c.length > 0))
+    .map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] ?? ''])))
+}
+
+// Kept in step with the same names in scripts/ingest-stock-data.mjs. A position
+// admitted here but not there gets a price nothing uses; one admitted there but
+// not here shows up in the portfolio with no market value.
+const CHASE_NON_POSITION_CLASSES = new Set(['Cash & Money Market Funds', 'Cash and Money Market Funds'])
+const MERRILL_NON_POSITION_ROWS = new Set([
+  'Balances',
+  'Money accounts',
+  'Cash balance',
+  'Pending activity',
+  'Total',
+  'Reinvestments',
+])
+const US_CASH_EQUIVALENT_TICKERS = new Set(['SPAXX', 'QACDS', 'FDRXX', 'SPRXX'])
+const TICKER_CELL = /^([A-Z][A-Z0-9.-]{0,11})\b/
+
+/** Every ticker held across the resolved US holdings files, sorted. */
+export function readUsHoldingTickers(files) {
+  const tickers = new Set()
+  const add = (value) => {
+    const ticker = String(value ?? '').trim().replace(/\*+$/, '')
+    if (ticker && !US_CASH_EQUIVALENT_TICKERS.has(ticker)) tickers.add(ticker)
+  }
+
+  for (const { brokerage, filename } of files) {
+    // The Robinhood Gain/Loss reports are PDFs; their lots reach the price
+    // fetch through the evidence snapshot instead.
+    if (!filename.toLowerCase().endsWith('.csv') || !fs.existsSync(filename)) continue
+    const rows = parseCsv(fs.readFileSync(filename, 'utf8')).filter((r) => r.some((c) => c.length > 0))
+
+    if (brokerage === 'Chase') {
+      for (const row of csvObjects(rows, (r) => r.includes('Account name') && r.includes('Ticker'))) {
+        if (CHASE_NON_POSITION_CLASSES.has(String(row['Asset Class'] ?? '').trim())) continue
+        add(row.Ticker)
+      }
+      continue
+    }
+
+    if (brokerage === 'Fidelity') {
+      for (const row of csvObjects(rows, (r) => r.includes('Account number') && r.includes('Symbol'))) {
+        if (!/^[A-Z0-9]{6,}$/.test(String(row['Account number'] ?? '').trim())) continue
+        add(row.Symbol)
+      }
+      continue
+    }
+
+    if (brokerage === 'Merrill') {
+      const headerIndex = rows.findIndex((r) => r.includes('Symbol'))
+      const header = headerIndex >= 0 ? rows[headerIndex] : []
+      // The flat layout puts the symbol in its own first column and shares the
+      // table with a `Balances` block; the tax-lot layout indents everything by
+      // one and repeats the symbol only on the position rows.
+      if (headerIndex >= 0 && header.includes('Total Client Investment') && !header.includes('Cost Basis')) {
+        const symbolAt = header.indexOf('Symbol')
+        const quantityAt = header.indexOf('Quantity')
+        for (const row of rows.slice(headerIndex + 1)) {
+          const label = String(row[symbolAt] ?? '').trim()
+          if (!label || MERRILL_NON_POSITION_ROWS.has(label)) continue
+          if (!Number.isFinite(Number(String(row[quantityAt] ?? '').replace(/,/g, '')))) continue
+          add(TICKER_CELL.exec(label)?.[1])
+        }
+      } else {
+        for (const row of rows) {
+          const symbol = TICKER_CELL.exec(String(row[1] ?? '').trim())?.[1]
+          if (symbol && Number.isFinite(Number(String(row[2] ?? '').replace(/,/g, '')))) add(symbol)
+        }
+      }
+    }
+  }
+
+  return [...tickers].sort()
+}
+
 export function resolveUsTransactionFiles(dataDir) {
   return resolve(US_TRANSACTION_SPECS, dataDir)
 }

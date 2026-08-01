@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { loadLocalEnv } from './env.mjs'
-import { resolveUsHoldingFiles } from './source-files.mjs'
+import { readUsHoldingTickers, resolveUsHoldingFiles } from './source-files.mjs'
 
 loadLocalEnv()
 
@@ -18,56 +18,6 @@ function text(value) {
   return value == null ? '' : String(value).trim()
 }
 
-function parseCsv(body) {
-  const rows = []
-  let row = []
-  let cell = ''
-  let quoted = false
-  const src = body.replace(/^\uFEFF/, '')
-  for (let i = 0; i < src.length; i++) {
-    const ch = src[i]
-    const next = src[i + 1]
-    if (quoted) {
-      if (ch === '"' && next === '"') {
-        cell += '"'
-        i++
-      } else if (ch === '"') {
-        quoted = false
-      } else {
-        cell += ch
-      }
-    } else if (ch === '"') {
-      quoted = true
-    } else if (ch === ',') {
-      row.push(cell.trim())
-      cell = ''
-    } else if (ch === '\n') {
-      row.push(cell.trim())
-      rows.push(row)
-      row = []
-      cell = ''
-    } else if (ch !== '\r') {
-      cell += ch
-    }
-  }
-  if (cell.length > 0 || row.length > 0) {
-    row.push(cell.trim())
-    rows.push(row)
-  }
-  return rows
-}
-
-function readCsvObjects(filePath, headerMatcher) {
-  const rows = parseCsv(fs.readFileSync(filePath, 'utf8'))
-  const headerIndex = rows.findIndex(headerMatcher)
-  if (headerIndex < 0) return []
-  const header = rows[headerIndex].map((h) => h.trim())
-  return rows
-    .slice(headerIndex + 1)
-    .filter((r) => r.some((c) => c.trim().length > 0))
-    .map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] ?? ''])))
-}
-
 function yahooSymbol(ticker) {
   const raw = text(ticker).toUpperCase()
   if (raw === 'BRKB') return 'BRK-B'
@@ -80,31 +30,13 @@ function isoDateFromSeconds(seconds) {
 }
 
 function collectTickers() {
-  const tickers = new Set()
-
-  // Mirror the ingest's holdings filters so every position that gets ingested
-  // also gets priced: keep Chase's non-cash "Alternative Assets" (gold/covered-
-  // call ETFs), and read the leading symbol out of Merrill's annotated ticker
-  // cell ("JEPI !  Executed Buy").
-  const NON_POSITION_CLASSES = new Set(['Cash & Money Market Funds', 'Cash and Money Market Funds'])
-  for (const { brokerage, filename } of usHoldingFiles) {
-    if (!fs.existsSync(filename)) continue
-    if (brokerage === 'Chase') {
-      const rows = readCsvObjects(filename, (r) => r.includes('Account name') && r.includes('Ticker'))
-      for (const row of rows) {
-        const ticker = text(row.Ticker)
-        if (ticker && ticker !== 'QACDS' && !NON_POSITION_CLASSES.has(text(row['Asset Class']))) tickers.add(ticker)
-      }
-    } else {
-      const rows = parseCsv(fs.readFileSync(filename, 'utf8')).filter((r) => r.some((c) => c.trim()))
-      for (const row of rows) {
-        const symbol = /^([A-Z][A-Z0-9.-]{0,11})\b/.exec(text(row[1]))?.[1]
-        if (symbol && Number.isFinite(Number(text(row[2]).replace(/,/g, '')))) {
-          tickers.add(symbol)
-        }
-      }
-    }
-  }
+  // One shared reader for the holdings files, in source-files.mjs beside the
+  // resolver. This used to be a second copy of the ingest's parsing, and the
+  // copy read Merrill by fixed column offsets — correct for the tax-lot layout,
+  // and the description column of the flat one. A flat export therefore asked
+  // Yahoo for `JPMORGAN`, `SCHWAB`, `INVESCO` and `ML`, and the four misses
+  // exited non-zero and failed the whole refresh before the ingest ran.
+  const tickers = new Set(readUsHoldingTickers(usHoldingFiles))
 
   if (fs.existsSync(evidencePath)) {
     const evidence = JSON.parse(fs.readFileSync(evidencePath, 'utf8'))

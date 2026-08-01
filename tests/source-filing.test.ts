@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { resolveUsHoldingFiles } from '../scripts/source-files.mjs'
+import { readUsHoldingTickers, resolveUsHoldingFiles } from '../scripts/source-files.mjs'
 
 // Two US holdings sources arrived that the filer would not claim, and both
 // failures were silent in the way this project keeps rediscovering: the Merrill
@@ -120,6 +120,39 @@ test('a Fidelity transactions export is still read as transactions, not position
       'Date downloaded 07/31/2026 05:22 pm\r\n',
   })
   assert.match(stdout, /→ us-transactions\/fidelity-transactions-20260731\.csv/)
+})
+
+/** Write `body` to a us-holdings file and read its tickers the way the price fetch does. */
+function tickersOf(brokerage: string, name: string, body: string) {
+  const dataDir = mkdtempSync(path.join(tmpdir(), 'stock-tickers-'))
+  mkdirSync(path.join(dataDir, 'us-holdings'), { recursive: true })
+  const filename = path.join(dataDir, 'us-holdings', name)
+  writeFileSync(filename, body, 'utf8')
+  return readUsHoldingTickers([{ brokerage, filename }])
+}
+
+// The price fetch used to carry its own copy of this, reading Merrill by fixed
+// column offsets. On the flat layout column 1 is the DESCRIPTION, so it asked
+// Yahoo for `JPMORGAN`, `SCHWAB`, `INVESCO` and `ML`; the misses exited non-zero
+// and failed the whole refresh before the ingest ran. Same reader now, and these
+// pin the shapes that broke it.
+test('the flat Merrill layout yields tickers, not the words in its Description column', () => {
+  const tickers = tickersOf('Merrill', 'merrill-holdings-20260731.csv', MERRILL_POSITIONS)
+  assert.deepEqual(tickers, ['JEPI'])
+  for (const notATicker of ['JPMORGAN', 'ML', 'SCHWAB', 'INVESCO']) {
+    assert.ok(!tickers.includes(notATicker), `${notATicker} is a description, not a ticker`)
+  }
+})
+
+test("the Merrill tax-lot layout still yields its tickers", () => {
+  assert.deepEqual(tickersOf('Merrill', 'merrill-holdings-20260715.csv', MERRILL_TAX_LOTS), ['JEPI'])
+})
+
+test('Fidelity positions yield tickers from the Symbol column', () => {
+  assert.deepEqual(
+    tickersOf('Fidelity', 'fidelity-holdings-20260731.csv', FIDELITY_POSITIONS(['Z37480490'])),
+    ['SCHD']
+  )
 })
 
 test('the holdings specs resolve a filed Fidelity export', () => {
