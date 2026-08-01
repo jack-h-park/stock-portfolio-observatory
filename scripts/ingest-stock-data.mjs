@@ -227,6 +227,36 @@ function dateFromGainLossFilename(filename) {
   return `${match[3]}-${match[1].padStart(2, '0')}-${match[2].padStart(2, '0')}`
 }
 
+// What placed a Robinhood trade, out of the CSV's own Description.
+//
+// Robinhood appends the origin as a line under the security name and the CUSIP:
+// `Microsoft\nCUSIP: 594918104\nRecurring`. The ingest was discarding it — `name`
+// strips from `CUSIP:` to the end — so a dividend reinvestment and a deliberate
+// buy were indistinguishable rows.
+//
+// The vocabulary is the broker's own, checked against its order history rather
+// than guessed: on Mid-term the CSV's 82 `Dividend Reinvestment`, 31 `Recurring`
+// and 589 unmarked rows match `get_equity_orders`'s 82 `drip`, 31 `recurring`
+// and 589 `user` exactly. `Primary Issue` (2 rows, an IPO allocation) is `user`
+// there too, so it is mapped the same way rather than given a fourth value the
+// live source does not use.
+const ROBINHOOD_ORIGINS = [
+  [/dividend reinvestment/i, 'drip'],
+  [/recurring/i, 'recurring'],
+]
+
+function robinhoodPlacedAgent(description, type) {
+  // Only a trade was placed by anything. A dividend, a transfer or a stock
+  // lending payment has no origin to record, and giving them one would invite
+  // reading `user` as "somebody did this deliberately".
+  if (type !== 'BUY' && type !== 'SELL') return null
+  const tail = text(description).split('\n').slice(1).join(' ')
+  for (const [pattern, agent] of ROBINHOOD_ORIGINS) {
+    if (pattern.test(tail)) return agent
+  }
+  return 'user'
+}
+
 function normalizeUsTransactionType(value, action = '') {
   const explicit = text(value).toLowerCase()
   const act = text(action).toLowerCase()
@@ -673,6 +703,10 @@ create table transactions (
   fee real,
   tax real,
   balance real,
+  -- What placed the order, where the broker says: 'drip', 'recurring', 'user'.
+  -- A dividend reinvestment and a deliberate buy are the same row otherwise, and
+  -- they are not the same decision. Null wherever the source does not say.
+  placed_agent text,
   source text,
   page integer
 );
@@ -2101,7 +2135,21 @@ for (const source of usTransactionFiles) {
     }
   }
   if (source.brokerage === 'Robinhood') {
-    const rows = readCsvObjects(source.filename, (r) => r.includes('Activity Date') && r.includes('Trans Code'))
+    // REVERSED, and the FIFO replay is why.
+    //
+    // Robinhood writes its CSVs newest-first. The replay sorts rows by date and
+    // that sort is stable, so rows sharing a date stay in the order they were
+    // read — which meant every same-day trade was walked backwards. FIFO that
+    // consumes the LAST lot opened that day is not FIFO, and it silently changes
+    // which lot a later sale is paired against, and therefore its holding period
+    // and its realized gain.
+    //
+    // Verified against the broker's own order history rather than assumed: of
+    // the 44 (day, ticker) groups on Mid-term holding more than one trade,
+    // reversing the file reproduces the execution-timestamp order in 42. The two
+    // it does not are ties — two fills of one order stamped the same
+    // millisecond — where no true order exists to recover in either source.
+    const rows = readCsvObjects(source.filename, (r) => r.includes('Activity Date') && r.includes('Trans Code')).reverse()
     for (const r of rows) {
       if (!text(r['Activity Date']).match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) continue
       const type = normalizeUsTransactionType(r['Trans Code'], r.Description)
@@ -2129,6 +2177,9 @@ for (const source of usTransactionFiles) {
         fee: null,
         tax: null,
         balance: null,
+        // Read BEFORE `name` drops everything from `CUSIP:` onward — which is
+        // where this lives, so it was being thrown away one line above.
+        placed_agent: robinhoodPlacedAgent(r.Description, type),
         source: path.basename(source.filename),
         page: null,
       }
@@ -3097,6 +3148,7 @@ insertMany(db, 'transactions', transactionRows, [
   'fee',
   'tax',
   'balance',
+  'placed_agent',
   'source',
   'page',
 ])
