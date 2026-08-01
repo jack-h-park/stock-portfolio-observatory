@@ -262,18 +262,61 @@ Two things it will not do, both deliberate:
   set is already filed for that period it lands as a conflict rather than
   quietly replacing it.
 
-**Five files on disk have names this would not reproduce, and the script is the
-one that is right.** The 미래에셋 종합 certificates are all named `20260716`,
-which is the day they were *issued*, not what they cover: `…-5707` holds
-2022/01/01~2023/12/31 and `…-5708` holds 2024/01/01~2025/12/31, and the two
-잔고증명서 are balances as of 2025-09-11 and 2026-01-09. Run against them, the
-filer produces `mirae-general-transactions-2022-2023-5707`,
-`…-2024-2025-5708`, `mirae-general-balance-20250911-5705` and
-`…-20260109-5706` — periods that are the coverage, as the grammar says they
-must be. The files have not been renamed, because nothing reads their period
-today and a rename is a separate change with its own risk; re-filing them
-through the inbox is safe whenever that is done, since the content hash
-recognises them as already present under the old names.
+### The 미래에셋 종합 certificates, and how a rename is done safely
+
+All twelve 미래에셋 certificates were issued in one sitting on 2026-07-16 —
+발급번호 10841–10847 for the ISA account and 5705–5709 for the 종합 one — and
+two different naming rules came out of that one session. The ISA seven were
+named for what each covers (`2020` … `2025`, `20260716`). The 종합 five were all
+named `20260716`, the day they were *issued*, though `…-5707` holds
+2022/01/01~2023/12/31, `…-5708` holds 2024/01/01~2025/12/31, and the two
+잔고증명서 are balances as of 2025-09-11 and 2026-01-09.
+
+The likely reason is mechanical rather than considered: naming the ISA archives
+by the issue date would have collided seven files onto one name, so the coverage
+had to be read. The 종합 files carry a 발급번호 suffix, which kept them apart and
+let the wrong period survive. Same failure as `20060716` — invisible only
+because something unrelated happened to hold.
+
+They were renamed to their coverage on 2026-07-31:
+
+```
+mirae-general-transactions-20260716-5707 → mirae-general-transactions-2022-2023-5707
+mirae-general-transactions-20260716-5708 → mirae-general-transactions-2024-2025-5708
+mirae-general-balance-20260716-5705      → mirae-general-balance-20250911-5705
+mirae-general-balance-20260716-5706      → mirae-general-balance-20260109-5706
+```
+
+(`…-5709` covers 2026/01/01~2026/07/16, whose end is the issue date, so its name
+was already right.)
+
+**Renaming anything under `STOCK_DATA_DIR` is a two-machine operation, and
+getting that wrong is silent.** `push-sources.sh` has no `rsync --delete` on
+purpose, so a rename on the laptop *adds* the new name on the refresh host
+rather than replacing the old one — and `extract-kr-statements.py` globs
+`mirae-*.pdf` and keys rows by the `Source` filename, so one document under two
+names becomes two sets of rows. Transactions, lots and realized gains all
+double, nothing errors, and every check passes. The procedure that avoids it:
+
+1. `shasum -a 256` both sides first, to confirm the remote file is the same bytes.
+2. `mv` on **both** machines. Never delete-then-push — `mv` leaves no window
+   where the data is absent and re-transfers nothing.
+3. Re-extract and diff the TSVs with the old and new names normalised to one
+   token. A rename must change only the `Source` column; anything else is a bug.
+   Here that diff was empty across all four TSVs, with 198 미래에셋 open lots and
+   215 realized rows totalling ₩<REALIZED_TOTAL> on both sides of it.
+4. `push-sources.sh --dry-run` should then show only `.d..t.... kr-statements/`,
+   a directory mtime, and no file transfers.
+
+Re-filing these through the inbox later is safe either way: the content hash is
+compared against the whole destination directory, so a document already there
+under any name is a skip, never a duplicate.
+
+Note that `source_file_dates_plausible` would not have caught the old names —
+`scripts/source-files.mjs` has no `kr-statements` specs, so the check covers the
+US and crypto directories only. A wrong period on a Korean statement is caught
+by nothing today, which is why the inbox reads the period out of the document
+instead.
 
 ## The Google Sheets
 
