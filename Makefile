@@ -61,6 +61,9 @@ restart:
 redeploy:
 	git pull --ff-only
 	pnpm build
+	# Schema and snapshot formulas ship with the app. Refresh before restart so
+	# hermes-runner never serves a new reader against pre-migration trend rows.
+	pnpm refresh
 	launchctl kickstart -k gui/$(shell id -u)/$(PLIST_LABEL)
 	@$(MAKE) wait-listen
 	@$(MAKE) status

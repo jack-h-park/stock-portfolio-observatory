@@ -24,9 +24,20 @@ export const dynamic = 'force-dynamic'
 const TREND_RANGES = [
   { key: '30', label: '1M', days: 30 },
   { key: '90', label: '3M', days: 90 },
+  { key: '180', label: '6M', days: 180 },
+  { key: 'ytd', label: 'YTD', days: 'ytd' },
   { key: '365', label: '1Y', days: 365 },
+  { key: '1095', label: '3Y', days: 1095 },
+  { key: '1825', label: '5Y', days: 1825 },
   { key: 'all', label: 'All', days: 3650 },
 ] as const
+
+function trendRangeDays(days: number | 'ytd') {
+  if (days !== 'ytd') return days
+  const now = new Date()
+  const yearStart = new Date(now.getFullYear(), 0, 1)
+  return Math.max(1, Math.floor((now.getTime() - yearStart.getTime()) / 86_400_000) + 1)
+}
 
 const TREND_METRICS = [
   { key: 'market_value', label: 'Market value', color: 'var(--brand-blue)' },
@@ -69,8 +80,17 @@ const TREND_FIELDS = {
   },
 } as const
 
+const TREND_COVERAGE_FIELDS = {
+  global: 'market_value_coverage',
+  KR: 'kr_market_value_coverage',
+  US: 'us_market_value_coverage',
+  CRYPTO: 'crypto_market_value_coverage',
+} as const
+
+const MIN_TREND_COST_COVERAGE = 0.9
+const HEALTHY_TREND_COST_COVERAGE = 0.95
+
 type TrendMetricKey = (typeof TREND_METRICS)[number]['key']
-type TrendScopeKey = (typeof TREND_SCOPES)[number]['key']
 type TrendFieldKey = keyof PortfolioSnapshot
 type TrendViewKey = 'single' | 'combined'
 
@@ -95,7 +115,7 @@ export default async function OverviewPage({
 
   const meta = getMeta()
   const params = await searchParams
-  const selectedRange = TREND_RANGES.find((range) => range.key === params.trend) ?? TREND_RANGES[3]
+  const selectedRange = TREND_RANGES.find((range) => range.key === params.trend) ?? TREND_RANGES[TREND_RANGES.length - 1]
   const selectedScope = TREND_SCOPES.find((scope) => scope.key === params.scope)?.key ?? 'global'
   const legacyMetricMap: Record<string, TrendMetricKey> = {
     global_base_market_value: 'market_value',
@@ -106,11 +126,12 @@ export default async function OverviewPage({
   const selectedMetricKey = legacyMetricMap[params.metric ?? ''] ?? params.metric
   const selectedMetric = TREND_METRICS.find((metric) => metric.key === selectedMetricKey) ?? TREND_METRICS[0]
   const selectedField = TREND_FIELDS[selectedScope][selectedMetric.key]
+  const selectedCoverageField = TREND_COVERAGE_FIELDS[selectedScope]
   const selectedScopeLabel = TREND_SCOPES.find((scope) => scope.key === selectedScope)?.label ?? 'Global'
   const selectedView: TrendViewKey = params.view === 'combined' ? 'combined' : 'single'
   const combinedMetrics = TREND_METRICS.filter((metric) => metric.key !== 'return_pct')
   const overview = getOverview()
-  const portfolioSnapshots = getPortfolioSnapshots(selectedRange.days)
+  const portfolioSnapshots = getPortfolioSnapshots(trendRangeDays(selectedRange.days))
   const top = getTopHoldings(10)
   const accounts = getAccountAllocation()
   const dividendYears = getDividendByYear()
@@ -129,15 +150,15 @@ export default async function OverviewPage({
   const cryptoBase = overview.totals.crypto_base_cost
   const globalBase = overview.totals.global_base_cost
   const usUnrealizedPct =
-    overview.totals.us_base_cost > 0 ? (overview.totals.us_base_unrealized_gl / overview.totals.us_base_cost) * 100 : 0
+    overview.totals.us_priced_base_cost > 0 ? (overview.totals.us_base_unrealized_gl / overview.totals.us_priced_base_cost) * 100 : 0
   const krUnrealizedPct =
-    overview.totals.kr_base_cost > 0 ? (overview.totals.kr_base_unrealized_gl / overview.totals.kr_base_cost) * 100 : 0
+    overview.totals.kr_priced_base_cost > 0 ? (overview.totals.kr_base_unrealized_gl / overview.totals.kr_priced_base_cost) * 100 : 0
   const cryptoUnrealizedPct =
-    overview.totals.crypto_base_cost > 0
-      ? (overview.totals.crypto_base_unrealized_gl / overview.totals.crypto_base_cost) * 100
+    overview.totals.crypto_priced_base_cost > 0
+      ? (overview.totals.crypto_base_unrealized_gl / overview.totals.crypto_priced_base_cost) * 100
       : 0
   const globalUnrealizedPct =
-    overview.totals.global_base_cost > 0 ? (overview.totals.global_base_unrealized_gl / overview.totals.global_base_cost) * 100 : 0
+    overview.totals.global_priced_base_cost > 0 ? (overview.totals.global_base_unrealized_gl / overview.totals.global_priced_base_cost) * 100 : 0
   const krShare = globalBase > 0 ? Math.round((krBase / globalBase) * 100) : 0
   const usShare = globalBase > 0 ? Math.round((usBase / globalBase) * 100) : 0
   const cryptoShare = globalBase > 0 ? Math.round((cryptoBase / globalBase) * 100) : 0
@@ -151,29 +172,38 @@ export default async function OverviewPage({
   const allocationData = [
     { name: 'Korea', value: krBase, label: `${fmtKrw(krBase)} · ${krShare}%` },
     { name: 'United States', value: usBase, label: `${fmtKrw(usBase)} · ${usShare}%` },
+    { name: 'Crypto', value: cryptoBase, label: `${fmtKrw(cryptoBase)} · ${cryptoShare}%` },
   ]
   const trendData = portfolioSnapshots
-    .filter((snapshot) => snapshot[selectedField as TrendFieldKey] != null)
     .map((snapshot) => ({
       date: snapshot.snapshot_date,
-      value: selectedMetric.key === 'return_pct'
-        ? Number(snapshot[selectedField as TrendFieldKey])
-        : Number(snapshot[selectedField as TrendFieldKey]) / 1_000_000,
-      coverage: snapshot.market_value_coverage,
+      value: snapshot[selectedField as TrendFieldKey] == null || (
+        selectedMetric.key !== 'cost_basis' && Number(snapshot[selectedCoverageField]) < MIN_TREND_COST_COVERAGE
+      )
+        ? null
+        : selectedMetric.key === 'return_pct'
+          ? Number(snapshot[selectedField as TrendFieldKey])
+          : Number(snapshot[selectedField as TrendFieldKey]) / 1_000_000,
+      coverage: snapshot[selectedCoverageField],
     }))
   const combinedTrendData = portfolioSnapshots
     .map((snapshot) => ({
       date: snapshot.snapshot_date,
-      market_value: snapshot[TREND_FIELDS[selectedScope].market_value as TrendFieldKey] == null ? null : Number(snapshot[TREND_FIELDS[selectedScope].market_value as TrendFieldKey]) / 1_000_000,
+      market_value: snapshot[TREND_FIELDS[selectedScope].market_value as TrendFieldKey] == null || Number(snapshot[selectedCoverageField]) < MIN_TREND_COST_COVERAGE ? null : Number(snapshot[TREND_FIELDS[selectedScope].market_value as TrendFieldKey]) / 1_000_000,
       cost_basis: snapshot[TREND_FIELDS[selectedScope].cost_basis as TrendFieldKey] == null ? null : Number(snapshot[TREND_FIELDS[selectedScope].cost_basis as TrendFieldKey]) / 1_000_000,
-      unrealized_gl: snapshot[TREND_FIELDS[selectedScope].unrealized_gl as TrendFieldKey] == null ? null : Number(snapshot[TREND_FIELDS[selectedScope].unrealized_gl as TrendFieldKey]) / 1_000_000,
+      unrealized_gl: snapshot[TREND_FIELDS[selectedScope].unrealized_gl as TrendFieldKey] == null || Number(snapshot[selectedCoverageField]) < MIN_TREND_COST_COVERAGE ? null : Number(snapshot[TREND_FIELDS[selectedScope].unrealized_gl as TrendFieldKey]) / 1_000_000,
     }))
-    .filter((snapshot) => combinedMetrics.every((metric) => snapshot[metric.key] != null))
-  const firstTrendValue = trendData[0]?.value ?? 0
-  const latestTrendValue = trendData[trendData.length - 1]?.value ?? 0
+  const valuedTrendData = trendData.filter((point): point is typeof point & { value: number } => typeof point.value === 'number')
+  const firstTrendPoint = valuedTrendData[0]
+  const latestTrendPoint = valuedTrendData[valuedTrendData.length - 1]
+  const firstTrendValue = firstTrendPoint?.value ?? 0
+  const latestTrendValue = latestTrendPoint?.value ?? 0
   const trendChange = latestTrendValue - firstTrendValue
   const trendChangePct = firstTrendValue !== 0 ? (trendChange / Math.abs(firstTrendValue)) * 100 : null
-  const latestTrendCoverage = selectedScope === 'global' ? trendData[trendData.length - 1]?.coverage : null
+  const latestSnapshot = portfolioSnapshots[portfolioSnapshots.length - 1]
+  const latestTrendCoverage = latestSnapshot?.[selectedCoverageField] ?? null
+  const latestPositionCoverage = selectedScope === 'global' ? latestSnapshot?.position_coverage ?? null : null
+  const missingTrendPoints = trendData.length - valuedTrendData.length
   const trendValueLabel = (value: number) => selectedMetric.key === 'return_pct' ? `${fmtNumber(value, 1)}%` : fmtKrw(value * 1_000_000)
   const trendChangeLabel = selectedMetric.key === 'return_pct'
     ? `${trendChange >= 0 ? '+' : ''}${fmtNumber(trendChange, 1)}%p`
@@ -230,7 +260,7 @@ export default async function OverviewPage({
         <StatCard label="KR Cost Basis" value={fmtKrw(overview.totals.kr_base_cost)} />
         <StatCard label="US Cost Basis" value={fmtKrw(overview.totals.us_base_cost)} hint={`${fmtMoney(overview.totals.usd_cost, 'USD')} native`} />
         <StatCard label="Crypto Cost Basis" value={fmtKrw(overview.totals.crypto_base_cost)} hint={`${fmtNumber(cryptoShare)}% of portfolio`} />
-        <StatCard label="Holdings" value={fmtNumber(overview.totals.holding_count)} hint={`${fmtNumber(overview.totals.share_count, 2)} shares`} />
+        <StatCard label="Holdings" value={fmtNumber(overview.totals.holding_count)} hint={`${fmtNumber(overview.totals.share_count, 2)} mixed units`} />
         <StatCard label="Dividends" value={`${fmtKrw(overview.dividends.krw_amount)} / ${fmtMoney(overview.dividends.usd_amount, 'USD')}`} hint={`${fmtNumber(overview.dividends.count)} rows`} tone="success" />
       </div>
 
@@ -254,6 +284,14 @@ export default async function OverviewPage({
                 <span className="tabular-nums text-ink-3">{usShare}%</span>
               </div>
               <div className="text-[18px] font-medium tabular-nums text-ink">{fmtKrw(usBase)}</div>
+              <div className="flex items-center justify-between gap-3 text-[12px]">
+                <span className="flex items-center gap-2 font-medium text-ink">
+                  <span className="h-2.5 w-2.5 rounded-full bg-warning" aria-hidden />
+                  Crypto
+                </span>
+                <span className="tabular-nums text-ink-3">{cryptoShare}%</span>
+              </div>
+              <div className="text-[18px] font-medium tabular-nums text-ink">{fmtKrw(cryptoBase)}</div>
               <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
                 USD values use {usdKrw ? `USD/KRW ${fmtNumber(usdKrw.rate, 2)} (${usdKrw.as_of_date})` : 'the configured FX snapshot'}.
               </div>
@@ -339,12 +377,19 @@ export default async function OverviewPage({
               </>
             ) : (
               <>
-                <div className="text-[12px] text-ink-3">{selectedScopeLabel} · {selectedMetric.label} · {selectedMetric.key === 'return_pct' ? 'percentage points' : 'KRW millions'}{latestTrendCoverage != null && latestTrendCoverage < 1 ? ` · ${fmtNumber(latestTrendCoverage * 100, 1)}% priced` : ''}</div>
-                <div className="mt-1 text-[22px] font-medium tabular-nums text-ink">{trendData.length ? trendValueLabel(latestTrendValue) : 'No history yet'}</div>
+                <div className="text-[12px] text-ink-3">
+                  {selectedScopeLabel} · {selectedMetric.label} · {selectedMetric.key === 'return_pct' ? 'percentage points' : 'KRW millions'}
+                  {latestTrendCoverage != null && latestTrendCoverage < 1 ? ` · ${fmtNumber(latestTrendCoverage * 100, 2)}% of cost basis priced` : ''}
+                  {latestPositionCoverage != null && latestPositionCoverage < 1 ? ` · ${fmtNumber(latestPositionCoverage * 100, 1)}% of positions priced` : ''}
+                </div>
+                <div className="mt-1 text-[22px] font-medium tabular-nums text-ink">{valuedTrendData.length ? trendValueLabel(latestTrendValue) : 'No sufficiently covered history'}</div>
+                {latestTrendCoverage != null && latestTrendCoverage >= MIN_TREND_COST_COVERAGE && latestTrendCoverage < HEALTHY_TREND_COST_COVERAGE && (
+                  <div className="mt-1 text-[11px] text-warning">Partial valuation: less than 95% of cost basis is priced.</div>
+                )}
               </>
             )}
           </div>
-          {selectedView === 'single' && <div className={`text-right text-[12px] tabular-nums ${trendChange >= 0 ? 'text-success' : 'text-danger'}`}>{trendData.length > 1 ? trendChangeLabel : 'Need at least two snapshots'}</div>}
+          {selectedView === 'single' && <div className={`text-right text-[12px] tabular-nums ${trendChange >= 0 ? 'text-success' : 'text-danger'}`}>{valuedTrendData.length > 1 ? <>{trendChangeLabel}<div className="text-[10px] font-normal text-ink-3">since {firstTrendPoint.date}</div></> : 'Need at least two covered snapshots'}</div>}
         </div>
         <div className="mb-3 flex flex-wrap items-center gap-1">
           <Link
@@ -389,7 +434,7 @@ export default async function OverviewPage({
               series={combinedMetrics.map((metric) => ({ dataKey: metric.key, name: metric.label, color: metric.color }))}
             />
           )
-        ) : trendData.length === 0 ? (
+        ) : valuedTrendData.length === 0 ? (
           <EmptyState hint="Run pnpm refresh or pnpm ingest to record the first snapshot.">No portfolio history recorded</EmptyState>
         ) : (
           <PortfolioTrendChart
@@ -402,10 +447,10 @@ export default async function OverviewPage({
           />
         )}
         <div className="mt-1 text-[11px] text-ink-3">
-          {trendData.length ? `${trendData[0].date} to ${trendData[trendData.length - 1].date} · ${trendData.length} snapshot(s)` : 'Snapshots are recorded once per ingest date.'}
+          {trendData.length ? `${trendData[0].date} to ${trendData[trendData.length - 1].date} · ${valuedTrendData.length} valued / ${trendData.length} total snapshot(s)${missingTrendPoints ? ` · ${missingTrendPoints} gap(s)` : ''}` : 'Snapshots are recorded once per ingest date.'}
         </div>
         <div className="mt-2 text-[11px] leading-relaxed text-ink-3">
-          Cost basis, holdings, and dividends are reconstructed from tax-lot and transaction dates. US values are converted to KRW using historical FX snapshots. Dates with coverage below 90% are excluded, and partial coverage is shown beside the selected metric.
+          Cost basis, holdings, and dividends are reconstructed from tax-lot and transaction dates. Foreign-currency quotes are converted to KRW using historical FX snapshots. Valuation points below 90% cost-basis coverage remain visible as chart gaps; 90–95% coverage is marked partial. Cost-basis history itself does not require a market price.
         </div>
       </Card>
 
