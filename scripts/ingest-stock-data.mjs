@@ -1963,6 +1963,13 @@ const US_CASH_EQUIVALENT_TICKERS = new Set(['SPAXX', 'QACDS', 'FDRXX', 'SPRXX'])
 const usRealizedRows = []
 const usReplayNotes = []
 let usReplayMismatches = []
+// Robinhood's holdings can come from the MCP snapshot, which answers live,
+// while the replay is only ever as current as the last downloaded transaction
+// CSV. A trade the CSV has not caught up to yet is not a wrong replay — it is
+// the same two-source-age gap `toss_holdings_lots_provenance` already tracks
+// for Toss, so it gets its own bucket here instead of counting against a check
+// whose whole point is to catch a REPLAY defect.
+let robinhoodReplayMismatches = []
 let usReplayReconcilableCount = 0
 // `${brokerage}|${ticker}` -> ascending [date, quantity held after that date's
 // rows]. Needed to divide a dividend by the shares that actually earned it.
@@ -2218,7 +2225,9 @@ function usHoldingDays(from, to) {
     const replayed = usReplayQty.get(key) ?? 0
     const held = usHoldingQty.get(key) ?? 0
     if (Math.abs(replayed - held) > 1e-3) {
-      usReplayMismatches.push(`${key.replace('|', ' ')}: replay ${usRound(replayed, 4)} vs holdings ${usRound(held, 4)}`)
+      const entry = `${key.replace('|', ' ')}: replay ${usRound(replayed, 4)} vs holdings ${usRound(held, 4)}`
+      if (key.startsWith('Robinhood|') && robinhoodSnapshotLotCount > 0) robinhoodReplayMismatches.push(entry)
+      else usReplayMismatches.push(entry)
     }
   }
   usReplayReconcilableCount = new Set(
@@ -2226,7 +2235,7 @@ function usHoldingDays(from, to) {
   ).size
   console.error(
     `[us-realized] replayed ${usRealizedRows.length} realized lot(s) from ${rows.length} US transaction(s); ` +
-      `${usReplayMismatches.length} position(s) disagree with holdings; ${usReplayNotes.length} note(s)`
+      `${usReplayMismatches.length} position(s) disagree with holdings, ${robinhoodReplayMismatches.length} more Robinhood-only (see robinhood_holdings_replay_provenance); ${usReplayNotes.length} note(s)`
   )
   for (const note of usReplayNotes.slice(0, 20)) console.error(`[us-realized]   ${note}`)
 }
@@ -3536,6 +3545,26 @@ check(
       ? `all ${usReplayReconcilableCount} replayed US position(s) match holdings`
       : `${usReplayMismatches.length} of ${usReplayReconcilableCount} position(s) disagree: ${usReplayMismatches
           .slice(0, 5)
+          .join('; ')}`,
+  'warning'
+)
+
+// Deliberately Robinhood-only and deliberately not folded into
+// `us_realized_replay_reconciles_holdings`, for the same reason
+// `toss_holdings_lots_provenance` stands apart from that check: the two sides
+// are different vintages by design once a live snapshot backs the holdings,
+// and that gap is expected to widen as trades happen and narrow only when the
+// transaction CSVs are re-downloaded — never on a cadence the replay controls.
+check(
+  'robinhood_holdings_replay_provenance',
+  robinhoodSnapshotLotCount === 0 || robinhoodReplayMismatches.length === 0,
+  robinhoodSnapshotLotCount === 0
+    ? 'no MCP snapshot backing Robinhood holdings — nothing to compare the replay against'
+    : robinhoodReplayMismatches.length === 0
+      ? `all Robinhood position(s) backed by the MCP snapshot match the transaction-replayed lots`
+      : `${robinhoodReplayMismatches.length} Robinhood position(s) disagree with the transaction-replayed lots ` +
+        `(expected once trades outrun the downloaded CSVs — download fresh ones to close it): ${robinhoodReplayMismatches
+          .slice(0, 6)
           .join('; ')}`,
   'warning'
 )
