@@ -107,6 +107,14 @@ TYPE_MAP = {
     "주식분할입고": "STOCK_SPLIT",
     "주식분할출고": "STOCK_SPLIT",
     "신주인수권증서입고": "CORPORATE_ACTION",
+    # The other end of the same event, and only Toss's wording for it: 미래에셋
+    # writes 신주인수권증서말소출고, Toss writes 신주인수권증서출고, and having only
+    # 미래에셋's spelling is why 15 units of 한화솔루션 51R sat open for weeks
+    # against a live account that had not carried them since July. The rights
+    # were received 2026-06-29, the subscription closed 2026-07-22 unsubscribed,
+    # and Toss recorded the lapse on page 20 of the 2026-08-01 statement — the
+    # row was there the whole time and the parser dropped it as an unmapped type.
+    "신주인수권증서출고": "CORPORATE_ACTION",
     # income
     "분배금": "DIVIDEND",
     "배당금입금": "DIVIDEND",

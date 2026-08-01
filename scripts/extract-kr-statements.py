@@ -252,6 +252,115 @@ def statement_coverage(path, report):
     return start, end
 
 
+PART_SUFFIX_RE = re.compile(r"-\d+of\d+$")
+TRAILING_NUMBER_RE = re.compile(r"-\d+$")
+
+
+def statement_series(stem):
+    """`mirae-isa-transactions-2022` -> `mirae-isa-transactions`.
+
+    Broker, account and document type, with every trailing numeric segment —
+    period, range, and the document numbers 미래에셋 appends — taken off. Two
+    statements may only be compared inside one series, and getting this wrong is
+    not a near miss: 미래에셋's 종합 and ISA are different accounts whose periods
+    overlap by year, so a coarser key had the 2022-2023 종합 statement swallow
+    four ISA statements whole.
+    """
+    stem = PART_SUFFIX_RE.sub("", stem)
+    while True:
+        shortened = TRAILING_NUMBER_RE.sub("", stem)
+        if shortened == stem:
+            return stem
+        stem = shortened
+
+
+def statements_to_read(pdfs, report):
+    """The statements to extract, with any fully superseded ones left out.
+
+    A 거래내역증명서 is requested for a period, so re-downloading a longer one
+    hands you a document that contains the old one whole. Both then sit in the
+    directory, and the extractor — which globs — reads both and counts every
+    shared transaction twice. That happened: `toss-transactions-20260715.pdf`
+    (2026-01-01~07-15) and `toss-transactions-20260801.pdf` (2026-01-01~08-01)
+    would have double-counted seven months of Toss trading, and the only thing
+    that stopped it was someone noticing the periods by eye.
+
+    Superseding is decided on the period the DOCUMENT declares on page 1, not on
+    the filename. Filenames here are typed by hand; 조회기간 is printed by the
+    broker.
+
+    Multi-part exports are grouped first, and that is the whole reason this is
+    not a two-line rule. Toss splits a long period across files by row count and
+    prints THE SAME 조회기간 on every part: `toss-transactions-2023-1of2` and
+    `-2of2` both declare 2023-01-01~2023-12-31. Comparing files would find each
+    contains the other and drop one, silently losing half of 2023 and two thirds
+    of 2024 — 4,871 transactions. So `-NofM` is stripped to get the document, and
+    documents are what get compared.
+
+    Only strict containment resolves. A partial overlap has rows in each that the
+    other lacks, so neither can be dropped and it is reported instead; equal
+    periods across two different documents cannot happen under the naming
+    grammar (the period IS the name) and so is reported rather than guessed at.
+    """
+    documents = {}
+    for path in pdfs:
+        documents.setdefault(PART_SUFFIX_RE.sub("", path.stem), []).append(path)
+
+    coverage = {}
+    for key, parts in documents.items():
+        # One page-1 read per document: the parts declare the same period, so
+        # reading them all would cost the same answer several times over.
+        coverage[key] = statement_coverage(parts[0], report)
+
+    superseded = {}
+    series = {}
+    for key in coverage:
+        series.setdefault(statement_series(key), []).append(key)
+    dated = sorted(
+        (k, coverage[k])
+        for group in series.values()
+        for k in group
+        if coverage[k][0] and coverage[k][1]
+    )
+    for i, (key, (start, end)) in enumerate(dated):
+        for other, (o_start, o_end) in dated[i + 1:]:
+            if statement_series(key) != statement_series(other):
+                continue
+            # Each pair judged once, from the lower key, so a mutual relation is
+            # not reported twice as if it were two findings.
+            key_in_other = o_start <= start and end <= o_end
+            other_in_key = start <= o_start and o_end <= end
+            if key_in_other and other_in_key:
+                report(
+                    "duplicate-coverage",
+                    f"{key} and {other} both declare {start}~{end} — reading both would "
+                    f"count every transaction twice; remove one",
+                )
+            elif key_in_other:
+                superseded[key] = (other, start, end, o_start, o_end)
+            elif other_in_key:
+                superseded[other] = (key, o_start, o_end, start, end)
+            elif o_start <= end and start <= o_end:
+                report(
+                    "partial-overlap",
+                    f"{key} ({start}~{end}) and {other} ({o_start}~{o_end}) overlap without "
+                    f"either containing the other — both are read, so the shared days are "
+                    f"counted twice; re-download one to cover the whole span",
+                )
+
+    keep = []
+    for key, parts in documents.items():
+        if key in superseded:
+            other, start, end, o_start, o_end = superseded[key]
+            print(
+                f"[kr-statements] superseded: {key} ({start}~{end}) is contained by "
+                f"{other} ({o_start}~{o_end}) — {len(parts)} file(s) not read"
+            )
+            continue
+        keep.extend(parts)
+    return sorted(keep)
+
+
 def account_label(pdf):
     """`미래에셋증권(ISA)` — the brokerage/account-type shape the ingest splits on."""
     for page in pdf.pages[:3]:
@@ -660,7 +769,7 @@ def toss_transactions(statements_dir, snapshot, report):
     `Currency` is KRW throughout and `FX Rate` is provenance rather than
     something the ingest must multiply by.
     """
-    pdfs = sorted(statements_dir.glob(f"{TOSS_PREFIX}*.pdf"))
+    pdfs = statements_to_read(sorted(statements_dir.glob(f"{TOSS_PREFIX}*.pdf")), report)
     if not pdfs:
         return []
 
@@ -756,7 +865,7 @@ def samsung_transactions(statements_dir, known_tickers, report):
     An ambiguous name is refused, not guessed. 삼성전자 and 삼성전자우 are one
     character apart and are different securities with different prices.
     """
-    pdfs = sorted(statements_dir.glob(f"{SAMSUNG_PREFIX}*.pdf"))
+    pdfs = statements_to_read(sorted(statements_dir.glob(f"{SAMSUNG_PREFIX}*.pdf")), report)
     if not pdfs:
         return []
 
@@ -822,7 +931,14 @@ def main():
         print(f"ERROR: no statement directory at {statements_dir}", file=sys.stderr)
         return 1
 
-    pdfs = sorted(statements_dir.glob(f"{MIRAE_PREFIX}*.pdf"))
+    # Defined before the first statement is opened, because resolving which
+    # files to read is itself something that can have findings to report.
+    parser_problems = {}
+
+    def report(kind, detail):
+        parser_problems.setdefault(kind, []).append(detail)
+
+    pdfs = statements_to_read(sorted(statements_dir.glob(f"{MIRAE_PREFIX}*.pdf")), report)
     if not pdfs:
         print(f"ERROR: no 미래에셋 statements in {statements_dir}", file=sys.stderr)
         return 1
@@ -832,7 +948,6 @@ def main():
     unmapped = {}
     skipped_locked = []
     unconverted = 0
-    parser_problems = {}
 
     for pdf_path in pdfs:
         name = pdf_path.name
@@ -898,9 +1013,6 @@ def main():
                     })
                 count += 1
             print(f"[kr-statement] {name}: {count} transaction(s) from {len(pdf.pages)} page(s)")
-
-    def report(kind, detail):
-        parser_problems.setdefault(kind, []).append(detail)
 
     toss_snapshot = load_toss_snapshot(report)
     toss_rows = toss_transactions(statements_dir, toss_snapshot, report)

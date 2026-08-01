@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
 import { loadLocalEnv } from './env.mjs'
-import { portfolioDate, snapshotSeriesRows, valuePortfolio } from './portfolio-snapshot.mjs'
+import { portfolioDate, valuePortfolio } from './portfolio-snapshot.mjs'
 import { resolveCryptoFiles, resolveUsHoldingFiles, resolveUsTransactionFiles } from './source-files.mjs'
 
 loadLocalEnv()
@@ -507,7 +507,6 @@ function required(value) {
 
 fs.mkdirSync(outDir, { recursive: true })
 let previousPortfolioSnapshots = []
-let previousPortfolioSnapshotSeries = []
 if (fs.existsSync(dbPath)) {
   const previousDb = new Database(dbPath, { readonly: true })
   try {
@@ -515,14 +514,6 @@ if (fs.existsSync(dbPath)) {
       .prepare("select 1 from sqlite_master where type = 'table' and name = 'portfolio_snapshots'")
       .get()
     if (hasSnapshots) previousPortfolioSnapshots = previousDb.prepare('select * from portfolio_snapshots order by snapshot_date').all()
-    const hasSnapshotSeries = previousDb
-      .prepare("select 1 from sqlite_master where type = 'table' and name = 'portfolio_snapshot_series'")
-      .get()
-    if (hasSnapshotSeries) {
-      previousPortfolioSnapshotSeries = previousDb
-        .prepare('select * from portfolio_snapshot_series order by snapshot_date, scope_key')
-        .all()
-    }
   } finally {
     previousDb.close()
   }
@@ -803,28 +794,6 @@ create table portfolio_snapshots (
 
 create index idx_portfolio_snapshots_date on portfolio_snapshots(snapshot_date);
 
-create table portfolio_snapshot_series (
-  id integer primary key,
-  snapshot_date text not null,
-  captured_at text not null,
-  scope_key text not null,
-  total_cost real not null,
-  priced_cost real not null,
-  market_value real not null,
-  unrealized_gl real not null,
-  return_pct real,
-  cost_coverage real not null,
-  position_coverage real not null,
-  position_count integer not null,
-  priced_position_count integer not null,
-  fx_rate real,
-  fx_as_of_date text,
-  fx_source text,
-  unique(snapshot_date, scope_key)
-);
-
-create index idx_portfolio_snapshot_series_scope_date on portfolio_snapshot_series(scope_key, snapshot_date);
-
 create table historical_prices (
   id integer primary key,
   market text not null,
@@ -862,7 +831,7 @@ db.prepare('insert into meta (key, value) values (?, ?)').run('crypto_activity_p
 db.prepare('insert into meta (key, value) values (?, ?)').run('crypto_prices_path', cryptoPricesPath)
 db.prepare('insert into meta (key, value) values (?, ?)').run('manual_mappings_path', manualMappingsPath)
 db.prepare('insert into meta (key, value) values (?, ?)').run('refresh_runs_path', refreshRunsPath)
-db.prepare('insert into meta (key, value) values (?, ?)').run('portfolio_snapshot_version', '4')
+db.prepare('insert into meta (key, value) values (?, ?)').run('portfolio_snapshot_version', '2')
 
 // Drop today's prior observation and any UTC-dated "tomorrow" row from the old
 // implementation. On the iMac, a refresh after 17:00 Pacific used to write the
@@ -903,12 +872,6 @@ insertMany(db, 'portfolio_snapshots', previousPortfolioSnapshots.filter((row) =>
   'holding_count',
   'share_count',
 ])
-insertMany(db, 'portfolio_snapshot_series', previousPortfolioSnapshotSeries.filter((row) => row.snapshot_date < snapshotDate), [
-  'snapshot_date', 'captured_at', 'scope_key', 'total_cost', 'priced_cost',
-  'market_value', 'unrealized_gl', 'return_pct', 'cost_coverage',
-  'position_coverage', 'position_count', 'priced_position_count',
-  'fx_rate', 'fx_as_of_date', 'fx_source',
-])
 
 const historicalPriceDocument = fs.existsSync(historicalPricesPath)
   ? JSON.parse(fs.readFileSync(historicalPricesPath, 'utf8'))
@@ -935,7 +898,7 @@ insertMany(db, 'historical_fx_rates', historicalFxDocument.rates ?? [], ['price_
 // falling back to the closest earlier date so a payout on a market holiday is
 // converted rather than silently dropped to zero.
 const historicalFxDates = (historicalFxDocument.rates ?? [])
-  .map((r) => ({ date: r.price_date, rate: Number(r.rate), source: r.source }))
+  .map((r) => ({ date: r.price_date, rate: Number(r.rate) }))
   .filter((r) => r.date && Number.isFinite(r.rate))
   .sort((a, b) => a.date.localeCompare(b.date))
 
@@ -4532,60 +4495,15 @@ check(
   'warning'
 )
 
+insertMany(db, 'validation_checks', checks, ['name', 'status', 'detail', 'severity'])
+
 const currentValuation = valuePortfolio(
   holdingRows.map((row) => ({
     market: row.market,
-    account: row.account,
-    brokerage: row.brokerage,
     cost: row.base_cost,
     marketValue: row.base_market_value,
   }))
 )
-const currentFx = fxRate('USD')
-const historicalFxOnCurrentDate = historicalFxDates.find((entry) => entry.date === currentFx?.asOfDate)
-const currentFxUsesTrendProvider = currentFx?.source === historicalFxOnCurrentDate?.source
-const currentFxDifference = historicalFxOnCurrentDate && currentFx
-  ? currentFx.rate - historicalFxOnCurrentDate.rate
-  : null
-check(
-  'current_fx_matches_trend_fx',
-  !currentFxUsesTrendProvider || currentFxDifference == null || Math.abs(currentFxDifference) <= 0.01,
-  !currentFxUsesTrendProvider
-    ? `provider migration pending: current=${currentFx?.source ?? 'missing'}, trend=${historicalFxOnCurrentDate?.source ?? 'missing'}`
-    : currentFxDifference == null
-    ? 'current and historical FX snapshots do not share a date; freshness checks determine whether each is usable'
-    : `current USD/KRW differs from historical trend FX by ${currentFxDifference.toFixed(4)} on ${currentFx.asOfDate}`,
-  'error'
-)
-check(
-  'current_fx_uses_trend_provider',
-  currentFxUsesTrendProvider,
-  currentFxUsesTrendProvider
-    ? `current and trend FX both use ${currentFx?.source}`
-    : `current=${currentFx?.source ?? 'missing'}, trend=${historicalFxOnCurrentDate?.source ?? 'missing'}`,
-  'warning'
-)
-const scopeTolerance = 0.01
-const assetScopeDifference = currentValuation['portfolio:all'].totalCost
-  - currentValuation['asset:securities'].totalCost
-  - currentValuation['asset:crypto'].totalCost
-check(
-  'snapshot_asset_scopes_reconcile',
-  Math.abs(assetScopeDifference) <= scopeTolerance,
-  `entire portfolio differs from securities + crypto by ${assetScopeDifference.toFixed(2)} KRW`,
-  'error'
-)
-const cryptoVenueDifference = currentValuation['asset:crypto'].totalCost
-  - currentValuation['venue:BITHUMB'].totalCost
-  - currentValuation['venue:ROBINHOOD_CRYPTO'].totalCost
-check(
-  'snapshot_crypto_venues_reconcile',
-  Math.abs(cryptoVenueDifference) <= scopeTolerance,
-  `all crypto differs from Bithumb + Robinhood Crypto by ${cryptoVenueDifference.toFixed(2)} KRW`,
-  'error'
-)
-insertMany(db, 'validation_checks', checks, ['name', 'status', 'detail', 'severity'])
-
 const nativeKrwCost = holdingRows
   .filter((row) => row.currency === 'KRW')
   .reduce((sum, row) => sum + Number(row.native_cost || 0), 0)
@@ -4628,13 +4546,6 @@ db.prepare(`
   currentValuation.global.positionCount,
   holdingRows.reduce((sum, row) => sum + Number(row.quantity || 0), 0)
 )
-
-insertMany(db, 'portfolio_snapshot_series', snapshotSeriesRows(snapshotDate, now, currentValuation, currentFx), [
-  'snapshot_date', 'captured_at', 'scope_key', 'total_cost', 'priced_cost',
-  'market_value', 'unrealized_gl', 'return_pct', 'cost_coverage',
-  'position_coverage', 'position_count', 'priced_position_count',
-  'fx_rate', 'fx_as_of_date', 'fx_source',
-])
 
 db.exec(`
 create index idx_holdings_account on holdings(account);

@@ -491,7 +491,7 @@ Unlike the rest of `data/`, this file is **tracked in git**. It is hand-written 
 
 ## FX policy
 
-`data/fx-rates.json` is the current FX source of truth for base-currency conversion. It is a local ignored file, refreshed by `pnpm fetch:fx` (also the first step of `pnpm refresh`) from the Frankfurter daily reference-rate API. Historical trend FX uses the same provider, so the current endpoint and prior points no longer switch between independently timed spot and reference rates. Each normalized portfolio-series row records the applied rate, actual rate date, and source for chart-tooltip auditability.
+`data/fx-rates.json` is the FX source of truth for base-currency conversion. It is a local ignored file, refreshed by `pnpm fetch:fx` (also the first step of `pnpm refresh`) from the same provider as the price snapshots.
 
 It used to be hand-maintained, which meant it was not maintained: the private-mode file sat on the synthetic sample rate (1300) for 203 days while every global KRW figure was understated by ~13%. `/health` flagged it as stale the whole time — a number nobody edits stays stale, so it is fetched now.
 

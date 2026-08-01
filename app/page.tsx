@@ -10,10 +10,11 @@ import {
   getMeta,
   getOperationalHealth,
   getOverview,
-  getPortfolioSnapshotSeries,
+  getPortfolioSnapshots,
   getTopHoldings,
   getTransactionTypes,
 } from '@/lib/adapters/portfolio-db'
+import type { PortfolioSnapshot } from '@/lib/adapters/portfolio-db'
 import { config } from '@/config'
 import { fmtDateTime, fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
@@ -46,38 +47,51 @@ const TREND_METRICS = [
 ] as const
 
 const TREND_SCOPES = [
-  { key: 'all', dbKey: 'portfolio:all', label: 'Entire portfolio', group: 'all' },
-  { key: 'securities', dbKey: 'asset:securities', label: 'All securities', group: 'securities' },
-  { key: 'kr-listed', dbKey: 'listing:KR', label: 'Korea-listed', group: 'securities' },
-  { key: 'us-listed', dbKey: 'listing:US', label: 'U.S.-listed', group: 'securities' },
-  { key: 'crypto', dbKey: 'asset:crypto', label: 'All crypto', group: 'crypto' },
-  { key: 'crypto-bithumb', dbKey: 'venue:BITHUMB', label: 'Bithumb (KR)', group: 'crypto' },
-  { key: 'crypto-robinhood', dbKey: 'venue:ROBINHOOD_CRYPTO', label: 'Robinhood Crypto (US)', group: 'crypto' },
+  { key: 'global', label: 'Global' },
+  { key: 'KR', label: 'Korea' },
+  { key: 'US', label: 'United States' },
+  { key: 'CRYPTO', label: 'Crypto' },
 ] as const
 
 const TREND_FIELDS = {
-  market_value: 'market_value',
-  cost_basis: 'total_cost',
-  unrealized_gl: 'unrealized_gl',
-  return_pct: 'return_pct',
+  global: {
+    market_value: 'global_base_market_value',
+    cost_basis: 'global_base_cost',
+    unrealized_gl: 'global_base_unrealized_gl',
+    return_pct: 'global_base_return_pct',
+  },
+  KR: {
+    market_value: 'kr_market_value',
+    cost_basis: 'kr_cost_basis',
+    unrealized_gl: 'kr_unrealized_gl',
+    return_pct: 'kr_return_pct',
+  },
+  US: {
+    market_value: 'us_market_value_base',
+    cost_basis: 'us_cost_basis_base',
+    unrealized_gl: 'us_unrealized_gl_base',
+    return_pct: 'us_return_pct',
+  },
+  CRYPTO: {
+    market_value: 'crypto_market_value_base',
+    cost_basis: 'crypto_cost_basis_base',
+    unrealized_gl: 'crypto_unrealized_gl_base',
+    return_pct: 'crypto_return_pct',
+  },
 } as const
 
-const TOP_LEVEL_SCOPES = [
-  { key: 'all', label: 'Entire portfolio' },
-  { key: 'securities', label: 'Securities' },
-  { key: 'crypto', label: 'Crypto' },
-] as const
-
-const SCOPE_HELP = {
-  all: 'Includes Korea- and U.S.-listed securities and crypto across all accounts.',
-  securities: 'Includes listed securities only; crypto is excluded.',
-  crypto: 'Includes crypto only, split by its execution venue and account.',
+const TREND_COVERAGE_FIELDS = {
+  global: 'market_value_coverage',
+  KR: 'kr_market_value_coverage',
+  US: 'us_market_value_coverage',
+  CRYPTO: 'crypto_market_value_coverage',
 } as const
 
 const MIN_TREND_COST_COVERAGE = 0.9
 const HEALTHY_TREND_COST_COVERAGE = 0.95
 
 type TrendMetricKey = (typeof TREND_METRICS)[number]['key']
+type TrendFieldKey = keyof PortfolioSnapshot
 type TrendViewKey = 'single' | 'combined'
 
 export default async function OverviewPage({
@@ -102,14 +116,7 @@ export default async function OverviewPage({
   const meta = getMeta()
   const params = await searchParams
   const selectedRange = TREND_RANGES.find((range) => range.key === params.trend) ?? TREND_RANGES[TREND_RANGES.length - 1]
-  const legacyScopeMap: Record<string, string> = {
-    global: 'all',
-    KR: 'kr-listed',
-    US: 'us-listed',
-    CRYPTO: 'crypto',
-  }
-  const requestedScope = legacyScopeMap[params.scope ?? ''] ?? params.scope
-  const selectedScope = TREND_SCOPES.find((scope) => scope.key === requestedScope) ?? TREND_SCOPES[0]
+  const selectedScope = TREND_SCOPES.find((scope) => scope.key === params.scope)?.key ?? 'global'
   const legacyMetricMap: Record<string, TrendMetricKey> = {
     global_base_market_value: 'market_value',
     global_base_cost: 'cost_basis',
@@ -118,11 +125,13 @@ export default async function OverviewPage({
   }
   const selectedMetricKey = legacyMetricMap[params.metric ?? ''] ?? params.metric
   const selectedMetric = TREND_METRICS.find((metric) => metric.key === selectedMetricKey) ?? TREND_METRICS[0]
-  const selectedField = TREND_FIELDS[selectedMetric.key]
-  const selectedView: TrendViewKey = params.view === 'single' ? 'single' : 'combined'
+  const selectedField = TREND_FIELDS[selectedScope][selectedMetric.key]
+  const selectedCoverageField = TREND_COVERAGE_FIELDS[selectedScope]
+  const selectedScopeLabel = TREND_SCOPES.find((scope) => scope.key === selectedScope)?.label ?? 'Global'
+  const selectedView: TrendViewKey = params.view === 'combined' ? 'combined' : 'single'
   const combinedMetrics = TREND_METRICS.filter((metric) => metric.key !== 'return_pct')
   const overview = getOverview()
-  const portfolioSnapshots = getPortfolioSnapshotSeries(selectedScope.dbKey, trendRangeDays(selectedRange.days))
+  const portfolioSnapshots = getPortfolioSnapshots(trendRangeDays(selectedRange.days))
   const top = getTopHoldings(10)
   const accounts = getAccountAllocation()
   const dividendYears = getDividendByYear()
@@ -168,28 +177,21 @@ export default async function OverviewPage({
   const trendData = portfolioSnapshots
     .map((snapshot) => ({
       date: snapshot.snapshot_date,
-      value: snapshot[selectedField] == null || (
-        selectedMetric.key !== 'cost_basis' && snapshot.cost_coverage < MIN_TREND_COST_COVERAGE
+      value: snapshot[selectedField as TrendFieldKey] == null || (
+        selectedMetric.key !== 'cost_basis' && Number(snapshot[selectedCoverageField]) < MIN_TREND_COST_COVERAGE
       )
         ? null
         : selectedMetric.key === 'return_pct'
-          ? Number(snapshot[selectedField])
-          : Number(snapshot[selectedField]) / 1_000_000,
-      coverage: snapshot.cost_coverage,
-      fx_rate: snapshot.fx_rate,
-      fx_as_of_date: snapshot.fx_as_of_date,
-      fx_source: snapshot.fx_source,
+          ? Number(snapshot[selectedField as TrendFieldKey])
+          : Number(snapshot[selectedField as TrendFieldKey]) / 1_000_000,
+      coverage: snapshot[selectedCoverageField],
     }))
   const combinedTrendData = portfolioSnapshots
     .map((snapshot) => ({
       date: snapshot.snapshot_date,
-      market_value: snapshot.cost_coverage < MIN_TREND_COST_COVERAGE ? null : snapshot.market_value / 1_000_000,
-      cost_basis: snapshot.total_cost / 1_000_000,
-      unrealized_gl: snapshot.cost_coverage < MIN_TREND_COST_COVERAGE ? null : snapshot.unrealized_gl / 1_000_000,
-      coverage: snapshot.cost_coverage,
-      fx_rate: snapshot.fx_rate,
-      fx_as_of_date: snapshot.fx_as_of_date,
-      fx_source: snapshot.fx_source,
+      market_value: snapshot[TREND_FIELDS[selectedScope].market_value as TrendFieldKey] == null || Number(snapshot[selectedCoverageField]) < MIN_TREND_COST_COVERAGE ? null : Number(snapshot[TREND_FIELDS[selectedScope].market_value as TrendFieldKey]) / 1_000_000,
+      cost_basis: snapshot[TREND_FIELDS[selectedScope].cost_basis as TrendFieldKey] == null ? null : Number(snapshot[TREND_FIELDS[selectedScope].cost_basis as TrendFieldKey]) / 1_000_000,
+      unrealized_gl: snapshot[TREND_FIELDS[selectedScope].unrealized_gl as TrendFieldKey] == null || Number(snapshot[selectedCoverageField]) < MIN_TREND_COST_COVERAGE ? null : Number(snapshot[TREND_FIELDS[selectedScope].unrealized_gl as TrendFieldKey]) / 1_000_000,
     }))
   const valuedTrendData = trendData.filter((point): point is typeof point & { value: number } => typeof point.value === 'number')
   const firstTrendPoint = valuedTrendData[0]
@@ -199,17 +201,13 @@ export default async function OverviewPage({
   const trendChange = latestTrendValue - firstTrendValue
   const trendChangePct = firstTrendValue !== 0 ? (trendChange / Math.abs(firstTrendValue)) * 100 : null
   const latestSnapshot = portfolioSnapshots[portfolioSnapshots.length - 1]
-  const latestTrendCoverage = latestSnapshot?.cost_coverage ?? null
-  const latestPositionCoverage = latestSnapshot?.position_coverage ?? null
-  const latestFxRate = latestSnapshot?.fx_rate ?? null
+  const latestTrendCoverage = latestSnapshot?.[selectedCoverageField] ?? null
+  const latestPositionCoverage = selectedScope === 'global' ? latestSnapshot?.position_coverage ?? null : null
   const missingTrendPoints = trendData.length - valuedTrendData.length
   const trendValueLabel = (value: number) => selectedMetric.key === 'return_pct' ? `${fmtNumber(value, 1)}%` : fmtKrw(value * 1_000_000)
   const trendChangeLabel = selectedMetric.key === 'return_pct'
     ? `${trendChange >= 0 ? '+' : ''}${fmtNumber(trendChange, 1)}%p`
     : `${trendChange >= 0 ? '+' : ''}${trendValueLabel(trendChange)}${trendChangePct == null ? '' : ` · ${trendChangePct >= 0 ? '+' : ''}${fmtNumber(trendChangePct, 1)}%`}`
-  const childScopes = selectedScope.group === 'all'
-    ? []
-    : TREND_SCOPES.filter((scope) => scope.group === selectedScope.group)
 
   return (
     <>
@@ -343,17 +341,16 @@ export default async function OverviewPage({
       </div>
 
       <Card
-        title={`${selectedScope.label} snapshot trend`}
+        title={`${selectedScopeLabel} snapshot trend`}
         className="mb-5"
         action={
-          <div className="flex flex-wrap items-center justify-end gap-1.5" aria-label="Trend date range">
-            <span className="mr-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3">Range</span>
+          <div className="flex flex-wrap items-center justify-end gap-1">
             {TREND_RANGES.map((range) => (
               <Link
                 key={range.key}
-                href={`/?trend=${range.key}&scope=${selectedScope.key}&metric=${selectedMetric.key}&view=${selectedView}`}
+                href={`/?trend=${range.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}`}
                 scroll={false}
-                className={`rounded-md border px-2.5 py-1.5 text-[12px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/40 ${selectedRange.key === range.key ? 'border-info bg-info/10 text-info shadow-sm' : 'border-line bg-card text-ink-3 hover:border-info hover:text-info'}`}
+                className={`rounded-sm border px-2 py-1 text-[11px] font-medium ${selectedRange.key === range.key ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
               >
                 {range.label}
               </Link>
@@ -361,19 +358,18 @@ export default async function OverviewPage({
           </div>
         }
       >
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div>
             {selectedView === 'combined' ? (
               <>
-                <div className="text-[13px] font-medium text-ink-2">{selectedScope.label}</div>
-                <div className="mt-1 text-[11px] text-ink-3">Market value, cost basis, and unrealized G/L · KRW millions</div>
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="text-[12px] text-ink-3">{selectedScopeLabel} · Market value, cost basis, and unrealized G/L · KRW millions</div>
+                <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
                   {combinedMetrics.map((metric) => {
                     const latest = combinedTrendData[combinedTrendData.length - 1]?.[metric.key]
                     return (
-                      <div key={metric.key} className="min-w-[150px] rounded-md border border-line-subtle bg-surface px-3 py-2">
+                      <div key={metric.key}>
                         <div className="flex items-center gap-1.5 text-[11px] text-ink-3"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: metric.color }} />{metric.label}</div>
-                        <div className="mt-1 text-[18px] font-semibold tabular-nums text-ink">{typeof latest === 'number' ? fmtKrw(latest * 1_000_000) : '—'}</div>
+                        <div className="mt-0.5 text-[18px] font-medium tabular-nums text-ink">{typeof latest === 'number' ? fmtKrw(latest * 1_000_000) : '—'}</div>
                       </div>
                     )
                   })}
@@ -381,12 +377,12 @@ export default async function OverviewPage({
               </>
             ) : (
               <>
-                <div className="text-[13px] font-medium text-ink-2">
-                  {selectedScope.label} · {selectedMetric.label} · {selectedMetric.key === 'return_pct' ? 'percentage points' : 'KRW millions'}
+                <div className="text-[12px] text-ink-3">
+                  {selectedScopeLabel} · {selectedMetric.label} · {selectedMetric.key === 'return_pct' ? 'percentage points' : 'KRW millions'}
                   {latestTrendCoverage != null && latestTrendCoverage < 1 ? ` · ${fmtNumber(latestTrendCoverage * 100, 2)}% of cost basis priced` : ''}
                   {latestPositionCoverage != null && latestPositionCoverage < 1 ? ` · ${fmtNumber(latestPositionCoverage * 100, 1)}% of positions priced` : ''}
                 </div>
-                <div className="mt-1 text-[26px] font-semibold tabular-nums text-ink">{valuedTrendData.length ? trendValueLabel(latestTrendValue) : 'No sufficiently covered history'}</div>
+                <div className="mt-1 text-[22px] font-medium tabular-nums text-ink">{valuedTrendData.length ? trendValueLabel(latestTrendValue) : 'No sufficiently covered history'}</div>
                 {latestTrendCoverage != null && latestTrendCoverage >= MIN_TREND_COST_COVERAGE && latestTrendCoverage < HEALTHY_TREND_COST_COVERAGE && (
                   <div className="mt-1 text-[11px] text-warning">Partial valuation: less than 95% of cost basis is priced.</div>
                 )}
@@ -395,81 +391,40 @@ export default async function OverviewPage({
           </div>
           {selectedView === 'single' && <div className={`text-right text-[12px] tabular-nums ${trendChange >= 0 ? 'text-success' : 'text-danger'}`}>{valuedTrendData.length > 1 ? <>{trendChangeLabel}<div className="text-[10px] font-normal text-ink-3">since {firstTrendPoint.date}</div></> : 'Need at least two covered snapshots'}</div>}
         </div>
-        <div className="mb-4 grid gap-2 rounded-lg border border-line-subtle bg-surface p-3 lg:grid-cols-3">
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3">Selected scope</div>
-            <div className="mt-1 text-[13px] font-semibold text-ink">{selectedScope.label}</div>
-          </div>
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3">Valuation coverage</div>
-            <div className="mt-1 text-[13px] font-semibold tabular-nums text-ink">{latestTrendCoverage == null ? '—' : `${fmtNumber(latestTrendCoverage * 100, 2)}% of cost basis`}</div>
-          </div>
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3">USD/KRW reference</div>
-            <div className="mt-1 text-[13px] font-semibold tabular-nums text-ink">{latestFxRate == null ? 'Not applicable' : `${fmtNumber(latestFxRate, 2)} · ${latestSnapshot?.fx_as_of_date ?? 'n/a'}`}</div>
-            {latestSnapshot?.fx_source && <div className="mt-0.5 text-[10px] text-ink-3">{latestSnapshot.fx_source}</div>}
-          </div>
-        </div>
-        <div className="mb-4 space-y-2 rounded-lg border border-line-subtle bg-card p-3">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-1 w-20 text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3">View</span>
+        <div className="mb-3 flex flex-wrap items-center gap-1">
+          <Link
+            href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=single`}
+            scroll={false}
+            className={`rounded-sm border px-2 py-1 text-[11px] ${selectedView === 'single' ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
+          >Individual</Link>
+          <Link
+            href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=combined`}
+            scroll={false}
+            className={`rounded-sm border px-2 py-1 text-[11px] ${selectedView === 'combined' ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
+          >Combined</Link>
+          <span className="mx-1 h-4 w-px bg-line-subtle" />
+          {TREND_SCOPES.map((scope) => (
             <Link
-              href={`/?trend=${selectedRange.key}&scope=${selectedScope.key}&metric=${selectedMetric.key}&view=combined`}
+              key={scope.key}
+              href={`/?trend=${selectedRange.key}&scope=${scope.key}&metric=${selectedMetric.key}&view=${selectedView}`}
               scroll={false}
-              className={`rounded-md border px-3 py-1.5 text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/40 ${selectedView === 'combined' ? 'border-info bg-info/10 font-semibold text-info shadow-sm' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
-            >Compare metrics</Link>
+              className={`rounded-sm border px-2 py-1 text-[11px] ${selectedScope === scope.key ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
+            >
+              {scope.label}
+            </Link>
+          ))}
+          <span className="mx-1 h-4 w-px bg-line-subtle" />
+          {TREND_METRICS.map((metric) => (
             <Link
-              href={`/?trend=${selectedRange.key}&scope=${selectedScope.key}&metric=${selectedMetric.key}&view=single`}
+              key={metric.key}
+              href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${metric.key}&view=single`}
               scroll={false}
-              className={`rounded-md border px-3 py-1.5 text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/40 ${selectedView === 'single' ? 'border-info bg-info/10 font-semibold text-info shadow-sm' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
-            >Single metric</Link>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-1 w-20 text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3">Asset class</span>
-            {TOP_LEVEL_SCOPES.map((scope) => (
-              <Link
-                key={scope.key}
-                href={`/?trend=${selectedRange.key}&scope=${scope.key}&metric=${selectedMetric.key}&view=${selectedView}`}
-                scroll={false}
-                className={`rounded-md border px-3 py-1.5 text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/40 ${selectedScope.group === scope.key ? 'border-info bg-info/10 font-semibold text-info shadow-sm' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
-              >
-                {scope.label}
-              </Link>
-            ))}
-          </div>
-          {childScopes.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mr-1 w-20 text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3">Breakdown</span>
-              {childScopes.map((scope) => (
-                <Link
-                  key={scope.key}
-                  href={`/?trend=${selectedRange.key}&scope=${scope.key}&metric=${selectedMetric.key}&view=${selectedView}`}
-                  scroll={false}
-                  className={`rounded-md border px-3 py-1.5 text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/40 ${selectedScope.key === scope.key ? 'border-info bg-info/10 font-semibold text-info shadow-sm' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
-                >
-                  {scope.label}
-                </Link>
-              ))}
-            </div>
-          )}
-          {selectedView === 'single' && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mr-1 w-20 text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3">Metric</span>
-              {TREND_METRICS.map((metric) => (
-                <Link
-                  key={metric.key}
-                  href={`/?trend=${selectedRange.key}&scope=${selectedScope.key}&metric=${metric.key}&view=single`}
-                  scroll={false}
-                  className={`rounded-md border px-3 py-1.5 text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/40 ${selectedMetric.key === metric.key ? 'border-ink-3 bg-surface font-semibold text-ink shadow-sm' : 'border-transparent text-ink-3 hover:border-line hover:text-ink'}`}
-                >
-                  {metric.label}
-                </Link>
-              ))}
-            </div>
-          )}
-          <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">{SCOPE_HELP[selectedScope.group]}</div>
+              className={`rounded-sm border px-2 py-1 text-[11px] ${selectedMetric.key === metric.key ? 'border-line bg-surface font-medium text-ink' : 'border-transparent text-ink-3 hover:border-line hover:text-ink'}`}
+            >
+              {metric.label}
+            </Link>
+          ))}
         </div>
-        <div className="rounded-lg border border-line-subtle bg-card px-1 pb-1 pt-2 sm:px-3">
         {selectedView === 'combined' ? (
           combinedTrendData.length === 0 ? (
             <EmptyState hint="Run pnpm refresh or pnpm ingest to record the first snapshot.">No combined history recorded</EmptyState>
@@ -491,12 +446,11 @@ export default async function OverviewPage({
             axisLabel={selectedMetric.key === 'return_pct' ? 'Percentage points' : 'KRW million'}
           />
         )}
-        </div>
         <div className="mt-1 text-[11px] text-ink-3">
           {trendData.length ? `${trendData[0].date} to ${trendData[trendData.length - 1].date} · ${valuedTrendData.length} valued / ${trendData.length} total snapshot(s)${missingTrendPoints ? ` · ${missingTrendPoints} gap(s)` : ''}` : 'Snapshots are recorded once per ingest date.'}
         </div>
         <div className="mt-2 text-[11px] leading-relaxed text-ink-3">
-          Cost basis, holdings, and dividends are reconstructed from tax-lot and transaction dates. USD-denominated market values use the Frankfurter daily USD/KRW reference rate for each snapshot date (or the closest prior business day); hover a point to inspect the applied rate, date, and source. Valuation points below 90% cost-basis coverage remain visible as chart gaps; 90–95% coverage is marked partial. Cost-basis history itself does not require a market price.
+          Cost basis, holdings, and dividends are reconstructed from tax-lot and transaction dates. Foreign-currency quotes are converted to KRW using historical FX snapshots. Valuation points below 90% cost-basis coverage remain visible as chart gaps; 90–95% coverage is marked partial. Cost-basis history itself does not require a market price.
         </div>
       </Card>
 
