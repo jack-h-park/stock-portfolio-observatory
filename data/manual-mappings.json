@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "description": "Operating override layer. Read-only: the ingest applies these to normalized rows and records income_category, mapping_status, and mapping_note. Source spreadsheets, CSVs, and PDFs are never modified. Tracked in git so dev and prod stay identical and every change is attributable.",
+  "incomeRules": [
+    {
+      "match": {
+        "typeIncludes": "interest"
+      },
+      "category": "interest",
+      "note": "Broker cash-sweep and settlement interest arrives with no ticker; classify it as interest so it does not sit in the tickerless queue."
+    }
+  ],
+  "dividendOverrides": [],
+  "tickerRenames": [
+    {
+      "from": "SPLG",
+      "to": "SPYM",
+      "note": "State Street rebranded the SPDR Portfolio S&P 500 ETF. Same fund, same CUSIP 78464A854: the 2025-10-03 Chase buy is booked to SPLG, every 2026 dividend and the tax-lot export say SPYM."
+    }
+  ]
+}

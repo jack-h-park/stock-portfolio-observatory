@@ -68,7 +68,6 @@ cp .env.example .env.local
 #   "$STOCK_PYTHON_BIN" -m pip install --user pdfplumber openpyxl
 # Then create local generated-data files from public examples
 # (fx-rates.json is fetched by pnpm refresh, not copied):
-cp data/manual-mappings.example.json data/manual-mappings.json
 cp data/us-pdf-evidence.example.json data/us-pdf-evidence.json
 cp data/kr-prices.example.json data/kr-prices.json
 cp data/us-prices.example.json data/us-prices.json
@@ -462,7 +461,10 @@ published site can never disagree about a date.
 
 - `incomeRules` classify non-position cashflow such as interest, stock lending, and other income.
 - `dividendOverrides` can assign ticker/name/category for source rows that need explicit correction.
+- `tickerRenames` fold a security's old symbol into its current one, so a rebranded fund stays one position instead of splitting the replay across two tickers.
 - `/data-ops` shows the mapping file fingerprint, tickerless income groups, missing valuation rows, and suggested handling.
+
+Unlike the rest of `data/`, this file is **tracked in git**. It is hand-written configuration rather than generated output, and it carries no positions or amounts — only symbols and classification rules. Tracking it means dev and prod cannot silently drift (a rename applied on one machine and not the other reads as a reconciliation failure), and an accidental overwrite is recoverable from history. Deploy it like code: commit, merge, then `git pull` on prod before the next refresh.
 
 ## Current coverage
 

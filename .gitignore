@@ -19,7 +19,10 @@ tsconfig.tsbuildinfo
 __pycache__/
 *.py[cod]
 
-# Generated or private portfolio data
+# Generated or private portfolio data.
+# data/manual-mappings.json is deliberately NOT here: it is hand-written
+# configuration, not generated data, and it holds no positions or amounts.
+# Tracking it keeps dev and prod identical and makes an overwrite recoverable.
 private-data/
 data/fx-rates.json
 data/kr-prices.json
@@ -27,7 +30,7 @@ data/us-prices.json
 data/us-pdf-evidence.json
 data/crypto-activity.json
 data/crypto-prices.json
-data/manual-mappings.json
+data/manual-mappings.sample.json
 data/refresh-runs.json
 data/tax-policy.json
 data/tax-plans.json

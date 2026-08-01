@@ -110,7 +110,12 @@ writeJson(path.join(root, 'data/crypto-activity.json'), {
   transactions: [],
   snapshots: [],
 })
-writeJson(path.join(root, 'data/manual-mappings.json'), {
+// Sample mode writes its own mapping file rather than data/manual-mappings.json,
+// which is tracked in git and holds the real override rules. The .env.local
+// guard above already stops this on a configured machine, but that guard is
+// bypassable with SAMPLE_FORCE=1 and says nothing about mappings specifically.
+// Writing elsewhere means sample mode cannot touch the real rules at all.
+writeJson(path.join(root, 'data/manual-mappings.sample.json'), {
   version: 1,
   description: 'Synthetic sample mappings.',
   incomeRules: [{ match: { typeIncludes: 'interest' }, category: 'interest', note: 'Sample interest classification.' }],
@@ -149,7 +154,7 @@ insertMany(db, 'meta', [
   { key: 'kr_prices_path', value: path.join(root, 'data/kr-prices.json') },
   { key: 'us_prices_path', value: path.join(root, 'data/us-prices.json') },
   { key: 'us_pdf_evidence_path', value: path.join(root, 'data/us-pdf-evidence.json') },
-  { key: 'manual_mappings_path', value: path.join(root, 'data/manual-mappings.json') },
+  { key: 'manual_mappings_path', value: path.join(root, 'data/manual-mappings.sample.json') },
   { key: 'refresh_runs_path', value: path.join(root, 'data/refresh-runs.json') },
 ], ['key', 'value'])
 
