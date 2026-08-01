@@ -93,6 +93,19 @@ const US_HOLDING_SPECS = [
     broker: 'merrill', doctype: 'holdings', period: ASOF, ext: 'csv',
     pick: 'latest', since: '20260301',
   },
+  // The spec that was missing, and the gap it left is the reason this table
+  // exists at all: Fidelity had a transactions spec and no holdings spec, so its
+  // trades were read while its positions were structurally absent — roughly $51k
+  // across five tickers at the peak, in a portfolio total that simply came out
+  // smaller with nothing to say why. `us_brokerage_positions_ingested` now
+  // exists to catch the next one, but a check that reports a missing source is
+  // not a substitute for the source.
+  {
+    brokerage: 'Fidelity',
+    subdir: DIR_US_HOLDINGS,
+    broker: 'fidelity', doctype: 'holdings', period: ASOF, ext: 'csv',
+    pick: 'latest', since: '20251001',
+  },
 ]
 
 const US_TRANSACTION_SPECS = [

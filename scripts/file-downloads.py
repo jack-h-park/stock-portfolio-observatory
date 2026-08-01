@@ -894,6 +894,121 @@ def detect_fidelity(doc):
     return Plan(DIR_US_TRANSACTIONS, f"fidelity-transactions-{period}.csv", evidence)
 
 
+# Merrill's site exports positions under two different layouts, and which one
+# you get depends on a control on the page rather than on anything the file says
+# about itself. Both are holdings:
+#
+#   tax-lot detail   "Symbol ","Quantity","Unit Cost","Cost Basis",…   plus a
+#                    per-position `Acquisition Date` block underneath each row.
+#   flat positions   "Symbol ","Description","Quantity","Price",…      with the
+#                    basis under `Total Client Investment` and no lots at all.
+#
+# So `Cost Basis` is not the marker for "these are holdings" — it is the marker
+# for ONE of the two layouts, and requiring it rejected a perfectly good
+# positions export as ambiguous. What both layouts share is the `Symbol ` column
+# (trailing space and all, which is Merrill's, not a typo here) and a
+# basis column under one of two names. Naming the basis column in the evidence
+# line is what says which layout arrived, since the destination name cannot.
+MERRILL_BASIS_COLUMNS = ('"Cost Basis"', '"Total Client Investment"')
+
+
+MONTH_ABBREVIATIONS = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+
+def parse_mon_dd_yyyy(text):
+    """`Jul-31-2026` → date(2026, 7, 31).
+
+    Fidelity stamps its two exports with two different date formats: the
+    transactions footer says `Date downloaded 07/31/2026 05:22 pm` and the
+    positions footer says `Date downloaded Jul-31-2026 at 8:24 p.m ET`. Same
+    broker, same sentence, same afternoon — so one parser cannot serve both, and
+    reusing parse_mdy on the positions file would find no date and refuse a file
+    that does in fact declare one.
+    """
+    match = re.search(r"([A-Za-z]{3})[a-z]*-(\d{1,2})-(\d{4})", text)
+    if not match:
+        return None
+    month = MONTH_ABBREVIATIONS.get(match.group(1).lower())
+    if not month:
+        return None
+    return date(int(match.group(3)), month, int(match.group(2)))
+
+
+def detect_fidelity_positions(doc):
+    """Fidelity positions CSV → us-holdings/fidelity-holdings-<asof>.csv
+
+    A positions export is a snapshot at a moment, so its period is an as-of and
+    only the newest may be read — the same rule the Chase and Merrill holdings
+    exports follow.
+
+    ONE ACCOUNT PER FILE, ENFORCED. Every row carries its own `Account number`,
+    so a multi-account export parses perfectly well; what it cannot do is be
+    NAMED. The holdings grammar has no account slot in use here, so two accounts
+    filed under one `fidelity-holdings-<date>.csv` would be indistinguishable
+    from one account's export of the same date — and `pick: 'latest'` would then
+    let a later single-account download silently supersede the pair, dropping an
+    account's positions with nothing to say so. That is this repo's recurring
+    failure: not an error, just a smaller portfolio than exists. So a
+    multi-account export is refused with the remedy, rather than filed under a
+    name that understates it.
+    """
+    if doc.suffix != ".csv" or not doc.lines:
+        return None
+    # utf-8-sig on the read already ate the BOM this file carries; the header is
+    # matched on the columns that make it a POSITIONS export rather than the
+    # transactions one, which starts `Run Date,Action,…`.
+    header = doc.lines[0]
+    if not header.startswith("Account number,Account name,Symbol"):
+        return None
+    if "Cost basis total" not in header:
+        return Refusal(
+            "Fidelity positions export",
+            "the header has no `Cost basis total` column, which is the only "
+            "basis this export carries and the reason it is worth ingesting",
+        )
+
+    downloaded = None
+    for line in reversed(doc.lines[-12:]):
+        if "Date downloaded" in line:
+            downloaded = parse_mon_dd_yyyy(line)
+            break
+    if not downloaded:
+        return Refusal(
+            "Fidelity positions export",
+            "the footer has no `Date downloaded <Mon>-<DD>-<YYYY>`, and a "
+            "positions snapshot's period is the moment it was taken",
+        )
+
+    accounts = []
+    for line in doc.lines[1:]:
+        found = re.match(r"^([A-Z0-9]{6,}),", line)
+        if found and found.group(1) not in accounts:
+            accounts.append(found.group(1))
+    if not accounts:
+        return Refusal(
+            "Fidelity positions export",
+            "no row carries an account number, so there is nothing to check the "
+            "one-account-per-file rule against",
+        )
+    if len(accounts) > 1:
+        return Refusal(
+            "Fidelity positions export",
+            f"it holds {len(accounts)} accounts ({', '.join(accounts)}) and the "
+            "holdings name carries no account, so filing it would understate it",
+            "re-export one account at a time, or split the CSV by its "
+            "`Account number` column and drop the parts in separately",
+        )
+
+    return Plan(
+        DIR_US_HOLDINGS,
+        f"fidelity-holdings-{compact(downloaded)}.csv",
+        [f"Date downloaded {iso(downloaded)}", f"account {accounts[0]}"],
+    )
+
+
 def detect_merrill(doc):
     """Merrill CSVs → us-holdings/merrill-holdings-… or us-transactions/merrill-transactions-…
 
@@ -914,13 +1029,22 @@ def detect_merrill(doc):
     evidence = [f"Exported on {iso(exported)}"]
     if '"Trade Date"' in head and '"Settlement Date"' in head:
         return Plan(DIR_US_TRANSACTIONS, f"merrill-transactions-{compact(exported)}.csv", evidence)
-    if '"Symbol ' in head and '"Cost Basis"' in head:
+    if '"Symbol ' in head:
+        basis = next((c for c in MERRILL_BASIS_COLUMNS if c in head), None)
+        if basis is None:
+            return Refusal(
+                "Merrill holdings export",
+                "the `Symbol` column is there but neither basis column is "
+                f"({' nor '.join(MERRILL_BASIS_COLUMNS)}), and without a basis "
+                "this is not a holdings export this repo can read",
+            )
+        evidence.append(f"holdings layout: basis under {basis}")
         return Plan(DIR_US_HOLDINGS, f"merrill-holdings-{compact(exported)}.csv", evidence)
     return Refusal(
         "Merrill export",
         "neither the transactions header (`Trade Date`, `Settlement Date`) nor "
-        "the holdings header (`Symbol`, `Cost Basis`) is present, so which of "
-        "the two this is cannot be told",
+        "the holdings header (`Symbol`) is present, so which of the two this is "
+        "cannot be told",
     )
 
 
@@ -965,6 +1089,7 @@ DETECTORS = [
     ("빗썸 기간별 거래 내역 (.xlsx)", detect_bithumb_activity),
     ("Chase holdings / transactions CSV", detect_chase),
     ("Fidelity transactions CSV", detect_fidelity),
+    ("Fidelity positions CSV", detect_fidelity_positions),
     ("Merrill holdings / transactions CSV", detect_merrill),
     ("Robinhood transactions CSV", detect_robinhood_transactions),
 ]

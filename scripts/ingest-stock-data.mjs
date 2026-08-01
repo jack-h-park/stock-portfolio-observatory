@@ -1318,6 +1318,52 @@ const dividendRows = datasets.dividends.rows.map((r) => ({
 // in the visible direction instead.
 const CHASE_NON_POSITION_CLASSES = new Set(['Cash & Money Market Funds', 'Cash and Money Market Funds'])
 
+// Which of Merrill's two holdings layouts the ingest actually read. Only one of
+// them carries tax lots, and `pick: 'latest'` means downloading the flat one
+// REPLACES the lot detail with nothing — the positions stay right and the lots
+// simply stop existing. That is this repo's standing failure shape, so the
+// layout is recorded here and reported as its own check rather than left to be
+// noticed on a tax-planning screen that has quietly gone empty.
+let merrillHoldingsLayout = null
+
+const MONTH_ABBREVIATIONS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+
+// When a Fidelity positions export was taken, from its own footer:
+// `"Date downloaded Jul-31-2026 at 8:24 p.m ET"`. Not from the filename — the
+// whole of docs/data-sources.md rests on filenames not being believed — and not
+// from the row dates, because a positions snapshot has none. Note the month-name
+// format: the Fidelity TRANSACTIONS export stamps the same sentence
+// `07/31/2026`, so the two cannot share a parser.
+function fidelityHoldingsAsOf(filename) {
+  const match = fs
+    .readFileSync(filename, 'utf8')
+    .match(/Date downloaded\s+([A-Za-z]{3})[a-z]*-(\d{1,2})-(\d{4})/i)
+  if (!match) return ''
+  const month = MONTH_ABBREVIATIONS.indexOf(match[1].toLowerCase()) + 1
+  if (!month) return ''
+  return `${match[3]}-${String(month).padStart(2, '0')}-${match[2].padStart(2, '0')}`
+}
+
+// Money-market sweeps: the account's cash wearing a ticker. Declared here rather
+// than beside the replay that also uses it, because the holdings parsers below
+// have to exclude exactly this set — if a parser admitted a sweep the reconcile
+// skips, the position would count toward the portfolio total while having
+// nothing on the replay side to answer for it.
+const US_CASH_EQUIVALENT_TICKERS = new Set(['SPAXX', 'QACDS', 'FDRXX', 'SPRXX'])
+
+// Rows inside Merrill's positions table that are not positions. The `Balances`
+// block and the `Total` row share the table with the holdings and have the same
+// shape as them, so they are excluded by the label in the Symbol column rather
+// than by hoping a ticker pattern happens not to match `Cash balance`.
+const MERRILL_NON_POSITION_ROWS = new Set([
+  'Balances',
+  'Money accounts',
+  'Cash balance',
+  'Pending activity',
+  'Total',
+  'Reinvestments',
+])
+
 // Brokers decorate the ticker cell with trade annotations — Merrill exported
 // "JEPI !  Executed Buy". Read the leading symbol rather than requiring the
 // whole cell to be one, or the annotated position vanishes.
@@ -1374,6 +1420,76 @@ for (const source of usHoldingFiles) {
     }
   }
 
+  // Fidelity's positions export, the source that did not exist. Its trades were
+  // ingested and its positions were not, so every screen showed a portfolio
+  // smaller than the real one — about $51k across five tickers at the peak —
+  // and nothing anywhere said so. `us_brokerage_positions_ingested` could only
+  // infer from the transactions that the account looked closed; this file is
+  // the account saying otherwise for itself.
+  //
+  // One account per row, and the filer refuses a multi-account export, so the
+  // account label is read off the rows rather than assumed. It will not match
+  // the `Fidelity Account` the transactions carry — that export has no account
+  // column at all — which is the same two-sided labelling the Robinhood sources
+  // already have, and why the replay reconciles per brokerage and not per
+  // account.
+  if (source.brokerage === 'Fidelity') {
+    const rows = readCsvObjects(source.filename, (r) => r.includes('Account number') && r.includes('Symbol'))
+    for (const r of rows) {
+      const accountNumber = text(r['Account number'])
+      // The export ends in three paragraphs of disclaimer, each a single quoted
+      // cell. An account number is what makes a row a position row.
+      if (!/^[A-Z0-9]{6,}$/.test(accountNumber)) continue
+      // `SPAXX**` — Fidelity footnotes the core position in the symbol itself.
+      const symbol = normalizeTicker(text(r.Symbol).replace(/\*+$/, ''))
+      if (!symbol) continue
+      if (US_CASH_EQUIVALENT_TICKERS.has(symbol)) continue
+      const quantity = number(r.Quantity)
+      if (quantity == null) continue
+      const cost = number(r['Cost basis total']) ?? 0
+      const value = number(r['Current value'])
+      const unrealized = number(r['Total gain/loss dollar'])
+      holdingRows.push({
+        market: 'US',
+        currency: 'USD',
+        base_currency: 'KRW',
+        fx_rate_to_base: fxRate('USD')?.rate ?? null,
+        brokerage: source.brokerage,
+        account_type: text(r.Type),
+        source_system: path.basename(source.filename),
+        as_of_date: fidelityHoldingsAsOf(source.filename),
+        // Fidelity prefixes the registered name with the custodian in brackets
+        // — `[Fidelity] Individual - TOD` — which would render as
+        // "Fidelity [Fidelity] Individual - TOD". Drop the bracket, keep the
+        // rest of the broker's own words for the account.
+        account: `${source.brokerage} ${text(r['Account name']).replace(/^\[[^\]]*\]\s*/, '')} ${accountNumber}`.trim(),
+        ticker: symbol,
+        name: text(r.Description),
+        quantity,
+        native_average_unit_cost: number(r['Average cost basis']),
+        native_cost: cost,
+        native_price: number(r['Last price']),
+        native_market_value: value,
+        native_unrealized_gl: unrealized,
+        native_unrealized_gl_pct: number(r['Total gain/loss percent']),
+        base_cost: toBase(cost, 'USD'),
+        base_market_value: toBase(value, 'USD'),
+        base_unrealized_gl: toBase(unrealized, 'USD'),
+        average_unit_cost: null,
+        total_cost_krw: toBase(cost, 'USD') ?? 0,
+        current_price: null,
+        pe: null,
+        eps: null,
+        unrealized_gl_krw: null,
+        unrealized_gl_pct: null,
+        long_term_qty: null,
+        short_term_qty: null,
+        lot_count: null,
+      })
+    }
+    continue
+  }
+
   if (source.brokerage === 'Merrill') {
     const rows = parseCsv(fs.readFileSync(source.filename, 'utf8')).filter((r) => r.some((c) => c.trim()))
     let account = 'Merrill'
@@ -1381,7 +1497,91 @@ for (const source of usHoldingFiles) {
     if (accountLine) account = `Merrill ${accountLine.join(' ').split(':').slice(1).join(':').trim()}`
     let currentTicker = ''
     let currentName = ''
-    let asOf = '2026-07-15'
+    // The export's own `Exported on: 07/31/2026 08:48 PM ET`. This was a
+    // hardcoded '2026-07-15' — right for the one file on disk when it was
+    // written, and quietly wrong for every download after it. A positions
+    // snapshot that reports the wrong date is worse than one that reports none,
+    // because the staleness checks believe it.
+    const exportedLine = rows.find((r) => text(r[0]).startsWith('Exported on:'))
+    const asOf = exportedLine ? dateIso(text(exportedLine[0]).replace(/^Exported on:\s*/, '').replace(/\s+\d{1,2}:\d{2}.*$/, '')) : ''
+
+    // Which of Merrill's two holdings layouts this is. Both are reached from the
+    // same page and neither says which it is, so the header row is the only
+    // thing that can tell them apart:
+    //
+    //   tax-lot detail   Symbol | Quantity | Unit Cost | Cost Basis | Price | …
+    //                    with an `Acquisition Date` block under each position.
+    //   flat positions   Symbol | Description | Quantity | Price | … |
+    //                    Total Client Investment | Unrealized Gain/Loss
+    //
+    // The columns do not merely move, they differ — the flat layout carries no
+    // lots at all and calls the basis something else — so reading either by
+    // fixed offsets means one of them is silently misread. Column NAMES are read
+    // instead, from whichever header the file actually has.
+    const headerIndex = rows.findIndex((r) => r.some((c) => text(c) === 'Symbol'))
+    const header = headerIndex >= 0 ? rows[headerIndex].map((c) => text(c)) : []
+    const columnOf = (name) => header.indexOf(name)
+    const flatLayout = headerIndex >= 0 && columnOf('Total Client Investment') >= 0 && columnOf('Cost Basis') < 0
+    merrillHoldingsLayout = { flat: flatLayout, file: path.basename(source.filename), asOf }
+
+    if (flatLayout) {
+      const symbolAt = columnOf('Symbol')
+      const cell = (r, name) => (columnOf(name) >= 0 ? r[columnOf(name)] : '')
+      for (const r of rows.slice(headerIndex + 1)) {
+        const label = text(r[symbolAt])
+        // The `Balances` block and the `Total` row sit in the same table as the
+        // positions and look like them: `Money accounts` has a quantity of 28
+        // and a price of $1.00, and `Total` carries the account's whole value.
+        // Booking either as a position would add the cash sweep to the equity
+        // total and then add the total to itself.
+        if (!label || MERRILL_NON_POSITION_ROWS.has(label)) continue
+        const symbol = TICKER_CELL.exec(label)?.[1]
+        if (!symbol) continue
+        const quantity = number(cell(r, 'Quantity'))
+        if (quantity == null) continue
+        const cost = number(cell(r, 'Total Client Investment')) ?? 0
+        const value = number(cell(r, 'Value'))
+        const unrealized = number(text(cell(r, 'Unrealized Gain/Loss $ Chg % Chg')).split(' ')[0])
+        holdingRows.push({
+          market: 'US',
+          currency: 'USD',
+          base_currency: 'KRW',
+          fx_rate_to_base: fxRate('USD')?.rate ?? null,
+          brokerage: source.brokerage,
+          account_type: '',
+          source_system: path.basename(source.filename),
+          as_of_date: asOf,
+          account,
+          ticker: normalizeTicker(symbol),
+          name: text(cell(r, 'Description')) || symbol,
+          quantity,
+          // This layout prints no unit cost. Basis over quantity is not a guess
+          // at one, it is the definition of one, so it is derived rather than
+          // left null — the tax-lot layout supplies the same number directly.
+          native_average_unit_cost: quantity ? cost / quantity : null,
+          native_cost: cost,
+          native_price: number(cell(r, 'Price')),
+          native_market_value: value,
+          native_unrealized_gl: unrealized,
+          native_unrealized_gl_pct: null,
+          base_cost: toBase(cost, 'USD'),
+          base_market_value: toBase(value, 'USD'),
+          base_unrealized_gl: toBase(unrealized, 'USD'),
+          average_unit_cost: null,
+          total_cost_krw: toBase(cost, 'USD') ?? 0,
+          current_price: null,
+          pe: null,
+          eps: null,
+          unrealized_gl_krw: null,
+          unrealized_gl_pct: null,
+          long_term_qty: null,
+          short_term_qty: null,
+          lot_count: null,
+        })
+      }
+      continue
+    }
+
     for (const r of rows) {
       const symbol = TICKER_CELL.exec(text(r[1]))?.[1]
       if (symbol && number(r[2]) != null && text(r[2]) !== '') {
@@ -1969,7 +2169,6 @@ const US_LONG_TERM_DAYS = 365
 // Sweep money-market funds are the cash balance wearing a ticker. They are not
 // positions, they are never sold at a gain, and reconciling them against
 // `holdings` (which rightly omits them) would report a permanent mismatch.
-const US_CASH_EQUIVALENT_TICKERS = new Set(['SPAXX', 'QACDS', 'FDRXX', 'SPRXX'])
 const usRealizedRows = []
 const usReplayNotes = []
 let usReplayMismatches = []
@@ -3271,6 +3470,30 @@ for (const brokerage of uncoveredBrokerages) {
     open.map(([ticker, quantity]) => `${ticker} ${Number(quantity.toFixed(6))}`).join(', ')
   )
 }
+
+// Merrill's positions are right either way; what the flat layout costs is the
+// tax lots, and nothing else here would say so. A brokerage's lots going from 58
+// to zero changes every holding-period and tax-planning figure for that account
+// while no total looks wrong, which is precisely the kind of silence this file
+// keeps adding checks against.
+//
+// Clearable, and that is the point of scoping it to Merrill rather than to "any
+// brokerage without lots": exporting the tax-lot view once resolves it. Fidelity
+// would fail such a general check forever — its positions export has no lot
+// detail to give — and a warning that can never be cleared is how a checklist
+// stops being read.
+const merrillLotCount = taxLotRows.filter((r) => r.brokerage === 'Merrill').length
+check(
+  'merrill_holdings_carry_lot_detail',
+  merrillHoldingsLayout == null || !merrillHoldingsLayout.flat || merrillLotCount > 0,
+  merrillHoldingsLayout == null
+    ? 'no Merrill holdings export read'
+    : merrillHoldingsLayout.flat
+      ? `${merrillHoldingsLayout.file} is the positions-only layout (basis under "Total Client Investment"), so ` +
+        'Merrill has no tax lots and no holding periods — re-export the tax-lot view, which carries both'
+      : `${merrillHoldingsLayout.file} is the tax-lot layout; ${merrillLotCount} lot(s) read`,
+  'warning'
+)
 
 check(
   'us_brokerage_positions_ingested',
