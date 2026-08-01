@@ -2459,6 +2459,32 @@ const US_LONG_TERM_DAYS = 365
 // `holdings` (which rightly omits them) would report a permanent mismatch.
 const usRealizedRows = []
 const usReplayNotes = []
+const usReplayLotCostLookups = []
+
+// The brokers' own lot exports, indexed by where they came from and when they
+// opened, so the replay can ask them what a row does not say.
+//
+// Robinhood books a dividend reinvestment as `REC` with the Price and Amount
+// columns empty — the shares are stated, the money is not — so the replay had
+// nothing to open the lot with and opened it at zero. Meanwhile the same lot
+// sits in Robinhood's tax-lot export with its cost on it: 0.011612 MSFT
+// acquired 2024-06-17 for $5.14. The two never disagreed; they were just never
+// introduced.
+//
+// Keyed on acquisition date rather than quantity, because the quantities are
+// rounded differently by the two exports — the CSV says 0.0116 where the lot
+// export says 0.011612 — and a tolerance wide enough to cover that on a
+// fractional share is wide enough to match the wrong lot on a whole one. A date
+// carrying more than one lot for the same security is ambiguous and is left
+// alone rather than guessed at.
+const usBrokerLotCostByOpening = new Map()
+for (const lot of taxLotRows) {
+  if (lot.market !== 'US' || !(lot.native_unit_cost > 0) || !lot.acquired_date) continue
+  const key = `${lot.brokerage}\t${lot.ticker}\t${lot.acquired_date}`
+  const seen = usBrokerLotCostByOpening.get(key)
+  if (seen === undefined) usBrokerLotCostByOpening.set(key, lot.native_unit_cost)
+  else if (seen !== lot.native_unit_cost) usBrokerLotCostByOpening.set(key, null)
+}
 let usReplayMismatches = []
 let usReplayAsOfSkew = []
 // Robinhood's holdings can come from the MCP snapshot, which answers live,
@@ -2619,15 +2645,29 @@ function usHoldingDays(from, to) {
           if (lot.qty <= 1e-9) pool.shift()
         }
         if (remaining > 1e-6) {
-          // Named, not absorbed. A zero-cost lot books its whole proceeds as
-          // gain on a later sale and looks exactly like a real answer.
-          lotsFor(key).push({
-            acquired: r.date, qty: remaining, unit: 0, name: text(r.name), account: r.account,
-          })
-          usReplayNotes.push(
-            `${r.date} ${r.brokerage} ${ticker}: ${usRound(remaining, 6)} of ${usRound(qty, 6)} unit(s) ` +
-              `arrived with no cost on the row and none in transit (${r.type}/${text(r.raw_type)}) — opened at zero cost`
-          )
+          // Nothing in transit either — but the broker's own lot export may
+          // still know what these shares cost, so ask it before giving up.
+          const lotUnitCost = usBrokerLotCostByOpening.get(`${r.brokerage}\t${ticker}\t${r.date}`)
+          if (lotUnitCost) {
+            lotsFor(key).push({
+              acquired: r.date, qty: remaining, unit: lotUnitCost, name: text(r.name), account: r.account,
+            })
+            usReplayLotCostLookups.push(
+              `${r.date} ${r.brokerage} ${ticker}: ${usRound(remaining, 6)} unit(s) at ${lotUnitCost} ` +
+                `from the broker's lot export (${r.type}/${text(r.raw_type)} carried no cost)`
+            )
+          } else {
+            // Named, not absorbed. A zero-cost lot books its whole proceeds as
+            // gain on a later sale and looks exactly like a real answer.
+            lotsFor(key).push({
+              acquired: r.date, qty: remaining, unit: 0, name: text(r.name), account: r.account,
+            })
+            usReplayNotes.push(
+              `${r.date} ${r.brokerage} ${ticker}: ${usRound(remaining, 6)} of ${usRound(qty, 6)} unit(s) ` +
+                `arrived with no cost on the row, none in transit, and none on a broker lot opened that ` +
+                `day (${r.type}/${text(r.raw_type)}) — opened at zero cost`
+            )
+          }
         }
       } else {
         const cost = amount > 0 ? amount : qty * unitPrice
@@ -2777,6 +2817,7 @@ function usHoldingDays(from, to) {
       `${usReplayMismatches.length} position(s) disagree with holdings, ${usReplayAsOfSkew.length} explained by post-snapshot trades, ${robinhoodReplayMismatches.length} more Robinhood-only (see robinhood_holdings_replay_provenance); ${usReplayNotes.length} note(s)`
   )
   for (const note of usReplayNotes.slice(0, 20)) console.error(`[us-realized]   ${note}`)
+  for (const note of usReplayLotCostLookups) console.error(`[us-realized]   ${note}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -4385,6 +4426,17 @@ check(
 // delivering broker — sit at zero cost until the gap is closed. Harmless while
 // they are held, and a fictitious gain the day they are sold.
 const usZeroCostArrivals = usReplayNotes.filter((n) => n.includes('opened at zero cost'))
+// Recovering a cost from the lot export is a normal outcome, not a fault, but
+// it is a lot the transaction row did not describe — so it is stated rather
+// than left for someone to notice in a total.
+check(
+  'us_replay_arrival_costs_from_lots',
+  true,
+  usReplayLotCostLookups.length === 0
+    ? 'no arrival needed its cost read off a broker lot'
+    : `${usReplayLotCostLookups.length} arrival(s) took their cost from the broker's own lot export: ${usReplayLotCostLookups.slice(0, 3).join('; ')}`,
+  'warning'
+)
 check(
   'us_replay_arrivals_carry_cost',
   usZeroCostArrivals.length === 0,
