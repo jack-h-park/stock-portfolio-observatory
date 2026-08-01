@@ -1478,6 +1478,17 @@ const firstOf = (object, keys) => {
 const robinhoodUnmappedLots = []
 let robinhoodSnapshotLotCount = 0
 const robinhoodSymbolsWithoutLots = []
+// The MCP position carries no security name, only a ticker — the PDFs did, so
+// this is what keeps a name on a ticker the reports already covered instead of
+// falling back to blank the moment the snapshot takes over.
+const robinhoodNameByTicker = new Map()
+for (const report of usPdfEvidence.reports ?? []) {
+  if (report.category !== 'us_gain_loss_pdf') continue
+  for (const lot of report.lots ?? []) {
+    const ticker = normalizeTicker(text(lot.ticker))
+    if (ticker && text(lot.name) && !robinhoodNameByTicker.has(ticker)) robinhoodNameByTicker.set(ticker, text(lot.name))
+  }
+}
 
 if (robinhoodSnapshot?.accounts?.length) {
   const asOf = String(robinhoodSnapshot.fetchedAt || '').slice(0, 10)
@@ -1510,14 +1521,14 @@ if (robinhoodSnapshot?.accounts?.length) {
         // `quantity_available` is what is free to sell, which a pledged or
         // pending-settlement lot understates. The position is `quantity`.
         const quantity = number(firstOf(lot, ['quantity', 'open_quantity', 'units']))
-        const cost = number(firstOf(lot, ['cost_basis', 'total_cost', 'native_cost_basis']))
+        const cost = number(firstOf(lot, ['tax_cost_basis', 'cost_basis', 'total_cost', 'native_cost_basis']))
         if (!required(symbol) || quantity == null || cost == null) {
           robinhoodUnmappedLots.push(`${label} ${groupSymbol || '?'} ${text(firstOf(lot, ['open_lot_id', 'id'])) || 'lot'}`)
           continue
         }
         symbolsWithLots.add(symbol)
         robinhoodSnapshotLotCount += 1
-        const unitCost = number(firstOf(lot, ['average_cost', 'unit_cost', 'price', 'native_unit_cost']))
+        const unitCost = number(firstOf(lot, ['cost_per_share', 'average_cost', 'unit_cost', 'price', 'native_unit_cost']))
         const resolvedUnitCost = unitCost ?? (quantity ? cost / quantity : null)
         taxLotRows.push({
           market: 'US',
@@ -1530,8 +1541,8 @@ if (robinhoodSnapshot?.accounts?.length) {
           as_of_date: asOf,
           account: label,
           ticker: symbol,
-          name: nameBySymbol.get(symbol) || '',
-          acquired_date: String(text(firstOf(lot, ['acquired_date', 'opened_at', 'created_at', 'acquisition_date']))).slice(0, 10),
+          name: nameBySymbol.get(symbol) || robinhoodNameByTicker.get(symbol) || '',
+          acquired_date: String(text(firstOf(lot, ['open_date', 'acquired_date', 'opened_at', 'created_at', 'acquisition_date']))).slice(0, 10),
           open_quantity: quantity,
           native_cost_basis: cost,
           native_unit_cost: resolvedUnitCost,
