@@ -345,7 +345,40 @@ year past maturity, which no statement contradicts; only a balance certificate
 would.
 
 **A lot held exactly 365 days is short-term.** "More than a year" is the rule and
-three ISA lots sit precisely on the boundary.
+three ISA lots sit precisely on the boundary. Seventeen more sit within ten days
+of it, so the as-of date below is not a rounding detail — it decides tax term for
+a fifth of the lots in any given fortnight.
+
+**Each account is as-of its own statement's coverage end, not its last trade and
+not the newest date any broker happens to have.** The three are different dates
+and the difference moves holding periods:
+
+| Account | last trade | statement covers to | as-of used |
+| --- | --- | --- | --- |
+| 미래에셋(ISA) | 2026-07-10 | 2026-07-16 | **2026-07-16** |
+| 미래에셋(종합) | 2026-07-15 | 2026-07-16 | **2026-07-16** |
+| 삼성증권(주식보상) | 2026-07-16 | 2026-07-16 | **2026-07-16** |
+| 토스증권 | 2026-07-13 | 2026-07-15 | **2026-07-15** |
+
+Dating an account by its **last trade** would take six days of holding period
+away from 미래에셋 ISA for having been quiet — "nothing happened for six days" is
+something the certificate positively tells us, not a gap in it. Seven ISA lots
+fall back across the one-year line if you do.
+
+Dating every account by the **newest date any statement carries** is what the
+code did until 삼성증권 arrived, and adding one broker whose 거래내역확인서 ran a
+single day later reclassified three unrelated 미래에셋 lots from short-term to
+long-term. A broker should not be able to age another broker's lots.
+
+The period is read from **inside** each document, in the three shapes the three
+brokers print it, never from the filename — the same reason
+`crypto_statement_periods_contiguous` reads declared periods, after a statement
+named 2025년1-7월 turned out to hold 2026-01-01~2026-07-31. One statement settles
+it outright: `samsung-rsu-transactions-<ACCOUNT_LAST5>.pdf` carries no period in its name
+at all. A coverage end that lands *before* a transaction in the same account is
+refused and reported rather than used, since a misread period moves holding
+periods silently. `STOCK_KR_AS_OF` still pins every account to one date for
+reproducing a past run.
 
 ## Known gaps
 

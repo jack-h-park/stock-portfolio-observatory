@@ -203,6 +203,54 @@ def open_pdf(path):
     return None
 
 
+# The period a statement declares for ITSELF, in the three shapes the three
+# brokers print. All of them put it on page 1:
+#
+#   미래에셋   2026/01/01 ~ 2026/07/16                      (bare, no label)
+#   토스       조회 기간 2026년 1월 1일 ~ 2026년 7월 15일
+#   삼성증권   조회일자 2025-01-01 ~ 2026-07-16
+#
+# Read from the document rather than from the filename, and the reason is on
+# record: a crypto statement named 2025년1-7월 turned out to hold
+# 2026-01-01~2026-07-31, which is why `crypto_statement_periods_contiguous`
+# already asserts on declared periods instead of names. The same argument
+# settles it here, and one statement makes it unavoidable —
+# `samsung-rsu-transactions-<ACCOUNT_LAST5>.pdf` carries no period in its name at all.
+COVERAGE_RE = re.compile(
+    r"(\d{4})\s*[./-]\s*(\d{1,2})\s*[./-]\s*(\d{1,2})\s*~\s*(\d{4})\s*[./-]\s*(\d{1,2})\s*[./-]\s*(\d{1,2})"
+    r"|(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일\s*~\s*(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일"
+)
+
+
+def coverage_period(text):
+    """(start, end) as ISO dates, or (None, None) if the page does not say."""
+    match = COVERAGE_RE.search(nfc(text or ""))
+    if not match:
+        return None, None
+    parts = [g for g in match.groups() if g is not None]
+    if len(parts) != 6:
+        return None, None
+    y1, m1, d1, y2, m2, d2 = parts
+    return f"{y1}-{int(m1):02d}-{int(d1):02d}", f"{y2}-{int(m2):02d}-{int(d2):02d}"
+
+
+def statement_coverage(path, report):
+    """The declared period of one statement, reported rather than guessed."""
+    pdf = open_pdf(str(path))
+    if pdf is None:
+        return None, None
+    with pdf:
+        text = pdf.pages[0].extract_text() if pdf.pages else ""
+    start, end = coverage_period(text)
+    if end is None:
+        # Not fatal — the account simply falls back to its last transaction,
+        # which is the old behaviour. Named because that fallback UNDERSTATES
+        # how current the account is, and silently: a quiet account looks stale
+        # rather than quiet, and every lot in it loses holding days it earned.
+        report("no-coverage-period", f"{path.name}: page 1 declares no 조회기간 — falling back to its last transaction date")
+    return start, end
+
+
 def account_label(pdf):
     """`미래에셋증권(ISA)` — the brokerage/account-type shape the ingest splits on."""
     for page in pdf.pages[:3]:
@@ -327,13 +375,21 @@ def tax_term(days):
     return "Long-term" if days > LONG_TERM_DAYS else "Short-term"
 
 
-def build_lots(transactions, as_of):
+def build_lots(transactions, as_of_by_account):
     """Replay every transaction in order, consuming lots first-in-first-out.
 
     FIFO is an assumption, stated here rather than buried: the certificates
     record what left the account, not which lot the broker chose. Where the
     broker used a different method the per-lot split will differ from its own
     filing — which is why the year-end statement, not this, is the tax record.
+
+    `as_of_by_account` is PER ACCOUNT, and it decides every lot's holding period
+    and therefore its tax term. One global date across four brokers meant the
+    account with the longest-running statement set the clock for all of them:
+    adding 삼성증권, whose 거래내역확인서 happens to run one day later than
+    anything else, moved the shared as-of from 2026-07-15 to 2026-07-16 and
+    reclassified three unrelated 미래에셋 ISA lots from short-term to long-term.
+    A broker should not be able to age another broker's lots.
     """
     open_lots = {}
     taxlots, realized, notes = [], [], []
@@ -411,6 +467,7 @@ def build_lots(transactions, as_of):
         for lot in held:
             if lot["qty"] <= 1e-9:
                 continue
+            as_of = as_of_by_account[account]
             days = days_between(lot["acquired"], as_of)
             cost = lot["qty"] * lot["unit"]
             taxlots.append({
@@ -424,6 +481,58 @@ def build_lots(transactions, as_of):
                 "Tax Term": tax_term(days), "Source": lot["source"],
             })
     return taxlots, realized, notes
+
+
+def resolve_as_of(transactions, statements_dir, report):
+    """account → the date its lots are current as of.
+
+    THE STATEMENT'S COVERAGE END, not its last transaction. The two are not the
+    same and the difference is not cosmetic: 미래에셋 ISA last traded 2026-07-10
+    while its 거래내역증명서 runs to 2026-07-16, and "nothing happened for six
+    days" is something the certificate positively tells us. Dating those lots
+    2026-07-10 would take six days of holding period away from a quiet account
+    for no reason — seven ISA lots fall back across the one-year line if you do,
+    which is the wrong answer arrived at confidently.
+
+    Each account takes the NEWEST coverage among the statements that produced its
+    rows, so a fresh download moves it and an old one cannot drag it back.
+
+    `STOCK_KR_AS_OF` still pins every account to one date, for reproducing a
+    past run exactly.
+    """
+    pinned = os.environ.get("STOCK_KR_AS_OF")
+    last_tx, sources = {}, {}
+    for r in transactions:
+        account = r["Account"]
+        last_tx[account] = max(last_tx.get(account, ""), r["Date"])
+        sources.setdefault(account, set()).add(r["Source"])
+
+    if pinned:
+        return {account: pinned for account in last_tx}
+
+    # One page-1 read per statement, shared by every account it feeds.
+    coverage = {}
+    for name in sorted({s for names in sources.values() for s in names}):
+        coverage[name] = statement_coverage(statements_dir / name, report)[1]
+
+    resolved = {}
+    for account, names in sources.items():
+        ends = [coverage[n] for n in names if coverage.get(n)]
+        best = max(ends) if ends else ""
+        # A coverage end BEFORE the account's own last transaction means the
+        # period was misread — the rows are evidence the statement reaches
+        # further than the line claims. Fall back rather than date lots into the
+        # past, and say so: a wrong as-of moves holding periods silently, and
+        # holding periods decide tax.
+        if best and best < last_tx[account]:
+            report(
+                "coverage-before-transactions",
+                f"{account}: declared coverage ends {best} but a transaction is dated "
+                f"{last_tx[account]} — using the transaction date instead",
+            )
+            best = ""
+        resolved[account] = best or last_tx[account]
+    return resolved
 
 
 def share_direction(row):
@@ -824,8 +933,8 @@ def main():
     transactions.sort(key=lambda r: (r["Date"], r["Source"], r["Page"]))
     dividends.sort(key=lambda r: (r["Date"], r["Source"], r["Page"]))
 
-    as_of = os.environ.get("STOCK_KR_AS_OF") or (max(r["Date"] for r in transactions) if transactions else "")
-    taxlots, realized, lot_notes = build_lots(transactions, as_of)
+    as_of_map = resolve_as_of(transactions, statements_dir, report)
+    taxlots, realized, lot_notes = build_lots(transactions, as_of_map)
     check_lots_against_snapshot(taxlots, toss_snapshot, report)
 
     write_tsv(OUT_DIR / "transactions.tsv", TRANSACTION_COLUMNS, transactions)
@@ -839,7 +948,8 @@ def main():
     print(f"\nWrote {OUT_DIR}/transactions.tsv ({len(transactions)} rows: "
           f"{', '.join(f'{c} {n}' for c, n in sorted(by_currency.items()))})")
     print(f"Wrote {OUT_DIR}/dividends.tsv ({len(dividends)} rows)")
-    print(f"Wrote {OUT_DIR}/taxlots.tsv ({len(taxlots)} open lot(s), as of {as_of})")
+    as_of_shown = ", ".join(f"{a} {d}" for a, d in sorted(as_of_map.items()))
+    print(f"Wrote {OUT_DIR}/taxlots.tsv ({len(taxlots)} open lot(s), as of — {as_of_shown})")
     print(f"Wrote {OUT_DIR}/realized.tsv ({len(realized)} realized lot(s))")
     if lot_notes:
         print(f"\nWARNING: {len(lot_notes)} lot issue(s) — a disposal with no open lot means "
