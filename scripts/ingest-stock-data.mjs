@@ -487,6 +487,16 @@ const krStatements = Object.fromEntries(
   ['taxlots', 'transactions', 'dividends', 'realized'].map((name) => [name, readTsvAt(krStatementsDir, `${name}.tsv`)])
 )
 const statementAccounts = new Set((krStatements.transactions?.rows ?? []).map((r) => text(r.Account)).filter(Boolean))
+// Per-account coverage end, written by extract-kr-statements.py alongside the
+// TSVs. Read separately from taxlots' own `As Of Date` because that column
+// only exists on OPEN lots, and 삼성증권 never has one — every RSU vest
+// transfers straight to Toss inside the same statement period, so its lots
+// are always empty and it would otherwise be invisible to any freshness check
+// built off them. See `samsung_statement_fresh` below.
+const krAsOfPath = path.join(krStatementsDir, 'as-of.json')
+const krAsOfByAccount = fs.existsSync(krAsOfPath)
+  ? JSON.parse(fs.readFileSync(krAsOfPath, 'utf8'))?.accounts ?? {}
+  : {}
 if (statementAccounts.size) {
   for (const [name, parsed] of Object.entries(krStatements)) {
     if (!parsed) continue
@@ -3093,6 +3103,32 @@ check(
       (tossOrphanLots.length
         ? `; ${tossOrphanLots.length} open lot(s) have no live position at all (${tossOrphanLots.join(', ')})`
         : ''),
+  'warning'
+)
+// 삼성증권 has exactly one source — its own 거래내역확인서 — and no live
+// alternative and no scheduled refresh at all: nobody but a person downloads
+// it, on no cadence anyone has committed to. An RSU vest sits invisible until
+// somebody thinks to go get a fresh statement, which is precisely the failure
+// this account already caused once (docs/data-sources.md: "an account with no
+// position looks exactly like an account nobody parses"). The one thing that
+// can catch the next one without a human remembering is staleness that names
+// itself — not the vest, which no automated source here can see coming, but
+// the fact that nobody has checked in a while.
+//
+// Dividends are the fastest-recurring event in this account (quarterly-ish:
+// Aug, Nov, Apr, Jul) and vests are rarer, so a threshold tuned to catch a
+// missed quarter's dividend catches a missed vest for free.
+const samsungAccountLabel = '삼성증권(주식보상)'
+const samsungAsOf = krAsOfByAccount[samsungAccountLabel] || null
+const samsungAgeDays = daysSince(samsungAsOf)
+const samsungStatementMaxDays = Number(process.env.STOCK_SAMSUNG_STATEMENT_MAX_DAYS || 120)
+check(
+  'samsung_statement_fresh',
+  samsungAsOf != null && samsungAgeDays != null && samsungAgeDays <= samsungStatementMaxDays,
+  samsungAsOf == null
+    ? 'no 삼성증권 statement parsed — its RSU vests and dividends are invisible until one is downloaded'
+    : `statement covers to ${samsungAsOf} (${samsungAgeDays.toFixed(0)}d old) — download a newer 거래내역확인서 ` +
+      'in case a vest or a dividend landed since then',
   'warning'
 )
 check('reconcilable_holdings_vs_taxlots_quantity', quantityMismatches.length === 0, `${quantityMismatches.length} mismatch(es)`)

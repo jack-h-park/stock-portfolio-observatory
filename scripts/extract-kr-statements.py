@@ -43,6 +43,7 @@ import os
 import re
 import sys
 import unicodedata
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pdfplumber
@@ -288,6 +289,25 @@ def write_tsv(path, columns, rows):
         fh.write("\t".join(columns) + "\n")
         for row in rows:
             fh.write("\t".join(str(row.get(col, "")) for col in columns) + "\n")
+
+
+def write_as_of(path, as_of_map):
+    """The per-account as-of map, on its own — not only stamped onto open lots.
+
+    A lot only carries `As Of Date` while it stays OPEN, and 삼성증권 never has
+    one: every RSU vest transfers straight to Toss inside the same statement
+    period, so its taxlots.tsv rows are always empty. Reading freshness off lots
+    would therefore never see this account at all — not stale, just absent from
+    the file that freshness would have to be read from. The ingest needs
+    somewhere to ask "how current is 삼성증권" that does not depend on it holding
+    anything, which is exactly the situation it is usually in.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "accounts": as_of_map,
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 TRANSACTION_COLUMNS = [
@@ -941,6 +961,7 @@ def main():
     write_tsv(OUT_DIR / "dividends.tsv", DIVIDEND_COLUMNS, dividends)
     write_tsv(OUT_DIR / "taxlots.tsv", TAXLOT_COLUMNS, taxlots)
     write_tsv(OUT_DIR / "realized.tsv", REALIZED_COLUMNS, realized)
+    write_as_of(OUT_DIR / "as-of.json", as_of_map)
 
     by_currency = {}
     for r in transactions:

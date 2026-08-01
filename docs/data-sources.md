@@ -30,9 +30,19 @@ every share vested has already moved on to Toss (30 on 2026-01-12, 22 on
 parses, so for a long time nobody noticed which it was. What it holds instead is
 history: ₩39,159 of dividends and 예탁금이용료, ₩5,990 of tax withheld against
 them, and the vest-date cost of every share that later showed up at Toss as a
-`타사대체입고`. None of it reached the portfolio until the parser existed. The
-next vest will be visible on the day it lands rather than whenever someone
-thinks to look.
+`타사대체입고`. None of it reached the portfolio until the parser existed.
+
+The next vest itself is still not something any check here can see coming — this
+is a hand-downloaded 거래내역확인서 like 미래에셋's, with no credential, no MCP and
+no cron reaching it, so nothing here is watching 삼성증권 for a new vest the way
+`fetch:toss` watches the Open API. What `samsung_statement_fresh` watches instead
+is whether anyone has checked: it names how old the newest downloaded statement
+is and warns once it passes 120 days (`STOCK_SAMSUNG_STATEMENT_MAX_DAYS`), tuned
+to the account's own fastest-recurring event — its roughly quarterly dividend —
+so a missed quarter's dividend and a missed vest are caught by the same
+threshold. Read off `data/kr-statements/as-of.json` rather than off the parsed
+lots: the account almost never holds an open lot to attach a date to, since
+every vest transfers out to Toss inside the same statement period.
 
 `STOCK_KR_STATEMENTS_DIR` rows replace payload rows **per account**, for whichever
 accounts appear in the statements. Swapping the files wholesale would delete the
@@ -95,7 +105,7 @@ one question it exists to answer — **what do I still have to fetch by hand?**
 | Named by | the grammar below | its dataset (`toss-snapshot.json`) |
 | Committed | never — outside the repo | never — gitignored |
 | Moved by `push-sources.sh` | yes | **no** |
-| Examples | `chase-holdings-20260723.csv`, `mirae-isa-transactions-2025.pdf` | `data/toss-snapshot.json`, `data/robinhood-snapshot.json`, `data/us-pdf-evidence.json` |
+| Examples | `chase-holdings-20260723.csv`, `mirae-isa-transactions-2025.pdf` | `data/toss-snapshot.json`, `data/robinhood-snapshot.json`, `data/us-pdf-evidence.json`, `data/kr-statements/as-of.json` |
 
 The test is not the file format and not who ultimately produced the numbers — a
 Gain/Loss PDF and an MCP response both come from Robinhood. It is **whether a
@@ -386,6 +396,7 @@ reproducing a past run.
 | --- | --- | --- |
 | Toss positions age with the newest 거래내역서, not with the market | `toss_positions_fresh` | credential-free floor; closes on an Open API snapshot |
 | No cron can regenerate the Robinhood snapshot — only an agent session with the MCP | `robinhood_snapshot_fresh` | open by design; the check is the mitigation |
+| No path exists to fetch a new 삼성증권 거래내역확인서 automatically — a vest can only be discovered by re-downloading | `samsung_statement_fresh` | open by design; the check is the mitigation |
 | US realized gains absent | `us_ytd_realized_assumption_reviewed` | E (replay) + D (1099-B) in progress |
 | Two Toss fills missing from its API | — | inquiry drafted |
 | US sheet still an input to reconcile | — | blocked on US realized |
