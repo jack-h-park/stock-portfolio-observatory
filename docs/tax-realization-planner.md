@@ -117,18 +117,6 @@ The planner estimates incremental tax above projected wage income instead of mul
 
 The W-2 projection is a planning proxy, not completed taxable income. Itemized deductions, other income, AMT, special-rate assets, exact sourcing/treaty positions, and transaction-specific wash-sale basis adjustments still require review.
 
-## Progressive US Tax Estimate
-
-The planner estimates incremental tax above projected wage income instead of multiplying gains by one blended rate:
-
-- 2026 MFJ ordinary brackets and the 0% / 15% / 20% long-term capital-gain thresholds use IRS Revenue Procedure 2025-32.
-- Short- and long-term gains, YTD amounts, and same-character carryovers are netted before cross-netting.
-- NIIT uses the configured rate and statutory MFJ threshold; California capital gains use ordinary-income brackets.
-- The California base is the 2025 FTB Schedule Y. Future brackets are projections using the editable inflation assumption because an official future schedule may not exist yet.
-- Form 1116-style credit is limited to modeled federal regular tax attributable to the manually designated foreign-source share. State tax and NIIT are not included in that federal credit limit.
-
-The W-2 projection is a planning proxy, not completed taxable income. Itemized deductions, other income, AMT, special-rate assets, exact sourcing/treaty positions, and transaction-specific wash-sale basis adjustments still require review.
-
 ## UX Shape
 
 - `/tax-planning`: Deterministic strategy controls, selected-plan takeaway, scenario comparison, monthly timeline, saved-plan creation, annual tax roll-up, and warnings.
