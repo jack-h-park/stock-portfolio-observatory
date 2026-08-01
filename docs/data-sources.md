@@ -471,6 +471,23 @@ reproducing a past run.
 | Two Toss fills missing from its API | — | inquiry drafted |
 | US sheet still an input to reconcile | — | blocked on US realized |
 | `Note` mapping rules not migrated | — | open |
+| **Toss orders are fetched every 6h and never read.** `fetch-toss.mjs` pages `/api/v1/orders`, filters to `FILLED`, and writes them into `data/toss-snapshot.json`; the ingest reads only `holdings.items` from that file. So the trades between the newest 거래내역서 and now are already on disk, unused — which is the whole of the drift `toss_holdings_lots_provenance` reports | `toss_holdings_lots_provenance` | **P2** — open. See the note below before implementing |
+| **`toss_holdings_lots_provenance` does not say how old the statement is**, so a count of disagreements reads as a defect rather than as expected drift. On 2026-08-01 it reported 7 of 38, and all seven were a 19-day gap between the 2026-07-13 statement and the live snapshot | itself | **P2** — message only, no logic change |
+| **A zero-cost rights certificate looks like a position that vanished.** `신주인수권증서` has expiry as its normal end of life, so `<WARRANT_CODE>` (한화솔루션 51R, 15 units, ₩0) is reported as an open lot with no live position — a warning that returns every time rights are issued, which is how a check stops being read | `toss_holdings_lots_provenance` | **P2** — open |
+
+**Before wiring Toss orders in, read the Robinhood row above.** The same
+question was asked there in 2026-08 and the answer was to leave the CSVs
+authoritative: the MCP's orders turned out to hold no trade the CSV lacked,
+while dividends, transfers and corporate actions had no order endpoint at all,
+so ingesting orders would have added a second source of the same trades for very
+little. Toss is not identical — its orders come from a cron rather than an agent
+session, so they genuinely can be fresher than any statement — but the second
+half applies unchanged. The 2026-07-13 statement carries `타사대체입고`
+(a transfer in from 미래에셋) and `신주인수권증서입고` (a rights issue) beside
+its `구매` rows, and an orders endpoint returns none of those. So orders can
+close the *trade* gap and the 거래내역서 stays the only source of everything
+else — which also means the merge needs a per-account floor and a rule for which
+side owns a Buy/Sell in the overlap, exactly as the Robinhood work worked out.
 
 Each gap that the system can see is a named check rather than a silence. That is
 deliberate: the failures this project keeps rediscovering are not crashes but
