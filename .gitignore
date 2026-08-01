@@ -33,6 +33,8 @@ data/crypto-prices.json
 data/manual-mappings.sample.json
 data/refresh-runs.json
 data/tax-policy.json
+# One generation of what push-sources.sh replaced, kept on the receiving side.
+data/.push-backup/
 data/tax-plans.json
 data/historical-fx-rates.json
 data/historical-prices.json

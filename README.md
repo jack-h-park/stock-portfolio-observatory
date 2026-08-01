@@ -287,9 +287,19 @@ make push-sources           # run it by hand
 make uninstall-push-service
 ```
 
-Configure `STOCK_PROD_HOST` and `STOCK_PROD_DATA_DIR` in `.env.local`; the script
-reads that file itself, because launchd hands it almost no environment and never
-a login shell.
+Configure `STOCK_PROD_HOST`, `STOCK_PROD_DATA_DIR` and `STOCK_PROD_REPO_DIR` in
+`.env.local`; the script reads that file itself, because launchd hands it almost
+no environment and never a login shell.
+
+It carries two things, from two roots. Broker sources travel from the data
+directory; the files in the script's `CONFIG` list travel from the repo's
+`data/`, which is why `STOCK_PROD_REPO_DIR` exists. Today that is
+`tax-policy.json` alone — it holds a W-2 wage base and year-to-date realized
+figures, so it stays out of git and off any history, and the push forces `0600`
+on the far side rather than widening it to this machine's mode. The version it
+replaces is kept in `data/.push-backup/`. `manual-mappings.json` is the other
+half of that split: symbols and rules only, so it is tracked in git and arrives
+by `git pull` instead.
 
 Downloading stays manual — Chase, Merrill and Fidelity all want a browser session
 with MFA. This automates the second step, not the first.

@@ -18,9 +18,20 @@
 # each other:
 #
 #   sources  — arrive here, are read there            → pushed
+#   config   — edited here, read there                 → pushed (see CONFIG)
 #   inbox/   — a staging area, filed then emptied      → never pushed
 #   outputs/ — written there by every refresh          → never touched
 #   briefing-archive/ — written there by the briefing  → never touched
+#
+# Config is a late addition and a different root: it lives in the repo's data/
+# directory, not the data directory. It is here because leaving it out had a
+# cost. data/manual-mappings.json held a ticker rename on one machine and not
+# the other, and the difference surfaced three steps downstream as a realized-
+# gain replay that would not reconcile. Nothing said "these two files differ";
+# the pipeline just disagreed with itself. That file now lives in git, which
+# suits it — it is symbols and classification rules. tax-policy.json cannot go
+# the same way: it carries a W-2 wage base and year-to-date realized figures,
+# and a git history is forever. So it travels here instead.
 #
 # Copying the generated database back over the one being served would replace
 # live data with whatever this machine last happened to build. So the directory
@@ -42,15 +53,16 @@ ENV_FILE="$REPO_DIR/.env.local"
 if [ -f "$ENV_FILE" ]; then
   while IFS='=' read -r key value; do
     case "$key" in
-      STOCK_DATA_DIR|STOCK_PROD_HOST|STOCK_PROD_DATA_DIR|STOCK_PYTHON_BIN)
+      STOCK_DATA_DIR|STOCK_PROD_HOST|STOCK_PROD_DATA_DIR|STOCK_PROD_REPO_DIR|STOCK_PYTHON_BIN)
         [ -z "${!key:-}" ] && export "$key=${value%\"}" ;;
     esac
-  done < <(grep -E '^(STOCK_DATA_DIR|STOCK_PROD_HOST|STOCK_PROD_DATA_DIR|STOCK_PYTHON_BIN)=' "$ENV_FILE" || true)
+  done < <(grep -E '^(STOCK_DATA_DIR|STOCK_PROD_HOST|STOCK_PROD_DATA_DIR|STOCK_PROD_REPO_DIR|STOCK_PYTHON_BIN)=' "$ENV_FILE" || true)
 fi
 
 LOCAL_DIR="${STOCK_DATA_DIR:-$HOME/workspace/data/stock-management}"
 HOST="${STOCK_PROD_HOST:-hermes-runner@imac-hermes}"
 REMOTE_DIR="${STOCK_PROD_DATA_DIR:-workspace/data/stock-management}"
+REMOTE_REPO_DIR="${STOCK_PROD_REPO_DIR:-workspace/code/core/jackhpark-stock-observatory}"
 DRY=""
 
 while [ $# -gt 0 ]; do
@@ -58,7 +70,7 @@ while [ $# -gt 0 ]; do
     --dry-run) DRY="--dry-run"; shift ;;
     --host) HOST="$2"; shift 2 ;;
     --remote-dir) REMOTE_DIR="$2"; shift 2 ;;
-    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,42p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -75,6 +87,19 @@ SOURCES=(
   us-tax-documents
   crypto-bithumb
   crypto-robinhood
+)
+
+# Config files under the repo's data/, pushed to the same path on the far side.
+# An allowlist for the same reason SOURCES is one: data/ also holds the runtime
+# snapshots each refresh regenerates (prices, FX, evidence), and carrying those
+# would overwrite what the refresh host just computed with whatever this machine
+# last built. Only files a person edits belong here.
+#
+# data/manual-mappings.json is deliberately absent — it is tracked in git and
+# arrives by `git pull`. Listing it in both places would mean two ways to change
+# one file, and the rsync would quietly win over the commit.
+CONFIG=(
+  tax-policy.json
 )
 
 [ -d "$LOCAL_DIR" ] || { echo "ERROR: no data directory at $LOCAL_DIR" >&2; exit 1; }
@@ -120,6 +145,37 @@ rsync -a --human-readable --itemize-changes $DRY \
   --exclude '~$*' \
   "${present[@]}" \
   "$HOST:$REMOTE_DIR/"
+
+# Config, second because a failure here must not cost the source push that
+# already succeeded. Same one-way rule, two differences:
+#
+#   --backup-dir  keeps the version being replaced, because the way this file
+#                 gets lost is a copy made in a hurry over one nobody read
+#                 first. One generation is enough to answer "what was there
+#                 before". rsync writes it only when it actually transfers, so
+#                 an unchanged file leaves no backup and no churn.
+# Permissions ride along in -a rather than a --chmod flag: macOS ships openrsync,
+# which advertises --chmod and rejects every value for it. tax-policy.json carries
+# a W-2 wage base and realized figures, so it is 0600 on both machines — chmod it
+# here and -a carries that across, which is the honest fix anyway. A 0644 local
+# copy of this file was already too open before it ever left.
+config=()
+for file in "${CONFIG[@]}"; do
+  if [ -f "$REPO_DIR/data/$file" ]; then
+    config+=("$REPO_DIR/data/$file")
+  else
+    echo "note: data/$file is not on this machine, skipping" >&2
+  fi
+done
+
+if [ ${#config[@]} -gt 0 ]; then
+  echo
+  echo "pushing ${#config[@]} config file(s) to $HOST:$REMOTE_REPO_DIR/data/${DRY:+  (dry run)}"
+  rsync -a --human-readable --itemize-changes $DRY \
+    --backup --backup-dir=.push-backup --suffix='' \
+    "${config[@]}" \
+    "$HOST:$REMOTE_REPO_DIR/data/"
+fi
 
 if [ -z "$DRY" ]; then
   echo
