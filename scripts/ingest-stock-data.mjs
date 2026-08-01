@@ -254,6 +254,16 @@ function normalizeUsTransactionType(value, action = '') {
   if (explicit === 'sell' || act.startsWith('you sold')) return 'SELL'
   if (act.startsWith('transfer of assets acat deliver')) return 'TRANSFER_OUT'
   if (act.startsWith('transfer of assets acat receive')) return 'TRANSFER_IN'
+  // Fidelity names the far account inline — `TRANSFERRED TO VS Z35-581892-1
+  // (Cash)` — so the description is unique per counterparty and never matches a
+  // fixed string. The direction is the only part that generalises.
+  //
+  // TRANSFER_OUT rather than INTERNAL_TRANSFER on purpose: the far account here
+  // is a cash-management account, which is banking rather than investing and is
+  // deliberately outside this portfolio. Money moving there has left, and
+  // calling it internal would net it back into a total that no longer holds it.
+  if (act.startsWith('transferred to') || explicit.startsWith('transferred to')) return 'TRANSFER_OUT'
+  if (act.startsWith('transferred from') || explicit.startsWith('transferred from')) return 'TRANSFER_IN'
   if (raw.includes('dividend')) return 'DIVIDEND'
   if (raw.includes('interest')) return 'INTEREST'
   if (raw.includes('reinvest')) return 'REINVEST'
