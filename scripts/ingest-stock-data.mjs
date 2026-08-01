@@ -1357,6 +1357,214 @@ const transactionRows = datasets.transactions.rows.map((r) => ({
   page: number(r.Page),
 }))
 
+// Toss orders, but ONLY after the newest statement.
+//
+// The API's order history cannot rebuild Toss's lots from scratch — that is the
+// reason stated where the snapshot is read, and it still holds: 18 of its
+// symbols arrived by transfer, and a transfer is not an order. But rebuilding
+// from scratch was never the only option. The statements are authoritative up to
+// the day they were printed; past that day they say nothing at all, and until
+// now neither did anything else. Seven of the eight positions that failed
+// `toss_holdings_lots_provenance` were plain purchases sitting unread in
+// data/toss-snapshot.json, already fetched every hour by the refresh and thrown
+// away — 카카오 +50, 미래에셋증권 +20, NAVER +10 on 2026-07-29, each matching the
+// shortfall to the unit.
+//
+// So the cutoff is the newest statement date, and the API supplies only what
+// comes after it. Self-healing by construction: download a newer 거래내역서 and
+// the cutoff moves forward, these rows drop out, and the statement's version —
+// which carries transfers and corporate actions the order book has no concept
+// of — takes their place. Nothing is ever counted twice.
+//
+// What this cannot see is anything in the window that was not an order. A
+// 타사대체입고 or a 신주인수권증서 arriving after the cutoff still shows up only as
+// a provenance disagreement, which is the honest outcome: the bridge closes the
+// gap it can explain and leaves the rest named.
+const tossOrderNotes = []
+let tossBridgeCutoff = null
+let tossBridgedFills = 0
+let tossBridgedSells = 0
+
+if (tossSnapshot?.accounts?.length) {
+  const usdRate = fxRate('USD')?.rate ?? null
+  // The statement's own last word, not today's date and not the lot dates: a
+  // certificate covers a period, and its final transaction is where it stops
+  // being able to answer.
+  for (const r of transactionRows) {
+    if (r.account !== tossAccountLabel || r.source_system !== 'korea_statement') continue
+    if (r.date && (tossBridgeCutoff == null || r.date > tossBridgeCutoff)) tossBridgeCutoff = r.date
+  }
+
+  const fills = []
+  for (const account of tossSnapshot.accounts) {
+    for (const order of account.orders ?? []) {
+      if (text(order.status) !== 'FILLED') continue
+      const exec = order.execution ?? {}
+      // filledAt over orderedAt: an order placed before the close and filled the
+      // next session belongs to the day the shares actually moved, which is the
+      // day the statement would have recorded it.
+      const date = String(exec.filledAt || order.orderedAt || '').slice(0, 10)
+      const quantity = number(exec.filledQuantity)
+      if (!date || !quantity) continue
+      if (tossBridgeCutoff && date <= tossBridgeCutoff) continue
+      fills.push({ order, exec, date, quantity })
+    }
+  }
+  fills.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+
+  // FIFO over the statement's own lots, so a sale in the window consumes the
+  // oldest open lot exactly as the certificate's replay would have. Mutating
+  // taxLotRows in place keeps one lot ledger rather than a second one that would
+  // then have to be reconciled against the first.
+  const openLots = new Map()
+  for (const lot of taxLotRows) {
+    if (lot.account !== tossAccountLabel || !(lot.open_quantity > 0)) continue
+    if (!openLots.has(lot.ticker)) openLots.set(lot.ticker, [])
+    openLots.get(lot.ticker).push(lot)
+  }
+  for (const lots of openLots.values()) lots.sort((a, b) => String(a.acquired_date).localeCompare(String(b.acquired_date)))
+
+  for (const { order, exec, date, quantity } of fills) {
+    const currency = text(order.currency) || 'KRW'
+    const toKrw = (v) => (v == null ? null : currency === 'KRW' ? v : usdRate == null ? null : v * usdRate)
+    const ticker = normalizeTicker(order.symbol)
+    const security = tossSnapshot.accounts
+      .flatMap((a) => a.securities ?? [])
+      .find((s) => normalizeTicker(s.symbol) === ticker)
+    const name = text(security?.name) || ticker
+    const market = currency === 'USD' ? 'US' : 'KR'
+    const side = text(order.side).toUpperCase()
+    const gross = number(exec.filledAmount) ?? 0
+    const commission = number(exec.commission) ?? 0
+    const tax = number(exec.tax) ?? 0
+    // Fees land on the side that makes them a cost either way: added to what a
+    // purchase cost, subtracted from what a sale returned. A basis that ignores
+    // them overstates every gain by exactly the amount actually paid to trade.
+    const nativeAmount = side === 'BUY' ? gross + commission + tax : gross - commission - tax
+    const unitPrice = number(exec.averageFilledPrice)
+
+    transactionRows.push({
+      market,
+      currency,
+      base_currency: 'KRW',
+      brokerage: tossAccountLabel,
+      account_type: '',
+      source_system: 'toss_open_api_orders',
+      date,
+      account: tossAccountLabel,
+      type: side === 'SELL' ? 'SELL' : 'BUY',
+      raw_type: `${text(order.orderType)} ${side}`.trim(),
+      ticker,
+      name,
+      quantity,
+      native_amount: nativeAmount,
+      native_settlement: null,
+      native_unit_price: unitPrice,
+      amount_krw: toKrw(nativeAmount),
+      settlement_krw: null,
+      unit_price: toKrw(unitPrice),
+      fee: commission,
+      tax,
+      balance: null,
+      source: 'toss-snapshot.json',
+      page: null,
+    })
+    tossBridgedFills += 1
+
+    if (side === 'BUY') {
+      const lot = {
+        market,
+        currency,
+        base_currency: 'KRW',
+        fx_rate_to_base: currency === 'KRW' ? 1 : usdRate,
+        brokerage: tossAccountLabel,
+        account_type: '',
+        source_system: 'toss_open_api_orders',
+        as_of_date: date,
+        account: tossAccountLabel,
+        ticker,
+        name,
+        acquired_date: date,
+        open_quantity: quantity,
+        native_cost_basis: nativeAmount,
+        native_unit_cost: quantity ? nativeAmount / quantity : null,
+        native_market_value: null,
+        native_unrealized_gl: null,
+        cost_basis_krw: toKrw(nativeAmount) ?? 0,
+        unit_cost: quantity ? (toKrw(nativeAmount) ?? 0) / quantity : null,
+        holding_days: null,
+        tax_term: '',
+        source: 'toss-snapshot.json',
+      }
+      taxLotRows.push(lot)
+      if (!openLots.has(ticker)) openLots.set(ticker, [])
+      openLots.get(ticker).push(lot)
+      continue
+    }
+
+    tossBridgedSells += 1
+    let remaining = quantity
+    const lots = openLots.get(ticker) ?? []
+    for (const lot of lots) {
+      if (remaining <= 1e-9) break
+      if (!(lot.open_quantity > 0)) continue
+      const taken = Math.min(lot.open_quantity, remaining)
+      const share = lot.open_quantity ? taken / lot.open_quantity : 0
+      const costKrw = (lot.cost_basis_krw ?? 0) * share
+      const nativeCost = (lot.native_cost_basis ?? 0) * share
+      const proceedsNative = quantity ? nativeAmount * (taken / quantity) : 0
+      const proceedsKrw = toKrw(proceedsNative)
+      const days = lot.acquired_date
+        ? Math.round((Date.parse(date) - Date.parse(lot.acquired_date)) / 86_400_000)
+        : null
+      realizedRows.push({
+        market,
+        currency,
+        base_currency: 'KRW',
+        brokerage: tossAccountLabel,
+        source_system: 'toss_open_api_orders',
+        account: tossAccountLabel,
+        ticker,
+        name,
+        acquired_date: lot.acquired_date,
+        sold_date: date,
+        quantity_sold: taken,
+        cost_basis_krw: costKrw,
+        proceeds_krw: proceedsKrw,
+        realized_gl_krw: proceedsKrw == null ? null : proceedsKrw - costKrw,
+        holding_days: days,
+        // Same 365-day boundary the certificate replay uses, so a lot does not
+        // change tax term depending on which source happened to close it.
+        tax_term: days == null ? '' : days > 365 ? 'Long-term' : 'Short-term',
+        basis: 'replay',
+        tax_year: date.slice(0, 4),
+        native_cost_basis: nativeCost,
+        native_proceeds: proceedsNative,
+        native_realized_gl: proceedsNative - nativeCost,
+      })
+      lot.open_quantity -= taken
+      lot.cost_basis_krw = (lot.cost_basis_krw ?? 0) - costKrw
+      lot.native_cost_basis = (lot.native_cost_basis ?? 0) - nativeCost
+      remaining -= taken
+    }
+    if (remaining > 1e-6) {
+      // A sale with no lot behind it means the shares arrived some way the order
+      // book cannot show — a transfer in, most likely. Named rather than dropped:
+      // silently selling from nothing would book the whole proceeds as gain.
+      tossOrderNotes.push(`${date} ${ticker}: sold ${quantity} with only ${quantity - remaining} in open lots`)
+    }
+  }
+
+  if (tossBridgedFills) {
+    console.error(
+      `[toss] ${tossBridgedFills} order fill(s) after the statement cutoff ${tossBridgeCutoff ?? '(none)'} ` +
+        `bridged into transactions and lots (${tossBridgedSells} sell(s))` +
+        (tossOrderNotes.length ? `; ${tossOrderNotes.length} note(s)` : '')
+    )
+    for (const note of tossOrderNotes) console.error(`[toss]   ${note}`)
+  }
+}
+
 const dividendRows = datasets.dividends.rows.map((r) => ({
   market: 'KR',
   currency: text(r.Currency) || 'KRW',
@@ -3399,6 +3607,22 @@ if (tossPositionRows.length === 0) {
     `${age == null ? '' : ` (${age.toFixed(0)}d old)`} — neither the Open API nor the 거래내역서 supplied them`
 }
 check('toss_positions_fresh', tossPositionsOk, tossPositionsDetail, 'warning')
+
+// The bridge reports what it did even when it did nothing, because "no fills
+// after the cutoff" and "the orders never got read" look identical from the
+// outside and mean opposite things. A note here is a sale the lots could not
+// cover, which would otherwise book the entire proceeds as gain.
+check(
+  'toss_orders_bridge_statement',
+  tossOrderNotes.length === 0,
+  tossSnapshot?.accounts?.length
+    ? tossBridgedFills === 0
+      ? `no order fills after the statement cutoff ${tossBridgeCutoff ?? '(no statement)'} — statements and snapshot cover the same ground`
+      : `${tossBridgedFills} fill(s) after ${tossBridgeCutoff ?? '(no statement)'} bridged into transactions and lots` +
+        (tossOrderNotes.length ? `; ${tossOrderNotes.length} sold more than the open lots hold: ${tossOrderNotes.join('; ')}` : '')
+    : 'no Open API snapshot — nothing to bridge with',
+  'warning'
+)
 // Holdings and lots come from two sources that age differently — the API
 // snapshot is hourly, the statements are as old as the last download — so this
 // is a staleness measure, not a data error. A non-zero count names the
