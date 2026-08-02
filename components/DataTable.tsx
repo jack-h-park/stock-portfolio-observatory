@@ -1,6 +1,7 @@
 import { clsx } from 'clsx'
 import type { ReactNode } from 'react'
 import { EmptyState, InfoTooltip, Table } from '@/components/ui'
+import { COMMON_LABELS } from '@/lib/ui-copy'
 
 export type DataTableColumn<Row = any> = {
   key: string
@@ -24,7 +25,7 @@ export function DataTable({
   columns,
   rows,
   caption,
-  emptyMessage = '표시할 데이터가 없습니다.',
+  emptyMessage = COMMON_LABELS.noRows,
   getRowKey,
 }: {
   columns: DataTableColumn[]
@@ -52,7 +53,7 @@ export function DataTable({
               >
                 <span className={clsx('inline-flex items-center', col.align === 'right' && 'w-full justify-end text-right')}>
                   {col.label}
-                  {col.description ? <InfoTooltip label={`${String(col.label)} 설명`}>{col.description}</InfoTooltip> : null}
+                  {col.description ? <InfoTooltip label={COMMON_LABELS.helpFor(String(col.label))}>{col.description}</InfoTooltip> : null}
                 </span>
               </th>
             ))}

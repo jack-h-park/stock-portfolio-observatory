@@ -21,7 +21,7 @@ function glTone(value: number | null | undefined) {
 }
 
 function moneyOrNa(value: number | null | undefined, currency: string) {
-  return value == null ? '값 없음' : fmtMoney(value, currency)
+  return value == null ? 'No value' : fmtMoney(value, currency)
 }
 
 function eventTone(kind: string) {
@@ -53,19 +53,19 @@ function ReconciliationStrip({
     <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px]">
       <div className="flex items-center justify-between gap-3">
         <span className="font-medium text-ink">{label}</span>
-        <Badge tone={ok ? 'success' : 'warning'}>{ok ? '일치' : '확인 필요'}</Badge>
+        <Badge tone={ok ? 'success' : 'warning'}>{ok ? 'Matched' : 'Needs review'}</Badge>
       </div>
       <div className="mt-2 grid gap-2 text-[11px] sm:grid-cols-3">
         <div>
-          <div className="text-ink-3">보유종목</div>
+          <div className="text-ink-3">Holdings</div>
           <div className="font-medium tabular-nums text-ink">{unit === 'KRW' ? fmtMoney(left, 'KRW') : fmtNumber(left, 4)}</div>
         </div>
         <div>
-          <div className="text-ink-3">세금 계산 단위</div>
+          <div className="text-ink-3">Tax lots</div>
           <div className="font-medium tabular-nums text-ink">{unit === 'KRW' ? fmtMoney(right, 'KRW') : fmtNumber(right, 4)}</div>
         </div>
         <div>
-          <div className="text-ink-3">차이</div>
+          <div className="text-ink-3">Difference</div>
           <div className={ok ? 'font-medium tabular-nums text-success' : 'font-medium tabular-nums text-warning'}>
             {unit === 'KRW' ? fmtMoney(diff, 'KRW') : fmtNumber(diff, 4)}
           </div>
@@ -168,14 +168,14 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
   return (
     <>
       <PageHeader
-        eyebrow={`${detail.market} 보유종목`}
+        eyebrow={`${detail.market} Holding`}
         title={detail.name}
         emphasis={detail.ticker}
-        subtitle={`${fmtNumber(detail.totals.account_count)}개 계좌 · 매도하지 않은 세금 계산 단위 ${fmtNumber(detail.lotTotals.lot_count)}개 · 거래 ${fmtNumber(detail.transactions.length)}건`}
-        action={<Link href="/holdings" className="text-[12px] font-medium text-info hover:underline">보유종목으로 돌아가기</Link>}
+        subtitle={`${fmtNumber(detail.totals.account_count)} accounts · ${fmtNumber(detail.lotTotals.lot_count)} open tax lots · ${fmtNumber(detail.transactions.length)} transactions`}
+        action={<Link href="/holdings" className="text-[12px] font-medium text-info hover:underline">Back to holdings</Link>}
       />
 
-      <Card title="평가 데이터 최신 상태" info={GLOSSARY.freshness.description} className="mb-5">
+      <Card title="Valuation Data Freshness" info={GLOSSARY.freshness.description} className="mb-5">
         <div className="grid gap-2 lg:grid-cols-2">
           {freshnessItems.map((item) => (
             <div key={item.key} className="rounded-md border border-line-subtle bg-surface px-3 py-2">
@@ -186,73 +186,73 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
         </div>
       </Card>
 
-      <Card title="먼저 확인할 사항" info="이 종목의 수량·취득원가와 근거 자료가 서로 맞는지 요약합니다." className="mb-5" accent={hasReconIssue}>
+      <Card title="First Checks" info="Summarizes whether this position's quantity, cost basis, and evidence agree." className="mb-5" accent={hasReconIssue}>
         <div className="grid gap-3 lg:grid-cols-3">
           <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
             <div className="mb-1 flex items-center justify-between gap-3">
-              <span className="text-[12px] font-medium text-ink">데이터 일치 상태</span>
-              <Badge tone={hasReconIssue ? 'warning' : 'success'}>{hasReconIssue ? '확인 필요' : '일치'}</Badge>
+              <span className="text-[12px] font-medium text-ink">Reconciliation status</span>
+              <Badge tone={hasReconIssue ? 'warning' : 'success'}>{hasReconIssue ? 'Needs review' : 'Matched'}</Badge>
             </div>
             <div className="text-[11px] leading-relaxed text-ink-3">
-              수량 차이 {fmtQuantity(quantityDiff, 4)} · 원화 취득원가 차이 {fmtMoney(baseCostDiff, 'KRW')}
-            </div>
-          </div>
-          <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-            <div className="mb-1 text-[12px] font-medium text-ink">근거 자료 연결</div>
-            <div className="text-[11px] leading-relaxed text-ink-3">
-              원본 파일 {fmtNumber(detail.sources.filter((source) => source.file).length)}개 연결 · 확인되지 않은 참조 {fmtNumber(detail.sources.filter((source) => !source.file).length)}개
+              Quantity difference {fmtQuantity(quantityDiff, 4)} · KRW cost-basis difference {fmtMoney(baseCostDiff, 'KRW')}
             </div>
           </div>
           <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-            <div className="mb-1 text-[12px] font-medium text-ink">활동 내역 범위</div>
+            <div className="mb-1 text-[12px] font-medium text-ink">Evidence links</div>
             <div className="text-[11px] leading-relaxed text-ink-3">
-              거래 {fmtNumber(detail.transactions.length)}건 · 배당 {fmtNumber(detail.dividends.length)}건 · 매도하지 않은 세금 계산 단위 {fmtNumber(detail.lots.length)}개
+              {fmtNumber(detail.sources.filter((source) => source.file).length)} source files linked · {fmtNumber(detail.sources.filter((source) => !source.file).length)} unresolved references
+            </div>
+          </div>
+          <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
+            <div className="mb-1 text-[12px] font-medium text-ink">Activity coverage</div>
+            <div className="text-[11px] leading-relaxed text-ink-3">
+              {fmtNumber(detail.transactions.length)} transactions · {fmtNumber(detail.dividends.length)} dividends · {fmtNumber(detail.lots.length)} open tax lots
             </div>
           </div>
         </div>
       </Card>
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-6">
-        <StatCard label="보유수량" value={fmtQuantity(detail.totals.quantity, 4)} accent />
-        <StatCard label="취득원가" value={fmtMoney(detail.totals.native_cost, detail.currency)} info={GLOSSARY.costBasis.description} />
-        <StatCard label="평가금액" value={moneyOrNa(detail.totals.native_market_value, detail.currency)} />
+        <StatCard label="Quantity" value={fmtQuantity(detail.totals.quantity, 4)} accent />
+        <StatCard label="Cost Basis" value={fmtMoney(detail.totals.native_cost, detail.currency)} info={GLOSSARY.costBasis.description} />
+        <StatCard label="Market Value" value={moneyOrNa(detail.totals.native_market_value, detail.currency)} />
         <StatCard
-          label="평가손익"
+          label="Unrealized G/L"
           value={moneyOrNa(detail.totals.native_unrealized_gl, detail.currency)}
-          hint={nativeUnrealizedPct == null ? '값 없음' : pct(nativeUnrealizedPct)}
+          hint={nativeUnrealizedPct == null ? 'No value' : pct(nativeUnrealizedPct)}
           info={GLOSSARY.unrealizedGl.description}
           tone={glTone(detail.totals.native_unrealized_gl)}
         />
         <StatCard
-          label="원화 평가손익"
+          label="KRW Unrealized G/L"
           value={moneyOrNa(detail.totals.base_unrealized_gl, 'KRW')}
-          hint={baseUnrealizedPct == null ? '값 없음' : pct(baseUnrealizedPct)}
+          hint={baseUnrealizedPct == null ? 'No value' : pct(baseUnrealizedPct)}
           info={`${GLOSSARY.unrealizedGl.description} ${GLOSSARY.baseAmount.description}`}
           tone={glTone(detail.totals.base_unrealized_gl)}
         />
-        <StatCard label="배당" value={fmtMoney(detail.dividendTotals.native_amount, detail.currency)} hint={`${fmtNumber(detail.dividendTotals.count)}건`} tone="success" />
+        <StatCard label="Dividends" value={fmtMoney(detail.dividendTotals.native_amount, detail.currency)} hint={`${fmtNumber(detail.dividendTotals.count)} rows`} tone="success" />
       </div>
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
-        <Card title="데이터 일치 확인" info={GLOSSARY.reconciliation.description}>
+        <Card title="Reconciliation" info={GLOSSARY.reconciliation.description}>
           <div className="space-y-3">
-            <ReconciliationStrip label="매도하지 않은 수량" left={detail.totals.quantity} right={detail.lotTotals.open_quantity} diff={quantityDiff} unit="quantity" />
-            <ReconciliationStrip label="원화 취득원가" left={detail.totals.base_cost} right={detail.lotTotals.cost_basis_krw} diff={baseCostDiff} unit="KRW" />
+            <ReconciliationStrip label="Open quantity" left={detail.totals.quantity} right={detail.lotTotals.open_quantity} diff={quantityDiff} unit="quantity" />
+            <ReconciliationStrip label="KRW cost basis" left={detail.totals.base_cost} right={detail.lotTotals.cost_basis_krw} diff={baseCostDiff} unit="KRW" />
           </div>
         </Card>
 
-        <Card title="보유기간 구성" info="세금 계산 기준에 따라 장기·단기 보유 수량을 구분합니다.">
+        <Card title="Holding-Period Mix" info="Splits quantity into long-term and short-term buckets for tax review.">
           <div className="grid gap-3 text-[12px]">
             <div className="flex items-center justify-between">
-              <span className="text-ink-3">장기 보유 수량</span>
+              <span className="text-ink-3">Long-term quantity</span>
               <span className="font-medium tabular-nums text-ink">{fmtNumber(detail.totals.long_term_qty, 4)}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-ink-3">단기 보유 수량</span>
+              <span className="text-ink-3">Short-term quantity</span>
               <span className="font-medium tabular-nums text-ink">{fmtNumber(detail.totals.short_term_qty, 4)}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-ink-3">장기 / 단기 계산 단위 수</span>
+              <span className="text-ink-3">Long / short tax-lot count</span>
               <span className="font-medium tabular-nums text-ink">{fmtNumber(detail.lotTotals.long_term_count)} / {fmtNumber(detail.lotTotals.short_term_count)}</span>
             </div>
           </div>

@@ -54,15 +54,15 @@ export default function HealthPage() {
   return (
     <>
       <PageHeader
-        eyebrow="시스템"
-        title="데이터 상태"
-        emphasis="상태"
-        subtitle={`마지막 데이터 검사는 ${fmtDateTime(meta.ingested_at)}에 실행되었습니다.`}
-        action={issueCount ? <Badge tone={errors.length || operational.summary.missing ? 'danger' : 'warning'}>확인 필요 {issueCount}건</Badge> : <Badge tone="success">모든 검사 통과</Badge>}
+        eyebrow="System"
+        title="Data Health"
+        emphasis="Health"
+        subtitle={`The latest data check ran at ${fmtDateTime(meta.ingested_at)}.`}
+        action={issueCount ? <Badge tone={errors.length || operational.summary.missing ? 'danger' : 'warning'}>Needs review {issueCount}</Badge> : <Badge tone="success">All checks passed</Badge>}
       />
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
-        <Card title="운영 상태" info="가격·환율·원본 파일이 정상적으로 수집되고 서로 일치하는지 보여줍니다." accent={issueCount > 0}>
+        <Card title="Operational Status" info="Shows whether prices, FX rates, and source files are collected normally and agree with each other." accent={issueCount > 0}>
           <div className="grid grid-cols-2 gap-3 text-[12px]">
             <div>
               <div className="text-[12px] text-ink-3">{FRESHNESS_LABELS.fresh}</div>
@@ -82,37 +82,37 @@ export default function HealthPage() {
             </div>
           </div>
           <div className="mt-3 text-[11px] leading-relaxed text-ink-3">
-            한국·미국 주가는 36시간, 가상자산은 8시간, 환율은 7일이 지나면 갱신 필요로 표시됩니다. 원본 파일의 크기나 수정 시간이 수집 당시와 다르면 원본 변경으로 표시됩니다.
+            Korean and US stock prices are marked stale after 36 hours, crypto after 8 hours, and FX after 7 days. Source files are marked changed when their size or modified time differs from ingestion.
           </div>
         </Card>
 
-        <Card title="가격·환율 최신 상태">
+        <Card title="Price & FX Freshness">
           <FreshnessRows items={operational.snapshots} />
         </Card>
 
-        <Card title="데이터 일치 범위" info="보유종목 요약과 세금 계산용 매수 단위가 서로 맞는지 확인한 범위입니다.">
+        <Card title="Reconciliation Coverage" info="Shows which holding summaries and tax-lot records are checked against each other.">
           <ul className="space-y-2 text-[13px] text-ink-2">
             <li className="flex items-center justify-between gap-3">
-              <span>한국 보유종목 ↔ 세금 계산 단위</span>
-              <Badge tone="success">일치</Badge>
+              <span>Korea holdings ↔ tax lots</span>
+              <Badge tone="success">Matched</Badge>
             </li>
             <li className="flex items-center justify-between gap-3">
-              <span>Chase 보유종목 ↔ 세금 계산 단위</span>
-              <Badge tone="success">일치</Badge>
+              <span>Chase holdings ↔ tax lots</span>
+              <Badge tone="success">Matched</Badge>
             </li>
             <li className="flex items-center justify-between gap-3">
-              <span>Merrill 보유종목</span>
-              <Badge tone="warning">요약 자료 기준</Badge>
+              <span>Merrill holdings</span>
+              <Badge tone="warning">Summary-based</Badge>
             </li>
             <li className="text-[11px] leading-relaxed text-ink-3">
-              Merrill 내보내기 자료에는 재투자 세부 단위가 빠져 있어, 보유종목은 요약 자료를 기준으로 표시하고 상세 단위는 확인용으로 보존합니다.
+              Merrill exports do not include reinvestment lot detail, so holdings use summary exports while detailed lots are preserved for review.
             </li>
           </ul>
         </Card>
       </div>
 
       <Card
-        title="데이터 갱신 이력"
+        title="Refresh History"
         accent={latestRefresh?.status === 'failed'}
         action={
           latestRefresh ? (
@@ -124,28 +124,28 @@ export default function HealthPage() {
           <EmptyState
             hint={`Run history is read from ${getMeta().refresh_runs_path ?? 'data/refresh-runs.json'}.`}
           >
-            기록된 데이터 갱신이 없습니다
+            No refresh runs recorded
           </EmptyState>
         ) : (
           <div className="space-y-4">
             <div className="grid gap-3 text-[12px] sm:grid-cols-4">
               <div>
-                <div className="text-[12px] text-ink-3">최근 시작</div>
+                <div className="text-[12px] text-ink-3">Latest start</div>
                 <div className="font-medium tabular-nums text-ink">{fmtDateTime(latestRefresh.startedAt)}</div>
               </div>
               <div>
-                <div className="text-[12px] text-ink-3">소요 시간</div>
+                <div className="text-[12px] text-ink-3">Duration</div>
                 <div className="font-medium tabular-nums text-ink">{fmtDuration(latestRefresh.durationMs)}</div>
               </div>
               <div>
-                <div className="text-[12px] text-ink-3">완료 단계</div>
+                <div className="text-[12px] text-ink-3">Completed steps</div>
                 <div className="font-medium tabular-nums text-ink">
                   {fmtNumber(latestRefresh.steps.filter((step) => step.status === 'success').length)} / {fmtNumber(latestRefresh.steps.length)}
                 </div>
               </div>
               <div>
-                <div className="text-[12px] text-ink-3">전체 실행</div>
-                <div className="font-medium tabular-nums text-ink">{fmtNumber(refreshRuns.length)}회</div>
+                <div className="text-[12px] text-ink-3">Total runs</div>
+                <div className="font-medium tabular-nums text-ink">{fmtNumber(refreshRuns.length)}</div>
               </div>
             </div>
 

@@ -17,7 +17,8 @@ import {
 import type { PortfolioSnapshot } from '@/lib/adapters/portfolio-db'
 import { config } from '@/config'
 import { fmtDateTime, fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
-import { GLOSSARY } from '@/lib/glossary'
+import { getGlossary } from '@/lib/glossary'
+import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
 
 export const dynamic = 'force-dynamic'
@@ -95,11 +96,95 @@ type TrendMetricKey = (typeof TREND_METRICS)[number]['key']
 type TrendFieldKey = keyof PortfolioSnapshot
 type TrendViewKey = 'single' | 'combined'
 
+const COPY = {
+  en: {
+    eyebrow: 'Portfolio',
+    title: 'Portfolio Overview',
+    emphasis: 'Overview',
+    subtitle: (ingestedAt: string, fx: string | null) =>
+      `Read-only status loaded from local investment data at ${ingestedAt}.${fx ? ` Applied FX: ${fx}.` : ''}`,
+    needsReview: (count: number) => `Needs review ${count}`,
+    healthy: 'Healthy',
+    freshnessTitle: 'Data Freshness',
+    allAssets: 'All Assets Summary',
+    totalCost: 'Total Cost Basis',
+    totalGain: 'Total Unrealized G/L',
+    koreaGain: 'Korea Unrealized G/L',
+    usGain: 'US Unrealized G/L',
+    cryptoGain: 'Crypto Unrealized G/L',
+    koreaCost: 'Korea Cost Basis',
+    usCost: 'US Cost Basis',
+    cryptoCost: 'Crypto Cost Basis',
+    nativeCurrency: 'Native currency',
+    totalShare: 'Share of total',
+    holdings: 'Holdings',
+    totalQuantity: 'Total quantity',
+    dividends: 'Dividends',
+    count: (value: string) => `${value} rows`,
+    marketAllocation: 'Market Allocation',
+    korea: 'Korea',
+    us: 'United States',
+    crypto: 'Crypto',
+    fxNote: (fx: string | null) => `USD assets use ${fx ?? 'the configured FX rate'}.`,
+    concentration: 'Top Holding Concentration',
+    concentrationInfo: 'Share of the total portfolio held by the top five positions, measured by cost basis.',
+    concentrationHint: 'Cost-basis share of the top five holdings',
+    termMix: 'Holding-Period Mix',
+    termMixInfo: 'Splits quantity into long-term and short-term buckets for tax review.',
+    longTermShare: 'Long-term quantity share',
+    longTerm: 'Long term',
+    shortTerm: 'Short term',
+    marketValue: 'Market value',
+  },
+  ko: {
+    eyebrow: '포트폴리오',
+    title: '포트폴리오 개요',
+    emphasis: '개요',
+    subtitle: (ingestedAt: string, fx: string | null) =>
+      `로컬 투자 자료를 ${ingestedAt}에 불러온 읽기 전용 현황입니다.${fx ? ` 적용 환율: ${fx}.` : ''}`,
+    needsReview: (count: number) => `확인 필요 ${count}건`,
+    healthy: '정상',
+    freshnessTitle: '데이터 최신 상태',
+    allAssets: '전체 자산 요약',
+    totalCost: '전체 취득원가',
+    totalGain: '전체 평가손익',
+    koreaGain: '한국 평가손익',
+    usGain: '미국 평가손익',
+    cryptoGain: '가상자산 평가손익',
+    koreaCost: '한국 취득원가',
+    usCost: '미국 취득원가',
+    cryptoCost: '가상자산 취득원가',
+    nativeCurrency: '현지 통화',
+    totalShare: '전체의',
+    holdings: '보유종목',
+    totalQuantity: '총 수량',
+    dividends: '배당',
+    count: (value: string) => `${value}건`,
+    marketAllocation: '시장별 비중',
+    korea: '한국',
+    us: '미국',
+    crypto: '가상자산',
+    fxNote: (fx: string | null) => `달러 자산은 ${fx ?? '설정된 환율'}을 적용했습니다.`,
+    concentration: '상위 종목 집중도',
+    concentrationInfo: '취득원가 기준 상위 5개 종목이 전체 포트폴리오에서 차지하는 비율입니다.',
+    concentrationHint: '상위 5개 종목의 취득원가 비중',
+    termMix: '보유기간 구성',
+    termMixInfo: '세금 계산 기준에 따라 장기 보유와 단기 보유 수량을 나눕니다.',
+    longTermShare: '장기 보유 수량 비중',
+    longTerm: '장기 보유',
+    shortTerm: '단기 보유',
+    marketValue: '평가금액',
+  },
+} as const
+
 export default async function OverviewPage({
   searchParams,
 }: {
   searchParams: Promise<{ trend?: string; metric?: string; scope?: string; view?: string }>
 }) {
+  const language = await getLanguage()
+  const copy = COPY[language]
+  const glossary = getGlossary(language)
   if (!dbAvailable()) {
     return (
       <>
@@ -140,6 +225,7 @@ export default async function OverviewPage({
   const operational = getOperationalHealth()
   const usdKrw = overview.fxRates.find((r: any) => r.from_currency === 'USD' && r.to_currency === 'KRW')
   const operationalIssues = operational.staleItems.length
+  const fxLabel = usdKrw ? `USD/KRW ${fmtNumber(usdKrw.rate, 2)} (${usdKrw.as_of_date})` : null
 
   const totalTerm = (overview.totals.long_term_qty ?? 0) + (overview.totals.short_term_qty ?? 0)
   const longTermPct = totalTerm > 0 ? Math.round((overview.totals.long_term_qty / totalTerm) * 100) : 0
@@ -171,9 +257,9 @@ export default async function OverviewPage({
     value: Math.round((r.base_cost ?? 0) / 1_000_000),
   }))
   const allocationData = [
-    { name: 'Korea', value: krBase, label: `${fmtKrw(krBase)} · ${krShare}%` },
-    { name: 'United States', value: usBase, label: `${fmtKrw(usBase)} · ${usShare}%` },
-    { name: 'Crypto', value: cryptoBase, label: `${fmtKrw(cryptoBase)} · ${cryptoShare}%` },
+    { name: copy.korea, value: krBase, label: `${fmtKrw(krBase)} · ${krShare}%` },
+    { name: copy.us, value: usBase, label: `${fmtKrw(usBase)} · ${usShare}%` },
+    { name: copy.crypto, value: cryptoBase, label: `${fmtKrw(cryptoBase)} · ${cryptoShare}%` },
   ]
   const trendData = portfolioSnapshots
     .map((snapshot) => ({
@@ -213,70 +299,70 @@ export default async function OverviewPage({
   return (
     <>
       <PageHeader
-        eyebrow="포트폴리오"
-        title="포트폴리오 개요"
-        emphasis="개요"
-        subtitle={`로컬 투자 자료를 ${fmtDateTime(meta.ingested_at)}에 불러온 읽기 전용 현황입니다.${usdKrw ? ` 적용 환율: USD/KRW ${fmtNumber(usdKrw.rate, 2)} (${usdKrw.as_of_date}).` : ''}`}
-        action={overview.failedChecks + operationalIssues > 0 ? <Badge tone="warning">확인 필요 {overview.failedChecks + operationalIssues}건</Badge> : <Badge tone="success">정상</Badge>}
+        eyebrow={copy.eyebrow}
+        title={copy.title}
+        emphasis={copy.emphasis}
+        subtitle={copy.subtitle(fmtDateTime(meta.ingested_at), fxLabel)}
+        action={overview.failedChecks + operationalIssues > 0 ? <Badge tone="warning">{copy.needsReview(overview.failedChecks + operationalIssues)}</Badge> : <Badge tone="success">{copy.healthy}</Badge>}
       />
 
-      <Card title="데이터 최신 상태" info={GLOSSARY.freshness.description} className="mb-5">
+      <Card title={copy.freshnessTitle} info={glossary.freshness.description} className="mb-5">
         <div className="grid gap-2 lg:grid-cols-3">
           {operational.snapshots.map((item) => (
             <div key={item.key} className="rounded-md border border-line-subtle bg-surface px-3 py-2">
               <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">{item.label}</div>
-              <FreshnessInline item={item} />
+              <FreshnessInline item={item} language={language} />
             </div>
           ))}
         </div>
       </Card>
 
-      <div className="mb-2 text-[12px] font-medium text-ink-3">전체 자산 요약</div>
+      <div className="mb-2 text-[12px] font-medium text-ink-3">{copy.allAssets}</div>
       <div className="mb-5 grid grid-cols-2 gap-3 xl:grid-cols-4 2xl:grid-cols-6">
-        <StatCard label="전체 취득원가" value={fmtKrw(overview.totals.global_base_cost)} info={GLOSSARY.costBasis.description} accent />
+        <StatCard label={copy.totalCost} value={fmtKrw(overview.totals.global_base_cost)} info={glossary.costBasis.description} accent />
         <StatCard
-          label="전체 평가손익"
+          label={copy.totalGain}
           value={fmtKrw(overview.totals.global_base_unrealized_gl)}
           hint={`${fmtNumber(globalUnrealizedPct, 2)}%`}
-          info={GLOSSARY.unrealizedGl.description}
+          info={glossary.unrealizedGl.description}
           tone={overview.totals.global_base_unrealized_gl >= 0 ? 'success' : 'danger'}
         />
         <StatCard
-          label="한국 평가손익"
+          label={copy.koreaGain}
           value={fmtKrw(overview.totals.kr_base_unrealized_gl)}
-          hint={`평가금액 ${fmtKrw(overview.totals.kr_base_market_value)} · ${fmtNumber(krUnrealizedPct, 2)}%`}
-          info={GLOSSARY.unrealizedGl.description}
+          hint={`${copy.marketValue} ${fmtKrw(overview.totals.kr_base_market_value)} · ${fmtNumber(krUnrealizedPct, 2)}%`}
+          info={glossary.unrealizedGl.description}
           tone={overview.totals.kr_base_unrealized_gl >= 0 ? 'success' : 'danger'}
         />
         <StatCard
-          label="미국 평가손익"
+          label={copy.usGain}
           value={fmtKrw(overview.totals.us_base_unrealized_gl)}
-          hint={`평가금액 ${fmtKrw(overview.totals.us_base_market_value)} · ${fmtNumber(usUnrealizedPct, 2)}%`}
-          info={GLOSSARY.unrealizedGl.description}
+          hint={`${copy.marketValue} ${fmtKrw(overview.totals.us_base_market_value)} · ${fmtNumber(usUnrealizedPct, 2)}%`}
+          info={glossary.unrealizedGl.description}
           tone={overview.totals.us_base_unrealized_gl >= 0 ? 'success' : 'danger'}
         />
         <StatCard
-          label="가상자산 평가손익"
+          label={copy.cryptoGain}
           value={fmtKrw(overview.totals.crypto_base_unrealized_gl)}
-          hint={`평가금액 ${fmtKrw(overview.totals.crypto_base_market_value)} · ${fmtNumber(cryptoUnrealizedPct, 2)}%`}
-          info={GLOSSARY.unrealizedGl.description}
+          hint={`${copy.marketValue} ${fmtKrw(overview.totals.crypto_base_market_value)} · ${fmtNumber(cryptoUnrealizedPct, 2)}%`}
+          info={glossary.unrealizedGl.description}
           tone={overview.totals.crypto_base_unrealized_gl >= 0 ? 'success' : 'danger'}
         />
-        <StatCard label="한국 취득원가" value={fmtKrw(overview.totals.kr_base_cost)} info={GLOSSARY.costBasis.description} />
-        <StatCard label="미국 취득원가" value={fmtKrw(overview.totals.us_base_cost)} hint={`현지 통화 ${fmtMoney(overview.totals.usd_cost, 'USD')}`} info={GLOSSARY.costBasis.description} />
-        <StatCard label="가상자산 취득원가" value={fmtKrw(overview.totals.crypto_base_cost)} hint={`전체의 ${fmtNumber(cryptoShare)}%`} info={GLOSSARY.costBasis.description} />
-        <StatCard label="보유종목" value={fmtNumber(overview.totals.holding_count)} hint={`총 수량 ${fmtNumber(overview.totals.share_count, 2)}`} />
-        <StatCard label="배당" value={`${fmtKrw(overview.dividends.krw_amount)} / ${fmtMoney(overview.dividends.usd_amount, 'USD')}`} hint={`${fmtNumber(overview.dividends.count)}건`} tone="success" />
+        <StatCard label={copy.koreaCost} value={fmtKrw(overview.totals.kr_base_cost)} info={glossary.costBasis.description} />
+        <StatCard label={copy.usCost} value={fmtKrw(overview.totals.us_base_cost)} hint={`${copy.nativeCurrency} ${fmtMoney(overview.totals.usd_cost, 'USD')}`} info={glossary.costBasis.description} />
+        <StatCard label={copy.cryptoCost} value={fmtKrw(overview.totals.crypto_base_cost)} hint={`${copy.totalShare} ${fmtNumber(cryptoShare)}%`} info={glossary.costBasis.description} />
+        <StatCard label={copy.holdings} value={fmtNumber(overview.totals.holding_count)} hint={`${copy.totalQuantity} ${fmtNumber(overview.totals.share_count, 2)}`} />
+        <StatCard label={copy.dividends} value={`${fmtKrw(overview.dividends.krw_amount)} / ${fmtMoney(overview.dividends.usd_amount, 'USD')}`} hint={copy.count(fmtNumber(overview.dividends.count))} tone="success" />
       </div>
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
-        <Card title="시장별 비중">
+        <Card title={copy.marketAllocation}>
           <div className="grid min-h-[190px] grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_150px] sm:items-center">
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3 text-[12px]">
                 <span className="flex items-center gap-2 font-medium text-ink">
                   <span className="h-2.5 w-2.5 rounded-full bg-success" aria-hidden />
-                  한국
+                  {copy.korea}
                 </span>
                 <span className="tabular-nums text-ink-3">{krShare}%</span>
               </div>
@@ -284,7 +370,7 @@ export default async function OverviewPage({
               <div className="flex items-center justify-between gap-3 text-[12px]">
                 <span className="flex items-center gap-2 font-medium text-ink">
                   <span className="h-2.5 w-2.5 rounded-full bg-info" aria-hidden />
-                  미국
+                  {copy.us}
                 </span>
                 <span className="tabular-nums text-ink-3">{usShare}%</span>
               </div>
@@ -292,23 +378,23 @@ export default async function OverviewPage({
               <div className="flex items-center justify-between gap-3 text-[12px]">
                 <span className="flex items-center gap-2 font-medium text-ink">
                   <span className="h-2.5 w-2.5 rounded-full bg-warning" aria-hidden />
-                  가상자산
+                  {copy.crypto}
                 </span>
                 <span className="tabular-nums text-ink-3">{cryptoShare}%</span>
               </div>
               <div className="text-[18px] font-medium tabular-nums text-ink">{fmtKrw(cryptoBase)}</div>
               <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
-                달러 자산은 {usdKrw ? `USD/KRW ${fmtNumber(usdKrw.rate, 2)} (${usdKrw.as_of_date})` : '설정된 환율'}을 적용했습니다.
+                {copy.fxNote(fxLabel)}
               </div>
             </div>
             <AllocationPieChart data={allocationData} height={170} />
           </div>
         </Card>
 
-        <Card title="상위 종목 집중도" info="취득원가 기준 상위 5개 종목이 전체 포트폴리오에서 차지하는 비율입니다.">
+        <Card title={copy.concentration} info={copy.concentrationInfo}>
           <div className="flex h-full min-h-[190px] flex-col justify-center">
             <div className="text-[44px] font-medium leading-none tabular-nums text-ink">{topFiveShare}%</div>
-            <div className="mt-1 text-[12px] text-ink-3">상위 5개 종목의 취득원가 비중</div>
+            <div className="mt-1 text-[12px] text-ink-3">{copy.concentrationHint}</div>
             <div className="mt-5 space-y-2">
               {largestPositions.map((p) => (
                 <div key={p.id} className="flex items-center justify-between gap-3 text-[12px]">
@@ -324,20 +410,20 @@ export default async function OverviewPage({
           </div>
         </Card>
 
-        <Card title="보유기간 구성" info="세금 계산 기준에 따라 장기 보유와 단기 보유 수량을 나눕니다.">
+        <Card title={copy.termMix} info={copy.termMixInfo}>
           <div className="flex h-full min-h-[190px] flex-col justify-center">
             <div className="text-[44px] font-medium leading-none tabular-nums text-ink">{longTermPct}%</div>
-            <div className="mt-1 text-[12px] text-ink-3">장기 보유 수량 비중</div>
+            <div className="mt-1 text-[12px] text-ink-3">{copy.longTermShare}</div>
             <div className="mt-5 h-2 overflow-hidden rounded-pill bg-surface">
               <div className="h-full rounded-pill bg-success" style={{ width: `${longTermPct}%` }} />
             </div>
             <div className="mt-3 grid grid-cols-2 gap-3 text-[12px]">
               <div>
-                <div className="text-ink-3">장기 보유</div>
+                <div className="text-ink-3">{copy.longTerm}</div>
                 <div className="font-medium tabular-nums text-ink">{fmtNumber(overview.totals.long_term_qty)}</div>
               </div>
               <div>
-                <div className="text-ink-3">단기 보유</div>
+                <div className="text-ink-3">{copy.shortTerm}</div>
                 <div className="font-medium tabular-nums text-ink">{fmtNumber(overview.totals.short_term_qty)}</div>
               </div>
             </div>

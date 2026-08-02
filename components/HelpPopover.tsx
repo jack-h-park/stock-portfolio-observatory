@@ -3,21 +3,35 @@
 import { clsx } from 'clsx'
 import type { ReactNode } from 'react'
 import { useEffect, useId, useRef, useState } from 'react'
+import { normalizeLanguage, type Language } from '@/lib/i18n'
+import { getUiCopy } from '@/lib/ui-copy'
 
 export function HelpPopover({
   children,
-  label = '설명 보기',
+  label,
   align = 'center',
   className,
+  language,
 }: {
   children: ReactNode
   label?: string
   align?: 'center' | 'left' | 'right'
   className?: string
+  language?: Language
 }) {
   const [open, setOpen] = useState(false)
+  const [pageLanguage, setPageLanguage] = useState<Language>(language ?? 'en')
   const tooltipId = useId()
   const rootRef = useRef<HTMLSpanElement>(null)
+  const copy = getUiCopy(pageLanguage).common
+
+  useEffect(() => {
+    if (language) {
+      setPageLanguage(language)
+      return
+    }
+    setPageLanguage(normalizeLanguage(document.documentElement.lang))
+  }, [language])
 
   useEffect(() => {
     if (!open) return
@@ -39,7 +53,7 @@ export function HelpPopover({
     <span ref={rootRef} className={clsx('group relative inline-flex items-center align-middle', className)}>
       <button
         type="button"
-        aria-label={label}
+        aria-label={label ?? copy.help}
         aria-expanded={open}
         aria-describedby={open ? tooltipId : undefined}
         onClick={() => setOpen((current) => !current)}
@@ -60,7 +74,7 @@ export function HelpPopover({
         )}
       >
         {children}
-        <span className="mt-2 block text-[11px] text-ink-3">Esc 키를 누르면 닫힙니다.</span>
+        <span className="mt-2 block text-[11px] text-ink-3">{copy.closeHelp}</span>
       </span>
     </span>
   )

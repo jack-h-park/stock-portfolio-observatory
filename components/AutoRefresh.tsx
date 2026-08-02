@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useTransition } from 'react'
 import { clsx } from 'clsx'
+import { normalizeLanguage, type Language } from '@/lib/i18n'
 
 /**
  * Polls by re-rendering the server component tree (router.refresh) on an
@@ -17,9 +18,11 @@ export function AutoRefresh({ seconds = 30 }: { seconds?: number }) {
   const router = useRouter()
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [online, setOnline] = useState(true)
+  const [language, setLanguage] = useState<Language>('en')
   const [isPending, startTransition] = useTransition()
 
   useEffect(() => {
+    setLanguage(normalizeLanguage(document.documentElement.lang))
     setLastRefresh(new Date())
     setOnline(navigator.onLine)
     const refresh = () => {
@@ -43,13 +46,30 @@ export function AutoRefresh({ seconds = 30 }: { seconds?: number }) {
     }
   }, [router, seconds])
 
-  const clock = lastRefresh?.toLocaleTimeString('ko-KR', { hour12: false })
+  const clock = lastRefresh?.toLocaleTimeString(language === 'ko' ? 'ko-KR' : 'en-US', { hour12: false })
+  const copy = language === 'ko'
+    ? {
+        offline: '오프라인',
+        lastChecked: '마지막 확인',
+        refreshing: '갱신 중...',
+        lastRefresh: '마지막 갱신',
+        interval: `${seconds}초 간격`,
+        auto: `${seconds}초마다 자동 갱신`,
+      }
+    : {
+        offline: 'Offline',
+        lastChecked: 'last checked',
+        refreshing: 'Refreshing...',
+        lastRefresh: 'Last refresh',
+        interval: `${seconds}s interval`,
+        auto: `Auto-refresh every ${seconds}s`,
+      }
 
   if (!online) {
     return (
       <span className="inline-flex items-center gap-1.5 text-[11px] tabular-nums text-warning">
         <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-warning" />
-        오프라인{clock ? ` · 마지막 확인 ${clock}` : ''}
+        {copy.offline}{clock ? ` · ${copy.lastChecked} ${clock}` : ''}
       </span>
     )
   }
@@ -60,10 +80,10 @@ export function AutoRefresh({ seconds = 30 }: { seconds?: number }) {
         className={clsx('h-1.5 w-1.5 rounded-full', isPending ? 'animate-pulse bg-info' : 'bg-success/70')}
       />
       {isPending
-        ? '갱신 중…'
+        ? copy.refreshing
         : clock
-          ? `마지막 갱신 ${clock} · ${seconds}초 간격`
-          : `${seconds}초마다 자동 갱신`}
+          ? `${copy.lastRefresh} ${clock} · ${copy.interval}`
+          : copy.auto}
     </span>
   )
 }

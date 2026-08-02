@@ -442,8 +442,8 @@ function MasterPlanOverview({
 
       {coverageNeedsReview ? (
         <div className="mt-3 rounded-md border border-[color:var(--accent-warning)]/30 bg-[color:var(--accent-warning)]/5 px-3 py-2 text-[12px] leading-relaxed text-ink-2" role="status">
-          <span className="font-medium text-warning">입력 범위를 확인하세요.</span>{' '}
-          계획 대상 금액이 현재 보유 평가금액보다 커서 범위가 100%를 넘었습니다. 중복된 세금 계산 단위나 오래된 가격이 없는지 확인한 뒤 결과를 사용하세요.
+          <span className="font-medium text-warning">Review the input range.</span>{' '}
+          The planned amount is greater than the current holding market value, so coverage exceeds 100%. Check for duplicate tax lots or stale prices before using the result.
         </div>
       ) : null}
 
@@ -828,15 +828,15 @@ export default async function TaxPlanningPage({
   return (
     <>
       <PageHeader
-        eyebrow="세금"
-        title="세금 계획"
-        emphasis="계획"
-        subtitle="한국·미국 주식의 매도 시기를 여러 해에 걸쳐 비교합니다. 결과는 검토용 추정치이며 세금 신고 자문이 아닙니다."
+        eyebrow="Tax"
+        title="Tax Planning"
+        emphasis="Planning"
+        subtitle="Compare Korea and US stock sale timing across multiple years. Results are review estimates, not tax filing advice."
         action={
           <div className="flex items-center gap-2">
-            {taxPolicy.source === 'example' && <Badge tone="warning">예시 가정 사용 중</Badge>}
+            {taxPolicy.source === 'example' && <Badge tone="warning">Using example assumptions</Badge>}
             <Link href="/tax-settings" className="text-[12px] font-medium text-info hover:underline">
-              가정 조정
+              Edit assumptions
             </Link>
           </div>
         }
@@ -845,12 +845,12 @@ export default async function TaxPlanningPage({
       <section className="mb-5 rounded-md border border-line bg-card shadow-card">
         <div className="flex flex-col gap-1 border-b border-line-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-[14px] font-medium text-ink">계획 설정</h2>
+            <h2 className="text-[14px] font-medium text-ink">Plan Settings</h2>
             <p className="mt-0.5 text-[11px] text-ink-3">
-              매도 시점 규칙과 기간을 선택한 뒤 계획을 다시 계산합니다.
+              Choose sale-timing rules and date ranges, then recalculate the plan.
             </p>
           </div>
-          <Badge>현재 가격·환율로 고정 계산</Badge>
+          <Badge>Calculated with current prices and FX</Badge>
         </div>
         <form className="grid gap-4 p-4 lg:grid-cols-[minmax(14rem,1.4fr)_minmax(11rem,0.8fr)_minmax(10rem,0.7fr)_auto] lg:items-end">
           <label className="block">
