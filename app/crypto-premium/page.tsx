@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard } from '@/components/ui'
 import { getCryptoPremium } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtKrw, fmtMoney, fmtNumber, fmtQuantity } from '@/lib/format'
+import { GLOSSARY } from '@/lib/glossary'
 
 export const dynamic = 'force-dynamic'
 
@@ -118,6 +119,7 @@ export default function CryptoPremiumPage() {
                   <MetricField
                     label="Coverage"
                     value={coverageStart && coverageEnd ? `${coverageStart} → ${coverageEnd}` : 'n/a'}
+                    info={GLOSSARY.coverage.description}
                     hint="Available premium history"
                     valueClassName="text-[18px]"
                   />

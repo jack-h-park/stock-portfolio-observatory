@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
 import { getOperationalHealth, getRebalanceReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
+import { GLOSSARY } from '@/lib/glossary'
 import { positionHref } from '@/lib/position-url'
 
 export const dynamic = 'force-dynamic'
@@ -49,7 +50,7 @@ export default function RebalancePage() {
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
         <MetricHeroCard
           title="Largest Market Gap"
-          info="The largest absolute gap between current market weight and policy target. This is the first sizing signal for rebalancing."
+          info={GLOSSARY.marketGap.description}
           eyebrow="Primary rebalance signal"
           value={pct(largestGap)}
           hint="Compared with the configured market target policy"
@@ -92,6 +93,7 @@ export default function RebalancePage() {
               <MetricField
                 label="Freshness Issues"
                 value={fmtNumber(freshnessIssues)}
+                info={GLOSSARY.freshness.description}
                 hint="Operational inputs to refresh"
                 tone={freshnessIssues ? 'warning' : 'success'}
                 valueClassName="text-[18px]"

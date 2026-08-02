@@ -157,6 +157,7 @@ export function MetricField({
   label,
   value,
   hint,
+  info,
   tone = 'neutral',
   labelClassName,
   valueClassName,
@@ -164,13 +165,17 @@ export function MetricField({
   label: ReactNode
   value: ReactNode
   hint?: ReactNode
+  info?: ReactNode
   tone?: Tone
   labelClassName?: string
   valueClassName?: string
 }) {
   return (
     <div className="min-w-0">
-      <div className={clsx('text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3', labelClassName)}>{label}</div>
+      <div className={clsx('flex items-center text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3', labelClassName)}>
+        {label}
+        {info ? <InfoTooltip label={typeof label === 'string' ? COMMON_LABELS.helpFor(label) : undefined}>{info}</InfoTooltip> : null}
+      </div>
       <div
         className={clsx(
           'mt-1 font-medium leading-tight tabular-nums',

@@ -57,6 +57,41 @@ export const GLOSSARY_BY_LANG = {
       alias: 'Tickerless',
       description: 'Dividend or interest income that has not yet been linked to a specific ticker.',
     },
+    coverage: {
+      label: 'Coverage',
+      alias: 'Input Coverage',
+      description: 'How much of the relevant portfolio, source data, or planned amount is represented by the current calculation.',
+    },
+    yieldOnMarket: {
+      label: 'Yield on Market',
+      alias: 'Current Yield',
+      description: 'Income divided by current market value. It shows income rate using today’s valuation.',
+    },
+    yieldOnCost: {
+      label: 'Yield on Cost',
+      alias: 'Cost Yield',
+      description: 'Income divided by cost basis. It shows income rate relative to what was paid for the position.',
+    },
+    marketGap: {
+      label: 'Market Gap',
+      alias: 'Allocation Gap',
+      description: 'The difference between current market weight and the configured target weight.',
+    },
+    concentration: {
+      label: 'Concentration',
+      alias: 'Position Concentration',
+      description: 'How much of the portfolio is held in the largest positions. Higher concentration means fewer holdings drive more of the outcome.',
+    },
+    inputIssues: {
+      label: 'Input Issues',
+      alias: 'Data Issues',
+      description: 'Data quality items that should be reviewed before relying on the calculation.',
+    },
+    washSale: {
+      label: 'Wash Sale',
+      alias: 'Wash Sale Window',
+      description: 'A tax rule that can defer a loss when substantially identical securities are bought near the sale date.',
+    },
     degraded: {
       label: 'Degraded',
       alias: 'Partial Success',
@@ -118,6 +153,41 @@ export const GLOSSARY_BY_LANG = {
       label: '종목 미연결 수익',
       alias: 'Tickerless',
       description: '배당이나 이자 수익이 특정 종목과 아직 연결되지 않은 데이터입니다.',
+    },
+    coverage: {
+      label: '포함 범위',
+      alias: 'Coverage',
+      description: '현재 계산에 반영된 포트폴리오, 원본 데이터, 또는 계획 금액의 범위입니다.',
+    },
+    yieldOnMarket: {
+      label: '평가금액 대비 수익률',
+      alias: 'Yield on Market',
+      description: '수익을 현재 평가금액으로 나눈 비율입니다. 오늘의 평가금액 기준 수익률을 보여줍니다.',
+    },
+    yieldOnCost: {
+      label: '취득원가 대비 수익률',
+      alias: 'Yield on Cost',
+      description: '수익을 취득원가로 나눈 비율입니다. 실제 지불한 금액 대비 수익률을 보여줍니다.',
+    },
+    marketGap: {
+      label: '시장 비중 차이',
+      alias: 'Market Gap',
+      description: '현재 시장별 비중과 설정한 목표 비중 사이의 차이입니다.',
+    },
+    concentration: {
+      label: '집중도',
+      alias: 'Concentration',
+      description: '상위 종목이 포트폴리오에서 차지하는 비중입니다. 높을수록 소수 종목이 결과를 더 크게 좌우합니다.',
+    },
+    inputIssues: {
+      label: '입력 데이터 문제',
+      alias: 'Input Issues',
+      description: '계산 결과를 신뢰하기 전에 확인해야 하는 데이터 품질 항목입니다.',
+    },
+    washSale: {
+      label: '워시세일',
+      alias: 'Wash Sale',
+      description: '매도일 전후에 실질적으로 같은 증권을 다시 사면 손실 공제가 이연될 수 있는 세금 규칙입니다.',
     },
     degraded: {
       label: '일부 기능 저하',

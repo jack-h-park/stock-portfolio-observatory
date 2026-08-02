@@ -11,6 +11,7 @@ import {
   type BriefingSessionMove,
 } from '@/lib/adapters/briefing-archive'
 import { fmtNumber, fmtQuantity } from '@/lib/format'
+import { GLOSSARY } from '@/lib/glossary'
 import { positionHref } from '@/lib/position-url'
 
 export const dynamic = 'force-dynamic'
@@ -309,6 +310,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                   <MetricField
                     label="Unrealized P/L"
                     value={amount(totals.gl, m)}
+                    info={GLOSSARY.unrealizedGl.description}
                     hint={`${pct(totals.pct)} vs ${amount(totals.cost, m)} cost`}
                     tone={totals.gl >= 0 ? 'success' : 'danger'}
                     valueClassName="text-[18px]"
@@ -329,6 +331,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                     <MetricField
                       label="Cost Basis"
                       value={amount(totals.cost, m)}
+                      info={GLOSSARY.costBasis.description}
                       hint="Standing versus purchase cost"
                       valueClassName="text-[18px]"
                     />

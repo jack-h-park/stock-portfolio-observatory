@@ -5,6 +5,7 @@ import { TrendBarChart } from '@/components/charts'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
 import { getIncomeReview } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
+import { GLOSSARY } from '@/lib/glossary'
 import { positionHref } from '@/lib/position-url'
 
 export const dynamic = 'force-dynamic'
@@ -46,12 +47,14 @@ export default function IncomePage() {
             <MetricField
               label="Yield on Market"
               value={pct(income.totals.yield_on_market)}
+              info={GLOSSARY.yieldOnMarket.description}
               hint="Income divided by market value"
               valueClassName="text-[18px]"
             />
             <MetricField
               label="Yield on Cost"
               value={pct(income.totals.yield_on_cost)}
+              info={GLOSSARY.yieldOnCost.description}
               hint="Income divided by cost basis"
               valueClassName="text-[18px]"
             />
@@ -71,6 +74,7 @@ export default function IncomePage() {
               <MetricField
                 label="Tickerless Rows"
                 value={fmtNumber(income.totals.tickerless_count)}
+                info={GLOSSARY.tickerless.description}
                 hint="Included in totals, excluded from position yield rankings"
                 tone={income.totals.tickerless_count ? 'warning' : 'success'}
                 valueClassName="text-[28px]"

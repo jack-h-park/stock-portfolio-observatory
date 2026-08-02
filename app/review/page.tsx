@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
 import { getOperationalHealth, getPortfolioReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtMoney, fmtNumber, fmtQuantity } from '@/lib/format'
+import { GLOSSARY } from '@/lib/glossary'
 import { positionHref } from '@/lib/position-url'
 
 export const dynamic = 'force-dynamic'
@@ -89,6 +90,7 @@ export default function ReviewPage() {
             <MetricField
               label="Unrealized G/L"
               value={fmtKrw(review.totals.base_unrealized_gl)}
+              info={GLOSSARY.unrealizedGl.description}
               hint={pct(totalReturnPct)}
               tone={review.totals.base_unrealized_gl >= 0 ? 'success' : 'danger'}
               valueClassName="text-[18px]"
@@ -96,6 +98,7 @@ export default function ReviewPage() {
             <MetricField
               label="Top 5 Concentration"
               value={pct(review.concentration.top5Share)}
+              info={GLOSSARY.concentration.description}
               hint="Cost-basis concentration"
               tone={review.concentration.top5Share >= 50 ? 'warning' : 'neutral'}
               valueClassName="text-[18px]"
@@ -103,6 +106,7 @@ export default function ReviewPage() {
             <MetricField
               label="Freshness Issues"
               value={fmtNumber(issueCount)}
+              info={GLOSSARY.freshness.description}
               hint="Inputs needing review"
               tone={issueCount > 0 ? 'warning' : 'success'}
               valueClassName="text-[18px]"

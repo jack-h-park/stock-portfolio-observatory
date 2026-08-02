@@ -224,12 +224,14 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             <MetricField
               label="Cost Basis"
               value={fmtMoney(detail.totals.native_cost, detail.currency)}
+              info={GLOSSARY.costBasis.description}
               hint={GLOSSARY.costBasis.description}
               valueClassName="text-[18px]"
             />
             <MetricField
               label="Unrealized G/L"
               value={moneyOrNa(detail.totals.native_unrealized_gl, detail.currency)}
+              info={GLOSSARY.unrealizedGl.description}
               hint={nativeUnrealizedPct == null ? 'No value' : pct(nativeUnrealizedPct)}
               tone={glTone(detail.totals.native_unrealized_gl)}
               valueClassName="text-[18px]"
@@ -237,6 +239,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             <MetricField
               label="KRW Unrealized G/L"
               value={moneyOrNa(detail.totals.base_unrealized_gl, 'KRW')}
+              info={`${GLOSSARY.unrealizedGl.description} ${GLOSSARY.baseAmount.description}`}
               hint={baseUnrealizedPct == null ? GLOSSARY.baseAmount.description : `${pct(baseUnrealizedPct)} · ${GLOSSARY.baseAmount.description}`}
               tone={glTone(detail.totals.base_unrealized_gl)}
               valueClassName="text-[18px]"

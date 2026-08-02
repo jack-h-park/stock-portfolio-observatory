@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone, type Tone } from '@/components/ui'
 import { getDataOpsReview } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
+import { GLOSSARY } from '@/lib/glossary'
 import { positionHref } from '@/lib/position-url'
 import { PRIORITY_LABELS } from '@/lib/ui-copy'
 
@@ -56,6 +57,7 @@ export default function DataOpsPage() {
             <MetricField
               label="Source & Check Issues"
               value={fmtNumber(ops.sourceIssues.length + ops.validationIssues.length)}
+              info={GLOSSARY.inputIssues.description}
               hint="Freshness or validation issues"
               tone={ops.sourceIssues.length + ops.validationIssues.length ? 'warning' : 'success'}
               valueClassName="text-[18px]"

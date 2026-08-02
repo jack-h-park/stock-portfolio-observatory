@@ -3,6 +3,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, type Tone } from '@/components/ui'
 import { getMeta, getSourceInventory } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtNumber, shortHash } from '@/lib/format'
+import { GLOSSARY } from '@/lib/glossary'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,6 +62,7 @@ export default function DataMapPage() {
             <MetricField
               label="Drift"
               value={fmtNumber(inventory.summary.drift)}
+              info={GLOSSARY.drift.description}
               hint="Changed versus expected"
               tone={inventory.summary.drift ? 'warning' : 'success'}
               valueClassName="text-[18px]"

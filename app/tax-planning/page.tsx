@@ -7,6 +7,7 @@ import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
 import { Badge, Card, EmptyState, InfoTooltip, MetricField, marketTone, type Tone } from '@/components/ui'
 import { getOperationalHealth, getOverview, getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtKrw, fmtMoney, fmtNumber, fmtQuantity } from '@/lib/format'
+import { GLOSSARY } from '@/lib/glossary'
 import { positionHref } from '@/lib/position-url'
 import {
   buildMonthlySalePlanSet,
@@ -354,11 +355,13 @@ function PlanMetric({
   label,
   value,
   hint,
+  info,
   tone = 'neutral',
 }: {
   label: string
   value: string
   hint: string
+  info?: string
   tone?: Tone
 }) {
   return (
@@ -367,6 +370,7 @@ function PlanMetric({
         label={label}
         value={value}
         hint={hint}
+        info={info}
         tone={tone}
         labelClassName="text-[10px] tracking-normal"
         valueClassName="truncate text-[20px]"
@@ -441,6 +445,7 @@ function MasterPlanOverview({
           label="Input coverage"
           value={`${fmtNumber(coveragePct, 1)}%`}
           hint={`${fmtNumber(inputIssueCount)} issues · ${fmtNumber(planSet.coverage.missingValuationCount)} unpriced`}
+          info={GLOSSARY.coverage.description}
           tone={inputIssueCount ? 'warning' : 'success'}
         />
       </div>
@@ -1190,6 +1195,7 @@ function DecisionSummary({
           <MetricField
             label="Input Issues"
             value={fmtNumber(inputIssueCount)}
+            info={GLOSSARY.inputIssues.description}
             hint="Items to resolve before relying on output"
             tone={inputIssueCount ? 'warning' : 'success'}
             valueClassName="text-[18px]"

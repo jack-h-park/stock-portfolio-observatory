@@ -371,16 +371,18 @@ export default async function OverviewPage({
           hint={copy.valueHint}
         >
           <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
-            <MetricField label={copy.totalCost} value={fmtKrw(globalBase)} valueClassName="text-[18px]" />
+            <MetricField label={copy.totalCost} value={fmtKrw(globalBase)} info={glossary.costBasis.description} valueClassName="text-[18px]" />
             <MetricField
               label={copy.totalGain}
               value={fmtKrw(overview.totals.global_base_unrealized_gl)}
+              info={glossary.unrealizedGl.description}
               tone={overview.totals.global_base_unrealized_gl >= 0 ? 'success' : 'danger'}
               valueClassName="text-[18px]"
             />
             <MetricField
               label={copy.returnOnPricedCost}
               value={`${fmtNumber(globalUnrealizedPct, 2)}%`}
+              info={`${glossary.unrealizedGl.description} This percentage is measured against priced cost basis.`}
               tone={globalUnrealizedPct >= 0 ? 'success' : 'danger'}
               valueClassName="text-[18px]"
             />
@@ -434,10 +436,11 @@ export default async function OverviewPage({
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
                 <MetricField label={copy.marketValue} value={fmtKrw(market.marketValue)} labelClassName="normal-case tracking-normal" />
-                <MetricField label={copy.costBasis} value={fmtKrw(market.cost)} labelClassName="normal-case tracking-normal" />
+                <MetricField label={copy.costBasis} value={fmtKrw(market.cost)} info={glossary.costBasis.description} labelClassName="normal-case tracking-normal" />
                 <MetricField
                   label={copy.gain}
                   value={fmtKrw(market.gain)}
+                  info={glossary.unrealizedGl.description}
                   tone={market.gain >= 0 ? 'success' : 'danger'}
                   labelClassName="normal-case tracking-normal"
                 />

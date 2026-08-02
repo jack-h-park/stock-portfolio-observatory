@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone, type Tone } from '@/components/ui'
 import { getReconciliationReview } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtMoney, fmtNumber, fmtQuantity } from '@/lib/format'
+import { GLOSSARY } from '@/lib/glossary'
 import { positionHref } from '@/lib/position-url'
 
 export const dynamic = 'force-dynamic'
@@ -53,6 +54,7 @@ export default function ReconciliationPage() {
             <MetricField
               label="Tickerless Income"
               value={fmtNumber(review.totals.tickerless_income_count)}
+              info={GLOSSARY.tickerless.description}
               hint="Income rows without ticker mapping"
               tone={review.totals.tickerless_income_count ? 'warning' : 'success'}
               valueClassName="text-[18px]"
@@ -60,6 +62,7 @@ export default function ReconciliationPage() {
             <MetricField
               label="Source Issues"
               value={fmtNumber(sourceIssueCount)}
+              info={GLOSSARY.inputIssues.description}
               hint="Freshness or validation issues"
               tone={sourceIssueCount ? 'danger' : 'success'}
               valueClassName="text-[18px]"

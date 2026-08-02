@@ -3,6 +3,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, InfoTooltip, MetricField, MetricHeroCard } from '@/components/ui'
 import { fmtDateTime, fmtNumber } from '@/lib/format'
 import { getMeta } from '@/lib/adapters/portfolio-db'
+import { GLOSSARY } from '@/lib/glossary'
 import { annualProfiles, assumptionBool, assumptionNumber, assumptionString, getTaxPolicyState } from '@/lib/tax-policy'
 import { saveTaxSettings } from './actions'
 
@@ -270,8 +271,8 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
               <Field label="Long loss carryover" name="usLongTermCapitalLossCarryoverUsd" defaultValue={assumptionNumber(policy, 'US', 'longTermCapitalLossCarryoverUsd', 0)} suffix="USD" />
               <Field label="FTC carryover" name="usForeignTaxCreditCarryoverUsd" defaultValue={assumptionNumber(policy, 'US', 'foreignTaxCreditCarryoverUsd', 0)} suffix="USD" />
               <Field label="FTC foreign-source share" name="usFtcForeignSourceGainPct" defaultValue={assumptionNumber(policy, 'US', 'ftcForeignSourceGainPct', 0)} suffix="%" />
-              <Field label="Wash sale before" name="usWashSaleBefore" defaultValue={assumptionNumber(policy, 'US', 'washSaleWindowDaysBefore', 30)} suffix="days" />
-              <Field label="Wash sale after" name="usWashSaleAfter" defaultValue={assumptionNumber(policy, 'US', 'washSaleWindowDaysAfter', 30)} suffix="days" />
+            <Field label="Wash sale before" name="usWashSaleBefore" defaultValue={assumptionNumber(policy, 'US', 'washSaleWindowDaysBefore', 30)} suffix="days" hint={GLOSSARY.washSale.description} />
+            <Field label="Wash sale after" name="usWashSaleAfter" defaultValue={assumptionNumber(policy, 'US', 'washSaleWindowDaysAfter', 30)} suffix="days" hint={GLOSSARY.washSale.description} />
               <div className="sm:col-span-2 rounded-md border border-line-subtle bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
                 MFJ uses the official 2026 federal brackets and long-term capital-gain thresholds. Later federal years and the 2025 California schedule are inflation projections. Fallback rates apply to unsupported filing statuses or states. FTC foreign-source share must be supported by sourcing or treaty analysis; zero prevents the planner from claiming a US credit automatically.
               </div>
