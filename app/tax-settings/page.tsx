@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, InfoTooltip, StatCard } from '@/components/ui'
+import { Badge, Card, InfoTooltip, MetricField, MetricHeroCard } from '@/components/ui'
 import { fmtDateTime, fmtNumber } from '@/lib/format'
 import { getMeta } from '@/lib/adapters/portfolio-db'
 import { annualProfiles, assumptionBool, assumptionNumber, assumptionString, getTaxPolicyState } from '@/lib/tax-policy'
@@ -106,11 +106,58 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
         }
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Policy Source" value={state.source === 'local' ? 'Local' : 'Example'} accent tone={state.source === 'local' ? 'success' : 'warning'} />
-        <StatCard label="Scenario" value={scenarioLabel(policy.activeScenario)} />
-        <StatCard label="Jurisdictions" value={fmtNumber(policy.jurisdictions.filter((item) => item.enabled).length)} />
-        <StatCard label="Updated" value={state.updatedAt ? fmtDateTime(state.updatedAt).slice(0, 10) : 'n/a'} />
+      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+        <MetricHeroCard
+          title="Policy Source"
+          info="Shows whether the planner is using your local ignored tax-policy.json file or the example fallback assumptions."
+          eyebrow="Tax settings headline"
+          value={state.source === 'local' ? 'Local' : 'Example'}
+          hint={state.source === 'local' ? 'Using local planning assumptions' : 'Using example assumptions until local settings are saved'}
+        >
+          <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+            <MetricField
+              label="Scenario"
+              value={scenarioLabel(policy.activeScenario)}
+              hint="Default filing scenario"
+              valueClassName="text-[18px]"
+            />
+            <MetricField
+              label="Jurisdictions"
+              value={fmtNumber(policy.jurisdictions.filter((item) => item.enabled).length)}
+              hint="Enabled tax regimes"
+              valueClassName="text-[18px]"
+            />
+            <MetricField
+              label="Updated"
+              value={state.updatedAt ? fmtDateTime(state.updatedAt).slice(0, 10) : 'n/a'}
+              hint="Last settings write"
+              valueClassName="text-[18px]"
+            />
+          </div>
+        </MetricHeroCard>
+
+        <Card title="Settings Read Order" info="Start with the policy source, then confirm scenario, jurisdictions, and annual filing assumptions.">
+          <div className="flex min-h-[16rem] flex-col justify-between gap-4">
+            <div className="space-y-4">
+              <MetricField
+                label="Planning Horizon"
+                value={`${fmtNumber(policy.planningHorizonYears ?? 5)} years`}
+                hint="Years projected in planner scenarios"
+                valueClassName="text-[28px]"
+              />
+              <div className="h-px bg-line-subtle" />
+              <MetricField
+                label="Base Currency"
+                value={policy.baseCurrency}
+                hint="Currency used for planning summaries"
+                valueClassName="text-[18px]"
+              />
+            </div>
+            <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+              Settings are assumptions for planning; filing forms and tax professional review remain outside the app.
+            </div>
+          </div>
+        </Card>
       </div>
 
       <form action={saveTaxSettings} className="space-y-5">

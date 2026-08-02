@@ -4,7 +4,7 @@ import { createSavedTaxPlanAction } from '@/app/tax-planning/actions'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
-import { Badge, Card, EmptyState, InfoTooltip, StatCard , marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, InfoTooltip, MetricField, marketTone, type Tone } from '@/components/ui'
 import { getOperationalHealth, getOverview, getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtKrw, fmtMoney, fmtNumber, fmtQuantity } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
@@ -354,18 +354,23 @@ function PlanMetric({
   label,
   value,
   hint,
-  tone = 'text-ink',
+  tone = 'neutral',
 }: {
   label: string
   value: string
   hint: string
-  tone?: string
+  tone?: Tone
 }) {
   return (
     <div className="min-w-0 px-3 py-3 first:pl-0 last:pr-0">
-      <div className="text-[10px] font-medium uppercase text-ink-3">{label}</div>
-      <div className={`mt-1 truncate text-[20px] font-medium tabular-nums ${tone}`}>{value}</div>
-      <div className="mt-1 text-[10px] leading-relaxed text-ink-3">{hint}</div>
+      <MetricField
+        label={label}
+        value={value}
+        hint={hint}
+        tone={tone}
+        labelClassName="text-[10px] tracking-normal"
+        valueClassName="truncate text-[20px]"
+      />
     </div>
   )
 }
@@ -424,19 +429,19 @@ function MasterPlanOverview({
           label="Estimated tax"
           value={fmtKrw(plan.summary.estimatedTaxKrw)}
           hint={`${fmtNumber(plan.summary.longTermSalePct, 1)}% long-term`}
-          tone={plan.summary.estimatedTaxKrw > 0 ? 'text-warning' : 'text-success'}
+          tone={plan.summary.estimatedTaxKrw > 0 ? 'warning' : 'success'}
         />
         <PlanMetric
           label="After-tax cash"
           value={fmtKrw(plan.summary.afterTaxKrw)}
           hint={`${fmtNumber(plan.summary.instructionCount)} sale instructions`}
-          tone="text-success"
+          tone="success"
         />
         <PlanMetric
           label="Input coverage"
           value={`${fmtNumber(coveragePct, 1)}%`}
           hint={`${fmtNumber(inputIssueCount)} issues · ${fmtNumber(planSet.coverage.missingValuationCount)} unpriced`}
-          tone={inputIssueCount ? 'text-warning' : 'text-success'}
+          tone={inputIssueCount ? 'warning' : 'success'}
         />
       </div>
 
@@ -1175,20 +1180,33 @@ function DecisionSummary({
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <StatCard label="Open Lots" value={fmtNumber(openLotCount)} />
-          <StatCard label="Input Issues" value={fmtNumber(inputIssueCount)} tone={inputIssueCount ? 'warning' : 'success'} />
-          <StatCard
+        <div className="grid gap-3 rounded-md border border-line-subtle bg-surface p-3 sm:grid-cols-2">
+          <MetricField
+            label="Open Lots"
+            value={fmtNumber(openLotCount)}
+            hint="Available tax-lot rows"
+            valueClassName="text-[18px]"
+          />
+          <MetricField
+            label="Input Issues"
+            value={fmtNumber(inputIssueCount)}
+            hint="Items to resolve before relying on output"
+            tone={inputIssueCount ? 'warning' : 'success'}
+            valueClassName="text-[18px]"
+          />
+          <MetricField
             label={hasPlanningTarget ? 'Annual Test' : 'Loss-Lot Proceeds'}
             value={hasPlanningTarget ? fmtKrw(bestScenario?.years[0]?.targetCashKrw ?? 0) : fmtKrw(opportunities.lossLotProceedsKrw)}
-            hint={!hasPlanningTarget && opportunities.bestLoss ? `${opportunities.bestLoss.year} ${opportunities.bestLoss.market}` : undefined}
+            hint={!hasPlanningTarget && opportunities.bestLoss ? `${opportunities.bestLoss.year} ${opportunities.bestLoss.market}` : 'Scenario input amount'}
             tone={hasPlanningTarget ? 'neutral' : 'success'}
+            valueClassName="text-[18px]"
           />
-          <StatCard
+          <MetricField
             label={hasPlanningTarget ? 'Est. Tax' : 'Loss Harvest'}
             value={hasPlanningTarget ? fmtKrw(bestScenario?.summary.taxKrw ?? 0) : fmtKrw(opportunities.lossHarvestKrw)}
-            hint={hasPlanningTarget ? pct(bestScenario?.summary.effectiveTaxRatePct) : opportunities.bestLoss ? `${opportunities.bestLoss.year} ${opportunities.bestLoss.market}` : undefined}
+            hint={hasPlanningTarget ? pct(bestScenario?.summary.effectiveTaxRatePct) : opportunities.bestLoss ? `${opportunities.bestLoss.year} ${opportunities.bestLoss.market}` : 'Modeled loss inventory'}
             tone={!hasPlanningTarget ? 'info' : (bestScenario?.summary.taxKrw ?? 0) > 0 ? 'warning' : 'success'}
+            valueClassName="text-[18px]"
           />
         </div>
       </div>
