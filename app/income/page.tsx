@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { TrendBarChart } from '@/components/charts'
-import { Badge, Card, EmptyState, StatCard , marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
 import { getIncomeReview } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
@@ -27,13 +27,60 @@ export default function IncomePage() {
         action={income.totals.tickerless_count ? <Badge tone="warning">{fmtNumber(income.totals.tickerless_count)} tickerless row(s)</Badge> : <Badge tone="success">Ticker-mapped</Badge>}
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-6">
-        <StatCard label="Trailing 12M Income" value={fmtKrw(income.totals.trailing_12m_base_income)} accent />
-        <StatCard label="YTD Income" value={fmtKrw(income.totals.ytd_base_income)} tone="success" />
-        <StatCard label="Yield on Market" value={pct(income.totals.yield_on_market)} />
-        <StatCard label="Yield on Cost" value={pct(income.totals.yield_on_cost)} />
-        <StatCard label="KRW / USD Native" value={`${fmtMoney(income.totals.krw_income, 'KRW')} / ${fmtMoney(income.totals.usd_income, 'USD')}`} />
-        <StatCard label="Tickerless Rows" value={fmtNumber(income.totals.tickerless_count)} tone={income.totals.tickerless_count ? 'warning' : 'success'} />
+      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+        <MetricHeroCard
+          title="Trailing 12M Income"
+          info="Income received over the last twelve months, converted to KRW. Use this as the headline income run-rate."
+          eyebrow="Income run-rate"
+          value={fmtKrw(income.totals.trailing_12m_base_income)}
+          hint="KRW base income after applying FX"
+        >
+          <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+            <MetricField
+              label="YTD Income"
+              value={fmtKrw(income.totals.ytd_base_income)}
+              hint={`Latest month ${latestMonth?.month ?? 'n/a'}`}
+              tone="success"
+              valueClassName="text-[18px]"
+            />
+            <MetricField
+              label="Yield on Market"
+              value={pct(income.totals.yield_on_market)}
+              hint="Income divided by market value"
+              valueClassName="text-[18px]"
+            />
+            <MetricField
+              label="Yield on Cost"
+              value={pct(income.totals.yield_on_cost)}
+              hint="Income divided by cost basis"
+              valueClassName="text-[18px]"
+            />
+          </div>
+        </MetricHeroCard>
+
+        <Card title="Income Coverage" info="Native-currency source totals and unmapped rows that can affect position-level income analysis.">
+          <div className="flex min-h-[16rem] flex-col justify-between gap-4">
+            <div className="space-y-4">
+              <MetricField
+                label="KRW / USD Native"
+                value={`${fmtMoney(income.totals.krw_income, 'KRW')} / ${fmtMoney(income.totals.usd_income, 'USD')}`}
+                hint={`${fmtNumber(income.totals.row_count)} source rows`}
+                valueClassName="text-[18px]"
+              />
+              <div className="h-px bg-line-subtle" />
+              <MetricField
+                label="Tickerless Rows"
+                value={fmtNumber(income.totals.tickerless_count)}
+                hint="Included in totals, excluded from position yield rankings"
+                tone={income.totals.tickerless_count ? 'warning' : 'success'}
+                valueClassName="text-[28px]"
+              />
+            </div>
+            <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+              Read order: run-rate first, then yield, then mapping coverage.
+            </div>
+          </div>
+        </Card>
       </div>
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">

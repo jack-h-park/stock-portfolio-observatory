@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { DataTable } from '@/components/DataTable'
 import { FreshnessInline } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, StatCard } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, MetricHeroCard } from '@/components/ui'
 import { getOperationalHealth, getPositionDetail, type FreshnessItem } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtMoney, fmtNumber, fmtQuantity, shortHash } from '@/lib/format'
 import { buildTaxPlan } from '@/lib/tax-planning'
@@ -212,25 +212,61 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
         </div>
       </Card>
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-6">
-        <StatCard label="Quantity" value={fmtQuantity(detail.totals.quantity, 4)} accent />
-        <StatCard label="Cost Basis" value={fmtMoney(detail.totals.native_cost, detail.currency)} info={GLOSSARY.costBasis.description} />
-        <StatCard label="Market Value" value={moneyOrNa(detail.totals.native_market_value, detail.currency)} />
-        <StatCard
-          label="Unrealized G/L"
-          value={moneyOrNa(detail.totals.native_unrealized_gl, detail.currency)}
-          hint={nativeUnrealizedPct == null ? 'No value' : pct(nativeUnrealizedPct)}
-          info={GLOSSARY.unrealizedGl.description}
-          tone={glTone(detail.totals.native_unrealized_gl)}
-        />
-        <StatCard
-          label="KRW Unrealized G/L"
-          value={moneyOrNa(detail.totals.base_unrealized_gl, 'KRW')}
-          hint={baseUnrealizedPct == null ? 'No value' : pct(baseUnrealizedPct)}
-          info={`${GLOSSARY.unrealizedGl.description} ${GLOSSARY.baseAmount.description}`}
-          tone={glTone(detail.totals.base_unrealized_gl)}
-        />
-        <StatCard label="Dividends" value={fmtMoney(detail.dividendTotals.native_amount, detail.currency)} hint={`${fmtNumber(detail.dividendTotals.count)} rows`} tone="success" />
+      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+        <MetricHeroCard
+          title="Market Value"
+          info="Current position value in the position's native currency. Use this as the position-level headline before checking cost basis or gain/loss."
+          eyebrow="Position headline"
+          value={moneyOrNa(detail.totals.native_market_value, detail.currency)}
+          hint={`${fmtQuantity(detail.totals.quantity, 4)} shares or units`}
+        >
+          <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+            <MetricField
+              label="Cost Basis"
+              value={fmtMoney(detail.totals.native_cost, detail.currency)}
+              hint={GLOSSARY.costBasis.description}
+              valueClassName="text-[18px]"
+            />
+            <MetricField
+              label="Unrealized G/L"
+              value={moneyOrNa(detail.totals.native_unrealized_gl, detail.currency)}
+              hint={nativeUnrealizedPct == null ? 'No value' : pct(nativeUnrealizedPct)}
+              tone={glTone(detail.totals.native_unrealized_gl)}
+              valueClassName="text-[18px]"
+            />
+            <MetricField
+              label="KRW Unrealized G/L"
+              value={moneyOrNa(detail.totals.base_unrealized_gl, 'KRW')}
+              hint={baseUnrealizedPct == null ? GLOSSARY.baseAmount.description : `${pct(baseUnrealizedPct)} · ${GLOSSARY.baseAmount.description}`}
+              tone={glTone(detail.totals.base_unrealized_gl)}
+              valueClassName="text-[18px]"
+            />
+          </div>
+        </MetricHeroCard>
+
+        <Card title="Position Coverage" info="Quantity, income, and row coverage for this single position.">
+          <div className="flex min-h-[16rem] flex-col justify-between gap-4">
+            <div className="space-y-4">
+              <MetricField
+                label="Quantity"
+                value={fmtQuantity(detail.totals.quantity, 4)}
+                hint={`${fmtNumber(detail.holdings.length)} account holding row(s)`}
+                valueClassName="text-[28px]"
+              />
+              <div className="h-px bg-line-subtle" />
+              <MetricField
+                label="Dividends"
+                value={fmtMoney(detail.dividendTotals.native_amount, detail.currency)}
+                hint={`${fmtNumber(detail.dividendTotals.count)} rows`}
+                tone="success"
+                valueClassName="text-[18px]"
+              />
+            </div>
+            <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+              Read order: value first, then cost and gain/loss, then reconciliation and lot details.
+            </div>
+          </div>
+        </Card>
       </div>
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">

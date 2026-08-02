@@ -1,6 +1,6 @@
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, StatCard, type Tone } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, MetricHeroCard, type Tone } from '@/components/ui'
 import { getMeta, getSourceInventory } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtNumber, shortHash } from '@/lib/format'
 
@@ -25,6 +25,7 @@ export default function DataMapPage() {
   const meta = getMeta()
   const inventory = getSourceInventory()
   const actionItems = inventory.items.filter((item) => item.status !== 'used').slice(0, 20)
+  const reviewCount = inventory.summary.missing + inventory.summary.drift + inventory.summary.unused
   return (
     <>
       <PageHeader
@@ -41,12 +42,62 @@ export default function DataMapPage() {
         }
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <StatCard label="Used" value={fmtNumber(inventory.summary.used)} tone="success" />
-        <StatCard label="Unused" value={fmtNumber(inventory.summary.unused)} tone={inventory.summary.unused ? 'warning' : 'neutral'} />
-        <StatCard label="Drift" value={fmtNumber(inventory.summary.drift)} tone={inventory.summary.drift ? 'warning' : 'neutral'} />
-        <StatCard label="Missing" value={fmtNumber(inventory.summary.missing)} tone={inventory.summary.missing ? 'danger' : 'neutral'} />
-        <StatCard label="Inventory Size" value={fmtBytes(inventory.summary.totalBytes)} />
+      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+        <MetricHeroCard
+          title="Items to Review"
+          info="Source files that are unused, drifted, or missing. This is the first signal for whether the data map needs attention."
+          eyebrow="Inventory headline"
+          value={fmtNumber(reviewCount)}
+          hint={reviewCount ? 'Unmapped, drifted, or missing sources' : 'All tracked sources are mapped'}
+        >
+          <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+            <MetricField
+              label="Unused"
+              value={fmtNumber(inventory.summary.unused)}
+              hint="Present but not used"
+              tone={inventory.summary.unused ? 'warning' : 'success'}
+              valueClassName="text-[18px]"
+            />
+            <MetricField
+              label="Drift"
+              value={fmtNumber(inventory.summary.drift)}
+              hint="Changed versus expected"
+              tone={inventory.summary.drift ? 'warning' : 'success'}
+              valueClassName="text-[18px]"
+            />
+            <MetricField
+              label="Missing"
+              value={fmtNumber(inventory.summary.missing)}
+              hint="Expected but absent"
+              tone={inventory.summary.missing ? 'danger' : 'success'}
+              valueClassName="text-[18px]"
+            />
+          </div>
+        </MetricHeroCard>
+
+        <Card title="Inventory Coverage" info="Mapped source count and total inventory footprint from the latest ingest.">
+          <div className="flex min-h-[16rem] flex-col justify-between gap-4">
+            <div className="space-y-4">
+              <MetricField
+                label="Used"
+                value={fmtNumber(inventory.summary.used)}
+                hint="Sources mapped into the data model"
+                tone="success"
+                valueClassName="text-[28px]"
+              />
+              <div className="h-px bg-line-subtle" />
+              <MetricField
+                label="Inventory Size"
+                value={fmtBytes(inventory.summary.totalBytes)}
+                hint="Total bytes across tracked sources"
+                valueClassName="text-[18px]"
+              />
+            </div>
+            <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+              Read order: review queue first, then coverage, then full file inventory.
+            </div>
+          </div>
+        </Card>
       </div>
 
       <Card title="Inventory review queue" accent={actionItems.length > 0}>

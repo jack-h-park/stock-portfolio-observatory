@@ -1,8 +1,8 @@
 import Link from 'next/link'
 import { FreshnessInline } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, StatCard , marketTone } from '@/components/ui'
-import { AllocationPieChart, PortfolioMultiTrendChart, PortfolioTrendChart, TrendBarChart } from '@/components/charts'
+import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
+import { PortfolioMultiTrendChart, PortfolioTrendChart, TrendBarChart } from '@/components/charts'
 import {
   dbAvailable,
   getAccountAllocation,
@@ -107,6 +107,13 @@ const COPY = {
     healthy: 'Healthy',
     freshnessTitle: 'Data Freshness',
     allAssets: 'All Assets Summary',
+    portfolioValue: 'Total Portfolio Value',
+    portfolioValueInfo: 'Current market value converted to KRW across all priced holdings.',
+    allMarkets: 'All markets',
+    valueHint: 'Current value after applying prices and FX',
+    returnOnPricedCost: 'Return on priced cost',
+    primaryMetrics: 'Primary Metrics',
+    supportingMetrics: 'Supporting Metrics',
     totalCost: 'Total Cost Basis',
     totalGain: 'Total Unrealized G/L',
     koreaGain: 'Korea Unrealized G/L',
@@ -122,6 +129,9 @@ const COPY = {
     dividends: 'Dividends',
     count: (value: string) => `${value} rows`,
     marketAllocation: 'Market Allocation',
+    marketBreakdown: 'Market Breakdown',
+    marketBreakdownInfo: 'Cost basis and unrealized gain/loss by market. Use this after the headline portfolio value.',
+    activitySummary: 'Activity Summary',
     korea: 'Korea',
     us: 'United States',
     crypto: 'Crypto',
@@ -135,6 +145,10 @@ const COPY = {
     longTerm: 'Long term',
     shortTerm: 'Short term',
     marketValue: 'Market value',
+    costBasis: 'Cost basis',
+    gain: 'Gain',
+    return: 'Return',
+    share: 'Share',
   },
   ko: {
     eyebrow: '포트폴리오',
@@ -146,6 +160,13 @@ const COPY = {
     healthy: '정상',
     freshnessTitle: '데이터 최신 상태',
     allAssets: '전체 자산 요약',
+    portfolioValue: '전체 평가금액',
+    portfolioValueInfo: '가격과 환율을 적용해 원화로 환산한 전체 보유자산의 현재 평가금액입니다.',
+    allMarkets: '전체 시장',
+    valueHint: '현재 가격과 환율을 적용한 평가금액',
+    returnOnPricedCost: '가격 확인된 취득원가 대비 수익률',
+    primaryMetrics: '핵심 지표',
+    supportingMetrics: '보조 지표',
     totalCost: '전체 취득원가',
     totalGain: '전체 평가손익',
     koreaGain: '한국 평가손익',
@@ -161,6 +182,9 @@ const COPY = {
     dividends: '배당',
     count: (value: string) => `${value}건`,
     marketAllocation: '시장별 비중',
+    marketBreakdown: '시장별 상세',
+    marketBreakdownInfo: '시장별 취득원가와 평가손익입니다. 전체 평가금액을 먼저 본 뒤 원인을 확인할 때 사용합니다.',
+    activitySummary: '활동 요약',
     korea: '한국',
     us: '미국',
     crypto: '가상자산',
@@ -174,6 +198,10 @@ const COPY = {
     longTerm: '장기 보유',
     shortTerm: '단기 보유',
     marketValue: '평가금액',
+    costBasis: '취득원가',
+    gain: '손익',
+    return: '수익률',
+    share: '비중',
   },
 } as const
 
@@ -236,6 +264,7 @@ export default async function OverviewPage({
   const usBase = overview.totals.us_base_cost
   const cryptoBase = overview.totals.crypto_base_cost
   const globalBase = overview.totals.global_base_cost
+  const globalValue = overview.totals.global_base_market_value
   const usUnrealizedPct =
     overview.totals.us_priced_base_cost > 0 ? (overview.totals.us_base_unrealized_gl / overview.totals.us_priced_base_cost) * 100 : 0
   const krUnrealizedPct =
@@ -256,10 +285,37 @@ export default async function OverviewPage({
     name: `${r.name} (${r.ticker})`,
     value: Math.round((r.base_cost ?? 0) / 1_000_000),
   }))
-  const allocationData = [
-    { name: copy.korea, value: krBase, label: `${fmtKrw(krBase)} · ${krShare}%` },
-    { name: copy.us, value: usBase, label: `${fmtKrw(usBase)} · ${usShare}%` },
-    { name: copy.crypto, value: cryptoBase, label: `${fmtKrw(cryptoBase)} · ${cryptoShare}%` },
+  const marketBreakdown = [
+    {
+      key: 'KR',
+      label: copy.korea,
+      tone: 'success' as const,
+      cost: krBase,
+      marketValue: overview.totals.kr_base_market_value,
+      gain: overview.totals.kr_base_unrealized_gl,
+      returnPct: krUnrealizedPct,
+      share: krShare,
+    },
+    {
+      key: 'US',
+      label: copy.us,
+      tone: 'info' as const,
+      cost: usBase,
+      marketValue: overview.totals.us_base_market_value,
+      gain: overview.totals.us_base_unrealized_gl,
+      returnPct: usUnrealizedPct,
+      share: usShare,
+    },
+    {
+      key: 'CRYPTO',
+      label: copy.crypto,
+      tone: 'warning' as const,
+      cost: cryptoBase,
+      marketValue: overview.totals.crypto_base_market_value,
+      gain: overview.totals.crypto_base_unrealized_gl,
+      returnPct: cryptoUnrealizedPct,
+      share: cryptoShare,
+    },
   ]
   const trendData = portfolioSnapshots
     .map((snapshot) => ({
@@ -306,6 +362,97 @@ export default async function OverviewPage({
         action={overview.failedChecks + operationalIssues > 0 ? <Badge tone="warning">{copy.needsReview(overview.failedChecks + operationalIssues)}</Badge> : <Badge tone="success">{copy.healthy}</Badge>}
       />
 
+      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+        <MetricHeroCard
+          title={copy.portfolioValue}
+          info={copy.portfolioValueInfo}
+          eyebrow={copy.allMarkets}
+          value={fmtKrw(globalValue)}
+          hint={copy.valueHint}
+        >
+          <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+            <MetricField label={copy.totalCost} value={fmtKrw(globalBase)} valueClassName="text-[18px]" />
+            <MetricField
+              label={copy.totalGain}
+              value={fmtKrw(overview.totals.global_base_unrealized_gl)}
+              tone={overview.totals.global_base_unrealized_gl >= 0 ? 'success' : 'danger'}
+              valueClassName="text-[18px]"
+            />
+            <MetricField
+              label={copy.returnOnPricedCost}
+              value={`${fmtNumber(globalUnrealizedPct, 2)}%`}
+              tone={globalUnrealizedPct >= 0 ? 'success' : 'danger'}
+              valueClassName="text-[18px]"
+            />
+          </div>
+        </MetricHeroCard>
+
+        <Card title={copy.supportingMetrics}>
+          <div className="flex min-h-[16rem] flex-col justify-between gap-4">
+            <div className="space-y-4">
+              <MetricField
+                label={copy.holdings}
+                value={fmtNumber(overview.totals.holding_count)}
+                hint={`${copy.totalQuantity} ${fmtNumber(overview.totals.share_count, 2)}`}
+                valueClassName="text-[28px]"
+              />
+              <div className="h-px bg-line-subtle" />
+              <MetricField
+                label={copy.dividends}
+                value={fmtKrw(overview.dividends.krw_amount)}
+                hint={`${fmtMoney(overview.dividends.usd_amount, 'USD')} · ${copy.count(fmtNumber(overview.dividends.count))}`}
+                tone="success"
+                valueClassName="text-[18px]"
+              />
+            </div>
+            <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+              {copy.fxNote(fxLabel)}
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <Card title={copy.marketBreakdown} info={copy.marketBreakdownInfo} className="mb-5">
+        <div className="grid gap-4 lg:grid-cols-3">
+          {marketBreakdown.map((market) => (
+            <div key={market.key} className="min-w-0">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Badge tone={market.tone}>{market.key}</Badge>
+                  <span className="text-[13px] font-medium text-ink">{market.label}</span>
+                </div>
+                <span className="text-[12px] tabular-nums text-ink-3">{copy.share} {market.share}%</span>
+              </div>
+              <div className="mb-3 h-2 overflow-hidden rounded-pill bg-surface">
+                <div
+                  className="h-full rounded-pill"
+                  style={{
+                    width: `${Math.max(1, market.share)}%`,
+                    backgroundImage: market.key === 'KR' ? 'linear-gradient(90deg, var(--accent-success), var(--brand-cyan))' : market.key === 'US' ? 'linear-gradient(90deg, var(--accent-info), var(--brand-blue))' : 'linear-gradient(90deg, var(--accent-warning), var(--brand-purple))',
+                  }}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+                <MetricField label={copy.marketValue} value={fmtKrw(market.marketValue)} labelClassName="normal-case tracking-normal" />
+                <MetricField label={copy.costBasis} value={fmtKrw(market.cost)} labelClassName="normal-case tracking-normal" />
+                <MetricField
+                  label={copy.gain}
+                  value={fmtKrw(market.gain)}
+                  tone={market.gain >= 0 ? 'success' : 'danger'}
+                  labelClassName="normal-case tracking-normal"
+                />
+                <MetricField
+                  label={copy.return}
+                  value={`${fmtNumber(market.returnPct, 2)}%`}
+                  tone={market.returnPct >= 0 ? 'success' : 'danger'}
+                  labelClassName="normal-case tracking-normal"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
       <Card title={copy.freshnessTitle} info={glossary.freshness.description} className="mb-5">
         <div className="grid gap-2 lg:grid-cols-3">
           {operational.snapshots.map((item) => (
@@ -317,80 +464,7 @@ export default async function OverviewPage({
         </div>
       </Card>
 
-      <div className="mb-2 text-[12px] font-medium text-ink-3">{copy.allAssets}</div>
-      <div className="mb-5 grid grid-cols-2 gap-3 xl:grid-cols-4 2xl:grid-cols-6">
-        <StatCard label={copy.totalCost} value={fmtKrw(overview.totals.global_base_cost)} info={glossary.costBasis.description} accent />
-        <StatCard
-          label={copy.totalGain}
-          value={fmtKrw(overview.totals.global_base_unrealized_gl)}
-          hint={`${fmtNumber(globalUnrealizedPct, 2)}%`}
-          info={glossary.unrealizedGl.description}
-          tone={overview.totals.global_base_unrealized_gl >= 0 ? 'success' : 'danger'}
-        />
-        <StatCard
-          label={copy.koreaGain}
-          value={fmtKrw(overview.totals.kr_base_unrealized_gl)}
-          hint={`${copy.marketValue} ${fmtKrw(overview.totals.kr_base_market_value)} · ${fmtNumber(krUnrealizedPct, 2)}%`}
-          info={glossary.unrealizedGl.description}
-          tone={overview.totals.kr_base_unrealized_gl >= 0 ? 'success' : 'danger'}
-        />
-        <StatCard
-          label={copy.usGain}
-          value={fmtKrw(overview.totals.us_base_unrealized_gl)}
-          hint={`${copy.marketValue} ${fmtKrw(overview.totals.us_base_market_value)} · ${fmtNumber(usUnrealizedPct, 2)}%`}
-          info={glossary.unrealizedGl.description}
-          tone={overview.totals.us_base_unrealized_gl >= 0 ? 'success' : 'danger'}
-        />
-        <StatCard
-          label={copy.cryptoGain}
-          value={fmtKrw(overview.totals.crypto_base_unrealized_gl)}
-          hint={`${copy.marketValue} ${fmtKrw(overview.totals.crypto_base_market_value)} · ${fmtNumber(cryptoUnrealizedPct, 2)}%`}
-          info={glossary.unrealizedGl.description}
-          tone={overview.totals.crypto_base_unrealized_gl >= 0 ? 'success' : 'danger'}
-        />
-        <StatCard label={copy.koreaCost} value={fmtKrw(overview.totals.kr_base_cost)} info={glossary.costBasis.description} />
-        <StatCard label={copy.usCost} value={fmtKrw(overview.totals.us_base_cost)} hint={`${copy.nativeCurrency} ${fmtMoney(overview.totals.usd_cost, 'USD')}`} info={glossary.costBasis.description} />
-        <StatCard label={copy.cryptoCost} value={fmtKrw(overview.totals.crypto_base_cost)} hint={`${copy.totalShare} ${fmtNumber(cryptoShare)}%`} info={glossary.costBasis.description} />
-        <StatCard label={copy.holdings} value={fmtNumber(overview.totals.holding_count)} hint={`${copy.totalQuantity} ${fmtNumber(overview.totals.share_count, 2)}`} />
-        <StatCard label={copy.dividends} value={`${fmtKrw(overview.dividends.krw_amount)} / ${fmtMoney(overview.dividends.usd_amount, 'USD')}`} hint={copy.count(fmtNumber(overview.dividends.count))} tone="success" />
-      </div>
-
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
-        <Card title={copy.marketAllocation}>
-          <div className="grid min-h-[190px] grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_150px] sm:items-center">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-3 text-[12px]">
-                <span className="flex items-center gap-2 font-medium text-ink">
-                  <span className="h-2.5 w-2.5 rounded-full bg-success" aria-hidden />
-                  {copy.korea}
-                </span>
-                <span className="tabular-nums text-ink-3">{krShare}%</span>
-              </div>
-              <div className="text-[18px] font-medium tabular-nums text-ink">{fmtKrw(krBase)}</div>
-              <div className="flex items-center justify-between gap-3 text-[12px]">
-                <span className="flex items-center gap-2 font-medium text-ink">
-                  <span className="h-2.5 w-2.5 rounded-full bg-info" aria-hidden />
-                  {copy.us}
-                </span>
-                <span className="tabular-nums text-ink-3">{usShare}%</span>
-              </div>
-              <div className="text-[18px] font-medium tabular-nums text-ink">{fmtKrw(usBase)}</div>
-              <div className="flex items-center justify-between gap-3 text-[12px]">
-                <span className="flex items-center gap-2 font-medium text-ink">
-                  <span className="h-2.5 w-2.5 rounded-full bg-warning" aria-hidden />
-                  {copy.crypto}
-                </span>
-                <span className="tabular-nums text-ink-3">{cryptoShare}%</span>
-              </div>
-              <div className="text-[18px] font-medium tabular-nums text-ink">{fmtKrw(cryptoBase)}</div>
-              <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
-                {copy.fxNote(fxLabel)}
-              </div>
-            </div>
-            <AllocationPieChart data={allocationData} height={170} />
-          </div>
-        </Card>
-
+      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card title={copy.concentration} info={copy.concentrationInfo}>
           <div className="flex h-full min-h-[190px] flex-col justify-center">
             <div className="text-[44px] font-medium leading-none tabular-nums text-ink">{topFiveShare}%</div>

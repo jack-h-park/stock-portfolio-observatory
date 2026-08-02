@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, StatCard , marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
 import { getOperationalHealth, getRebalanceReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
@@ -46,12 +46,62 @@ export default function RebalancePage() {
         action={freshnessIssues ? <Badge tone="warning">{freshnessIssues} freshness issue(s)</Badge> : <Badge tone="success">Inputs ready</Badge>}
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <StatCard label="Base Market Value" value={fmtKrw(rebalance.totals.base_market_value)} accent />
-        <StatCard label="Largest Market Gap" value={pct(largestGap)} tone={largestGap >= 5 ? 'warning' : 'success'} />
-        <StatCard label="Reduce Candidates" value={fmtNumber(rebalance.reduceCandidates.length)} tone={rebalance.reduceCandidates.length ? 'warning' : 'success'} />
-        <StatCard label="Tax-Sensitive" value={fmtNumber(rebalance.taxSensitive.length)} tone={rebalance.taxSensitive.length ? 'warning' : 'success'} />
-        <StatCard label="Watch Before Action" value={fmtNumber(rebalance.watchCandidates.length + freshnessIssues)} tone={rebalance.watchCandidates.length + freshnessIssues ? 'warning' : 'success'} />
+      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+        <MetricHeroCard
+          title="Largest Market Gap"
+          info="The largest absolute gap between current market weight and policy target. This is the first sizing signal for rebalancing."
+          eyebrow="Primary rebalance signal"
+          value={pct(largestGap)}
+          hint="Compared with the configured market target policy"
+        >
+          <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+            <MetricField
+              label="Base Market Value"
+              value={fmtKrw(rebalance.totals.base_market_value)}
+              hint="Current priced portfolio value"
+              valueClassName="text-[18px]"
+            />
+            <MetricField
+              label="Reduce Candidates"
+              value={fmtNumber(rebalance.reduceCandidates.length)}
+              hint="Positions above cap"
+              tone={rebalance.reduceCandidates.length ? 'warning' : 'success'}
+              valueClassName="text-[18px]"
+            />
+            <MetricField
+              label="Watch Before Action"
+              value={fmtNumber(rebalance.watchCandidates.length + freshnessIssues)}
+              hint="Valuation or freshness blockers"
+              tone={rebalance.watchCandidates.length + freshnessIssues ? 'warning' : 'success'}
+              valueClassName="text-[18px]"
+            />
+          </div>
+        </MetricHeroCard>
+
+        <Card title="Execution Risk" info="Tax and data-quality flags that should be checked before turning a rebalance signal into an action.">
+          <div className="flex min-h-[16rem] flex-col justify-between gap-4">
+            <div className="space-y-4">
+              <MetricField
+                label="Tax-Sensitive"
+                value={fmtNumber(rebalance.taxSensitive.length)}
+                hint="High short-term exposure rows"
+                tone={rebalance.taxSensitive.length ? 'warning' : 'success'}
+                valueClassName="text-[28px]"
+              />
+              <div className="h-px bg-line-subtle" />
+              <MetricField
+                label="Freshness Issues"
+                value={fmtNumber(freshnessIssues)}
+                hint="Operational inputs to refresh"
+                tone={freshnessIssues ? 'warning' : 'success'}
+                valueClassName="text-[18px]"
+              />
+            </div>
+            <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+              Decision order: market gap, cap excess, tax sensitivity, then data readiness.
+            </div>
+          </div>
+        </Card>
       </div>
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">

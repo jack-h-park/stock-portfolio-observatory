@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, StatCard, type Tone } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone, type Tone } from '@/components/ui'
 import { getReconciliationReview } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtMoney, fmtNumber, fmtQuantity } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
@@ -20,13 +20,10 @@ function statusTone(status: string): Tone {
   return 'info'
 }
 
-function marketTone(market: string): Tone {
-  return marketTone(market)
-}
-
 export default function ReconciliationPage() {
   const review = getReconciliationReview()
   const hasIssues = review.totals.issue_count > 0
+  const sourceIssueCount = review.totals.source_issue_count + review.totals.validation_issue_count
 
   return (
     <>
@@ -38,13 +35,60 @@ export default function ReconciliationPage() {
         action={hasIssues ? <Badge tone="warning">{fmtNumber(review.totals.issue_count)} review item(s)</Badge> : <Badge tone="success">Reconciled</Badge>}
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-6">
-        <StatCard label="Markets" value={fmtNumber(review.totals.market_count)} />
-        <StatCard label="Brokerages" value={fmtNumber(review.totals.brokerage_count)} />
-        <StatCard label="Positions" value={fmtNumber(review.totals.position_count)} accent />
-        <StatCard label="Lot Positions" value={fmtNumber(review.totals.lot_position_count)} />
-        <StatCard label="Tickerless Income" value={fmtNumber(review.totals.tickerless_income_count)} tone={review.totals.tickerless_income_count ? 'warning' : 'success'} />
-        <StatCard label="Source Issues" value={fmtNumber(review.totals.source_issue_count + review.totals.validation_issue_count)} tone={review.totals.source_issue_count + review.totals.validation_issue_count ? 'danger' : 'success'} />
+      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+        <MetricHeroCard
+          title="Review Items"
+          info="Total reconciliation findings that need review across holdings, tax lots, income mapping, valuation, and source checks."
+          eyebrow="Reconciliation headline"
+          value={fmtNumber(review.totals.issue_count)}
+          hint={hasIssues ? 'Items queued for review' : 'No reconciliation actions queued'}
+        >
+          <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+            <MetricField
+              label="Positions"
+              value={fmtNumber(review.totals.position_count)}
+              hint={`${fmtNumber(review.totals.market_count)} markets`}
+              valueClassName="text-[18px]"
+            />
+            <MetricField
+              label="Tickerless Income"
+              value={fmtNumber(review.totals.tickerless_income_count)}
+              hint="Income rows without ticker mapping"
+              tone={review.totals.tickerless_income_count ? 'warning' : 'success'}
+              valueClassName="text-[18px]"
+            />
+            <MetricField
+              label="Source Issues"
+              value={fmtNumber(sourceIssueCount)}
+              hint="Freshness or validation issues"
+              tone={sourceIssueCount ? 'danger' : 'success'}
+              valueClassName="text-[18px]"
+            />
+          </div>
+        </MetricHeroCard>
+
+        <Card title="Coverage Scope" info="The source coverage represented in the reconciliation run.">
+          <div className="flex min-h-[16rem] flex-col justify-between gap-4">
+            <div className="space-y-4">
+              <MetricField
+                label="Brokerages"
+                value={fmtNumber(review.totals.brokerage_count)}
+                hint={`${fmtNumber(review.totals.market_count)} markets covered`}
+                valueClassName="text-[28px]"
+              />
+              <div className="h-px bg-line-subtle" />
+              <MetricField
+                label="Lot Positions"
+                value={fmtNumber(review.totals.lot_position_count)}
+                hint="Positions represented by tax lots"
+                valueClassName="text-[18px]"
+              />
+            </div>
+            <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+              Read order: queued findings first, then source coverage and detailed break tables.
+            </div>
+          </div>
+        </Card>
       </div>
 
       <Card title="Action queue" accent={review.actionQueue.length > 0}>

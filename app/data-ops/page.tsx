@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { FreshnessRows } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, StatCard, marketTone, type Tone } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone, type Tone } from '@/components/ui'
 import { getDataOpsReview } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
@@ -30,12 +30,61 @@ export default function DataOpsPage() {
         action={issueCount ? <Badge tone="warning">Needs review {fmtNumber(issueCount)}</Badge> : <Badge tone="success">No pending work</Badge>}
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <StatCard label="Income Rules" value={fmtNumber(ops.manualMappings.incomeRuleCount)} info="Rules that map dividends or interest income to a ticker or category." accent />
-        <StatCard label="Manual Overrides" value={fmtNumber(ops.manualMappings.overrideCount)} info="Items manually assigned instead of using automatic mapping." />
-        <StatCard label="Mapping Suggestions" value={fmtNumber(ops.mappingSuggestions.length)} tone={ops.mappingSuggestions.length ? 'warning' : 'success'} />
-        <StatCard label="Valuation Fixes" value={fmtNumber(ops.valuationFixes.length)} tone={ops.valuationFixes.length ? 'warning' : 'success'} />
-        <StatCard label="Source & Check Issues" value={fmtNumber(ops.sourceIssues.length + ops.validationIssues.length)} tone={ops.sourceIssues.length + ops.validationIssues.length ? 'warning' : 'success'} />
+      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+        <MetricHeroCard
+          title="Needs Review"
+          info="Total operations work queued from mapping suggestions, valuation fixes, source freshness, and validation checks."
+          eyebrow="Operations headline"
+          value={fmtNumber(issueCount)}
+          hint={issueCount ? 'Items to triage before trusting downstream analysis' : 'No pending operations work'}
+        >
+          <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+            <MetricField
+              label="Mapping Suggestions"
+              value={fmtNumber(ops.mappingSuggestions.length)}
+              hint="Candidate manual rules"
+              tone={ops.mappingSuggestions.length ? 'warning' : 'success'}
+              valueClassName="text-[18px]"
+            />
+            <MetricField
+              label="Valuation Fixes"
+              value={fmtNumber(ops.valuationFixes.length)}
+              hint="Holdings needing price handling"
+              tone={ops.valuationFixes.length ? 'warning' : 'success'}
+              valueClassName="text-[18px]"
+            />
+            <MetricField
+              label="Source & Check Issues"
+              value={fmtNumber(ops.sourceIssues.length + ops.validationIssues.length)}
+              hint="Freshness or validation issues"
+              tone={ops.sourceIssues.length + ops.validationIssues.length ? 'warning' : 'success'}
+              valueClassName="text-[18px]"
+            />
+          </div>
+        </MetricHeroCard>
+
+        <Card title="Manual Mapping Coverage" info="Rules and overrides that fill gaps when income rows cannot be linked automatically.">
+          <div className="flex min-h-[16rem] flex-col justify-between gap-4">
+            <div className="space-y-4">
+              <MetricField
+                label="Income Rules"
+                value={fmtNumber(ops.manualMappings.incomeRuleCount)}
+                hint="Rules mapping dividends or interest to a ticker or category"
+                valueClassName="text-[28px]"
+              />
+              <div className="h-px bg-line-subtle" />
+              <MetricField
+                label="Manual Overrides"
+                value={fmtNumber(ops.manualMappings.overrideCount)}
+                hint="Items assigned instead of automatic mapping"
+                valueClassName="text-[18px]"
+              />
+            </div>
+            <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+              Read order: queued work first, then mapping coverage, then detailed triage tables.
+            </div>
+          </div>
+        </Card>
       </div>
 
       <Card title="Priority Work" info="Items to review first, based on impact and count." className="mb-5" accent={ops.actionQueue.length > 0}>

@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, StatCard, Table, Thead, Th, Tbody, Tr, Td, MetaRow, MetaItem, type Tone } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, MetricHeroCard, Table, Thead, Th, Tbody, Tr, Td, MetaRow, MetaItem, type Tone } from '@/components/ui'
 import {
   getArchiveStatus,
   getBriefing,
@@ -280,32 +280,64 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
               </Card>
             )}
 
-            <div className="mb-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
-              <StatCard
-                label="Session P/L"
-                value={session ? amount(session.totals!.pl, m) : '—'}
-                tone={session ? (session.totals!.pl >= 0 ? 'success' : 'danger') : 'neutral'}
+            <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+              <MetricHeroCard
+                title={session ? 'Session P/L' : 'Portfolio Value'}
+                info="Price movement on the shares already held, measured against the previous archived snapshot. Shares bought or sold since then are excluded, so this is the market move and not the effect of trading."
+                eyebrow={session ? 'Daily move' : 'Standing snapshot'}
+                value={session ? amount(session.totals!.pl, m) : amount(totals.marketValue, m)}
                 hint={
                   session
                     ? `${session.totals!.coveredPositions} priced${session.totals!.uncoveredPositions ? `, ${session.totals!.uncoveredPositions} without prices` : ''}`
-                    : 'not available'
+                    : `${totals.positions} positions`
                 }
-                info="Price movement on the shares already held, measured against the previous archived snapshot. Shares bought or sold since then are excluded, so this is the market's move and not the effect of trading."
-                accent
-              />
-              <StatCard
-                label="Session Return"
-                value={session ? pct(session.totals!.plPct) : '—'}
-                tone={session ? (session.totals!.plPct >= 0 ? 'success' : 'danger') : 'neutral'}
-                hint={session ? `on ${amount(session.totals!.priorMarketValue, m)} prior value` : undefined}
-              />
-              <StatCard label="Portfolio Value" value={amount(totals.marketValue, m)} hint={`${totals.positions} positions`} />
-              <StatCard
-                label="Unrealized P/L"
-                value={amount(totals.gl, m)}
-                tone={totals.gl >= 0 ? 'success' : 'danger'}
-                hint={`${pct(totals.pct)} vs ${amount(totals.cost, m)} cost`}
-              />
+              >
+                <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+                  <MetricField
+                    label="Session Return"
+                    value={session ? pct(session.totals!.plPct) : '—'}
+                    hint={session ? `on ${amount(session.totals!.priorMarketValue, m)} prior value` : 'not available'}
+                    tone={session ? (session.totals!.plPct >= 0 ? 'success' : 'danger') : 'neutral'}
+                    valueClassName="text-[18px]"
+                  />
+                  <MetricField
+                    label="Portfolio Value"
+                    value={amount(totals.marketValue, m)}
+                    hint={`${totals.positions} positions`}
+                    valueClassName="text-[18px]"
+                  />
+                  <MetricField
+                    label="Unrealized P/L"
+                    value={amount(totals.gl, m)}
+                    hint={`${pct(totals.pct)} vs ${amount(totals.cost, m)} cost`}
+                    tone={totals.gl >= 0 ? 'success' : 'danger'}
+                    valueClassName="text-[18px]"
+                  />
+                </div>
+              </MetricHeroCard>
+
+              <Card title="Briefing Read Order" info="Use the daily move first, then standing value and cumulative unrealized performance.">
+                <div className="flex min-h-[16rem] flex-col justify-between gap-4">
+                  <div className="space-y-4">
+                    <MetricField
+                      label="Market"
+                      value={m.label}
+                      hint={`${m.currency} reporting currency`}
+                      valueClassName="text-[28px]"
+                    />
+                    <div className="h-px bg-line-subtle" />
+                    <MetricField
+                      label="Cost Basis"
+                      value={amount(totals.cost, m)}
+                      hint="Standing versus purchase cost"
+                      valueClassName="text-[18px]"
+                    />
+                  </div>
+                  <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+                    Session figures answer today; portfolio value and unrealized P/L answer current standing.
+                  </div>
+                </div>
+              </Card>
             </div>
 
             {session && !session.marketClosed && (

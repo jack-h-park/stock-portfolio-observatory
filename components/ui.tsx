@@ -153,6 +153,75 @@ export function StatCard({
   )
 }
 
+export function MetricField({
+  label,
+  value,
+  hint,
+  tone = 'neutral',
+  labelClassName,
+  valueClassName,
+}: {
+  label: ReactNode
+  value: ReactNode
+  hint?: ReactNode
+  tone?: Tone
+  labelClassName?: string
+  valueClassName?: string
+}) {
+  return (
+    <div className="min-w-0">
+      <div className={clsx('text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3', labelClassName)}>{label}</div>
+      <div
+        className={clsx(
+          'mt-1 font-medium leading-tight tabular-nums',
+          {
+            'text-ink': tone === 'neutral',
+            'text-info': tone === 'info',
+            'text-success': tone === 'success',
+            'text-warning': tone === 'warning',
+            'text-danger': tone === 'danger',
+          },
+          valueClassName
+        )}
+      >
+        {value}
+      </div>
+      {hint ? <div className="mt-1 text-[12px] text-ink-3">{hint}</div> : null}
+    </div>
+  )
+}
+
+export function MetricHeroCard({
+  title,
+  info,
+  eyebrow,
+  value,
+  hint,
+  children,
+  className,
+}: {
+  title: ReactNode
+  info?: ReactNode
+  eyebrow: ReactNode
+  value: ReactNode
+  hint?: ReactNode
+  children?: ReactNode
+  className?: string
+}) {
+  return (
+    <Card title={title} info={info} accent className={className}>
+      <div className="flex min-h-[16rem] flex-col justify-between gap-6">
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-[0.1em] text-ink-3">{eyebrow}</div>
+          <div className="mt-2 text-[42px] font-medium leading-none tracking-normal text-ink sm:text-[52px]">{value}</div>
+          {hint ? <div className="mt-2 text-[13px] text-ink-3">{hint}</div> : null}
+        </div>
+        {children}
+      </div>
+    </Card>
+  )
+}
+
 export function EmptyState({
   children,
   hint,

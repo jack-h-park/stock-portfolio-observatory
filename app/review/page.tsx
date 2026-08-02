@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { FreshnessRows } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, StatCard , marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
 import { getOperationalHealth, getPortfolioReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtMoney, fmtNumber, fmtQuantity } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
@@ -77,18 +77,61 @@ export default function ReviewPage() {
         action={issueCount ? <Badge tone="warning">{issueCount} freshness issue(s)</Badge> : <Badge tone="success">Ready</Badge>}
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-6">
-        <StatCard label="Base Market Value" value={fmtKrw(review.totals.base_market_value)} accent />
-        <StatCard
-          label="Unrealized G/L"
-          value={fmtKrw(review.totals.base_unrealized_gl)}
-          hint={pct(totalReturnPct)}
-          tone={review.totals.base_unrealized_gl >= 0 ? 'success' : 'danger'}
-        />
-        <StatCard label="Positions" value={fmtNumber(review.totals.position_count)} hint={`${fmtNumber(review.totals.account_count)} accounts`} />
-        <StatCard label="Positive / Negative" value={`${fmtNumber(review.totals.positive_positions)} / ${fmtNumber(review.totals.negative_positions)}`} />
-        <StatCard label="Top 5 Concentration" value={pct(review.concentration.top5Share)} tone={review.concentration.top5Share >= 50 ? 'warning' : 'neutral'} />
-        <StatCard label="Freshness Issues" value={fmtNumber(issueCount)} tone={issueCount > 0 ? 'warning' : 'success'} />
+      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+        <MetricHeroCard
+          title="Base Market Value"
+          info="Current portfolio value converted to KRW. Use this as the review page headline before checking concentration or data readiness."
+          eyebrow="Review headline"
+          value={fmtKrw(review.totals.base_market_value)}
+          hint="Global value across priced positions"
+        >
+          <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+            <MetricField
+              label="Unrealized G/L"
+              value={fmtKrw(review.totals.base_unrealized_gl)}
+              hint={pct(totalReturnPct)}
+              tone={review.totals.base_unrealized_gl >= 0 ? 'success' : 'danger'}
+              valueClassName="text-[18px]"
+            />
+            <MetricField
+              label="Top 5 Concentration"
+              value={pct(review.concentration.top5Share)}
+              hint="Cost-basis concentration"
+              tone={review.concentration.top5Share >= 50 ? 'warning' : 'neutral'}
+              valueClassName="text-[18px]"
+            />
+            <MetricField
+              label="Freshness Issues"
+              value={fmtNumber(issueCount)}
+              hint="Inputs needing review"
+              tone={issueCount > 0 ? 'warning' : 'success'}
+              valueClassName="text-[18px]"
+            />
+          </div>
+        </MetricHeroCard>
+
+        <Card title="Review Scope" info="The size of the review universe and the split between positions with positive and negative unrealized gain/loss.">
+          <div className="flex min-h-[16rem] flex-col justify-between gap-4">
+            <div className="space-y-4">
+              <MetricField
+                label="Positions"
+                value={fmtNumber(review.totals.position_count)}
+                hint={`${fmtNumber(review.totals.account_count)} accounts`}
+                valueClassName="text-[28px]"
+              />
+              <div className="h-px bg-line-subtle" />
+              <MetricField
+                label="Positive / Negative"
+                value={`${fmtNumber(review.totals.positive_positions)} / ${fmtNumber(review.totals.negative_positions)}`}
+                hint="Positions by unrealized result"
+                valueClassName="text-[18px]"
+              />
+            </div>
+            <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+              Review order: value first, then concentration, freshness, and outliers.
+            </div>
+          </div>
+        </Card>
       </div>
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">

@@ -1,7 +1,7 @@
 import { PortfolioMultiTrendChart } from '@/components/charts'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, StatCard } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, MetricHeroCard } from '@/components/ui'
 import { getCryptoPremium } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtKrw, fmtMoney, fmtNumber, fmtQuantity } from '@/lib/format'
 
@@ -74,30 +74,59 @@ export default function CryptoPremiumPage() {
         <EmptyState>No coin is quoted on both a KRW and a USD book — nothing to compare.</EmptyState>
       ) : (
         <>
-          <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatCard
-              label="Weighted Premium"
+          <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+            <MetricHeroCard
+              title="Weighted Premium"
+              info="KRW-venue crypto premium weighted by the value of held KRW-venue positions. Use this as the headline premium exposure signal."
+              eyebrow="Premium headline"
               value={weighted == null ? 'n/a' : `${weighted >= 0 ? '+' : ''}${fmtNumber(weighted, 2)}%`}
               hint="Across KRW-venue holdings, weighted by value"
-              tone={weighted == null ? 'neutral' : Math.abs(weighted) >= NOTABLE_PREMIUM_PCT ? 'warning' : 'success'}
-              accent
-            />
-            <StatCard
-              label="Premium-Bearing Value"
-              value={fmtKrw(premium.exposure.heldValueKrw)}
-              hint="KRW-venue positions marked at their own book"
-            />
-            <StatCard
-              label="Value From Premium"
-              value={fmtKrw(premium.exposure.premiumValueKrw)}
-              hint="What a return to parity would take off, at today's prices"
-              tone={premium.exposure.premiumValueKrw >= 0 ? 'success' : 'danger'}
-            />
-            <StatCard
-              label="Coins Compared"
-              value={fmtNumber(premium.spot.length)}
-              hint={`${premium.symbols.length} with history`}
-            />
+            >
+              <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+                <MetricField
+                  label="Premium-Bearing Value"
+                  value={fmtKrw(premium.exposure.heldValueKrw)}
+                  hint="KRW-venue positions marked at their own book"
+                  valueClassName="text-[18px]"
+                />
+                <MetricField
+                  label="Value From Premium"
+                  value={fmtKrw(premium.exposure.premiumValueKrw)}
+                  hint="What parity would remove"
+                  tone={premium.exposure.premiumValueKrw >= 0 ? 'success' : 'danger'}
+                  valueClassName="text-[18px]"
+                />
+                <MetricField
+                  label="Coins Compared"
+                  value={fmtNumber(premium.spot.length)}
+                  hint={`${premium.symbols.length} with history`}
+                  valueClassName="text-[18px]"
+                />
+              </div>
+            </MetricHeroCard>
+
+            <Card title="Premium Read Order" info="Start with weighted exposure, then check premium-bearing value and coin-level rows.">
+              <div className="flex min-h-[16rem] flex-col justify-between gap-4">
+                <div className="space-y-4">
+                  <MetricField
+                    label="Threshold"
+                    value={`±${NOTABLE_PREMIUM_PCT}%`}
+                    hint="Notable premium threshold"
+                    valueClassName="text-[28px]"
+                  />
+                  <div className="h-px bg-line-subtle" />
+                  <MetricField
+                    label="Coverage"
+                    value={coverageStart && coverageEnd ? `${coverageStart} → ${coverageEnd}` : 'n/a'}
+                    hint="Available premium history"
+                    valueClassName="text-[18px]"
+                  />
+                </div>
+                <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+                  Portfolio totals use each venue price; this page isolates the hidden venue premium risk.
+                </div>
+              </div>
+            </Card>
           </div>
 
           <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
