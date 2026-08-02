@@ -3,7 +3,8 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, type Tone } from '@/components/ui'
 import { getMeta, getSourceInventory } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtNumber, shortHash } from '@/lib/format'
-import { GLOSSARY } from '@/lib/glossary'
+import { getGlossary } from '@/lib/glossary'
+import { getLanguage } from '@/lib/i18n-server'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,7 +23,95 @@ function fmtBytes(value: number | null | undefined) {
   return `${fmtNumber(n)} B`
 }
 
-export default function DataMapPage() {
+const COPY = {
+  en: {
+    eyebrow: 'System',
+    title: 'Data Map',
+    emphasis: 'Map',
+    subtitle: (dir: string, ingestedAt: string) => `Source inventory for ${dir}. Last ingest: ${ingestedAt}.`,
+    reviewItems: (count: string) => `${count} item(s) to review`,
+    allMapped: 'All sources mapped',
+    itemsToReview: 'Items to Review',
+    itemsToReviewInfo: 'Source files that are unused, drifted, or missing. This is the first signal for whether the data map needs attention.',
+    inventoryHeadline: 'Inventory headline',
+    issueHint: 'Unmapped, drifted, or missing sources',
+    cleanHint: 'All tracked sources are mapped',
+    unused: 'Unused',
+    unusedHint: 'Present but not used',
+    drift: 'Drift',
+    driftHint: 'Changed versus expected',
+    missing: 'Missing',
+    missingHint: 'Expected but absent',
+    inventoryCoverage: 'Inventory Coverage',
+    inventoryCoverageInfo: 'Mapped source count and total inventory footprint from the latest ingest.',
+    used: 'Used',
+    usedHint: 'Sources mapped into the data model',
+    inventorySize: 'Inventory Size',
+    inventorySizeHint: 'Total bytes across tracked sources',
+    readOrder: 'Read order: review queue first, then coverage, then full file inventory.',
+    reviewQueue: 'Inventory review queue',
+    noQueue: 'No unmapped, drifted, or missing source files',
+    fullInventory: 'Full source inventory',
+    columns: {
+      status: 'Status',
+      category: 'Category',
+      file: 'File',
+      size: 'Size',
+      detail: 'Detail',
+      dataset: 'Dataset',
+      path: 'Path',
+      rows: 'Rows',
+      modified: 'Modified',
+      sha: 'SHA-256',
+    },
+  },
+  ko: {
+    eyebrow: '시스템',
+    title: '데이터 원본',
+    emphasis: '원본',
+    subtitle: (dir: string, ingestedAt: string) => `${dir}의 원본 인벤토리입니다. 마지막 ingest: ${ingestedAt}.`,
+    reviewItems: (count: string) => `확인 필요 ${count}건`,
+    allMapped: '모든 원본 매핑 완료',
+    itemsToReview: '확인할 항목',
+    itemsToReviewInfo: '사용되지 않았거나, 변경되었거나, 누락된 원본 파일입니다. 데이터 맵 확인이 필요한지 보는 첫 신호입니다.',
+    inventoryHeadline: '인벤토리 핵심 지표',
+    issueHint: '미매핑, 변경, 누락 원본',
+    cleanHint: '추적 중인 모든 원본이 매핑되어 있습니다.',
+    unused: '미사용',
+    unusedHint: '파일은 있지만 사용되지 않음',
+    drift: '변경',
+    driftHint: '예상 상태와 달라짐',
+    missing: '누락',
+    missingHint: '예상 파일이 없음',
+    inventoryCoverage: '인벤토리 범위',
+    inventoryCoverageInfo: '마지막 ingest 기준 매핑된 원본 수와 전체 인벤토리 크기입니다.',
+    used: '사용 중',
+    usedHint: '데이터 모델에 매핑된 원본',
+    inventorySize: '인벤토리 크기',
+    inventorySizeHint: '추적 중인 원본의 총 바이트',
+    readOrder: '읽는 순서: 확인 대기열, 범위, 전체 파일 인벤토리 순으로 봅니다.',
+    reviewQueue: '인벤토리 확인 대기열',
+    noQueue: '미매핑, 변경, 누락 원본 파일이 없습니다.',
+    fullInventory: '전체 원본 인벤토리',
+    columns: {
+      status: '상태',
+      category: '분류',
+      file: '파일',
+      size: '크기',
+      detail: '상세',
+      dataset: '데이터셋',
+      path: '경로',
+      rows: '행',
+      modified: '수정일',
+      sha: 'SHA-256',
+    },
+  },
+} as const
+
+export default async function DataMapPage() {
+  const language = await getLanguage()
+  const copy = COPY[language]
+  const glossary = getGlossary(language)
   const meta = getMeta()
   const inventory = getSourceInventory()
   const actionItems = inventory.items.filter((item) => item.status !== 'used').slice(0, 20)
@@ -30,107 +119,107 @@ export default function DataMapPage() {
   return (
     <>
       <PageHeader
-        eyebrow="System"
-        title="Data Map"
-        emphasis="Map"
-        subtitle={`Source inventory for ${inventory.dataDir}. Last ingest: ${fmtDateTime(meta.ingested_at)}.`}
+        eyebrow={copy.eyebrow}
+        title={copy.title}
+        emphasis={copy.emphasis}
+        subtitle={copy.subtitle(inventory.dataDir, fmtDateTime(meta.ingested_at))}
         action={
           inventory.summary.missing || inventory.summary.drift || inventory.summary.unused ? (
-            <Badge tone="warning">{fmtNumber(inventory.summary.missing + inventory.summary.drift + inventory.summary.unused)} item(s) to review</Badge>
+            <Badge tone="warning">{copy.reviewItems(fmtNumber(inventory.summary.missing + inventory.summary.drift + inventory.summary.unused))}</Badge>
           ) : (
-            <Badge tone="success">All sources mapped</Badge>
+            <Badge tone="success">{copy.allMapped}</Badge>
           )
         }
       />
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
         <MetricHeroCard
-          title="Items to Review"
-          info="Source files that are unused, drifted, or missing. This is the first signal for whether the data map needs attention."
-          eyebrow="Inventory headline"
+          title={copy.itemsToReview}
+          info={copy.itemsToReviewInfo}
+          eyebrow={copy.inventoryHeadline}
           value={fmtNumber(reviewCount)}
-          hint={reviewCount ? 'Unmapped, drifted, or missing sources' : 'All tracked sources are mapped'}
+          hint={reviewCount ? copy.issueHint : copy.cleanHint}
         >
           <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
             <MetricField
-              label="Unused"
+              label={copy.unused}
               value={fmtNumber(inventory.summary.unused)}
-              hint="Present but not used"
+              hint={copy.unusedHint}
               tone={inventory.summary.unused ? 'warning' : 'success'}
               valueClassName="text-[18px]"
             />
             <MetricField
-              label="Drift"
+              label={copy.drift}
               value={fmtNumber(inventory.summary.drift)}
-              info={GLOSSARY.drift.description}
-              hint="Changed versus expected"
+              info={glossary.drift.description}
+              hint={copy.driftHint}
               tone={inventory.summary.drift ? 'warning' : 'success'}
               valueClassName="text-[18px]"
             />
             <MetricField
-              label="Missing"
+              label={copy.missing}
               value={fmtNumber(inventory.summary.missing)}
-              hint="Expected but absent"
+              hint={copy.missingHint}
               tone={inventory.summary.missing ? 'danger' : 'success'}
               valueClassName="text-[18px]"
             />
           </div>
         </MetricHeroCard>
 
-        <Card title="Inventory Coverage" info="Mapped source count and total inventory footprint from the latest ingest.">
+        <Card title={copy.inventoryCoverage} info={copy.inventoryCoverageInfo}>
           <div className="flex min-h-[16rem] flex-col justify-between gap-4">
             <div className="space-y-4">
               <MetricField
-                label="Used"
+                label={copy.used}
                 value={fmtNumber(inventory.summary.used)}
-                hint="Sources mapped into the data model"
+                hint={copy.usedHint}
                 tone="success"
                 valueClassName="text-[28px]"
               />
               <div className="h-px bg-line-subtle" />
               <MetricField
-                label="Inventory Size"
+                label={copy.inventorySize}
                 value={fmtBytes(inventory.summary.totalBytes)}
-                hint="Total bytes across tracked sources"
+                hint={copy.inventorySizeHint}
                 valueClassName="text-[18px]"
               />
             </div>
             <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
-              Read order: review queue first, then coverage, then full file inventory.
+              {copy.readOrder}
             </div>
           </div>
         </Card>
       </div>
 
-      <Card title="Inventory review queue" accent={actionItems.length > 0}>
+      <Card title={copy.reviewQueue} accent={actionItems.length > 0}>
         {actionItems.length === 0 ? (
-          <EmptyState ok>No unmapped, drifted, or missing source files</EmptyState>
+          <EmptyState ok>{copy.noQueue}</EmptyState>
         ) : (
           <DataTable
             rows={actionItems}
             columns={[
-              { key: 'status', label: 'Status', render: (r) => <Badge tone={statusTone(r.status)}>{r.status}</Badge> },
-              { key: 'category', label: 'Category' },
-              { key: 'relativePath', label: 'File', render: (r) => <span className="block max-w-[34rem] truncate">{r.relativePath}</span> },
-              { key: 'bytes', label: 'Size', align: 'right', render: (r) => fmtBytes(r.bytes) },
-              { key: 'detail', label: 'Detail', render: (r) => <span className="text-[11px] text-ink-3">{r.detail}</span> },
+              { key: 'status', label: copy.columns.status, render: (r) => <Badge tone={statusTone(r.status)}>{r.status}</Badge> },
+              { key: 'category', label: copy.columns.category },
+              { key: 'relativePath', label: copy.columns.file, render: (r) => <span className="block max-w-[34rem] truncate">{r.relativePath}</span> },
+              { key: 'bytes', label: copy.columns.size, align: 'right', render: (r) => fmtBytes(r.bytes) },
+              { key: 'detail', label: copy.columns.detail, render: (r) => <span className="text-[11px] text-ink-3">{r.detail}</span> },
             ]}
           />
         )}
       </Card>
 
-      <Card title="Full source inventory" className="mt-5">
+      <Card title={copy.fullInventory} className="mt-5">
         <DataTable
           rows={inventory.items}
           columns={[
-            { key: 'status', label: 'Status', render: (r) => <Badge tone={statusTone(r.status)}>{r.status}</Badge> },
-            { key: 'category', label: 'Category' },
-            { key: 'name', label: 'Dataset' },
-            { key: 'relativePath', label: 'Path', render: (r) => <span className="block max-w-[32rem] truncate">{r.relativePath}</span> },
-            { key: 'rowCount', label: 'Rows', align: 'right', render: (r) => (r.rowCount == null ? 'n/a' : fmtNumber(r.rowCount)) },
-            { key: 'bytes', label: 'Size', align: 'right', render: (r) => fmtBytes(r.bytes) },
-            { key: 'mtimeMs', label: 'Modified', render: (r) => (r.mtimeMs ? fmtDateTime(new Date(r.mtimeMs).toISOString()) : 'n/a') },
-            { key: 'sha256', label: 'SHA-256', render: (r) => (r.sha256 ? <code className="font-mono text-[11px]">{shortHash(r.sha256)}</code> : 'n/a') },
+            { key: 'status', label: copy.columns.status, render: (r) => <Badge tone={statusTone(r.status)}>{r.status}</Badge> },
+            { key: 'category', label: copy.columns.category },
+            { key: 'name', label: copy.columns.dataset },
+            { key: 'relativePath', label: copy.columns.path, render: (r) => <span className="block max-w-[32rem] truncate">{r.relativePath}</span> },
+            { key: 'rowCount', label: copy.columns.rows, align: 'right', render: (r) => (r.rowCount == null ? 'n/a' : fmtNumber(r.rowCount)) },
+            { key: 'bytes', label: copy.columns.size, align: 'right', render: (r) => fmtBytes(r.bytes) },
+            { key: 'mtimeMs', label: copy.columns.modified, render: (r) => (r.mtimeMs ? fmtDateTime(new Date(r.mtimeMs).toISOString()) : 'n/a') },
+            { key: 'sha256', label: copy.columns.sha, render: (r) => (r.sha256 ? <code className="font-mono text-[11px]">{shortHash(r.sha256)}</code> : 'n/a') },
           ]}
         />
       </Card>

@@ -4,8 +4,10 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone, type Tone } from '@/components/ui'
 import { getReconciliationReview } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtMoney, fmtNumber, fmtQuantity } from '@/lib/format'
-import { GLOSSARY } from '@/lib/glossary'
+import { getGlossary } from '@/lib/glossary'
+import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
+import { getUiCopy } from '@/lib/ui-copy'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,7 +23,140 @@ function statusTone(status: string): Tone {
   return 'info'
 }
 
-export default function ReconciliationPage() {
+const COPY = {
+  en: {
+    eyebrow: 'System',
+    title: 'Reconciliation',
+    emphasis: 'Reconciliation',
+    subtitle: 'Cross-check holdings, tax lots, income mapping, valuation coverage, and operational inputs from the latest ingest.',
+    reviewItems: (count: string) => `${count} review item(s)`,
+    reconciled: 'Reconciled',
+    reviewItemsTitle: 'Review Items',
+    reviewItemsInfo: 'Total reconciliation findings that need review across holdings, tax lots, income mapping, valuation, and source checks.',
+    headline: 'Reconciliation headline',
+    queuedHint: 'Items queued for review',
+    noActionsHint: 'No reconciliation actions queued',
+    positions: 'Positions',
+    markets: (count: string) => `${count} markets`,
+    tickerlessIncome: 'Tickerless Income',
+    tickerlessHint: 'Income rows without ticker mapping',
+    sourceIssues: 'Source Issues',
+    sourceIssuesHint: 'Freshness or validation issues',
+    coverageScope: 'Coverage Scope',
+    coverageScopeInfo: 'The source coverage represented in the reconciliation run.',
+    brokerages: 'Brokerages',
+    marketsCovered: (count: string) => `${count} markets covered`,
+    lotPositions: 'Lot Positions',
+    lotPositionsHint: 'Positions represented by tax lots',
+    readOrder: 'Read order: queued findings first, then source coverage and detailed break tables.',
+    actionQueue: 'Action queue',
+    noQueuedActions: 'No reconciliation actions queued',
+    marketCoverage: 'Market and brokerage coverage',
+    positionBreaks: 'Holdings vs tax lots breaks',
+    noPositionBreaks: 'No holdings-to-lots breaks above the current tolerance',
+    incomeBreaks: 'Tickerless income breaks',
+    allIncomeMapped: 'All income rows are ticker-mapped',
+    valuationBreaks: 'Missing valuation breaks',
+    allValued: 'All holdings have market valuation',
+    view: 'View',
+    columns: {
+      priority: 'Priority',
+      area: 'Area',
+      count: 'Count',
+      action: 'Action',
+      open: 'Open',
+      market: 'Market',
+      brokerage: 'Brokerage',
+      holdings: 'Holdings',
+      lotPos: 'Lot Pos.',
+      lotRows: 'Lot Rows',
+      txRows: 'Tx Rows',
+      incomeRows: 'Income Rows',
+      holdingCost: 'Holding Cost',
+      lotCost: 'Lot Cost',
+      status: 'Status',
+      position: 'Position',
+      holdingQty: 'Holding Qty',
+      lotQty: 'Lot Qty',
+      qtyDiff: 'Qty Diff',
+      costDiff: 'Cost Diff',
+      category: 'Category',
+      rows: 'Rows',
+      baseIncome: 'Base Income',
+      nativeCost: 'Native Cost',
+      baseCost: 'Base Cost',
+    },
+  },
+  ko: {
+    eyebrow: '시스템',
+    title: '데이터 일치 확인',
+    emphasis: '일치 확인',
+    subtitle: '마지막 ingest 기준 보유종목, 세금 단위, 수익 매핑, 평가금액 범위, 운영 입력값을 교차 확인합니다.',
+    reviewItems: (count: string) => `확인 항목 ${count}건`,
+    reconciled: '일치 확인 완료',
+    reviewItemsTitle: '확인 항목',
+    reviewItemsInfo: '보유종목, 세금 단위, 수익 매핑, 평가금액, 원본 확인에서 검토가 필요한 항목 합계입니다.',
+    headline: '일치 확인 핵심 지표',
+    queuedHint: '검토 대기 항목',
+    noActionsHint: '대기 중인 일치 확인 작업 없음',
+    positions: '종목',
+    markets: (count: string) => `${count}개 시장`,
+    tickerlessIncome: '종목 미연결 수익',
+    tickerlessHint: '종목 매핑이 없는 수익 행',
+    sourceIssues: '원본 이슈',
+    sourceIssuesHint: '최신성 또는 검증 이슈',
+    coverageScope: '범위',
+    coverageScopeInfo: '일치 확인 실행에 포함된 원본 범위입니다.',
+    brokerages: '증권사',
+    marketsCovered: (count: string) => `${count}개 시장 포함`,
+    lotPositions: '세금 단위 종목',
+    lotPositionsHint: '세금 단위로 표현된 종목',
+    readOrder: '읽는 순서: 대기 중인 발견사항, 원본 범위, 상세 break 표 순으로 확인합니다.',
+    actionQueue: '작업 대기열',
+    noQueuedActions: '대기 중인 일치 확인 작업이 없습니다.',
+    marketCoverage: '시장 및 증권사 범위',
+    positionBreaks: '보유종목 vs 세금 단위 차이',
+    noPositionBreaks: '현재 허용 범위를 넘는 보유종목-세금 단위 차이가 없습니다.',
+    incomeBreaks: '종목 미연결 수익 차이',
+    allIncomeMapped: '모든 수익 행이 종목에 연결되어 있습니다.',
+    valuationBreaks: '평가금액 누락',
+    allValued: '모든 보유종목에 평가금액이 있습니다.',
+    view: '보기',
+    columns: {
+      priority: '우선순위',
+      area: '영역',
+      count: '건수',
+      action: '조치',
+      open: '열기',
+      market: '시장',
+      brokerage: '증권사',
+      holdings: '보유',
+      lotPos: '세금 단위 종목',
+      lotRows: '세금 단위 행',
+      txRows: '거래 행',
+      incomeRows: '수익 행',
+      holdingCost: '보유 원가',
+      lotCost: '세금 단위 원가',
+      status: '상태',
+      position: '종목',
+      holdingQty: '보유 수량',
+      lotQty: '세금 단위 수량',
+      qtyDiff: '수량 차이',
+      costDiff: '원가 차이',
+      category: '분류',
+      rows: '행',
+      baseIncome: '원화 수익',
+      nativeCost: '현지 통화 원가',
+      baseCost: '원화 원가',
+    },
+  },
+} as const
+
+export default async function ReconciliationPage() {
+  const language = await getLanguage()
+  const copy = COPY[language]
+  const glossary = getGlossary(language)
+  const priorityLabels = getUiCopy(language).priority
   const review = getReconciliationReview()
   const hasIssues = review.totals.issue_count > 0
   const sourceIssueCount = review.totals.source_issue_count + review.totals.validation_issue_count
@@ -29,88 +164,88 @@ export default function ReconciliationPage() {
   return (
     <>
       <PageHeader
-        eyebrow="System"
-        title="Reconciliation"
-        emphasis="Reconciliation"
-        subtitle="Cross-check holdings, tax lots, income mapping, valuation coverage, and operational inputs from the latest ingest."
-        action={hasIssues ? <Badge tone="warning">{fmtNumber(review.totals.issue_count)} review item(s)</Badge> : <Badge tone="success">Reconciled</Badge>}
+        eyebrow={copy.eyebrow}
+        title={copy.title}
+        emphasis={copy.emphasis}
+        subtitle={copy.subtitle}
+        action={hasIssues ? <Badge tone="warning">{copy.reviewItems(fmtNumber(review.totals.issue_count))}</Badge> : <Badge tone="success">{copy.reconciled}</Badge>}
       />
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
         <MetricHeroCard
-          title="Review Items"
-          info="Total reconciliation findings that need review across holdings, tax lots, income mapping, valuation, and source checks."
-          eyebrow="Reconciliation headline"
+          title={copy.reviewItemsTitle}
+          info={copy.reviewItemsInfo}
+          eyebrow={copy.headline}
           value={fmtNumber(review.totals.issue_count)}
-          hint={hasIssues ? 'Items queued for review' : 'No reconciliation actions queued'}
+          hint={hasIssues ? copy.queuedHint : copy.noActionsHint}
         >
           <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
             <MetricField
-              label="Positions"
+              label={copy.positions}
               value={fmtNumber(review.totals.position_count)}
-              hint={`${fmtNumber(review.totals.market_count)} markets`}
+              hint={copy.markets(fmtNumber(review.totals.market_count))}
               valueClassName="text-[18px]"
             />
             <MetricField
-              label="Tickerless Income"
+              label={copy.tickerlessIncome}
               value={fmtNumber(review.totals.tickerless_income_count)}
-              info={GLOSSARY.tickerless.description}
-              hint="Income rows without ticker mapping"
+              info={glossary.tickerless.description}
+              hint={copy.tickerlessHint}
               tone={review.totals.tickerless_income_count ? 'warning' : 'success'}
               valueClassName="text-[18px]"
             />
             <MetricField
-              label="Source Issues"
+              label={copy.sourceIssues}
               value={fmtNumber(sourceIssueCount)}
-              info={GLOSSARY.inputIssues.description}
-              hint="Freshness or validation issues"
+              info={glossary.inputIssues.description}
+              hint={copy.sourceIssuesHint}
               tone={sourceIssueCount ? 'danger' : 'success'}
               valueClassName="text-[18px]"
             />
           </div>
         </MetricHeroCard>
 
-        <Card title="Coverage Scope" info="The source coverage represented in the reconciliation run.">
+        <Card title={copy.coverageScope} info={copy.coverageScopeInfo}>
           <div className="flex min-h-[16rem] flex-col justify-between gap-4">
             <div className="space-y-4">
               <MetricField
-                label="Brokerages"
+                label={copy.brokerages}
                 value={fmtNumber(review.totals.brokerage_count)}
-                hint={`${fmtNumber(review.totals.market_count)} markets covered`}
+                hint={copy.marketsCovered(fmtNumber(review.totals.market_count))}
                 valueClassName="text-[28px]"
               />
               <div className="h-px bg-line-subtle" />
               <MetricField
-                label="Lot Positions"
+                label={copy.lotPositions}
                 value={fmtNumber(review.totals.lot_position_count)}
-                hint="Positions represented by tax lots"
+                hint={copy.lotPositionsHint}
                 valueClassName="text-[18px]"
               />
             </div>
             <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
-              Read order: queued findings first, then source coverage and detailed break tables.
+              {copy.readOrder}
             </div>
           </div>
         </Card>
       </div>
 
-      <Card title="Action queue" accent={review.actionQueue.length > 0}>
+      <Card title={copy.actionQueue} accent={review.actionQueue.length > 0}>
         {review.actionQueue.length === 0 ? (
-          <EmptyState ok>No reconciliation actions queued</EmptyState>
+          <EmptyState ok>{copy.noQueuedActions}</EmptyState>
         ) : (
           <DataTable
             rows={review.actionQueue}
             columns={[
-              { key: 'priority', label: 'Priority', render: (r) => <Badge tone={priorityTone(r.priority)}>{r.priority}</Badge> },
-              { key: 'area', label: 'Area' },
-              { key: 'count', label: 'Count', align: 'right', render: (r) => fmtNumber(r.count) },
-              { key: 'action', label: 'Action', render: (r) => <span className="text-[12px] text-ink-2">{r.action}</span> },
+              { key: 'priority', label: copy.columns.priority, render: (r) => <Badge tone={priorityTone(r.priority)}>{priorityLabels[r.priority as keyof typeof priorityLabels] ?? r.priority}</Badge> },
+              { key: 'area', label: copy.columns.area },
+              { key: 'count', label: copy.columns.count, align: 'right', render: (r) => fmtNumber(r.count) },
+              { key: 'action', label: copy.columns.action, render: (r) => <span className="text-[12px] text-ink-2">{r.action}</span> },
               {
                 key: 'href',
-                label: 'Open',
+                label: copy.columns.open,
                 render: (r) => (
                   <Link href={r.href} className="text-[12px] font-medium text-info hover:underline">
-                    View
+                    {copy.view}
                   </Link>
                 ),
               },
@@ -119,89 +254,89 @@ export default function ReconciliationPage() {
         )}
       </Card>
 
-      <Card title="Market and brokerage coverage" className="mt-5">
+      <Card title={copy.marketCoverage} className="mt-5">
         <DataTable
           rows={review.coverage}
           columns={[
-            { key: 'market', label: 'Market', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
-            { key: 'brokerage', label: 'Brokerage' },
-            { key: 'holding_positions', label: 'Holdings', align: 'right', render: (r) => fmtNumber(r.holding_positions) },
-            { key: 'lot_positions', label: 'Lot Pos.', align: 'right', render: (r) => fmtNumber(r.lot_positions) },
-            { key: 'lot_rows', label: 'Lot Rows', align: 'right', render: (r) => fmtNumber(r.lot_rows) },
-            { key: 'transaction_rows', label: 'Tx Rows', align: 'right', render: (r) => fmtNumber(r.transaction_rows) },
-            { key: 'dividend_rows', label: 'Income Rows', align: 'right', render: (r) => fmtNumber(r.dividend_rows) },
-            { key: 'holding_base_cost', label: 'Holding Cost', align: 'right', render: (r) => fmtKrw(r.holding_base_cost) },
-            { key: 'lot_base_cost', label: 'Lot Cost', align: 'right', render: (r) => fmtKrw(r.lot_base_cost) },
+            { key: 'market', label: copy.columns.market, render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
+            { key: 'brokerage', label: copy.columns.brokerage },
+            { key: 'holding_positions', label: copy.columns.holdings, align: 'right', render: (r) => fmtNumber(r.holding_positions) },
+            { key: 'lot_positions', label: copy.columns.lotPos, align: 'right', render: (r) => fmtNumber(r.lot_positions) },
+            { key: 'lot_rows', label: copy.columns.lotRows, align: 'right', render: (r) => fmtNumber(r.lot_rows) },
+            { key: 'transaction_rows', label: copy.columns.txRows, align: 'right', render: (r) => fmtNumber(r.transaction_rows) },
+            { key: 'dividend_rows', label: copy.columns.incomeRows, align: 'right', render: (r) => fmtNumber(r.dividend_rows) },
+            { key: 'holding_base_cost', label: copy.columns.holdingCost, align: 'right', render: (r) => fmtKrw(r.holding_base_cost) },
+            { key: 'lot_base_cost', label: copy.columns.lotCost, align: 'right', render: (r) => fmtKrw(r.lot_base_cost) },
           ]}
         />
       </Card>
 
-      <Card title="Holdings vs tax lots breaks" className="mt-5" accent={review.positionBreaks.length > 0}>
+      <Card title={copy.positionBreaks} className="mt-5" accent={review.positionBreaks.length > 0}>
         {review.positionBreaks.length === 0 ? (
-          <EmptyState ok>No holdings-to-lots breaks above the current tolerance</EmptyState>
+          <EmptyState ok>{copy.noPositionBreaks}</EmptyState>
         ) : (
           <DataTable
             rows={review.positionBreaks}
             columns={[
-              { key: 'status', label: 'Status', render: (r) => <Badge tone={statusTone(r.status)}>{r.status}</Badge> },
-              { key: 'market', label: 'Market', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
-              { key: 'brokerage', label: 'Brokerage' },
+              { key: 'status', label: copy.columns.status, render: (r) => <Badge tone={statusTone(r.status)}>{r.status}</Badge> },
+              { key: 'market', label: copy.columns.market, render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
+              { key: 'brokerage', label: copy.columns.brokerage },
               {
                 key: 'ticker',
-                label: 'Position',
+                label: copy.columns.position,
                 render: (r) => (
                   <Link href={positionHref(r.market, r.ticker)} className="font-mono text-[12px] font-medium text-info hover:underline">
                     {r.name} ({r.ticker})
                   </Link>
                 ),
               },
-              { key: 'holding_quantity', label: 'Holding Qty', align: 'right', render: (r) => fmtQuantity(r.holding_quantity, 4) },
-              { key: 'lot_quantity', label: 'Lot Qty', align: 'right', render: (r) => fmtQuantity(r.lot_quantity, 4) },
-              { key: 'quantity_diff', label: 'Qty Diff', align: 'right', render: (r) => (r.quantity_diff == null ? 'n/a' : fmtQuantity(r.quantity_diff, 4)) },
-              { key: 'base_cost_diff', label: 'Cost Diff', align: 'right', render: (r) => (r.base_cost_diff == null ? 'n/a' : fmtKrw(r.base_cost_diff)) },
+              { key: 'holding_quantity', label: copy.columns.holdingQty, align: 'right', render: (r) => fmtQuantity(r.holding_quantity, 4) },
+              { key: 'lot_quantity', label: copy.columns.lotQty, align: 'right', render: (r) => fmtQuantity(r.lot_quantity, 4) },
+              { key: 'quantity_diff', label: copy.columns.qtyDiff, align: 'right', render: (r) => (r.quantity_diff == null ? 'n/a' : fmtQuantity(r.quantity_diff, 4)) },
+              { key: 'base_cost_diff', label: copy.columns.costDiff, align: 'right', render: (r) => (r.base_cost_diff == null ? 'n/a' : fmtKrw(r.base_cost_diff)) },
             ]}
           />
         )}
       </Card>
 
       <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <Card title="Tickerless income breaks" accent={review.incomeBreaks.length > 0}>
+        <Card title={copy.incomeBreaks} accent={review.incomeBreaks.length > 0}>
           {review.incomeBreaks.length === 0 ? (
-            <EmptyState ok>All income rows are ticker-mapped</EmptyState>
+            <EmptyState ok>{copy.allIncomeMapped}</EmptyState>
           ) : (
             <DataTable
               rows={review.incomeBreaks}
               columns={[
-                { key: 'market', label: 'Market', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
-                { key: 'brokerage', label: 'Brokerage' },
-                { key: 'income_category', label: 'Category' },
-                { key: 'row_count', label: 'Rows', align: 'right', render: (r) => fmtNumber(r.row_count) },
-                { key: 'base_income', label: 'Base Income', align: 'right', render: (r) => fmtKrw(r.base_income) },
+                { key: 'market', label: copy.columns.market, render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
+                { key: 'brokerage', label: copy.columns.brokerage },
+                { key: 'income_category', label: copy.columns.category },
+                { key: 'row_count', label: copy.columns.rows, align: 'right', render: (r) => fmtNumber(r.row_count) },
+                { key: 'base_income', label: copy.columns.baseIncome, align: 'right', render: (r) => fmtKrw(r.base_income) },
               ]}
             />
           )}
         </Card>
 
-        <Card title="Missing valuation breaks" accent={review.valuationBreaks.length > 0}>
+        <Card title={copy.valuationBreaks} accent={review.valuationBreaks.length > 0}>
           {review.valuationBreaks.length === 0 ? (
-            <EmptyState ok>All holdings have market valuation</EmptyState>
+            <EmptyState ok>{copy.allValued}</EmptyState>
           ) : (
             <DataTable
               rows={review.valuationBreaks}
               columns={[
-                { key: 'market', label: 'Market', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
+                { key: 'market', label: copy.columns.market, render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
                 {
                   key: 'ticker',
-                  label: 'Position',
+                  label: copy.columns.position,
                   render: (r) => (
                     <Link href={positionHref(r.market, r.ticker)} className="font-mono text-[12px] font-medium text-info hover:underline">
                       {r.name} ({r.ticker})
                     </Link>
                   ),
                 },
-                { key: 'brokerage', label: 'Brokerage' },
-                { key: 'native_cost', label: 'Native Cost', align: 'right', render: (r) => fmtMoney(r.native_cost, r.currency) },
-                { key: 'base_cost', label: 'Base Cost', align: 'right', render: (r) => (r.base_cost == null ? 'n/a' : fmtKrw(r.base_cost)) },
+                { key: 'brokerage', label: copy.columns.brokerage },
+                { key: 'native_cost', label: copy.columns.nativeCost, align: 'right', render: (r) => fmtMoney(r.native_cost, r.currency) },
+                { key: 'base_cost', label: copy.columns.baseCost, align: 'right', render: (r) => (r.base_cost == null ? 'n/a' : fmtKrw(r.base_cost)) },
               ]}
             />
           )}
