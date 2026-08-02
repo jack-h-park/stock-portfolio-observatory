@@ -21,14 +21,14 @@ export function PageHeader({
   const showEmph = Boolean(emphasis && title.endsWith(emphasis))
 
   return (
-    <header className="ai-page-header mb-5 flex flex-col gap-1.5 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
+    <header className="ai-page-header mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
       <div className="min-w-0">
         {eyebrow && <div className="t-eyebrow mb-1">{eyebrow}</div>}
-        <h1 className="text-[20px] font-medium tracking-tight text-ink sm:text-[22px]">
+        <h1 className="t-h2">
           {head}
           {showEmph && <span className="t-emph-gradient">{emphasis}</span>}
         </h1>
-        {subtitle && <p className="mt-0.5 text-[12px] text-ink-3">{subtitle}</p>}
+        {subtitle && <p className="mt-1 max-w-4xl text-[13px] leading-relaxed text-ink-2">{subtitle}</p>}
       </div>
       <div className="flex shrink-0 items-center gap-3">
         {action}

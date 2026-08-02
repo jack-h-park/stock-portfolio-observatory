@@ -43,13 +43,13 @@ export function AutoRefresh({ seconds = 30 }: { seconds?: number }) {
     }
   }, [router, seconds])
 
-  const clock = lastRefresh?.toLocaleTimeString('en-US', { hour12: false })
+  const clock = lastRefresh?.toLocaleTimeString('ko-KR', { hour12: false })
 
   if (!online) {
     return (
       <span className="inline-flex items-center gap-1.5 text-[11px] tabular-nums text-warning">
         <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-warning" />
-        offline{clock ? ` · last ${clock}` : ''}
+        오프라인{clock ? ` · 마지막 확인 ${clock}` : ''}
       </span>
     )
   }
@@ -60,10 +60,10 @@ export function AutoRefresh({ seconds = 30 }: { seconds?: number }) {
         className={clsx('h-1.5 w-1.5 rounded-full', isPending ? 'animate-pulse bg-info' : 'bg-success/70')}
       />
       {isPending
-        ? 'Refreshing…'
+        ? '갱신 중…'
         : clock
-          ? `Updated ${clock} · ${seconds}s`
-          : `Polling every ${seconds}s`}
+          ? `마지막 갱신 ${clock} · ${seconds}초 간격`
+          : `${seconds}초마다 자동 갱신`}
     </span>
   )
 }

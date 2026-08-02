@@ -2,45 +2,13 @@ import { clsx } from 'clsx'
 import Link from 'next/link'
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
 import { fmtDate, relTime } from '@/lib/format'
+import { HelpPopover } from '@/components/HelpPopover'
 
 // InfoTooltip — a small "i" affordance that reveals an explanation on hover or
 // keyboard focus, as an absolutely-positioned overlay (no layout cost). Used
 // consistently across the dashboard to explain domain jargon (gates, stages,
 // depth, drift, freshness, etc.) without cluttering the surface.
-export function InfoTooltip({
-  children,
-  label,
-  align = 'center',
-  className,
-}: {
-  children: ReactNode
-  label?: string
-  align?: 'center' | 'left' | 'right'
-  className?: string
-}) {
-  return (
-    <span className={clsx('group relative inline-flex items-center align-middle', className)}>
-      <button
-        type="button"
-        aria-label={label ?? 'More information'}
-        className="ml-1 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border border-line text-[9px] font-semibold leading-none text-ink-3 transition-colors hover:border-info hover:text-info focus:outline-none focus-visible:ring-1 focus-visible:ring-info"
-      >
-        i
-      </button>
-      <span
-        role="tooltip"
-        className={clsx(
-          'pointer-events-none absolute top-full z-50 mt-1.5 w-64 rounded-md border border-line bg-card p-2.5 text-left text-[11px] font-normal normal-case leading-relaxed tracking-normal text-ink-2 opacity-0 shadow-elevated transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100',
-          align === 'center' && 'left-1/2 -translate-x-1/2',
-          align === 'left' && 'left-0',
-          align === 'right' && 'right-0'
-        )}
-      >
-        {children}
-      </span>
-    </span>
-  )
-}
+export const InfoTooltip = HelpPopover
 
 export function Card({
   children,
@@ -86,10 +54,10 @@ export function Card({
       )}
       {(title || action) && (
         <header className="flex items-center justify-between border-b border-line-subtle px-4 py-2.5">
-          <h2 className="flex items-center text-[13px] font-medium tracking-tight text-ink">
-            {title}
-            {info && <InfoTooltip label={typeof title === 'string' ? title : undefined}>{info}</InfoTooltip>}
-          </h2>
+          <div className="flex items-center">
+            <h2 className="text-[14px] font-medium tracking-tight text-ink">{title}</h2>
+            {info ? <InfoTooltip label={typeof title === 'string' ? `${title} 설명` : undefined}>{info}</InfoTooltip> : null}
+          </div>
           {action}
         </header>
       )}
@@ -164,9 +132,9 @@ export function StatCard({
           style={{ backgroundImage: 'var(--gradient-full)', borderRadius: 'var(--radius-md) var(--radius-md) 0 0' }}
         />
       )}
-      <div className="flex items-center text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">
+      <div className="flex items-center text-[12px] font-medium uppercase tracking-[0.08em] text-ink-3">
         {label}
-        {info && <InfoTooltip label={label}>{info}</InfoTooltip>}
+        {info ? <InfoTooltip label={`${label} 설명`}>{info}</InfoTooltip> : null}
       </div>
       <div
         className={clsx('stat-card-value mt-1 max-w-full font-medium leading-tight tabular-nums', {
@@ -179,7 +147,7 @@ export function StatCard({
       >
         {value}
       </div>
-      {hint && <div className="mt-1 text-[11px] text-ink-3">{hint}</div>}
+      {hint && <div className="mt-1 text-[12px] text-ink-3">{hint}</div>}
     </div>
   )
 }

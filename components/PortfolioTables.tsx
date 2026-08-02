@@ -4,8 +4,10 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Badge, Button , marketTone } from '@/components/ui'
 import { DataTable } from '@/components/DataTable'
+import { GlossaryTerm } from '@/components/GlossaryTerm'
 import { fmtMoney, fmtNumber, fmtQuantity } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
+import { COMMON_LABELS } from '@/lib/ui-copy'
 import type { CostBasisHolding, CostBasisStatus } from '@/lib/adapters/portfolio-db'
 
 type SortDirection = 'asc' | 'desc'
@@ -61,16 +63,20 @@ function InstrumentLabel({ row }: { row: any }) {
 
 function SearchBox({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {
   return (
-    <label className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3 sm:max-w-xs">
-      Search
+    <label className="flex min-w-0 flex-1 flex-col gap-1 text-[12px] font-medium text-ink-2 sm:max-w-sm">
+      {COMMON_LABELS.search}
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="h-8 rounded-sm border border-line bg-card px-2 text-[13px] font-normal normal-case tracking-normal text-ink outline-none placeholder:text-ink-3 focus:border-ink-3"
+        className="min-h-11 rounded-sm border border-line bg-card px-3 text-[14px] font-normal text-ink outline-none placeholder:text-ink-3 focus:border-info focus:ring-2 focus:ring-info/20"
       />
     </label>
   )
+}
+
+function easyFilterLabel(label: string) {
+  return ({ Market: '시장', Broker: '증권사', Account: '계좌', Status: '상태' } as Record<string, string>)[label] ?? label
 }
 
 function FilterBar({
@@ -85,16 +91,17 @@ function FilterBar({
   onChange: (value: string) => void
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className="mr-1 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">{label}</span>
+    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={`${easyFilterLabel(label)} 필터`}>
+      <span className="mr-1 text-[12px] font-medium text-ink-2">{easyFilterLabel(label)}</span>
       {options.map((option) => (
         <Button
           key={option}
           variant={value === option ? 'solid' : 'outline'}
           size="sm"
+          aria-pressed={value === option}
           onClick={() => onChange(option)}
         >
-          {option}
+          {option === 'All' ? COMMON_LABELS.all : option}
         </Button>
       ))}
     </div>
@@ -111,8 +118,8 @@ function SortBar({
   onChange: (value: SortConfig) => void
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className="mr-1 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">Sort</span>
+    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="정렬 기준">
+      <span className="mr-1 text-[12px] font-medium text-ink-2">{COMMON_LABELS.sort}</span>
       {options.map((option) => {
         const direction = option.direction ?? 'desc'
         const active = value.key === option.key && value.direction === direction
@@ -121,6 +128,7 @@ function SortBar({
             key={`${option.key}:${direction}`}
             variant={active ? 'solid' : 'outline'}
             size="sm"
+            aria-pressed={active}
             onClick={() => onChange({ key: option.key, direction })}
           >
             {option.label}
@@ -183,23 +191,31 @@ export function HoldingsTable({ rows }: { rows: any[] }) {
       ),
     [filtered]
   )
+  const hasActiveFilters = market !== 'All' || brokerage !== 'All' || account !== 'All' || query.trim() !== ''
+
+  const clearFilters = () => {
+    setMarket('All')
+    setBrokerage('All')
+    setAccount('All')
+    setQuery('')
+  }
 
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-        <SearchBox value={query} onChange={setQuery} placeholder="ticker, name, account, broker" />
+        <SearchBox value={query} onChange={setQuery} placeholder="종목코드, 종목명, 계좌 또는 증권사" />
         <SortBar
           value={sort}
           onChange={setSort}
           options={[
-            { key: 'base_market_value', label: 'Market value' },
-            { key: 'base_unrealized_gl', label: 'G/L' },
-            { key: 'native_unrealized_gl_pct', label: 'G/L %' },
-            { key: 'name', label: 'Name A-Z', direction: 'asc' },
+            { key: 'base_market_value', label: '평가금액' },
+            { key: 'base_unrealized_gl', label: '평가손익' },
+            { key: 'native_unrealized_gl_pct', label: '수익률' },
+            { key: 'name', label: '이름순', direction: 'asc' },
           ]}
         />
       </div>
-      <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+      <div className="flex flex-col gap-2 rounded-md border border-line-subtle bg-surface/60 p-3 xl:flex-row xl:items-center xl:justify-between">
         <FilterBar label="Market" value={market} options={['All', ...unique(rows.map((r) => r.market))]} onChange={setMarket} />
         <FilterBar
           label="Broker"
@@ -208,22 +224,27 @@ export function HoldingsTable({ rows }: { rows: any[] }) {
           onChange={setBrokerage}
         />
         <FilterBar label="Account" value={account} options={['All', ...unique(brokerRows.map((r) => r.account))]} onChange={setAccount} />
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" onClick={clearFilters} className="self-start xl:self-auto">
+            {COMMON_LABELS.clearFilters}
+          </Button>
+        )}
       </div>
-      <div className="grid gap-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] sm:grid-cols-4">
+      <div className="grid gap-3 rounded-md border border-line-subtle bg-surface px-3 py-3 text-[13px] sm:grid-cols-4" aria-live="polite">
         <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Filtered</div>
+          <div className="text-[12px] text-ink-3">표시 종목</div>
           <div className="font-medium tabular-nums text-ink">{fmtNumber(filtered.length)} / {fmtNumber(rows.length)}</div>
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Base cost</div>
+          <div className="text-[12px] text-ink-3"><GlossaryTerm term="costBasis" compact /></div>
           <div className="font-medium tabular-nums text-ink">{fmtMoney(totals.cost, 'KRW')}</div>
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Market value</div>
+          <div className="text-[12px] text-ink-3">현재 평가금액</div>
           <div className="font-medium tabular-nums text-ink">{fmtMoney(totals.marketValue, 'KRW')}</div>
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Unrealized G/L</div>
+          <div className="text-[12px] text-ink-3"><GlossaryTerm term="unrealizedGl" compact /></div>
           <div className={totals.unrealized >= 0 ? 'font-medium tabular-nums text-success' : 'font-medium tabular-nums text-danger'}>
             {fmtMoney(totals.unrealized, 'KRW')}
           </div>
@@ -240,52 +261,54 @@ export function HoldingsTable({ rows }: { rows: any[] }) {
             <div className="mt-1 truncate text-[11px] text-ink-3">{selected.brokerage} · {selected.account}</div>
           </div>
           <div className="grid gap-x-5 gap-y-1 text-[11px] sm:grid-cols-5 lg:text-right">
-            <div><span className="text-ink-3">Qty </span><span className="tabular-nums text-ink">{fmtQuantity(selected.quantity, 2)}</span></div>
-            <div><span className="text-ink-3">Cost </span><span className="tabular-nums text-ink">{fmtMoney(selected.native_cost, selected.currency)}</span></div>
-            <div><span className="text-ink-3">Market </span><span className="tabular-nums text-ink">{selected.native_market_value == null ? 'n/a' : fmtMoney(selected.native_market_value, selected.currency)}</span></div>
+            <div><span className="text-ink-3">수량 </span><span className="tabular-nums text-ink">{fmtQuantity(selected.quantity, 2)}</span></div>
+            <div><span className="text-ink-3">취득원가 </span><span className="tabular-nums text-ink">{fmtMoney(selected.native_cost, selected.currency)}</span></div>
+            <div><span className="text-ink-3">평가금액 </span><span className="tabular-nums text-ink">{selected.native_market_value == null ? '값 없음' : fmtMoney(selected.native_market_value, selected.currency)}</span></div>
             <div>
-              <span className="text-ink-3">G/L </span>
+              <span className="text-ink-3">평가손익 </span>
               <span className={Number(selected.native_unrealized_gl ?? 0) >= 0 ? 'tabular-nums text-success' : 'tabular-nums text-danger'}>
-                {selected.native_unrealized_gl == null ? 'n/a' : fmtMoney(selected.native_unrealized_gl, selected.currency)}
+                {selected.native_unrealized_gl == null ? '값 없음' : fmtMoney(selected.native_unrealized_gl, selected.currency)}
               </span>
             </div>
             <Link href={positionHref(selected.market, selected.ticker)} className="font-medium text-info hover:underline">
-              Detail
+              {COMMON_LABELS.details}
             </Link>
           </div>
         </div>
       )}
       <DataTable
+        caption="현재 보유종목 목록"
         rows={filtered}
         columns={[
-          { key: 'market', label: 'Market', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
-          { key: 'brokerage', label: 'Broker' },
-          { key: 'account', label: 'Account' },
+          { key: 'market', label: '시장', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge>, nowrap: true },
+          { key: 'brokerage', label: '증권사', priority: 'secondary' },
+          { key: 'account', label: '계좌', priority: 'secondary' },
           {
             key: 'ticker',
-            label: 'Instrument',
+            label: '종목',
             render: (r) => (
               <div className="flex items-start gap-2">
                 <button type="button" className="text-left" onClick={() => setSelectedKey(positionKey(r))}>
                   <InstrumentLabel row={r} />
                 </button>
                 <Link href={positionHref(r.market, r.ticker)} className="mt-0.5 text-[11px] font-medium text-info hover:underline">
-                  Open
+                  열기
                 </Link>
               </div>
             ),
           },
-          { key: 'quantity', label: 'Qty', align: 'right', render: (r) => fmtQuantity(r.quantity, 2) },
-          { key: 'native_cost', label: 'Cost Basis', align: 'right', render: (r) => fmtMoney(r.native_cost, r.currency) },
-          { key: 'base_cost', label: 'Base Cost', align: 'right', render: (r) => (r.base_cost == null ? 'n/a' : fmtMoney(r.base_cost, 'KRW')) },
-          { key: 'native_market_value', label: 'Market Value', align: 'right', render: (r) => (r.native_market_value == null ? 'n/a' : fmtMoney(r.native_market_value, r.currency)) },
+          { key: 'quantity', label: '수량', align: 'right', render: (r) => fmtQuantity(r.quantity, 2), nowrap: true },
+          { key: 'native_cost', label: '취득원가', description: '해당 시장 통화로 표시한 실제 취득 금액입니다.', align: 'right', render: (r) => fmtMoney(r.native_cost, r.currency), priority: 'secondary', nowrap: true },
+          { key: 'base_cost', label: '원화 취득원가', description: '취득원가를 화면의 기준 환율로 원화 환산한 값입니다.', align: 'right', render: (r) => (r.base_cost == null ? '값 없음' : fmtMoney(r.base_cost, 'KRW')), priority: 'tertiary', nowrap: true },
+          { key: 'native_market_value', label: '평가금액', align: 'right', render: (r) => (r.native_market_value == null ? '값 없음' : fmtMoney(r.native_market_value, r.currency)), nowrap: true },
           {
             key: 'native_unrealized_gl',
-            label: 'Unrealized G/L',
+            label: '평가손익',
+            description: '현재 가격으로 계산한 미실현 손익입니다.',
             align: 'right',
             render: (r) =>
               r.native_unrealized_gl == null ? (
-                'n/a'
+                '값 없음'
               ) : (
                 <span className={r.native_unrealized_gl >= 0 ? 'text-success' : 'text-danger'}>
                   {fmtMoney(r.native_unrealized_gl, r.currency)}
@@ -294,20 +317,22 @@ export function HoldingsTable({ rows }: { rows: any[] }) {
           },
           {
             key: 'base_unrealized_gl',
-            label: 'Base G/L',
+            label: '원화 평가손익',
+            description: '평가손익을 기준 환율로 원화 환산한 값입니다.',
             align: 'right',
+            priority: 'tertiary',
             render: (r) =>
               r.base_unrealized_gl == null ? (
-                'n/a'
+                '값 없음'
               ) : (
                 <span className={r.base_unrealized_gl >= 0 ? 'text-success' : 'text-danger'}>
                   {fmtMoney(r.base_unrealized_gl, 'KRW')}
                 </span>
               ),
           },
-          { key: 'long_term_qty', label: 'Long', align: 'right', render: (r) => fmtNumber(r.long_term_qty, 2) },
-          { key: 'short_term_qty', label: 'Short', align: 'right', render: (r) => fmtNumber(r.short_term_qty, 2) },
-          { key: 'lot_count', label: 'Lots', align: 'right' },
+          { key: 'long_term_qty', label: '장기', description: '세금상 장기 보유 요건을 충족한 수량입니다.', align: 'right', render: (r) => fmtNumber(r.long_term_qty, 2), priority: 'tertiary' },
+          { key: 'short_term_qty', label: '단기', description: '장기 보유 요건을 아직 충족하지 않은 수량입니다.', align: 'right', render: (r) => fmtNumber(r.short_term_qty, 2), priority: 'tertiary' },
+          { key: 'lot_count', label: '세금 단위', description: '매수 시점과 가격별로 나뉜 세금 계산용 묶음 수입니다.', align: 'right', priority: 'tertiary' },
         ]}
       />
     </div>

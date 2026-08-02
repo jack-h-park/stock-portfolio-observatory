@@ -387,6 +387,7 @@ function MasterPlanOverview({
   const earliestKrTopUp = Number(earliest?.summary.incrementalKrTaxAfterCreditKrw ?? 0)
   const waitKrTopUp = Number(wait?.summary.incrementalKrTaxAfterCreditKrw ?? 0)
   const coveragePct = fullHoldingsValueKrw > 0 ? (planSet.coverage.modeledProceedsKrw / fullHoldingsValueKrw) * 100 : 0
+  const coverageNeedsReview = coveragePct > 100.5
 
   return (
     <Card
@@ -438,6 +439,13 @@ function MasterPlanOverview({
           tone={inputIssueCount ? 'text-warning' : 'text-success'}
         />
       </div>
+
+      {coverageNeedsReview ? (
+        <div className="mt-3 rounded-md border border-[color:var(--accent-warning)]/30 bg-[color:var(--accent-warning)]/5 px-3 py-2 text-[12px] leading-relaxed text-ink-2" role="status">
+          <span className="font-medium text-warning">입력 범위를 확인하세요.</span>{' '}
+          계획 대상 금액이 현재 보유 평가금액보다 커서 범위가 100%를 넘었습니다. 중복된 세금 계산 단위나 오래된 가격이 없는지 확인한 뒤 결과를 사용하세요.
+        </div>
+      ) : null}
 
       <div className="mt-3 grid gap-3 lg:grid-cols-3">
         <div className="border-l-2 border-[color:var(--accent-info)] px-3 py-1">
@@ -820,15 +828,15 @@ export default async function TaxPlanningPage({
   return (
     <>
       <PageHeader
-        eyebrow="Tax"
-        title="Tax Planning"
-        emphasis="Planning"
-        subtitle="Multi-year market timing planner for US/Korea stock realization. Treat outputs as review estimates, not filing advice."
+        eyebrow="세금"
+        title="세금 계획"
+        emphasis="계획"
+        subtitle="한국·미국 주식의 매도 시기를 여러 해에 걸쳐 비교합니다. 결과는 검토용 추정치이며 세금 신고 자문이 아닙니다."
         action={
           <div className="flex items-center gap-2">
-            {taxPolicy.source === 'example' && <Badge tone="warning">Example assumptions</Badge>}
+            {taxPolicy.source === 'example' && <Badge tone="warning">예시 가정 사용 중</Badge>}
             <Link href="/tax-settings" className="text-[12px] font-medium text-info hover:underline">
-              Adjust assumptions
+              가정 조정
             </Link>
           </div>
         }
@@ -837,12 +845,12 @@ export default async function TaxPlanningPage({
       <section className="mb-5 rounded-md border border-line bg-card shadow-card">
         <div className="flex flex-col gap-1 border-b border-line-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-[13px] font-medium text-ink">Plan setup</h2>
+            <h2 className="text-[14px] font-medium text-ink">계획 설정</h2>
             <p className="mt-0.5 text-[11px] text-ink-3">
-              Choose a scheduling rule and time span, then rebuild the deterministic plan.
+              매도 시점 규칙과 기간을 선택한 뒤 계획을 다시 계산합니다.
             </p>
           </div>
-          <Badge>Prices and FX held at today&apos;s snapshot</Badge>
+          <Badge>현재 가격·환율로 고정 계산</Badge>
         </div>
         <form className="grid gap-4 p-4 lg:grid-cols-[minmax(14rem,1.4fr)_minmax(11rem,0.8fr)_minmax(10rem,0.7fr)_auto] lg:items-end">
           <label className="block">

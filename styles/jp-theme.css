@@ -28,7 +28,8 @@
   /* 3.3 · Text */
   --text-primary:   #37352F;
   --text-secondary: #6B6A65;
-  --text-tertiary:  #9B9A97;
+  /* 4.76:1 on white: safe for the 11–12px helper copy used throughout the dashboard. */
+  --text-tertiary:  #74736D;
 
   /* 3.3 · Borders */
   --border-subtle:  rgba(55, 53, 47, 0.09);
@@ -37,7 +38,8 @@
   /* 3.4 · Semantic status */
   --accent-info:    #0B6E99;
   --accent-success: #3B6D11;
-  --accent-warning: #BA7517;
+  /* 5.48:1 on white so warning labels remain readable without relying on color alone. */
+  --accent-warning: #965C0B;
   --accent-danger:  #A32D2D;
 
   /* 5.3 · Elevation */

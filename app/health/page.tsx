@@ -3,6 +3,7 @@ import { FreshnessRows } from '@/components/Freshness'
 import { Badge, Card, EmptyState, type Tone } from '@/components/ui'
 import { getEvidenceReports, getMeta, getOperationalHealth, getOverview, getRefreshRuns, getSourceFiles, getValidationChecks } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtDuration, fmtNumber, shortHash } from '@/lib/format'
+import { FRESHNESS_LABELS, RUN_STATUS_LABELS } from '@/lib/ui-copy'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,6 +34,10 @@ function runStatusLabel(run: { status: string; degradedSteps: string[] }) {
   return run.status === 'success' && run.degradedSteps.length > 0 ? 'degraded' : run.status
 }
 
+function displayRunStatus(status: string) {
+  return RUN_STATUS_LABELS[status as keyof typeof RUN_STATUS_LABELS] ?? status
+}
+
 export default function HealthPage() {
   const meta = getMeta()
   const overview = getOverview()
@@ -44,75 +49,74 @@ export default function HealthPage() {
   const latestRefresh = refreshRuns[0]
   const failed = checks.filter((c) => c.status !== 'pass')
   const errors = failed.filter((c) => c.severity === 'error')
-  const warnings = failed.filter((c) => c.severity === 'warning')
   const fx = overview.fxRates.find((r: any) => r.from_currency === 'USD' && r.to_currency === 'KRW')
   const issueCount = failed.length + operational.staleItems.length
   return (
     <>
       <PageHeader
-        eyebrow="System"
-        title="Data Health"
-        emphasis="Health"
-        subtitle={`Last validation ran ${fmtDateTime(meta.ingested_at)}.`}
-        action={issueCount ? <Badge tone={errors.length || operational.summary.missing ? 'danger' : 'warning'}>{issueCount} issue(s)</Badge> : <Badge tone="success">All checks passing</Badge>}
+        eyebrow="시스템"
+        title="데이터 상태"
+        emphasis="상태"
+        subtitle={`마지막 데이터 검사는 ${fmtDateTime(meta.ingested_at)}에 실행되었습니다.`}
+        action={issueCount ? <Badge tone={errors.length || operational.summary.missing ? 'danger' : 'warning'}>확인 필요 {issueCount}건</Badge> : <Badge tone="success">모든 검사 통과</Badge>}
       />
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
-        <Card title="Operational status" accent={issueCount > 0}>
+        <Card title="운영 상태" info="가격·환율·원본 파일이 정상적으로 수집되고 서로 일치하는지 보여줍니다." accent={issueCount > 0}>
           <div className="grid grid-cols-2 gap-3 text-[12px]">
             <div>
-              <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Fresh</div>
+              <div className="text-[12px] text-ink-3">{FRESHNESS_LABELS.fresh}</div>
               <div className="font-medium tabular-nums text-success">{fmtNumber(operational.summary.fresh)}</div>
             </div>
             <div>
-              <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Stale</div>
+              <div className="text-[12px] text-ink-3">{FRESHNESS_LABELS.stale}</div>
               <div className="font-medium tabular-nums text-warning">{fmtNumber(operational.summary.stale)}</div>
             </div>
             <div>
-              <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Drift</div>
+              <div className="text-[12px] text-ink-3">{FRESHNESS_LABELS.drift}</div>
               <div className="font-medium tabular-nums text-warning">{fmtNumber(operational.summary.drift)}</div>
             </div>
             <div>
-              <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Missing</div>
+              <div className="text-[12px] text-ink-3">{FRESHNESS_LABELS.missing}</div>
               <div className="font-medium tabular-nums text-danger">{fmtNumber(operational.summary.missing)}</div>
             </div>
           </div>
           <div className="mt-3 text-[11px] leading-relaxed text-ink-3">
-            KR/US prices turn stale after 36h, crypto after 8h — a 24/7 book has no close to be as fresh as. FX turns stale after 7d. Source files drift when disk size or modified time no longer matches ingest.
+            한국·미국 주가는 36시간, 가상자산은 8시간, 환율은 7일이 지나면 갱신 필요로 표시됩니다. 원본 파일의 크기나 수정 시간이 수집 당시와 다르면 원본 변경으로 표시됩니다.
           </div>
         </Card>
 
-        <Card title="Price & FX freshness">
+        <Card title="가격·환율 최신 상태">
           <FreshnessRows items={operational.snapshots} />
         </Card>
 
-        <Card title="Reconciliation coverage">
+        <Card title="데이터 일치 범위" info="보유종목 요약과 세금 계산용 매수 단위가 서로 맞는지 확인한 범위입니다.">
           <ul className="space-y-2 text-[13px] text-ink-2">
             <li className="flex items-center justify-between gap-3">
-              <span>KR holdings ↔ lots</span>
-              <Badge tone="success">reconciled</Badge>
+              <span>한국 보유종목 ↔ 세금 계산 단위</span>
+              <Badge tone="success">일치</Badge>
             </li>
             <li className="flex items-center justify-between gap-3">
-              <span>Chase holdings ↔ lots</span>
-              <Badge tone="success">reconciled</Badge>
+              <span>Chase 보유종목 ↔ 세금 계산 단위</span>
+              <Badge tone="success">일치</Badge>
             </li>
             <li className="flex items-center justify-between gap-3">
-              <span>Merrill holdings</span>
-              <Badge tone="warning">summary-led</Badge>
+              <span>Merrill 보유종목</span>
+              <Badge tone="warning">요약 자료 기준</Badge>
             </li>
             <li className="text-[11px] leading-relaxed text-ink-3">
-              Merrill lot detail excludes reinvestment buckets in the export, so the app uses its summary rows for positions and keeps lot rows as drilldown evidence.
+              Merrill 내보내기 자료에는 재투자 세부 단위가 빠져 있어, 보유종목은 요약 자료를 기준으로 표시하고 상세 단위는 확인용으로 보존합니다.
             </li>
           </ul>
         </Card>
       </div>
 
       <Card
-        title="Refresh run history"
+        title="데이터 갱신 이력"
         accent={latestRefresh?.status === 'failed'}
         action={
           latestRefresh ? (
-            <Badge tone={statusTone(runStatusLabel(latestRefresh))}>{runStatusLabel(latestRefresh)}</Badge>
+            <Badge tone={statusTone(runStatusLabel(latestRefresh))}>{displayRunStatus(runStatusLabel(latestRefresh))}</Badge>
           ) : undefined
         }
       >
@@ -120,28 +124,28 @@ export default function HealthPage() {
           <EmptyState
             hint={`Run history is read from ${getMeta().refresh_runs_path ?? 'data/refresh-runs.json'}.`}
           >
-            No refresh runs recorded
+            기록된 데이터 갱신이 없습니다
           </EmptyState>
         ) : (
           <div className="space-y-4">
             <div className="grid gap-3 text-[12px] sm:grid-cols-4">
               <div>
-                <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Latest start</div>
+                <div className="text-[12px] text-ink-3">최근 시작</div>
                 <div className="font-medium tabular-nums text-ink">{fmtDateTime(latestRefresh.startedAt)}</div>
               </div>
               <div>
-                <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Duration</div>
+                <div className="text-[12px] text-ink-3">소요 시간</div>
                 <div className="font-medium tabular-nums text-ink">{fmtDuration(latestRefresh.durationMs)}</div>
               </div>
               <div>
-                <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Steps</div>
+                <div className="text-[12px] text-ink-3">완료 단계</div>
                 <div className="font-medium tabular-nums text-ink">
                   {fmtNumber(latestRefresh.steps.filter((step) => step.status === 'success').length)} / {fmtNumber(latestRefresh.steps.length)}
                 </div>
               </div>
               <div>
-                <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">History</div>
-                <div className="font-medium tabular-nums text-ink">{fmtNumber(refreshRuns.length)} run(s)</div>
+                <div className="text-[12px] text-ink-3">전체 실행</div>
+                <div className="font-medium tabular-nums text-ink">{fmtNumber(refreshRuns.length)}회</div>
               </div>
             </div>
 
@@ -158,7 +162,7 @@ export default function HealthPage() {
             <ul className="divide-y divide-line-subtle">
               {latestRefresh.steps.map((step) => (
                 <li key={`${latestRefresh.id}:${step.name}`} className="flex flex-col gap-1 py-2.5 lg:flex-row lg:items-center lg:gap-3">
-                  <Badge tone={statusTone(step.status)}>{step.status}</Badge>
+                  <Badge tone={statusTone(step.status)}>{displayRunStatus(step.status)}</Badge>
                   <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{step.name}</span>
                   <span className="text-[12px] tabular-nums text-ink-3">{fmtDuration(step.durationMs)}</span>
                   <code className="font-mono text-[11px] text-ink-3">{step.command}</code>
