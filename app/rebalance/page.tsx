@@ -4,7 +4,8 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
 import { getOperationalHealth, getRebalanceReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
-import { GLOSSARY } from '@/lib/glossary'
+import { getGlossary } from '@/lib/glossary'
+import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
 
 export const dynamic = 'force-dynamic'
@@ -31,7 +32,143 @@ function signedKrw(value: number) {
   return <span className={value >= 0 ? 'text-success' : 'text-danger'}>{fmtKrw(value)}</span>
 }
 
-export default function RebalancePage() {
+const COPY = {
+  en: {
+    eyebrow: 'Portfolio',
+    title: 'Rebalance',
+    emphasis: 'Rebalance',
+    subtitle: (targets: string, cap: string) => `Policy baseline: ${targets} with ${cap}% single-position cap.`,
+    freshnessIssues: (count: number) => `${count} freshness issue(s)`,
+    inputsReady: 'Inputs ready',
+    largestMarketGap: 'Largest Market Gap',
+    primarySignal: 'Primary rebalance signal',
+    marketGapHint: 'Compared with the configured market target policy',
+    baseMarketValue: 'Base Market Value',
+    baseMarketValueHint: 'Current priced portfolio value',
+    reduceCandidates: 'Reduce Candidates',
+    reduceCandidatesHint: 'Positions above cap',
+    watchBeforeAction: 'Watch Before Action',
+    watchBeforeActionHint: 'Valuation or freshness blockers',
+    executionRisk: 'Execution Risk',
+    executionRiskInfo: 'Tax and data-quality flags that should be checked before turning a rebalance signal into an action.',
+    taxSensitive: 'Tax-Sensitive',
+    taxSensitiveHint: 'High short-term exposure rows',
+    freshnessIssuesLabel: 'Freshness Issues',
+    freshnessIssuesHint: 'Operational inputs to refresh',
+    decisionOrder: 'Decision order: market gap, cap excess, tax sensitivity, then data readiness.',
+    marketTargetGaps: 'Market target gaps',
+    addContext: 'Add context',
+    noMarketAddGap: 'No market-level add gap',
+    underTarget: 'under target',
+    gap: 'gap',
+    existingPositions: (count: string) => `${count} existing positions`,
+    outsidePolicy: 'Outside the policy',
+    everyMarketTargeted: 'Every market held has a target',
+    ofPortfolioNoTarget: (pctValue: string) => `${pctValue} of the portfolio · no target set`,
+    outsidePolicyNote: (markets: string) =>
+      `Held but not covered by the market policy above, so excluded from its gaps — the ${markets} split is measured between those markets only. Single-position caps still apply here.`,
+    executionGuardrails: 'Execution guardrails',
+    marketGapTolerance: 'Market gap tolerance',
+    singlePositionCap: 'Single-position cap',
+    shortTermWarning: 'Short-term warning',
+    guardrailNote: 'This page surfaces sizing gaps and risk flags only. Check lots, source lineage, and freshness before making any trade decision.',
+    noPositionAboveCap: 'No position exceeds the cap',
+    taxSensitiveWatchlist: 'Tax-sensitive watchlist',
+    noHighShortTerm: 'No high short-term exposure rows',
+    holdWatch: 'Hold / watch before action',
+    noBlockers: 'No valuation or freshness blockers',
+    staleInputs: (count: number) => `${count} stale, drifted, or missing operational input(s)`,
+    openHealth: 'Open Health',
+    columns: {
+      market: 'Market',
+      current: 'Current',
+      target: 'Target',
+      gap: 'Gap',
+      action: 'Action',
+      position: 'Position',
+      currentPct: 'Current %',
+      overCap: 'Over Cap',
+      gapValue: 'Gap Value',
+      baseGl: 'Base G/L',
+      shortPct: 'Short %',
+      baseMarket: 'Base Market',
+      shortQty: 'Short Qty',
+      reason: 'Reason',
+      baseCost: 'Base Cost',
+      nativeCost: 'Native Cost',
+    },
+  },
+  ko: {
+    eyebrow: '포트폴리오',
+    title: '리밸런싱',
+    emphasis: '리밸런싱',
+    subtitle: (targets: string, cap: string) => `정책 기준: ${targets}, 단일 종목 상한 ${cap}%.`,
+    freshnessIssues: (count: number) => `최신성 이슈 ${count}건`,
+    inputsReady: '입력값 준비 완료',
+    largestMarketGap: '가장 큰 시장 비중 차이',
+    primarySignal: '주요 리밸런싱 신호',
+    marketGapHint: '설정된 시장 목표 비중과 비교한 값',
+    baseMarketValue: '원화 기준 평가금액',
+    baseMarketValueHint: '가격이 확인된 현재 포트폴리오 평가금액',
+    reduceCandidates: '축소 후보',
+    reduceCandidatesHint: '상한을 넘은 종목',
+    watchBeforeAction: '실행 전 관찰',
+    watchBeforeActionHint: '평가금액 또는 최신성 확인 항목',
+    executionRisk: '실행 리스크',
+    executionRiskInfo: '리밸런싱 신호를 실제 행동으로 옮기기 전에 확인해야 하는 세금 및 데이터 품질 플래그입니다.',
+    taxSensitive: '세금 민감',
+    taxSensitiveHint: '단기 보유 비중이 높은 행',
+    freshnessIssuesLabel: '최신성 이슈',
+    freshnessIssuesHint: '갱신이 필요한 운영 입력값',
+    decisionOrder: '판단 순서: 시장 비중 차이, 종목 상한 초과, 세금 민감도, 데이터 준비 상태 순으로 확인합니다.',
+    marketTargetGaps: '시장 목표 차이',
+    addContext: '추가 매수 맥락',
+    noMarketAddGap: '시장 단위 추가 매수 차이가 없습니다.',
+    underTarget: '목표보다 부족',
+    gap: '차이',
+    existingPositions: (count: string) => `기존 종목 ${count}개`,
+    outsidePolicy: '정책 밖 보유',
+    everyMarketTargeted: '보유 중인 모든 시장에 목표가 있습니다.',
+    ofPortfolioNoTarget: (pctValue: string) => `포트폴리오의 ${pctValue} · 목표 없음`,
+    outsidePolicyNote: (markets: string) =>
+      `보유 중이지만 위 시장 정책에는 포함되지 않아 차이 계산에서 제외됩니다. ${markets} 비중은 해당 시장들 사이에서만 계산됩니다. 단일 종목 상한은 여기에도 적용됩니다.`,
+    executionGuardrails: '실행 가드레일',
+    marketGapTolerance: '시장 차이 허용 범위',
+    singlePositionCap: '단일 종목 상한',
+    shortTermWarning: '단기 보유 경고',
+    guardrailNote: '이 화면은 비중 차이와 리스크 플래그만 보여줍니다. 실제 거래 판단 전 세금 단위, 원본 이력, 최신성을 확인해야 합니다.',
+    noPositionAboveCap: '상한을 넘은 종목이 없습니다.',
+    taxSensitiveWatchlist: '세금 민감 관찰 목록',
+    noHighShortTerm: '단기 보유 비중이 높은 행이 없습니다.',
+    holdWatch: '실행 전 보류 / 관찰',
+    noBlockers: '평가금액 또는 최신성 차단 항목이 없습니다.',
+    staleInputs: (count: number) => `오래되었거나 변경되었거나 누락된 운영 입력값 ${count}건`,
+    openHealth: '데이터 상태 열기',
+    columns: {
+      market: '시장',
+      current: '현재',
+      target: '목표',
+      gap: '차이',
+      action: '조치',
+      position: '종목',
+      currentPct: '현재 %',
+      overCap: '상한 초과',
+      gapValue: '차이 금액',
+      baseGl: '원화 손익',
+      shortPct: '단기 %',
+      baseMarket: '원화 평가금액',
+      shortQty: '단기 수량',
+      reason: '이유',
+      baseCost: '원화 취득원가',
+      nativeCost: '현지 통화 원가',
+    },
+  },
+} as const
+
+export default async function RebalancePage() {
+  const language = await getLanguage()
+  const copy = COPY[language]
+  const glossary = getGlossary(language)
   const rebalance = getRebalanceReview()
   const operational = getOperationalHealth()
   const freshnessIssues = operational.staleItems.length
@@ -40,97 +177,97 @@ export default function RebalancePage() {
   return (
     <>
       <PageHeader
-        eyebrow="Portfolio"
-        title="Rebalance"
-        emphasis="Rebalance"
-        subtitle={`Policy baseline: ${rebalance.policy.marketTargets.map((row) => `${row.market} ${fmtNumber(row.targetPct)}%`).join(' / ')} with ${fmtNumber(rebalance.policy.positionCapPct)}% single-position cap.`}
-        action={freshnessIssues ? <Badge tone="warning">{freshnessIssues} freshness issue(s)</Badge> : <Badge tone="success">Inputs ready</Badge>}
+        eyebrow={copy.eyebrow}
+        title={copy.title}
+        emphasis={copy.emphasis}
+        subtitle={copy.subtitle(rebalance.policy.marketTargets.map((row) => `${row.market} ${fmtNumber(row.targetPct)}%`).join(' / '), fmtNumber(rebalance.policy.positionCapPct))}
+        action={freshnessIssues ? <Badge tone="warning">{copy.freshnessIssues(freshnessIssues)}</Badge> : <Badge tone="success">{copy.inputsReady}</Badge>}
       />
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
         <MetricHeroCard
-          title="Largest Market Gap"
-          info={GLOSSARY.marketGap.description}
-          eyebrow="Primary rebalance signal"
+          title={copy.largestMarketGap}
+          info={glossary.marketGap.description}
+          eyebrow={copy.primarySignal}
           value={pct(largestGap)}
-          hint="Compared with the configured market target policy"
+          hint={copy.marketGapHint}
         >
           <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
             <MetricField
-              label="Base Market Value"
+              label={copy.baseMarketValue}
               value={fmtKrw(rebalance.totals.base_market_value)}
-              hint="Current priced portfolio value"
+              hint={copy.baseMarketValueHint}
               valueClassName="text-[18px]"
             />
             <MetricField
-              label="Reduce Candidates"
+              label={copy.reduceCandidates}
               value={fmtNumber(rebalance.reduceCandidates.length)}
-              hint="Positions above cap"
+              hint={copy.reduceCandidatesHint}
               tone={rebalance.reduceCandidates.length ? 'warning' : 'success'}
               valueClassName="text-[18px]"
             />
             <MetricField
-              label="Watch Before Action"
+              label={copy.watchBeforeAction}
               value={fmtNumber(rebalance.watchCandidates.length + freshnessIssues)}
-              hint="Valuation or freshness blockers"
+              hint={copy.watchBeforeActionHint}
               tone={rebalance.watchCandidates.length + freshnessIssues ? 'warning' : 'success'}
               valueClassName="text-[18px]"
             />
           </div>
         </MetricHeroCard>
 
-        <Card title="Execution Risk" info="Tax and data-quality flags that should be checked before turning a rebalance signal into an action.">
+        <Card title={copy.executionRisk} info={copy.executionRiskInfo}>
           <div className="flex min-h-[16rem] flex-col justify-between gap-4">
             <div className="space-y-4">
               <MetricField
-                label="Tax-Sensitive"
+                label={copy.taxSensitive}
                 value={fmtNumber(rebalance.taxSensitive.length)}
-                hint="High short-term exposure rows"
+                hint={copy.taxSensitiveHint}
                 tone={rebalance.taxSensitive.length ? 'warning' : 'success'}
                 valueClassName="text-[28px]"
               />
               <div className="h-px bg-line-subtle" />
               <MetricField
-                label="Freshness Issues"
+                label={copy.freshnessIssuesLabel}
                 value={fmtNumber(freshnessIssues)}
-                info={GLOSSARY.freshness.description}
-                hint="Operational inputs to refresh"
+                info={glossary.freshness.description}
+                hint={copy.freshnessIssuesHint}
                 tone={freshnessIssues ? 'warning' : 'success'}
                 valueClassName="text-[18px]"
               />
             </div>
             <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
-              Decision order: market gap, cap excess, tax sensitivity, then data readiness.
+              {copy.decisionOrder}
             </div>
           </div>
         </Card>
       </div>
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
-        <Card title="Market target gaps">
+        <Card title={copy.marketTargetGaps}>
           <DataTable
             rows={rebalance.marketGaps}
             columns={[
-              { key: 'market', label: 'Market', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
-              { key: 'currentPct', label: 'Current', align: 'right', render: (r) => pct(r.currentPct) },
-              { key: 'targetPct', label: 'Target', align: 'right', render: (r) => pct(r.targetPct) },
-              { key: 'gapValue', label: 'Gap', align: 'right', render: (r) => signedKrw(r.gapValue) },
-              { key: 'action', label: 'Action', render: (r) => <Badge tone={r.action === 'Hold' ? 'success' : 'warning'}>{r.action}</Badge> },
+              { key: 'market', label: copy.columns.market, render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
+              { key: 'currentPct', label: copy.columns.current, align: 'right', render: (r) => pct(r.currentPct) },
+              { key: 'targetPct', label: copy.columns.target, align: 'right', render: (r) => pct(r.targetPct) },
+              { key: 'gapValue', label: copy.columns.gap, align: 'right', render: (r) => signedKrw(r.gapValue) },
+              { key: 'action', label: copy.columns.action, render: (r) => <Badge tone={r.action === 'Hold' ? 'success' : 'warning'}>{r.action}</Badge> },
             ]}
           />
         </Card>
 
-        <Card title="Add context">
+        <Card title={copy.addContext}>
           {rebalance.addContext.length === 0 ? (
-            <EmptyState ok>No market-level add gap</EmptyState>
+            <EmptyState ok>{copy.noMarketAddGap}</EmptyState>
           ) : (
             <ul className="divide-y divide-line-subtle">
               {rebalance.addContext.map((row) => (
                 <li key={row.market} className="flex items-center gap-3 py-2 text-[12px]">
                   <Badge tone={marketTone(row.market)}>{row.market}</Badge>
                   <div className="min-w-0 flex-1">
-                    <div className="font-medium tabular-nums text-ink">{fmtKrw(row.gapValue)} under target</div>
-                    <div className="text-[11px] text-ink-3">{pct(row.gapPct)} gap · {fmtNumber(row.candidateCount)} existing positions</div>
+                    <div className="font-medium tabular-nums text-ink">{fmtKrw(row.gapValue)} {copy.underTarget}</div>
+                    <div className="text-[11px] text-ink-3">{pct(row.gapPct)} {copy.gap} · {copy.existingPositions(fmtNumber(row.candidateCount))}</div>
                   </div>
                 </li>
               ))}
@@ -138,9 +275,9 @@ export default function RebalancePage() {
           )}
         </Card>
 
-        <Card title="Outside the policy">
+        <Card title={copy.outsidePolicy}>
           {rebalance.untargetedMarkets.length === 0 ? (
-            <EmptyState ok>Every market held has a target</EmptyState>
+            <EmptyState ok>{copy.everyMarketTargeted}</EmptyState>
           ) : (
             <>
               <ul className="divide-y divide-line-subtle">
@@ -149,88 +286,86 @@ export default function RebalancePage() {
                     <Badge tone={marketTone(row.market)}>{row.market}</Badge>
                     <div className="min-w-0 flex-1">
                       <div className="font-medium tabular-nums text-ink">{fmtKrw(row.currentValue)}</div>
-                      <div className="text-[11px] text-ink-3">{pct(row.currentPctOfPortfolio)} of the portfolio · no target set</div>
+                      <div className="text-[11px] text-ink-3">{copy.ofPortfolioNoTarget(pct(row.currentPctOfPortfolio))}</div>
                     </div>
                   </li>
                 ))}
               </ul>
               <p className="mt-2 text-[11px] text-ink-3">
-                Held but not covered by the market policy above, so excluded from its gaps — the {rebalance.policy.marketTargets
-                  .map((row) => row.market)
-                  .join('/')} split is measured between those markets only. Single-position caps still apply here.
+                {copy.outsidePolicyNote(rebalance.policy.marketTargets.map((row) => row.market).join('/'))}
               </p>
             </>
           )}
         </Card>
 
-        <Card title="Execution guardrails">
+        <Card title={copy.executionGuardrails}>
           <div className="space-y-2 text-[12px] text-ink-2">
             <div className="flex items-center justify-between gap-3">
-              <span>Market gap tolerance</span>
+              <span>{copy.marketGapTolerance}</span>
               <Badge tone="neutral">2%</Badge>
             </div>
             <div className="flex items-center justify-between gap-3">
-              <span>Single-position cap</span>
+              <span>{copy.singlePositionCap}</span>
               <Badge tone="neutral">{fmtNumber(rebalance.policy.positionCapPct)}%</Badge>
             </div>
             <div className="flex items-center justify-between gap-3">
-              <span>Short-term warning</span>
+              <span>{copy.shortTermWarning}</span>
               <Badge tone="warning">50%+</Badge>
             </div>
             <div className="text-[11px] leading-relaxed text-ink-3">
-              This page surfaces sizing gaps and risk flags only. Check lots, source lineage, and freshness before making any trade decision.
+              {copy.guardrailNote}
             </div>
           </div>
         </Card>
       </div>
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <Card title="Reduce candidates">
+        <Card title={copy.reduceCandidates}>
           {rebalance.reduceCandidates.length === 0 ? (
-            <EmptyState ok>No position exceeds the cap</EmptyState>
+            <EmptyState ok>{copy.noPositionAboveCap}</EmptyState>
           ) : (
             <DataTable
               rows={rebalance.reduceCandidates}
               columns={[
-                { key: 'ticker', label: 'Position', render: (r) => <PositionLink row={r} /> },
-                { key: 'currentPct', label: 'Current %', align: 'right', render: (r) => pct(r.currentPct) },
-                { key: 'capGapPct', label: 'Over Cap', align: 'right', render: (r) => pct(r.capGapPct) },
-                { key: 'capGapValue', label: 'Gap Value', align: 'right', render: (r) => fmtKrw(r.capGapValue) },
-                { key: 'base_unrealized_gl', label: 'Base G/L', align: 'right', render: (r) => (r.base_unrealized_gl == null ? 'n/a' : fmtKrw(r.base_unrealized_gl)) },
-                { key: 'short_term_ratio', label: 'Short %', align: 'right', render: (r) => pct(r.short_term_ratio) },
+                { key: 'ticker', label: copy.columns.position, render: (r) => <PositionLink row={r} /> },
+                { key: 'currentPct', label: copy.columns.currentPct, align: 'right', render: (r) => pct(r.currentPct) },
+                { key: 'capGapPct', label: copy.columns.overCap, align: 'right', render: (r) => pct(r.capGapPct) },
+                { key: 'capGapValue', label: copy.columns.gapValue, align: 'right', render: (r) => fmtKrw(r.capGapValue) },
+                { key: 'base_unrealized_gl', label: copy.columns.baseGl, align: 'right', render: (r) => (r.base_unrealized_gl == null ? 'n/a' : fmtKrw(r.base_unrealized_gl)) },
+                { key: 'short_term_ratio', label: copy.columns.shortPct, align: 'right', render: (r) => pct(r.short_term_ratio) },
               ]}
             />
           )}
         </Card>
 
-        <Card title="Tax-sensitive watchlist">
+        <Card title={copy.taxSensitiveWatchlist}>
           {rebalance.taxSensitive.length === 0 ? (
-            <EmptyState ok>No high short-term exposure rows</EmptyState>
+            <EmptyState ok>{copy.noHighShortTerm}</EmptyState>
           ) : (
             <DataTable
               rows={rebalance.taxSensitive}
               columns={[
-                { key: 'ticker', label: 'Position', render: (r) => <PositionLink row={r} /> },
-                { key: 'base_market_value', label: 'Base Market', align: 'right', render: (r) => (r.base_market_value == null ? 'n/a' : fmtKrw(r.base_market_value)) },
-                { key: 'short_term_ratio', label: 'Short %', align: 'right', render: (r) => pct(r.short_term_ratio) },
-                { key: 'short_term_qty', label: 'Short Qty', align: 'right', render: (r) => fmtNumber(r.short_term_qty, 4) },
-                { key: 'reason', label: 'Reason' },
+                { key: 'ticker', label: copy.columns.position, render: (r) => <PositionLink row={r} /> },
+                { key: 'base_market_value', label: copy.columns.baseMarket, align: 'right', render: (r) => (r.base_market_value == null ? 'n/a' : fmtKrw(r.base_market_value)) },
+                { key: 'short_term_ratio', label: copy.columns.shortPct, align: 'right', render: (r) => pct(r.short_term_ratio) },
+                { key: 'short_term_qty', label: copy.columns.shortQty, align: 'right', render: (r) => fmtNumber(r.short_term_qty, 4) },
+                { key: 'reason', label: copy.columns.reason },
               ]}
             />
           )}
         </Card>
       </div>
 
-      <Card title="Hold / watch before action" accent={rebalance.watchCandidates.length + freshnessIssues > 0}>
+      <Card title={copy.holdWatch} accent={rebalance.watchCandidates.length + freshnessIssues > 0}>
         {rebalance.watchCandidates.length === 0 && freshnessIssues === 0 ? (
-          <EmptyState ok>No valuation or freshness blockers</EmptyState>
+          <EmptyState ok>{copy.noBlockers}</EmptyState>
         ) : (
           <div className="space-y-4">
             {freshnessIssues > 0 && (
               <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] text-ink-2">
-                <div className="font-medium text-warning">{freshnessIssues} stale, drifted, or missing operational input(s)</div>
+                <div className="font-medium text-warning">{copy.staleInputs(freshnessIssues)}</div>
                 <Link href="/health" className="mt-1 inline-block text-[11px] font-medium text-info hover:underline">
-                  Open Health
+                  {copy.openHealth}
                 </Link>
               </div>
             )}
@@ -238,10 +373,10 @@ export default function RebalancePage() {
               <DataTable
                 rows={rebalance.watchCandidates}
                 columns={[
-                  { key: 'ticker', label: 'Position', render: (r) => <PositionLink row={r} /> },
-                  { key: 'base_cost', label: 'Base Cost', align: 'right', render: (r) => fmtKrw(r.base_cost) },
-                  { key: 'native_cost', label: 'Native Cost', align: 'right', render: (r) => fmtMoney(r.native_cost, r.currency) },
-                  { key: 'reason', label: 'Reason' },
+                  { key: 'ticker', label: copy.columns.position, render: (r) => <PositionLink row={r} /> },
+                  { key: 'base_cost', label: copy.columns.baseCost, align: 'right', render: (r) => fmtKrw(r.base_cost) },
+                  { key: 'native_cost', label: copy.columns.nativeCost, align: 'right', render: (r) => fmtMoney(r.native_cost, r.currency) },
+                  { key: 'reason', label: copy.columns.reason },
                 ]}
               />
             )}

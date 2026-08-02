@@ -149,6 +149,53 @@ const COPY = {
     gain: 'Gain',
     return: 'Return',
     share: 'Share',
+    appEyebrow: 'Stock Portfolio Observatory',
+    dbMissingTitle: 'Portfolio DB not found',
+    dbMissingHint: (path: string) => <>Run <code className="font-mono text-[12px]">pnpm ingest</code> to generate <code className="font-mono text-[12px]">{path}</code>.</>,
+    snapshotTrend: (scope: string) => `${scope} snapshot trend`,
+    combinedTrendSummary: (scope: string) => `${scope} · Market value, cost basis, and unrealized G/L · KRW millions`,
+    trendUnit: (metric: string, unit: string) => `${metric} · ${unit}`,
+    percentagePoints: 'percentage points',
+    krwMillions: 'KRW millions',
+    costPriced: (value: string) => `${value}% of cost basis priced`,
+    positionsPriced: (value: string) => `${value}% of positions priced`,
+    noCoveredHistory: 'No sufficiently covered history',
+    partialValuation: 'Partial valuation: less than 95% of cost basis is priced.',
+    since: (date: string) => `since ${date}`,
+    needTwoSnapshots: 'Need at least two covered snapshots',
+    individual: 'Individual',
+    combined: 'Combined',
+    noCombinedHistory: 'No combined history recorded',
+    noPortfolioHistory: 'No portfolio history recorded',
+    firstSnapshotHint: 'Run pnpm refresh or pnpm ingest to record the first snapshot.',
+    chartAxisReturn: 'Percentage points',
+    chartAxisKrw: 'KRW million',
+    trendRangeSummary: (start: string, end: string, valued: number, total: number, gaps: number) =>
+      `${start} to ${end} · ${valued} valued / ${total} total snapshot(s)${gaps ? ` · ${gaps} gap(s)` : ''}`,
+    snapshotsOnce: 'Snapshots are recorded once per ingest date.',
+    trendExplanation: 'Cost basis, holdings, and dividends are reconstructed from tax-lot and transaction dates. Foreign-currency quotes are converted to KRW using historical FX snapshots. Valuation points below 90% cost-basis coverage remain visible as chart gaps; 90–95% coverage is marked partial. Cost-basis history itself does not require a market price.',
+    topHoldingsByCost: 'Top holdings by base cost',
+    topHoldingsNote: 'Bar values are KRW millions after applying the configured FX snapshot.',
+    dividendTrend: 'Dividend trend',
+    dividendTrendNote: 'KR bars are KRW thousands; US bars are native USD.',
+    dividendAxis: 'KRW thousand / USD',
+    accountAllocation: 'Account allocation',
+    noAccountData: 'No account data',
+    holdingRows: (count: number) => `${count} holdings`,
+    largestPositions: 'Largest positions',
+    transactionTypes: 'Transaction types',
+    metricLabels: {
+      market_value: 'Market value',
+      cost_basis: 'Cost basis',
+      unrealized_gl: 'Unrealized G/L',
+      return_pct: 'Return %',
+    },
+    scopeLabels: {
+      global: 'Global',
+      KR: 'Korea',
+      US: 'United States',
+      CRYPTO: 'Crypto',
+    },
   },
   ko: {
     eyebrow: '포트폴리오',
@@ -202,6 +249,53 @@ const COPY = {
     gain: '손익',
     return: '수익률',
     share: '비중',
+    appEyebrow: 'Stock Portfolio Observatory',
+    dbMissingTitle: '포트폴리오 DB를 찾을 수 없습니다',
+    dbMissingHint: (path: string) => <><code className="font-mono text-[12px]">pnpm ingest</code>를 실행해 <code className="font-mono text-[12px]">{path}</code>를 생성하세요.</>,
+    snapshotTrend: (scope: string) => `${scope} 스냅샷 추이`,
+    combinedTrendSummary: (scope: string) => `${scope} · 평가금액, 취득원가, 평가손익 · 백만 원 단위`,
+    trendUnit: (metric: string, unit: string) => `${metric} · ${unit}`,
+    percentagePoints: '퍼센트포인트',
+    krwMillions: '백만 원 단위',
+    costPriced: (value: string) => `취득원가의 ${value}% 가격 확인`,
+    positionsPriced: (value: string) => `종목의 ${value}% 가격 확인`,
+    noCoveredHistory: '충분히 가격이 확인된 이력이 없습니다.',
+    partialValuation: '부분 평가: 취득원가의 95% 미만만 가격이 확인되었습니다.',
+    since: (date: string) => `${date} 이후`,
+    needTwoSnapshots: '가격이 확인된 스냅샷이 최소 2개 필요합니다.',
+    individual: '개별',
+    combined: '통합',
+    noCombinedHistory: '통합 이력이 없습니다.',
+    noPortfolioHistory: '포트폴리오 이력이 없습니다.',
+    firstSnapshotHint: '첫 스냅샷을 기록하려면 pnpm refresh 또는 pnpm ingest를 실행하세요.',
+    chartAxisReturn: '퍼센트포인트',
+    chartAxisKrw: '백만 원',
+    trendRangeSummary: (start: string, end: string, valued: number, total: number, gaps: number) =>
+      `${start}부터 ${end}까지 · 가격 확인 ${valued}개 / 전체 ${total}개 스냅샷${gaps ? ` · 공백 ${gaps}개` : ''}`,
+    snapshotsOnce: '스냅샷은 ingest 날짜마다 한 번 기록됩니다.',
+    trendExplanation: '취득원가, 보유수량, 배당은 세금 단위와 거래일 기준으로 재구성됩니다. 외화 가격은 과거 환율 스냅샷으로 원화 환산됩니다. 취득원가 기준 가격 확인률이 90% 미만인 평가 지점은 차트 공백으로 남기고, 90~95%는 부분 평가로 표시합니다. 취득원가 이력 자체에는 시장 가격이 필요하지 않습니다.',
+    topHoldingsByCost: '취득원가 상위 보유종목',
+    topHoldingsNote: '막대 값은 설정된 환율 스냅샷을 적용한 백만 원 단위입니다.',
+    dividendTrend: '배당 추이',
+    dividendTrendNote: '한국 막대는 천 원 단위, 미국 막대는 현지 USD 단위입니다.',
+    dividendAxis: '천 원 / USD',
+    accountAllocation: '계좌별 배분',
+    noAccountData: '계좌 데이터가 없습니다.',
+    holdingRows: (count: number) => `${count}개 보유`,
+    largestPositions: '상위 보유종목',
+    transactionTypes: '거래 유형',
+    metricLabels: {
+      market_value: '평가금액',
+      cost_basis: '취득원가',
+      unrealized_gl: '평가손익',
+      return_pct: '수익률 %',
+    },
+    scopeLabels: {
+      global: '전체',
+      KR: '한국',
+      US: '미국',
+      CRYPTO: '가상자산',
+    },
   },
 } as const
 
@@ -216,11 +310,10 @@ export default async function OverviewPage({
   if (!dbAvailable()) {
     return (
       <>
-        <PageHeader eyebrow="Stock Portfolio Observatory" title="Overview" emphasis="Overview" />
-        <Card title="Portfolio DB not found">
+        <PageHeader eyebrow={copy.appEyebrow} title={copy.title} emphasis={copy.emphasis} />
+        <Card title={copy.dbMissingTitle}>
           <p className="text-[13px] text-ink-2">
-            Run <code className="font-mono text-[12px]">pnpm ingest</code> to generate{' '}
-            <code className="font-mono text-[12px]">{config.stockDbPath}</code>.
+            {copy.dbMissingHint(config.stockDbPath)}
           </p>
         </Card>
       </>
@@ -239,9 +332,10 @@ export default async function OverviewPage({
   }
   const selectedMetricKey = legacyMetricMap[params.metric ?? ''] ?? params.metric
   const selectedMetric = TREND_METRICS.find((metric) => metric.key === selectedMetricKey) ?? TREND_METRICS[0]
+  const selectedMetricLabel = copy.metricLabels[selectedMetric.key]
   const selectedField = TREND_FIELDS[selectedScope][selectedMetric.key]
   const selectedCoverageField = TREND_COVERAGE_FIELDS[selectedScope]
-  const selectedScopeLabel = TREND_SCOPES.find((scope) => scope.key === selectedScope)?.label ?? 'Global'
+  const selectedScopeLabel = copy.scopeLabels[selectedScope]
   const selectedView: TrendViewKey = params.view === 'combined' ? 'combined' : 'single'
   const combinedMetrics = TREND_METRICS.filter((metric) => metric.key !== 'return_pct')
   const overview = getOverview()
@@ -509,7 +603,7 @@ export default async function OverviewPage({
       </div>
 
       <Card
-        title={`${selectedScopeLabel} snapshot trend`}
+        title={copy.snapshotTrend(selectedScopeLabel)}
         className="mb-5"
         action={
           <div className="flex flex-wrap items-center justify-end gap-1">
@@ -530,13 +624,13 @@ export default async function OverviewPage({
           <div>
             {selectedView === 'combined' ? (
               <>
-                <div className="text-[12px] text-ink-3">{selectedScopeLabel} · Market value, cost basis, and unrealized G/L · KRW millions</div>
+                <div className="text-[12px] text-ink-3">{copy.combinedTrendSummary(selectedScopeLabel)}</div>
                 <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
                   {combinedMetrics.map((metric) => {
                     const latest = combinedTrendData[combinedTrendData.length - 1]?.[metric.key]
                     return (
                       <div key={metric.key}>
-                        <div className="flex items-center gap-1.5 text-[11px] text-ink-3"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: metric.color }} />{metric.label}</div>
+                        <div className="flex items-center gap-1.5 text-[11px] text-ink-3"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: metric.color }} />{copy.metricLabels[metric.key]}</div>
                         <div className="mt-0.5 text-[18px] font-medium tabular-nums text-ink">{typeof latest === 'number' ? fmtKrw(latest * 1_000_000) : '—'}</div>
                       </div>
                     )
@@ -546,30 +640,30 @@ export default async function OverviewPage({
             ) : (
               <>
                 <div className="text-[12px] text-ink-3">
-                  {selectedScopeLabel} · {selectedMetric.label} · {selectedMetric.key === 'return_pct' ? 'percentage points' : 'KRW millions'}
-                  {latestTrendCoverage != null && latestTrendCoverage < 1 ? ` · ${fmtNumber(latestTrendCoverage * 100, 2)}% of cost basis priced` : ''}
-                  {latestPositionCoverage != null && latestPositionCoverage < 1 ? ` · ${fmtNumber(latestPositionCoverage * 100, 1)}% of positions priced` : ''}
+                  {copy.trendUnit(`${selectedScopeLabel} · ${selectedMetricLabel}`, selectedMetric.key === 'return_pct' ? copy.percentagePoints : copy.krwMillions)}
+                  {latestTrendCoverage != null && latestTrendCoverage < 1 ? ` · ${copy.costPriced(fmtNumber(latestTrendCoverage * 100, 2))}` : ''}
+                  {latestPositionCoverage != null && latestPositionCoverage < 1 ? ` · ${copy.positionsPriced(fmtNumber(latestPositionCoverage * 100, 1))}` : ''}
                 </div>
-                <div className="mt-1 text-[22px] font-medium tabular-nums text-ink">{valuedTrendData.length ? trendValueLabel(latestTrendValue) : 'No sufficiently covered history'}</div>
+                <div className="mt-1 text-[22px] font-medium tabular-nums text-ink">{valuedTrendData.length ? trendValueLabel(latestTrendValue) : copy.noCoveredHistory}</div>
                 {latestTrendCoverage != null && latestTrendCoverage >= MIN_TREND_COST_COVERAGE && latestTrendCoverage < HEALTHY_TREND_COST_COVERAGE && (
-                  <div className="mt-1 text-[11px] text-warning">Partial valuation: less than 95% of cost basis is priced.</div>
+                  <div className="mt-1 text-[11px] text-warning">{copy.partialValuation}</div>
                 )}
               </>
             )}
           </div>
-          {selectedView === 'single' && <div className={`text-right text-[12px] tabular-nums ${trendChange >= 0 ? 'text-success' : 'text-danger'}`}>{valuedTrendData.length > 1 ? <>{trendChangeLabel}<div className="text-[10px] font-normal text-ink-3">since {firstTrendPoint.date}</div></> : 'Need at least two covered snapshots'}</div>}
+          {selectedView === 'single' && <div className={`text-right text-[12px] tabular-nums ${trendChange >= 0 ? 'text-success' : 'text-danger'}`}>{valuedTrendData.length > 1 ? <>{trendChangeLabel}<div className="text-[10px] font-normal text-ink-3">{copy.since(firstTrendPoint.date)}</div></> : copy.needTwoSnapshots}</div>}
         </div>
         <div className="mb-3 flex flex-wrap items-center gap-1">
           <Link
             href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=single`}
             scroll={false}
             className={`rounded-sm border px-2 py-1 text-[11px] ${selectedView === 'single' ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
-          >Individual</Link>
+          >{copy.individual}</Link>
           <Link
             href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=combined`}
             scroll={false}
             className={`rounded-sm border px-2 py-1 text-[11px] ${selectedView === 'combined' ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
-          >Combined</Link>
+          >{copy.combined}</Link>
           <span className="mx-1 h-4 w-px bg-line-subtle" />
           {TREND_SCOPES.map((scope) => (
             <Link
@@ -578,7 +672,7 @@ export default async function OverviewPage({
               scroll={false}
               className={`rounded-sm border px-2 py-1 text-[11px] ${selectedScope === scope.key ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
             >
-              {scope.label}
+              {copy.scopeLabels[scope.key]}
             </Link>
           ))}
           <span className="mx-1 h-4 w-px bg-line-subtle" />
@@ -589,21 +683,21 @@ export default async function OverviewPage({
               scroll={false}
               className={`rounded-sm border px-2 py-1 text-[11px] ${selectedMetric.key === metric.key ? 'border-line bg-surface font-medium text-ink' : 'border-transparent text-ink-3 hover:border-line hover:text-ink'}`}
             >
-              {metric.label}
+              {copy.metricLabels[metric.key]}
             </Link>
           ))}
         </div>
         {selectedView === 'combined' ? (
           combinedTrendData.length === 0 ? (
-            <EmptyState hint="Run pnpm refresh or pnpm ingest to record the first snapshot.">No combined history recorded</EmptyState>
+            <EmptyState hint={copy.firstSnapshotHint}>{copy.noCombinedHistory}</EmptyState>
           ) : (
             <PortfolioMultiTrendChart
               data={combinedTrendData}
-              series={combinedMetrics.map((metric) => ({ dataKey: metric.key, name: metric.label, color: metric.color }))}
+              series={combinedMetrics.map((metric) => ({ dataKey: metric.key, name: copy.metricLabels[metric.key], color: metric.color }))}
             />
           )
         ) : valuedTrendData.length === 0 ? (
-          <EmptyState hint="Run pnpm refresh or pnpm ingest to record the first snapshot.">No portfolio history recorded</EmptyState>
+          <EmptyState hint={copy.firstSnapshotHint}>{copy.noPortfolioHistory}</EmptyState>
         ) : (
           <PortfolioTrendChart
             data={trendData}
@@ -611,19 +705,19 @@ export default async function OverviewPage({
             color={selectedMetric.color}
             valuePrefix={selectedMetric.key === 'return_pct' ? '' : '₩'}
             valueSuffix={selectedMetric.key === 'return_pct' ? '%' : 'M'}
-            axisLabel={selectedMetric.key === 'return_pct' ? 'Percentage points' : 'KRW million'}
+            axisLabel={selectedMetric.key === 'return_pct' ? copy.chartAxisReturn : copy.chartAxisKrw}
           />
         )}
         <div className="mt-1 text-[11px] text-ink-3">
-          {trendData.length ? `${trendData[0].date} to ${trendData[trendData.length - 1].date} · ${valuedTrendData.length} valued / ${trendData.length} total snapshot(s)${missingTrendPoints ? ` · ${missingTrendPoints} gap(s)` : ''}` : 'Snapshots are recorded once per ingest date.'}
+          {trendData.length ? copy.trendRangeSummary(trendData[0].date, trendData[trendData.length - 1].date, valuedTrendData.length, trendData.length, missingTrendPoints) : copy.snapshotsOnce}
         </div>
         <div className="mt-2 text-[11px] leading-relaxed text-ink-3">
-          Cost basis, holdings, and dividends are reconstructed from tax-lot and transaction dates. Foreign-currency quotes are converted to KRW using historical FX snapshots. Valuation points below 90% cost-basis coverage remain visible as chart gaps; 90–95% coverage is marked partial. Cost-basis history itself does not require a market price.
+          {copy.trendExplanation}
         </div>
       </Card>
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <Card title="Top holdings by base cost">
+        <Card title={copy.topHoldingsByCost}>
           <TrendBarChart
             data={topHoldingChartData}
             xKey="name"
@@ -632,34 +726,34 @@ export default async function OverviewPage({
             multicolor
             yAxisPrefix="₩"
             yAxisSuffix="M"
-            yAxisLabel="KRW million"
+            yAxisLabel={copy.chartAxisKrw}
           />
-          <p className="mt-2 text-[11px] text-ink-3">Bar values are KRW millions after applying the configured FX snapshot.</p>
+          <p className="mt-2 text-[11px] text-ink-3">{copy.topHoldingsNote}</p>
         </Card>
 
-        <Card title="Dividend trend">
+        <Card title={copy.dividendTrend}>
           <TrendBarChart
             data={dividendYears.map((r) => ({ year: `${r.currency} ${r.year}`, amount: Math.round(r.currency === 'KRW' ? r.amount / 1000 : r.amount) }))}
             xKey="year"
             yKey="amount"
             height={240}
             color="var(--accent-success)"
-            yAxisLabel="KRW thousand / USD"
+            yAxisLabel={copy.dividendAxis}
           />
-          <p className="mt-2 text-[11px] text-ink-3">KR bars are KRW thousands; US bars are native USD.</p>
+          <p className="mt-2 text-[11px] text-ink-3">{copy.dividendTrendNote}</p>
         </Card>
       </div>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <Card title="Account allocation">
+        <Card title={copy.accountAllocation}>
           {accounts.length === 0 ? (
-            <EmptyState>No account data</EmptyState>
+            <EmptyState>{copy.noAccountData}</EmptyState>
           ) : (
             <ul className="divide-y divide-line-subtle">
               {accounts.map((a) => (
                 <li key={a.account} className="flex items-center gap-3 py-2">
                   <div className="min-w-0 flex-1 truncate text-[13px] text-ink">{a.account}</div>
-                  <div className="text-[12px] tabular-nums text-ink-3">{a.count} holdings</div>
+                  <div className="text-[12px] tabular-nums text-ink-3">{copy.holdingRows(a.count)}</div>
                   <div className="w-36 text-right text-[12px] font-medium tabular-nums text-ink">{fmtMoney(a.value, a.currency)}</div>
                 </li>
               ))}
@@ -667,7 +761,7 @@ export default async function OverviewPage({
           )}
         </Card>
 
-        <Card title="Largest positions">
+        <Card title={copy.largestPositions}>
           <ul className="divide-y divide-line-subtle">
             {largestPositions.map((h) => (
               <li key={h.id} className="flex items-center gap-3 py-2">
@@ -682,7 +776,7 @@ export default async function OverviewPage({
           </ul>
         </Card>
 
-        <Card title="Transaction types">
+        <Card title={copy.transactionTypes}>
           <ul className="divide-y divide-line-subtle">
             {txTypes.map((t) => (
               <li key={`${t.market}:${t.type}`} className="flex items-center justify-between gap-3 py-2">
@@ -692,7 +786,7 @@ export default async function OverviewPage({
                     {t.type}
                   </Badge>
                 </div>
-                <span className="text-[12px] tabular-nums text-ink-3">{fmtNumber(t.count)} rows</span>
+                <span className="text-[12px] tabular-nums text-ink-3">{copy.count(fmtNumber(t.count))}</span>
               </li>
             ))}
           </ul>
