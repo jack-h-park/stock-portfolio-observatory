@@ -3,7 +3,6 @@ import Link from 'next/link'
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
 import { fmtDate, relTime } from '@/lib/format'
 import { HelpPopover } from '@/components/HelpPopover'
-import { COMMON_LABELS } from '@/lib/ui-copy'
 
 // InfoTooltip — a small "i" affordance that reveals an explanation on hover or
 // keyboard focus, as an absolutely-positioned overlay (no layout cost). Used
@@ -57,7 +56,7 @@ export function Card({
         <header className="flex items-center justify-between border-b border-line-subtle px-4 py-2.5">
           <div className="flex items-center">
             <h2 className="text-[14px] font-medium tracking-tight text-ink">{title}</h2>
-            {info ? <InfoTooltip label={typeof title === 'string' ? COMMON_LABELS.helpFor(title) : undefined}>{info}</InfoTooltip> : null}
+            {info ? <InfoTooltip>{info}</InfoTooltip> : null}
           </div>
           {action}
         </header>
@@ -135,7 +134,7 @@ export function StatCard({
       )}
       <div className="flex items-center text-[12px] font-medium uppercase tracking-[0.08em] text-ink-3">
         {label}
-        {info ? <InfoTooltip label={COMMON_LABELS.helpFor(label)}>{info}</InfoTooltip> : null}
+        {info ? <InfoTooltip>{info}</InfoTooltip> : null}
       </div>
       <div
         className={clsx('stat-card-value mt-1 max-w-full font-medium leading-tight tabular-nums', {
@@ -174,7 +173,7 @@ export function MetricField({
     <div className="min-w-0">
       <div className={clsx('flex items-center text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3', labelClassName)}>
         {label}
-        {info ? <InfoTooltip label={typeof label === 'string' ? COMMON_LABELS.helpFor(label) : undefined}>{info}</InfoTooltip> : null}
+        {info ? <InfoTooltip>{info}</InfoTooltip> : null}
       </div>
       <div
         className={clsx(

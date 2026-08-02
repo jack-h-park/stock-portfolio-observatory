@@ -6,8 +6,9 @@ import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone, type 
 import { getDataOpsReview } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
 import { GLOSSARY } from '@/lib/glossary'
+import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
-import { PRIORITY_LABELS } from '@/lib/ui-copy'
+import { getUiCopy } from '@/lib/ui-copy'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +18,9 @@ function priorityTone(priority: string): Tone {
   return 'info'
 }
 
-export default function DataOpsPage() {
+export default async function DataOpsPage() {
+  const language = await getLanguage()
+  const priorityLabels = getUiCopy(language).priority
   const ops = getDataOpsReview()
   const issueCount = ops.actionQueue.reduce((sum, item) => sum + item.count, 0)
 
@@ -97,7 +100,7 @@ export default function DataOpsPage() {
             rows={ops.actionQueue}
             caption="Priority operations work"
             columns={[
-              { key: 'priority', label: 'Priority', render: (r) => <Badge tone={priorityTone(r.priority)}>{PRIORITY_LABELS[r.priority as keyof typeof PRIORITY_LABELS] ?? r.priority}</Badge> },
+              { key: 'priority', label: 'Priority', render: (r) => <Badge tone={priorityTone(r.priority)}>{priorityLabels[r.priority as keyof typeof priorityLabels] ?? r.priority}</Badge> },
               { key: 'area', label: 'Area' },
               { key: 'count', label: 'Count', align: 'right', render: (r) => fmtNumber(r.count) },
               { key: 'action', label: 'Needed action', render: (r) => <span className="text-[12px] text-ink-2">{r.action}</span> },

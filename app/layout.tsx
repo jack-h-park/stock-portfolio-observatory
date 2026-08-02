@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { geistSans, geistMono } from '@/lib/fonts'
 import '@/styles/jp-theme.css'
 import '@/styles/globals.css'
+import { LanguageProvider } from '@/components/LanguageProvider'
 import { Sidebar } from '@/components/Sidebar'
 import { getLanguage } from '@/lib/i18n-server'
 
@@ -28,10 +29,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <a href="#main-content" className="sr-only z-[100] rounded-sm bg-card px-4 py-3 text-ink focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:ring-2 focus:ring-info">
           {skipLabel}
         </a>
-        <div className="flex min-h-screen flex-col lg:flex-row">
-          <Sidebar language={language} />
-          <main id="main-content" tabIndex={-1} className="jp-stagger min-w-0 flex-1 px-4 py-5 lg:px-8 lg:py-6">{children}</main>
-        </div>
+        <LanguageProvider language={language}>
+          <div className="flex min-h-screen flex-col lg:flex-row">
+            <Sidebar language={language} />
+            <main id="main-content" tabIndex={-1} className="jp-stagger min-w-0 flex-1 px-4 py-5 lg:px-8 lg:py-6">{children}</main>
+          </div>
+        </LanguageProvider>
       </body>
     </html>
   )

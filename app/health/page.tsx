@@ -3,7 +3,8 @@ import { FreshnessRows } from '@/components/Freshness'
 import { Badge, Card, EmptyState, type Tone } from '@/components/ui'
 import { getEvidenceReports, getMeta, getOperationalHealth, getOverview, getRefreshRuns, getSourceFiles, getValidationChecks } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtDuration, fmtNumber, shortHash } from '@/lib/format'
-import { FRESHNESS_LABELS, RUN_STATUS_LABELS } from '@/lib/ui-copy'
+import { getLanguage } from '@/lib/i18n-server'
+import { getUiCopy } from '@/lib/ui-copy'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,11 +35,15 @@ function runStatusLabel(run: { status: string; degradedSteps: string[] }) {
   return run.status === 'success' && run.degradedSteps.length > 0 ? 'degraded' : run.status
 }
 
-function displayRunStatus(status: string) {
-  return RUN_STATUS_LABELS[status as keyof typeof RUN_STATUS_LABELS] ?? status
+function displayRunStatus(status: string, labels: Record<string, string>) {
+  return labels[status] ?? status
 }
 
-export default function HealthPage() {
+export default async function HealthPage() {
+  const language = await getLanguage()
+  const uiCopy = getUiCopy(language)
+  const freshnessLabels = uiCopy.freshness.labels
+  const runStatusLabels = uiCopy.runStatus
   const meta = getMeta()
   const overview = getOverview()
   const checks = getValidationChecks()
@@ -65,19 +70,19 @@ export default function HealthPage() {
         <Card title="Operational Status" info="Shows whether prices, FX rates, and source files are collected normally and agree with each other." accent={issueCount > 0}>
           <div className="grid grid-cols-2 gap-3 text-[12px]">
             <div>
-              <div className="text-[12px] text-ink-3">{FRESHNESS_LABELS.fresh}</div>
+              <div className="text-[12px] text-ink-3">{freshnessLabels.fresh}</div>
               <div className="font-medium tabular-nums text-success">{fmtNumber(operational.summary.fresh)}</div>
             </div>
             <div>
-              <div className="text-[12px] text-ink-3">{FRESHNESS_LABELS.stale}</div>
+              <div className="text-[12px] text-ink-3">{freshnessLabels.stale}</div>
               <div className="font-medium tabular-nums text-warning">{fmtNumber(operational.summary.stale)}</div>
             </div>
             <div>
-              <div className="text-[12px] text-ink-3">{FRESHNESS_LABELS.drift}</div>
+              <div className="text-[12px] text-ink-3">{freshnessLabels.drift}</div>
               <div className="font-medium tabular-nums text-warning">{fmtNumber(operational.summary.drift)}</div>
             </div>
             <div>
-              <div className="text-[12px] text-ink-3">{FRESHNESS_LABELS.missing}</div>
+              <div className="text-[12px] text-ink-3">{freshnessLabels.missing}</div>
               <div className="font-medium tabular-nums text-danger">{fmtNumber(operational.summary.missing)}</div>
             </div>
           </div>
@@ -87,7 +92,7 @@ export default function HealthPage() {
         </Card>
 
         <Card title="Price & FX Freshness">
-          <FreshnessRows items={operational.snapshots} />
+          <FreshnessRows items={operational.snapshots} language={language} />
         </Card>
 
         <Card title="Reconciliation Coverage" info="Shows which holding summaries and tax-lot records are checked against each other.">
@@ -116,7 +121,7 @@ export default function HealthPage() {
         accent={latestRefresh?.status === 'failed'}
         action={
           latestRefresh ? (
-            <Badge tone={statusTone(runStatusLabel(latestRefresh))}>{displayRunStatus(runStatusLabel(latestRefresh))}</Badge>
+            <Badge tone={statusTone(runStatusLabel(latestRefresh))}>{displayRunStatus(runStatusLabel(latestRefresh), runStatusLabels)}</Badge>
           ) : undefined
         }
       >
@@ -162,7 +167,7 @@ export default function HealthPage() {
             <ul className="divide-y divide-line-subtle">
               {latestRefresh.steps.map((step) => (
                 <li key={`${latestRefresh.id}:${step.name}`} className="flex flex-col gap-1 py-2.5 lg:flex-row lg:items-center lg:gap-3">
-                  <Badge tone={statusTone(step.status)}>{displayRunStatus(step.status)}</Badge>
+                  <Badge tone={statusTone(step.status)}>{displayRunStatus(step.status, runStatusLabels)}</Badge>
                   <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{step.name}</span>
                   <span className="text-[12px] tabular-nums text-ink-3">{fmtDuration(step.durationMs)}</span>
                   <code className="font-mono text-[11px] text-ink-3">{step.command}</code>

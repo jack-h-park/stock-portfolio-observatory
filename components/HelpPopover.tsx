@@ -3,6 +3,7 @@
 import { clsx } from 'clsx'
 import type { ReactNode } from 'react'
 import { useEffect, useId, useRef, useState } from 'react'
+import { usePageLanguage } from '@/components/LanguageProvider'
 import { normalizeLanguage, type Language } from '@/lib/i18n'
 import { getUiCopy } from '@/lib/ui-copy'
 
@@ -20,7 +21,8 @@ export function HelpPopover({
   language?: Language
 }) {
   const [open, setOpen] = useState(false)
-  const [pageLanguage, setPageLanguage] = useState<Language>(language ?? 'en')
+  const contextLanguage = usePageLanguage()
+  const [pageLanguage, setPageLanguage] = useState<Language>(language ?? contextLanguage)
   const tooltipId = useId()
   const rootRef = useRef<HTMLSpanElement>(null)
   const copy = getUiCopy(pageLanguage).common
@@ -30,6 +32,11 @@ export function HelpPopover({
       setPageLanguage(language)
       return
     }
+    setPageLanguage(contextLanguage)
+  }, [contextLanguage, language])
+
+  useEffect(() => {
+    if (language) return
     setPageLanguage(normalizeLanguage(document.documentElement.lang))
   }, [language])
 

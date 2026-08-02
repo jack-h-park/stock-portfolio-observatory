@@ -53,7 +53,7 @@ export function DataTable({
               >
                 <span className={clsx('inline-flex items-center', col.align === 'right' && 'w-full justify-end text-right')}>
                   {col.label}
-                  {col.description ? <InfoTooltip label={COMMON_LABELS.helpFor(String(col.label))}>{col.description}</InfoTooltip> : null}
+                  {col.description ? <InfoTooltip>{col.description}</InfoTooltip> : null}
                 </span>
               </th>
             ))}
