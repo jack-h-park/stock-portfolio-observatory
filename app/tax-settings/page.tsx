@@ -3,70 +3,20 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, InfoTooltip, MetricField, MetricHeroCard } from '@/components/ui'
 import { fmtDateTime, fmtNumber } from '@/lib/format'
 import { getMeta } from '@/lib/adapters/portfolio-db'
-import { GLOSSARY } from '@/lib/glossary'
+import { getGlossary } from '@/lib/glossary'
+import { getLanguage } from '@/lib/i18n-server'
 import { annualProfiles, assumptionBool, assumptionNumber, assumptionString, getTaxPolicyState } from '@/lib/tax-policy'
 import { saveTaxSettings } from './actions'
+import { getTaxSettingsCopy, scenarioLabel } from './copy'
+import { CheckField, CompactCheck, Field } from './fields'
 
 export const dynamic = 'force-dynamic'
 
-function Field({
-  label,
-  name,
-  defaultValue,
-  suffix,
-  type = 'number',
-  hint,
-}: {
-  label: string
-  name: string
-  defaultValue: string | number | null
-  suffix?: string
-  type?: 'number' | 'text'
-  hint?: string
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">{label}</span>
-      <span className="flex items-center overflow-hidden rounded-md border border-line bg-card">
-        <input
-          name={name}
-          type={type}
-          defaultValue={defaultValue ?? ''}
-          className="min-w-0 flex-1 bg-transparent px-3 py-2 text-[13px] text-ink outline-none"
-        />
-        {suffix && <span className="border-l border-line-subtle px-2 text-[11px] text-ink-3">{suffix}</span>}
-      </span>
-      {hint && <span className="mt-1 block text-[11px] leading-snug text-ink-3">{hint}</span>}
-    </label>
-  )
-}
-
-function CheckField({ label, name, defaultChecked }: { label: string; name: string; defaultChecked: boolean }) {
-  return (
-    <label className="flex items-center justify-between gap-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] text-ink-2">
-      <span>{label}</span>
-      <input name={name} type="checkbox" defaultChecked={defaultChecked} className="h-4 w-4 accent-[color:var(--accent-info)]" />
-    </label>
-  )
-}
-
-function CompactCheck({ name, defaultChecked, label }: { name: string; defaultChecked: boolean; label: string }) {
-  return (
-    <label className="inline-flex items-center justify-center">
-      <span className="sr-only">{label}</span>
-      <input name={name} type="checkbox" defaultChecked={defaultChecked} className="h-4 w-4 accent-[color:var(--accent-info)]" />
-    </label>
-  )
-}
-
-function scenarioLabel(value: string) {
-  if (value === 'US_ONLY') return 'US only'
-  if (value === 'KR_ONLY') return 'Korea only'
-  return 'US + Korea'
-}
-
 export default async function TaxSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const params = await searchParams
+  const language = await getLanguage()
+  const copy = getTaxSettingsCopy(language)
+  const glossary = getGlossary(language)
   const state = getTaxPolicyState()
   const { policy } = state
   const profiles = annualProfiles(policy, policy.planningHorizonYears ?? 5)
@@ -87,21 +37,21 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
   })()
   const ytdHint = (term: 'shortUsd' | 'longUsd') =>
     ytdComputed
-      ? `${ytdComputed.basis} for ${ytdComputed.taxYear}: ${fmtNumber(ytdComputed[term], 2)} USD across ${ytdComputed.lots} lot(s)`
+      ? copy.us.ytdHint(ytdComputed.basis, ytdComputed.taxYear, fmtNumber(ytdComputed[term], 2), ytdComputed.lots)
       : undefined
 
   return (
     <>
       <PageHeader
-        eyebrow="Tax"
-        title="Tax Settings"
-        emphasis="Settings"
-        subtitle="Local assumptions for realization planning. This writes only to ignored data/tax-policy.json."
+        eyebrow={copy.page.eyebrow}
+        title={copy.page.title}
+        emphasis={copy.page.emphasis}
+        subtitle={copy.page.subtitle}
         action={
           <div className="flex items-center gap-2">
-            {params.saved === '1' && <Badge tone="success">Saved</Badge>}
+            {params.saved === '1' && <Badge tone="success">{copy.page.saved}</Badge>}
             <Link href="/tax-planning" className="text-[12px] font-medium text-info hover:underline">
-              Open planner
+              {copy.page.openPlanner}
             </Link>
           </div>
         }
@@ -109,105 +59,105 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
         <MetricHeroCard
-          title="Policy Source"
-          info="Shows whether the planner is using your local ignored tax-policy.json file or the example fallback assumptions."
-          eyebrow="Tax settings headline"
-          value={state.source === 'local' ? 'Local' : 'Example'}
-          hint={state.source === 'local' ? 'Using local planning assumptions' : 'Using example assumptions until local settings are saved'}
+          title={copy.hero.title}
+          info={copy.hero.info}
+          eyebrow={copy.hero.eyebrow}
+          value={state.source === 'local' ? copy.hero.local : copy.hero.example}
+          hint={state.source === 'local' ? copy.hero.localHint : copy.hero.exampleHint}
         >
           <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
             <MetricField
-              label="Scenario"
-              value={scenarioLabel(policy.activeScenario)}
-              hint="Default filing scenario"
+              label={copy.hero.scenario}
+              value={scenarioLabel(policy.activeScenario, copy)}
+              hint={copy.hero.scenarioHint}
               valueClassName="text-[18px]"
             />
             <MetricField
-              label="Jurisdictions"
+              label={copy.hero.jurisdictions}
               value={fmtNumber(policy.jurisdictions.filter((item) => item.enabled).length)}
-              hint="Enabled tax regimes"
+              hint={copy.hero.jurisdictionsHint}
               valueClassName="text-[18px]"
             />
             <MetricField
-              label="Updated"
-              value={state.updatedAt ? fmtDateTime(state.updatedAt).slice(0, 10) : 'n/a'}
-              hint="Last settings write"
+              label={copy.hero.updated}
+              value={state.updatedAt ? fmtDateTime(state.updatedAt).slice(0, 10) : copy.hero.notAvailable}
+              hint={copy.hero.updatedHint}
               valueClassName="text-[18px]"
             />
           </div>
         </MetricHeroCard>
 
-        <Card title="Settings Read Order" info="Start with the policy source, then confirm scenario, jurisdictions, and annual filing assumptions.">
+        <Card title={copy.readOrder.title} info={copy.readOrder.info}>
           <div className="flex min-h-[16rem] flex-col justify-between gap-4">
             <div className="space-y-4">
               <MetricField
-                label="Planning Horizon"
-                value={`${fmtNumber(policy.planningHorizonYears ?? 5)} years`}
-                hint="Years projected in planner scenarios"
+                label={copy.readOrder.planningHorizon}
+                value={`${fmtNumber(policy.planningHorizonYears ?? 5)} ${copy.readOrder.years}`}
+                hint={copy.readOrder.planningHorizonHint}
                 valueClassName="text-[28px]"
               />
               <div className="h-px bg-line-subtle" />
               <MetricField
-                label="Base Currency"
+                label={copy.readOrder.baseCurrency}
                 value={policy.baseCurrency}
-                hint="Currency used for planning summaries"
+                hint={copy.readOrder.baseCurrencyHint}
                 valueClassName="text-[18px]"
               />
             </div>
             <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
-              Settings are assumptions for planning; filing forms and tax professional review remain outside the app.
+              {copy.readOrder.note}
             </div>
           </div>
         </Card>
       </div>
 
       <form action={saveTaxSettings} className="space-y-5">
-        <Card title="Filing profile" accent>
+        <Card title={copy.filingProfile.title} accent>
           <div className="grid gap-4 lg:grid-cols-3">
             <label className="block">
-              <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">Active scenario</span>
+              <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">{copy.filingProfile.activeScenario}</span>
               <select name="activeScenario" defaultValue={policy.activeScenario} className="w-full rounded-md border border-line bg-card px-3 py-2 text-[13px] text-ink outline-none">
-                <option value="US_ONLY">US only</option>
-                <option value="KR_ONLY">Korea only</option>
-                <option value="US_AND_KR">US + Korea</option>
+                <option value="US_ONLY">{copy.scenarios.US_ONLY}</option>
+                <option value="KR_ONLY">{copy.scenarios.KR_ONLY}</option>
+                <option value="US_AND_KR">{copy.scenarios.US_AND_KR}</option>
               </select>
             </label>
-            <Field label="Base currency" name="baseCurrency" defaultValue={policy.baseCurrency} type="text" />
-            <Field label="Planning horizon" name="planningHorizonYears" defaultValue={policy.planningHorizonYears ?? 5} suffix="years" />
+            <Field label={copy.filingProfile.baseCurrency} name="baseCurrency" defaultValue={policy.baseCurrency} type="text" />
+            <Field label={copy.filingProfile.planningHorizon} name="planningHorizonYears" defaultValue={policy.planningHorizonYears ?? 5} suffix={copy.readOrder.years} />
             <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] leading-relaxed text-ink-3">
-              Settings are assumptions for planning. Lot evidence, filing forms, residency, treaty positions, and tax professional review remain outside the app.
+              {copy.filingProfile.note}
             </div>
           </div>
         </Card>
 
         <Card
-          title="Annual filing timeline"
-          info="Filing means reporting workflow is required for that country/year. Tax calc means the planner includes that country's tax estimate in scenario math."
+          title={copy.annualTimeline.title}
+          info={copy.annualTimeline.info}
           accent
         >
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-[12px]">
               <thead className="text-[10px] uppercase tracking-[0.08em] text-ink-3">
                 <tr>
-                  <th className="pb-2 pr-4 font-medium">Year</th>
-                  <th className="pb-2 pr-4 font-medium">Default scenario</th>
+                  <th className="pb-2 pr-4 font-medium">{copy.annualTimeline.year}</th>
+                  <th className="pb-2 pr-4 font-medium">{copy.annualTimeline.defaultScenario}</th>
                   <th className="pb-2 pr-4 text-center font-medium">
-                    US filing
-                    <InfoTooltip align="left">Tracks whether this year needs US filing work, evidence collection, and reporting review.</InfoTooltip>
+                    {copy.annualTimeline.usFiling}
+                    <InfoTooltip align="left">{copy.annualTimeline.usFilingInfo}</InfoTooltip>
                   </th>
                   <th className="pb-2 pr-4 text-center font-medium">
-                    US tax calc
-                    <InfoTooltip align="left">Controls whether US capital gain tax assumptions are included in planning estimates for this year.</InfoTooltip>
+                    {copy.annualTimeline.usTaxCalc}
+                    <InfoTooltip align="left">{copy.annualTimeline.usTaxCalcInfo}</InfoTooltip>
                   </th>
                   <th className="pb-2 pr-4 text-center font-medium">
-                    KR filing
-                    <InfoTooltip align="left">Tracks whether this year needs Korea filing work, evidence collection, and reporting review.</InfoTooltip>
+                    {copy.annualTimeline.krFiling}
+                    <InfoTooltip align="left">{copy.annualTimeline.krFilingInfo}</InfoTooltip>
                   </th>
                   <th className="pb-2 pr-4 text-center font-medium">
-                    KR tax calc
-                    <InfoTooltip align="left">Controls whether Korea stock tax assumptions are included in planning estimates for this year.</InfoTooltip>
+                    {copy.annualTimeline.krTaxCalc}
+                    <InfoTooltip align="left">{copy.annualTimeline.krTaxCalcInfo}</InfoTooltip>
                   </th>
-                  <th className="pb-2 pr-4 font-medium">Status</th>
+                  <th className="pb-2 pr-4 font-medium">{copy.annualTimeline.status}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line-subtle">
@@ -222,19 +172,19 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
                       </td>
                       <td className="py-2 pr-4">
                         <select name={`filingScenario_${profile.year}`} defaultValue={profile.filingScenario} className="w-full min-w-[8rem] rounded-md border border-line bg-card px-2 py-1.5 text-[12px] text-ink outline-none">
-                          <option value="US_ONLY">US only</option>
-                          <option value="KR_ONLY">Korea only</option>
-                          <option value="US_AND_KR">US + Korea</option>
+                          <option value="US_ONLY">{copy.scenarios.US_ONLY}</option>
+                          <option value="KR_ONLY">{copy.scenarios.KR_ONLY}</option>
+                          <option value="US_AND_KR">{copy.scenarios.US_AND_KR}</option>
                         </select>
                       </td>
-                      <td className="py-2 pr-4 text-center"><CompactCheck name={`usFilingRequired_${profile.year}`} defaultChecked={us?.filingRequired ?? false} label={`${profile.year} US filing required`} /></td>
-                      <td className="py-2 pr-4 text-center"><CompactCheck name={`usTaxCalculationEnabled_${profile.year}`} defaultChecked={us?.taxCalculationEnabled ?? false} label={`${profile.year} US tax calculation enabled`} /></td>
-                      <td className="py-2 pr-4 text-center"><CompactCheck name={`krFilingRequired_${profile.year}`} defaultChecked={kr?.filingRequired ?? false} label={`${profile.year} KR filing required`} /></td>
-                      <td className="py-2 pr-4 text-center"><CompactCheck name={`krTaxCalculationEnabled_${profile.year}`} defaultChecked={kr?.taxCalculationEnabled ?? false} label={`${profile.year} KR tax calculation enabled`} /></td>
+                      <td className="py-2 pr-4 text-center"><CompactCheck name={`usFilingRequired_${profile.year}`} defaultChecked={us?.filingRequired ?? false} label={`${profile.year} ${copy.compactCheck.usFilingRequired}`} /></td>
+                      <td className="py-2 pr-4 text-center"><CompactCheck name={`usTaxCalculationEnabled_${profile.year}`} defaultChecked={us?.taxCalculationEnabled ?? false} label={`${profile.year} ${copy.compactCheck.usTaxCalculationEnabled}`} /></td>
+                      <td className="py-2 pr-4 text-center"><CompactCheck name={`krFilingRequired_${profile.year}`} defaultChecked={kr?.filingRequired ?? false} label={`${profile.year} ${copy.compactCheck.krFilingRequired}`} /></td>
+                      <td className="py-2 pr-4 text-center"><CompactCheck name={`krTaxCalculationEnabled_${profile.year}`} defaultChecked={kr?.taxCalculationEnabled ?? false} label={`${profile.year} ${copy.compactCheck.krTaxCalculationEnabled}`} /></td>
                       <td className="py-2 pr-4">
                         <select name={`status_${profile.year}`} defaultValue={profile.status} className="w-full min-w-[7rem] rounded-md border border-line bg-card px-2 py-1.5 text-[12px] text-ink outline-none">
-                          <option value="assumed">Assumed</option>
-                          <option value="confirmed">Confirmed</option>
+                          <option value="assumed">{copy.annualTimeline.assumed}</option>
+                          <option value="confirmed">{copy.annualTimeline.confirmed}</option>
                         </select>
                       </td>
                     </tr>
@@ -244,94 +194,94 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
             </table>
           </div>
           <div className="mt-3 text-[11px] leading-relaxed text-ink-3">
-            In normal cases filing and tax calc should usually move together. Keep them separate only when reporting duty is known but the taxable calculation needs manual review, or when stress-testing a planning assumption.
+            {copy.annualTimeline.note}
           </div>
         </Card>
 
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-          <Card title="US assumptions">
+          <Card title={copy.us.title}>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Fallback short-term rate" name="usFederalShortTermRatePct" defaultValue={assumptionNumber(policy, 'US', 'federalShortTermRatePct', 24)} suffix="%" />
-              <Field label="Fallback long-term rate" name="usFederalLongTermRatePct" defaultValue={assumptionNumber(policy, 'US', 'federalLongTermRatePct', 15)} suffix="%" />
-              <Field label="Fallback state rate" name="usStateRatePct" defaultValue={assumptionNumber(policy, 'US', 'stateRatePct', 9.3)} suffix="%" />
-              <Field label="NIIT rate" name="usNiitRatePct" defaultValue={assumptionNumber(policy, 'US', 'netInvestmentIncomeTaxRatePct', 3.8)} suffix="%" />
-              <Field label="Filing status" name="usFilingStatus" defaultValue={assumptionString(policy, 'US', 'filingStatus', 'MFJ')} type="text" />
-              <Field label="State" name="usStateCode" defaultValue={assumptionString(policy, 'US', 'stateCode', 'CA')} type="text" />
-              <Field label="Wage base year" name="usWageBaseYear" defaultValue={assumptionNumber(policy, 'US', 'wageBaseYear', 2025)} />
-              <Field label="W-2 wages" name="usWageBaseUsd" defaultValue={assumptionNumber(policy, 'US', 'wageBaseUsd', 0)} suffix="USD" />
-              <Field label="Annual income growth" name="usAnnualIncomeGrowthPct" defaultValue={assumptionNumber(policy, 'US', 'annualIncomeGrowthPct', 0)} suffix="%" />
-              <Field label="Federal bracket inflation" name="usFederalBracketInflationPct" defaultValue={assumptionNumber(policy, 'US', 'federalBracketInflationPct', 2.5)} suffix="%" />
-              <Field label="California bracket inflation" name="usCaliforniaBracketInflationPct" defaultValue={assumptionNumber(policy, 'US', 'californiaBracketInflationPct', 2.5)} suffix="%" />
-              <Field label="Planning USD/KRW" name="usPlanningUsdKrwRate" defaultValue={assumptionNumber(policy, 'US', 'planningUsdKrwRate', 0) || null} suffix="KRW" />
-              <Field label="Current tax input year" name="usTaxInputYear" defaultValue={assumptionNumber(policy, 'US', 'taxInputYear', new Date().getFullYear())} />
-              <Field label="Loss deduction limit" name="usLossDeductionLimitUsd" defaultValue={assumptionNumber(policy, 'US', 'lossDeductionLimitUsd', 3000)} suffix="USD" />
-              <Field label="YTD realized short G/L" name="usYtdRealizedShortGainLossUsd" defaultValue={assumptionNumber(policy, 'US', 'ytdRealizedShortGainLossUsd', 0)} suffix="USD" hint={ytdHint('shortUsd')} />
-              <Field label="YTD realized long G/L" name="usYtdRealizedLongGainLossUsd" defaultValue={assumptionNumber(policy, 'US', 'ytdRealizedLongGainLossUsd', 0)} suffix="USD" hint={ytdHint('longUsd')} />
-              <Field label="Short loss carryover" name="usShortTermCapitalLossCarryoverUsd" defaultValue={assumptionNumber(policy, 'US', 'shortTermCapitalLossCarryoverUsd', 0)} suffix="USD" />
-              <Field label="Long loss carryover" name="usLongTermCapitalLossCarryoverUsd" defaultValue={assumptionNumber(policy, 'US', 'longTermCapitalLossCarryoverUsd', 0)} suffix="USD" />
-              <Field label="FTC carryover" name="usForeignTaxCreditCarryoverUsd" defaultValue={assumptionNumber(policy, 'US', 'foreignTaxCreditCarryoverUsd', 0)} suffix="USD" />
-              <Field label="FTC foreign-source share" name="usFtcForeignSourceGainPct" defaultValue={assumptionNumber(policy, 'US', 'ftcForeignSourceGainPct', 0)} suffix="%" />
-            <Field label="Wash sale before" name="usWashSaleBefore" defaultValue={assumptionNumber(policy, 'US', 'washSaleWindowDaysBefore', 30)} suffix="days" hint={GLOSSARY.washSale.description} />
-            <Field label="Wash sale after" name="usWashSaleAfter" defaultValue={assumptionNumber(policy, 'US', 'washSaleWindowDaysAfter', 30)} suffix="days" hint={GLOSSARY.washSale.description} />
+              <Field label={copy.us.fallbackShortTermRate} name="usFederalShortTermRatePct" defaultValue={assumptionNumber(policy, 'US', 'federalShortTermRatePct', 24)} suffix="%" />
+              <Field label={copy.us.fallbackLongTermRate} name="usFederalLongTermRatePct" defaultValue={assumptionNumber(policy, 'US', 'federalLongTermRatePct', 15)} suffix="%" />
+              <Field label={copy.us.fallbackStateRate} name="usStateRatePct" defaultValue={assumptionNumber(policy, 'US', 'stateRatePct', 9.3)} suffix="%" />
+              <Field label={copy.us.niitRate} name="usNiitRatePct" defaultValue={assumptionNumber(policy, 'US', 'netInvestmentIncomeTaxRatePct', 3.8)} suffix="%" />
+              <Field label={copy.us.filingStatus} name="usFilingStatus" defaultValue={assumptionString(policy, 'US', 'filingStatus', 'MFJ')} type="text" />
+              <Field label={copy.us.state} name="usStateCode" defaultValue={assumptionString(policy, 'US', 'stateCode', 'CA')} type="text" />
+              <Field label={copy.us.wageBaseYear} name="usWageBaseYear" defaultValue={assumptionNumber(policy, 'US', 'wageBaseYear', 2025)} />
+              <Field label={copy.us.w2Wages} name="usWageBaseUsd" defaultValue={assumptionNumber(policy, 'US', 'wageBaseUsd', 0)} suffix="USD" />
+              <Field label={copy.us.annualIncomeGrowth} name="usAnnualIncomeGrowthPct" defaultValue={assumptionNumber(policy, 'US', 'annualIncomeGrowthPct', 0)} suffix="%" />
+              <Field label={copy.us.federalBracketInflation} name="usFederalBracketInflationPct" defaultValue={assumptionNumber(policy, 'US', 'federalBracketInflationPct', 2.5)} suffix="%" />
+              <Field label={copy.us.californiaBracketInflation} name="usCaliforniaBracketInflationPct" defaultValue={assumptionNumber(policy, 'US', 'californiaBracketInflationPct', 2.5)} suffix="%" />
+              <Field label={copy.us.planningUsdKrw} name="usPlanningUsdKrwRate" defaultValue={assumptionNumber(policy, 'US', 'planningUsdKrwRate', 0) || null} suffix="KRW" />
+              <Field label={copy.us.currentTaxInputYear} name="usTaxInputYear" defaultValue={assumptionNumber(policy, 'US', 'taxInputYear', new Date().getFullYear())} />
+              <Field label={copy.us.lossDeductionLimit} name="usLossDeductionLimitUsd" defaultValue={assumptionNumber(policy, 'US', 'lossDeductionLimitUsd', 3000)} suffix="USD" />
+              <Field label={copy.us.ytdRealizedShort} name="usYtdRealizedShortGainLossUsd" defaultValue={assumptionNumber(policy, 'US', 'ytdRealizedShortGainLossUsd', 0)} suffix="USD" hint={ytdHint('shortUsd')} />
+              <Field label={copy.us.ytdRealizedLong} name="usYtdRealizedLongGainLossUsd" defaultValue={assumptionNumber(policy, 'US', 'ytdRealizedLongGainLossUsd', 0)} suffix="USD" hint={ytdHint('longUsd')} />
+              <Field label={copy.us.shortLossCarryover} name="usShortTermCapitalLossCarryoverUsd" defaultValue={assumptionNumber(policy, 'US', 'shortTermCapitalLossCarryoverUsd', 0)} suffix="USD" />
+              <Field label={copy.us.longLossCarryover} name="usLongTermCapitalLossCarryoverUsd" defaultValue={assumptionNumber(policy, 'US', 'longTermCapitalLossCarryoverUsd', 0)} suffix="USD" />
+              <Field label={copy.us.ftcCarryover} name="usForeignTaxCreditCarryoverUsd" defaultValue={assumptionNumber(policy, 'US', 'foreignTaxCreditCarryoverUsd', 0)} suffix="USD" />
+              <Field label={copy.us.ftcForeignSourceShare} name="usFtcForeignSourceGainPct" defaultValue={assumptionNumber(policy, 'US', 'ftcForeignSourceGainPct', 0)} suffix="%" />
+              <Field label={copy.us.washSaleBefore} name="usWashSaleBefore" defaultValue={assumptionNumber(policy, 'US', 'washSaleWindowDaysBefore', 30)} suffix={copy.us.days} hint={glossary.washSale.description} />
+              <Field label={copy.us.washSaleAfter} name="usWashSaleAfter" defaultValue={assumptionNumber(policy, 'US', 'washSaleWindowDaysAfter', 30)} suffix={copy.us.days} hint={glossary.washSale.description} />
               <div className="sm:col-span-2 rounded-md border border-line-subtle bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
-                MFJ uses the official 2026 federal brackets and long-term capital-gain thresholds. Later federal years and the 2025 California schedule are inflation projections. Fallback rates apply to unsupported filing statuses or states. FTC foreign-source share must be supported by sourcing or treaty analysis; zero prevents the planner from claiming a US credit automatically.
+                {copy.us.note}
               </div>
             </div>
           </Card>
 
-          <Card title="Korea assumptions">
+          <Card title={copy.kr.title}>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Stock basic deduction" name="krStockBasicDeductionKrw" defaultValue={assumptionNumber(policy, 'KR', 'stockBasicDeductionKrw', 2500000)} suffix="KRW" />
-              <Field label="Foreign stock rate" name="krForeignStockFlatRatePct" defaultValue={assumptionNumber(policy, 'KR', 'foreignStockFlatRatePct', 22)} suffix="%" />
-              <Field label="Foreign taxable residence threshold" name="krForeignStockTaxableResidenceYearsThreshold" defaultValue={assumptionNumber(policy, 'KR', 'foreignStockTaxableResidenceYearsThreshold', 5)} suffix="years" />
-              <Field label="Resident through year" name="krResidentThroughYear" defaultValue={assumptionNumber(policy, 'KR', 'residentThroughYear', 2027)} />
+              <Field label={copy.kr.stockBasicDeduction} name="krStockBasicDeductionKrw" defaultValue={assumptionNumber(policy, 'KR', 'stockBasicDeductionKrw', 2500000)} suffix="KRW" />
+              <Field label={copy.kr.foreignStockRate} name="krForeignStockFlatRatePct" defaultValue={assumptionNumber(policy, 'KR', 'foreignStockFlatRatePct', 22)} suffix="%" />
+              <Field label={copy.kr.foreignTaxableResidenceThreshold} name="krForeignStockTaxableResidenceYearsThreshold" defaultValue={assumptionNumber(policy, 'KR', 'foreignStockTaxableResidenceYearsThreshold', 5)} suffix={copy.readOrder.years} />
+              <Field label={copy.kr.residentThroughYear} name="krResidentThroughYear" defaultValue={assumptionNumber(policy, 'KR', 'residentThroughYear', 2027)} />
               <label className="block">
-                <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">Cross-border credit model</span>
+                <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">{copy.kr.crossBorderCreditModel}</span>
                 <select name="krForeignTaxCreditMode" defaultValue={assumptionString(policy, 'KR', 'foreignTaxCreditMode', 'manual')} className="w-full rounded-md border border-line bg-card px-3 py-2 text-[13px] text-ink outline-none">
-                  <option value="manual">No automatic credit</option>
-                  <option value="estimated-us-source">KR credit for modeled US federal tax</option>
-                  <option value="estimated-us-ftc">US Form 1116-style limit for KR tax</option>
+                  <option value="manual">{copy.kr.noAutomaticCredit}</option>
+                  <option value="estimated-us-source">{copy.kr.krCreditForUsTax}</option>
+                  <option value="estimated-us-ftc">{copy.kr.usForm1116Limit}</option>
                 </select>
               </label>
               <div className="sm:col-span-2 grid gap-2">
-                <CheckField label="KR domestic major shareholder taxable scope" name="krDomesticMajorShareholder" defaultChecked={assumptionBool(policy, 'KR', 'domesticMajorShareholder', false)} />
-                <CheckField label="KR listed off-market sale taxable scope" name="krDomesticListedOffMarketSale" defaultChecked={assumptionBool(policy, 'KR', 'domesticListedOffMarketSale', false)} />
+                <CheckField label={copy.kr.domesticMajorShareholder} name="krDomesticMajorShareholder" defaultChecked={assumptionBool(policy, 'KR', 'domesticMajorShareholder', false)} />
+                <CheckField label={copy.kr.listedOffMarketSale} name="krDomesticListedOffMarketSale" defaultChecked={assumptionBool(policy, 'KR', 'domesticListedOffMarketSale', false)} />
               </div>
             </div>
           </Card>
         </div>
 
-        <Card title="Local policy file">
+        <Card title={copy.localPolicy.title}>
           <div className="space-y-3 text-[12px] text-ink-2">
             <div className="grid gap-2 lg:grid-cols-[8rem_1fr]">
-              <span className="text-ink-3">Local path</span>
+              <span className="text-ink-3">{copy.localPolicy.localPath}</span>
               <code className="break-words font-mono text-[11px] text-ink">{state.path}</code>
-              <span className="text-ink-3">Fallback</span>
+              <span className="text-ink-3">{copy.localPolicy.fallback}</span>
               <code className="break-words font-mono text-[11px] text-ink">{state.examplePath}</code>
             </div>
             <button type="submit" className="rounded-md border border-line bg-ink px-4 py-2 text-[13px] font-medium text-card transition-opacity hover:opacity-90">
-              Save local tax assumptions
+              {copy.localPolicy.save}
             </button>
           </div>
         </Card>
 
-        <Card title="Calculation basis" info="Primary sources used by the planner. Later-year inflation and treaty sourcing remain planning assumptions, not filing conclusions.">
+        <Card title={copy.calculationBasis.title} info={copy.calculationBasis.info}>
           <div className="grid gap-3 text-[12px] text-ink-2 md:grid-cols-2 xl:grid-cols-4">
             <a href="https://www.irs.gov/newsroom/irs-releases-tax-inflation-adjustments-for-tax-year-2026-including-amendments-from-the-one-big-beautiful-bill" target="_blank" rel="noreferrer" className="rounded-md border border-line-subtle bg-surface px-3 py-2 hover:border-info">
-              <span className="block font-medium text-ink">2026 federal brackets</span>
-              <span className="mt-1 block text-[11px] text-ink-3">IRS Rev. Proc. 2025-32 summary</span>
+              <span className="block font-medium text-ink">{copy.calculationBasis.federalBrackets}</span>
+              <span className="mt-1 block text-[11px] text-ink-3">{copy.calculationBasis.federalBracketsNote}</span>
             </a>
             <a href="https://www.irs.gov/taxtopics/tc409" target="_blank" rel="noreferrer" className="rounded-md border border-line-subtle bg-surface px-3 py-2 hover:border-info">
-              <span className="block font-medium text-ink">Capital gain netting</span>
-              <span className="mt-1 block text-[11px] text-ink-3">IRS Topic 409</span>
+              <span className="block font-medium text-ink">{copy.calculationBasis.capitalGainNetting}</span>
+              <span className="mt-1 block text-[11px] text-ink-3">{copy.calculationBasis.capitalGainNettingNote}</span>
             </a>
             <a href="https://www.irs.gov/individuals/international-taxpayers/foreign-tax-credit-how-to-figure-the-credit" target="_blank" rel="noreferrer" className="rounded-md border border-line-subtle bg-surface px-3 py-2 hover:border-info">
-              <span className="block font-medium text-ink">Foreign tax credit limit</span>
-              <span className="mt-1 block text-[11px] text-ink-3">IRS Form 1116 overview</span>
+              <span className="block font-medium text-ink">{copy.calculationBasis.foreignTaxCreditLimit}</span>
+              <span className="mt-1 block text-[11px] text-ink-3">{copy.calculationBasis.foreignTaxCreditLimitNote}</span>
             </a>
             <a href="https://www.ftb.ca.gov/forms/2025/2025-540-booklet.html" target="_blank" rel="noreferrer" className="rounded-md border border-line-subtle bg-surface px-3 py-2 hover:border-info">
-              <span className="block font-medium text-ink">California schedule</span>
-              <span className="mt-1 block text-[11px] text-ink-3">2025 FTB Schedule Y</span>
+              <span className="block font-medium text-ink">{copy.calculationBasis.californiaSchedule}</span>
+              <span className="mt-1 block text-[11px] text-ink-3">{copy.calculationBasis.californiaScheduleNote}</span>
             </a>
           </div>
         </Card>
