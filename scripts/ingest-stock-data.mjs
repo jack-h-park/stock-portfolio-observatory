@@ -1394,10 +1394,29 @@ const transactionRows = datasets.transactions.rows.map((r) => ({
 // which carries transfers and corporate actions the order book has no concept
 // of — takes their place. Nothing is ever counted twice.
 //
-// What this cannot see is anything in the window that was not an order. A
-// 타사대체입고 or a 신주인수권증서 arriving after the cutoff still shows up only as
-// a provenance disagreement, which is the honest outcome: the bridge closes the
-// gap it can explain and leaves the rest named.
+// WHAT THIS CANNOT SEE, and the second half is not what it looked like.
+//
+// The obvious half: anything in the window that was not an order. A 타사대체입고
+// or a 신주인수권증서 arriving after the cutoff has no order behind it.
+//
+// The half that had to be asked about: **the endpoint does not return every
+// order either.** 토스증권 support confirmed on 2026-08-02 that
+// /api/v1/orders answers for 지정가 and 시장가 orders only — 시간외 단일가 and
+// 장후 시간외종가 fills are absent by design, not by fault. Three purchases were
+// missing from an otherwise exact 3,474-order history and that is why:
+// <KR_TICKER_A> on 2025-09-19 and 2025-10-29, <KR_TICKER_B> on 2026-03-06. They reconcile
+// against the certificates, which carry every fill regardless of session.
+//
+// So this bridge is a best-effort gap-filler and never an authority. An
+// after-hours purchase made after the cutoff will simply not be here, and the
+// lots will be short by it until the next 거래내역서 is downloaded.
+//
+// That is survivable only because it is detected rather than assumed away:
+// holdings come from the API, which does carry every position, so a fill this
+// bridge could not see leaves live > lots and `toss_holdings_lots_provenance`
+// names it. The bridge closes the gap it can explain and leaves the rest
+// visible — which is also why the certificates stay the authority for lots
+// rather than being replaced by the API.
 const tossOrderNotes = []
 let tossBridgeCutoff = null
 let tossBridgedFills = 0
@@ -3870,7 +3889,9 @@ check(
   tossSnapshot?.accounts?.length
     ? tossBridgedFills === 0
       ? `no order fills after the statement cutoff ${tossBridgeCutoff ?? '(no statement)'} — statements and snapshot cover the same ground`
-      : `${tossBridgedFills} fill(s) after ${tossBridgeCutoff ?? '(no statement)'} bridged into transactions and lots` +
+      : `${tossBridgedFills} fill(s) after ${tossBridgeCutoff ?? '(no statement)'} bridged into transactions and lots; ` +
+        `시간외 fills are not returned by this endpoint, so the window may still be short — ` +
+        `toss_holdings_lots_provenance is what would say so` +
         (tossOrderNotes.length ? `; ${tossOrderNotes.length} sold more than the open lots hold: ${tossOrderNotes.join('; ')}` : '')
     : 'no Open API snapshot — nothing to bridge with',
   'warning'

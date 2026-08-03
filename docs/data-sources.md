@@ -379,14 +379,35 @@ light, and nothing watches it.
 Findings that cost real investigation. None are guesses; each was checked
 against the data.
 
-**The Toss orders API is not a complete ledger.** Its holdings and its own order
-history disagree for two symbols — <KR_TICKER_A> by 60 shares, <KR_TICKER_B> by 10 — and the
-statements show purchases the orders endpoint has no record of. Collection was
-verified complete first: `status=OPEN` returns 0, and the 3,474 CLOSED orders
-break down as FILLED 3,440 / REJECTED 21 / CANCELED 13. Not one order in four
-years carries a partial fill, which is itself implausible. An inquiry to Toss is
-drafted. Until it is answered, treat the API as authoritative for *positions*
-and never as the transaction ledger.
+**The Toss orders API returns 지정가 and 시장가 orders only.** 시간외 단일가 and
+장후 시간외종가 fills are absent from `/api/v1/orders` by design. Confirmed by
+토스증권 support on 2026-08-02, in answer to an inquiry raised by this pipeline.
+
+It was found the hard way: holdings and order history disagreed for two symbols
+— <KR_TICKER_A> by 60 shares, <KR_TICKER_B> by 10 — and the certificates showed three
+purchases the endpoint had no record of (<KR_TICKER_A> on 2025-09-19 and 2025-10-29,
+<KR_TICKER_B> on 2026-03-06). Collection was ruled out first, which is what made the
+inquiry answerable: `status=OPEN` returned 0, and the 3,474 CLOSED orders broke
+down as FILLED 3,440 / REJECTED 21 / CANCELED 13, so nothing was lost to
+pagination or to an unfinished order.
+
+The other half of that inquiry closed a hypothesis: `execution.filledQuantity`
+returns the real filled quantity regardless of order status, so a partial fill
+on a CANCELED or REJECTED order is reported normally. That four years produced
+no partial fills is a fact about the trading, not about the API.
+
+Consequences, and they are structural rather than temporary:
+
+- The certificates stay the authority for lots. The API cannot replace them,
+  and no future fix is pending that would change this.
+- `toss_orders_bridge_statement` — which fills the window after the newest
+  certificate with API orders — is best-effort. An after-hours fill in that
+  window will be missing from it.
+- That is tolerable only because it is detected: holdings come from the API,
+  which does carry every position, so a fill the bridge could not see leaves
+  live > lots and `toss_holdings_lots_provenance` names it. A quantity
+  disagreement there is the signal that an after-hours trade needs a fresh
+  거래내역서 to book properly.
 
 **Statement dates are settlement dates.** The API reports `orderedAt` and
 `filledAt` (identical, `settlementDate` null); the certificates report T+2. Match
