@@ -54,6 +54,15 @@ here at 36 of 47 Korean holdings; it has had a 거래내역서 parser since the 
 above, so the payload now holds only whatever the statements on disk have yet to
 cover.
 
+**Reading the Toss API spec.** `developers.tossinvest.com/docs` renders in
+JavaScript and `openapi.tossinvest.com/docs` answers 403, so neither is fetchable.
+The canonical document is served without credentials at
+`https://openapi.tossinvest.com/openapi-docs/latest/openapi.json`, with a prose
+overview beside it at `openapi-docs/overview.md`; both are linked from
+`developers.tossinvest.com/llms.txt`. Read the JSON rather than the site — it is
+what the endpoints are generated from, and see the API section below for what it
+still does not tell you.
+
 **Toss positions have two sources, and which one answered is reported.** The Open
 API is preferred because it is refreshed hourly while a 거래내역서 is only ever as
 fresh as the last download, so with a snapshot the API supplies the positions, the
@@ -395,6 +404,29 @@ The other half of that inquiry closed a hypothesis: `execution.filledQuantity`
 returns the real filled quantity regardless of order status, so a partial fill
 on a CANCELED or REJECTED order is reported normally. That four years produced
 no partial fills is a fact about the trading, not about the API.
+
+**The published spec does not say any of this**, which is why it cost an
+inquiry. Checked against the canonical document rather than the rendered site
+(`https://openapi.tossinvest.com/openapi-docs/latest/openapi.json`, v1.2.9,
+reachable without credentials and linked from `developers.tossinvest.com/llms.txt`):
+
+- `GET /api/v1/orders` documents `status`, `symbol`, `from`/`to`, `cursor` and
+  `limit` in detail, including that `OPEN` ignores paging and returns everything.
+  It says nothing about which fills are omitted.
+- The only 시간외 in the whole document is in market-calendar endpoints, noting
+  that 시간외종가/시간외단일가 are excluded from *trading-hours* responses. Nothing
+  connects that to order history.
+- `Order.orderType` is `enum: [LIMIT, MARKET]`, with "클라이언트는 unknown code 를
+  허용하도록 구현해야 합니다". That is the only hint, and it is a hint about what
+  can be *placed*, not about which past fills are *returned* — an after-hours
+  purchase is a real order that simply never appears.
+
+So the exclusion is invisible to anyone reading the spec, and invisible in the
+data too: the response is a well-formed list that is quietly short. The only way
+to catch it is to hold the orders against a second source, which is what
+`toss_holdings_lots_provenance` does. Re-check the spec when the version moves
+past 1.2.9 — if it ever documents this, the inquiry can be considered closed
+rather than merely answered.
 
 Consequences, and they are structural rather than temporary:
 
