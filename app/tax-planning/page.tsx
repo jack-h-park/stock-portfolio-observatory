@@ -225,6 +225,7 @@ export default async function TaxPlanningPage({
         plan={masterPlanSet.selectedPlan}
         initialMonth={selectedScheduleMonth}
         initialPage={schedulePage}
+        language={language}
       />
 
       <MasterPlanAnnualTax plan={masterPlanSet.selectedPlan} copy={copy} />
@@ -266,21 +267,21 @@ export default async function TaxPlanningPage({
             <table className="min-w-full text-left text-[12px]">
               <thead className="text-[10px] uppercase tracking-[0.08em] text-ink-3">
                 <tr>
-                  <th className="pb-2 pr-4 font-medium">Year</th>
-                  <th className="pb-2 pr-4 font-medium">Tax calc</th>
+                  <th className="pb-2 pr-4 font-medium">{copy.page.year}</th>
+                  <th className="pb-2 pr-4 font-medium">{copy.page.taxCalc}</th>
                   <th className="pb-2 pr-4 text-right font-medium">
-                    Projected wages
-                    <InfoTooltip align="right">W-2 base wages grown by the annual income-growth assumption. This is not projected taxable income.</InfoTooltip>
+                    {copy.page.projectedWages}
+                    <InfoTooltip align="right">{copy.page.projectedWagesInfo}</InfoTooltip>
                   </th>
                   <th className="pb-2 pr-4 font-medium">
-                    US filing
-                    <InfoTooltip align="left">Whether this year needs US tax reporting workflow and evidence review. This does not by itself change the planner&apos;s tax math.</InfoTooltip>
+                    {copy.page.usFiling}
+                    <InfoTooltip align="left">{copy.page.usFilingInfo}</InfoTooltip>
                   </th>
                   <th className="pb-2 pr-4 font-medium">
-                    KR filing
-                    <InfoTooltip align="left">Whether this year needs Korea tax reporting workflow and evidence review. This does not by itself change the planner&apos;s tax math.</InfoTooltip>
+                    {copy.page.krFiling}
+                    <InfoTooltip align="left">{copy.page.krFilingInfo}</InfoTooltip>
                   </th>
-                  <th className="pb-2 pr-4 font-medium">Status</th>
+                  <th className="pb-2 pr-4 font-medium">{copy.page.status}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line-subtle">
@@ -292,8 +293,8 @@ export default async function TaxPlanningPage({
                       <td className="py-2 pr-4 font-mono text-ink">{profile.year}</td>
                       <td className="py-2 pr-4"><Badge tone="info">{scenarioFromTaxYearProfile(profile)}</Badge></td>
                       <td className="py-2 pr-4 text-right tabular-nums text-ink">{fmtMoney(projectedWagesUsd(taxPolicy.policy, profile.year), 'USD')}</td>
-                      <td className="py-2 pr-4">{us?.filingRequired ? <Badge tone="success">Required</Badge> : <Badge>Off</Badge>}</td>
-                      <td className="py-2 pr-4">{kr?.filingRequired ? <Badge tone="success">Required</Badge> : <Badge>Off</Badge>}</td>
+                      <td className="py-2 pr-4">{us?.filingRequired ? <Badge tone="success">{copy.page.required}</Badge> : <Badge>{copy.page.off}</Badge>}</td>
+                      <td className="py-2 pr-4">{kr?.filingRequired ? <Badge tone="success">{copy.page.required}</Badge> : <Badge>{copy.page.off}</Badge>}</td>
                       <td className="py-2 pr-4"><Badge tone={profile.status === 'confirmed' ? 'success' : 'warning'}>{profile.status}</Badge></td>
                     </tr>
                   )
@@ -305,17 +306,17 @@ export default async function TaxPlanningPage({
 
         <Card title={copy.page.baseAssumptions}>
           <div className="space-y-2 text-[12px] text-ink-2">
-            <div className="flex items-center justify-between gap-3"><span>Scenario</span><Badge tone="info">{plan.assumptions.scenario}</Badge></div>
-            <div className="flex items-center justify-between gap-3"><span>Filing / state</span><span className="text-ink">{assumptionString(taxPolicy.policy, 'US', 'filingStatus', 'n/a')} / {assumptionString(taxPolicy.policy, 'US', 'stateCode', 'n/a')}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>W-2 wage base</span><span className="tabular-nums text-ink">{assumptionNumber(taxPolicy.policy, 'US', 'wageBaseYear', 0)} · {fmtMoney(assumptionNumber(taxPolicy.policy, 'US', 'wageBaseUsd', 0), 'USD')}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>Annual income growth</span><span className="tabular-nums text-ink">{pct(assumptionNumber(taxPolicy.policy, 'US', 'annualIncomeGrowthPct', 0))}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>Federal method</span><Badge tone="success">2026 MFJ progressive</Badge></div>
-            <div className="flex items-center justify-between gap-3"><span>Fallback ST / LT</span><span className="tabular-nums text-ink">{pct(plan.assumptions.usShortRatePct)} / {pct(plan.assumptions.usLongRatePct)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>Fallback state / NIIT</span><span className="tabular-nums text-ink">{pct(plan.assumptions.usStateRatePct)} / {pct(plan.assumptions.usNiitRatePct)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>YTD realized / carryovers</span><span className="tabular-nums text-ink">$0 / $0</span></div>
-            <div className="flex items-center justify-between gap-3"><span>KR stock deduction</span><span className="tabular-nums text-ink">{fmtKrw(plan.assumptions.krBasicDeductionKrw)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>KR foreign stock rate</span><span className="tabular-nums text-ink">{pct(plan.assumptions.krForeignStockRatePct)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>Credit model</span><span className="text-right text-ink">{plan.assumptions.krForeignTaxCreditMode}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.scenario}</span><Badge tone="info">{plan.assumptions.scenario}</Badge></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.filingState}</span><span className="text-ink">{assumptionString(taxPolicy.policy, 'US', 'filingStatus', 'n/a')} / {assumptionString(taxPolicy.policy, 'US', 'stateCode', 'n/a')}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.w2WageBase}</span><span className="tabular-nums text-ink">{assumptionNumber(taxPolicy.policy, 'US', 'wageBaseYear', 0)} · {fmtMoney(assumptionNumber(taxPolicy.policy, 'US', 'wageBaseUsd', 0), 'USD')}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.annualIncomeGrowth}</span><span className="tabular-nums text-ink">{pct(assumptionNumber(taxPolicy.policy, 'US', 'annualIncomeGrowthPct', 0))}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.federalMethod}</span><Badge tone="success">{copy.page.federalMethodValue}</Badge></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.fallbackShortLong}</span><span className="tabular-nums text-ink">{pct(plan.assumptions.usShortRatePct)} / {pct(plan.assumptions.usLongRatePct)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.fallbackStateNiit}</span><span className="tabular-nums text-ink">{pct(plan.assumptions.usStateRatePct)} / {pct(plan.assumptions.usNiitRatePct)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.ytdCarryovers}</span><span className="tabular-nums text-ink">$0 / $0</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.krStockDeduction}</span><span className="tabular-nums text-ink">{fmtKrw(plan.assumptions.krBasicDeductionKrw)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.krForeignStockRate}</span><span className="tabular-nums text-ink">{pct(plan.assumptions.krForeignStockRatePct)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.creditModel}</span><span className="text-right text-ink">{plan.assumptions.krForeignTaxCreditMode}</span></div>
           </div>
         </Card>
       </div>
@@ -323,24 +324,24 @@ export default async function TaxPlanningPage({
       {hasPlanningTarget ? (
         <Card
           title={copy.page.annualTargetScenarioComparison}
-          info="These rows compare how to satisfy the same annual KRW sale target across the planning horizon. They do not model whether Korea or the US return is filed first within the same year."
+          info={copy.page.annualTargetInfo}
           className="mb-5"
           accent
         >
           <div className="mb-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] leading-relaxed text-ink-3">
-            Each row uses the same annual test amount, then changes which market is sold first. Read this only after choosing a rough yearly sale range from the Opportunity map.
+            {copy.page.annualTargetNote}
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-[12px]">
               <thead className="text-[10px] uppercase tracking-[0.08em] text-ink-3">
                 <tr>
-                  <th className="pb-2 pr-4 font-medium">Scenario</th>
-                  <th className="pb-2 pr-4 text-right font-medium">Total sales</th>
-                  <th className="pb-2 pr-4 text-right font-medium">Realized G/L</th>
-                  <th className="pb-2 pr-4 text-right font-medium">Est. tax</th>
-                  <th className="pb-2 pr-4 text-right font-medium">After tax cash</th>
-                  <th className="pb-2 pr-4 text-right font-medium">Peak year tax</th>
-                  <th className="pb-2 pr-4 text-right font-medium">Lots used</th>
+                  <th className="pb-2 pr-4 font-medium">{copy.page.scenario}</th>
+                  <th className="pb-2 pr-4 text-right font-medium">{copy.page.totalSales}</th>
+                  <th className="pb-2 pr-4 text-right font-medium">{copy.page.realizedGainLoss}</th>
+                  <th className="pb-2 pr-4 text-right font-medium">{copy.page.estimatedTax}</th>
+                  <th className="pb-2 pr-4 text-right font-medium">{copy.page.afterTaxCash}</th>
+                  <th className="pb-2 pr-4 text-right font-medium">{copy.page.peakYearTax}</th>
+                  <th className="pb-2 pr-4 text-right font-medium">{copy.page.lotsUsed}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line-subtle">
@@ -349,8 +350,8 @@ export default async function TaxPlanningPage({
                     <td className="py-3 pr-4">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-ink">{scenarioRow.label}</span>
-                        {multiYearPlan.bestScenario?.key === scenarioRow.key && <Badge tone="success">Lowest tax</Badge>}
-                        {multiYearPlan.bestScenario?.key !== scenarioRow.key && sameKrw(scenarioRow.summary.taxKrw, multiYearPlan.bestScenario?.summary.taxKrw) && <Badge tone="neutral">Same tax</Badge>}
+                        {multiYearPlan.bestScenario?.key === scenarioRow.key && <Badge tone="success">{copy.page.lowestTax}</Badge>}
+                        {multiYearPlan.bestScenario?.key !== scenarioRow.key && sameKrw(scenarioRow.summary.taxKrw, multiYearPlan.bestScenario?.summary.taxKrw) && <Badge tone="neutral">{copy.page.sameTax}</Badge>}
                       </div>
                       <div className="mt-1 max-w-[24rem] text-[11px] text-ink-3">{scenarioRow.description}</div>
                     </td>
@@ -370,10 +371,10 @@ export default async function TaxPlanningPage({
         <Card title={copy.page.annualTargetScenarioComparison} className="mb-5">
           <div className="grid gap-3 md:grid-cols-[1fr_18rem]">
             <div className="text-[13px] leading-relaxed text-ink-2">
-              This comparison is hidden until an annual test amount is entered. Without a repeated yearly sale amount, labels like lowest tax or same tax are not decision-grade because the planner has not been asked to satisfy a concrete sale range.
+              {copy.page.annualTargetHidden}
             </div>
             <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] text-ink-3">
-              Use the Opportunity map first to find promising years and markets, then enter a KRW amount above to compare execution scenarios.
+              {copy.page.annualTargetHiddenHint}
             </div>
           </div>
         </Card>
@@ -388,30 +389,30 @@ export default async function TaxPlanningPage({
       )}
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <Card title={copy.page.selectedSingleYearTaxSplit} info="This is the tax estimate for the currently selected lot sequence, not the full portfolio. Federal and California amounts are incremental tax above projected wage income.">
+        <Card title={copy.page.selectedSingleYearTaxSplit} info={copy.page.singleYearTaxSplitInfo}>
           <div className="space-y-2 text-[12px] text-ink-2">
-            <div className="flex items-center justify-between gap-3"><span>Federal short-term</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.usFederalShortTermTaxKrw)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>Federal long-term</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.usFederalLongTermTaxKrw)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>NIIT</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.usNiitTaxKrw)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>California / state</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.usStateTaxKrw)}</span></div>
-            <div className="flex items-center justify-between gap-3 border-t border-line-subtle pt-2"><span>US gross estimate</span><span className="tabular-nums text-ink">{fmtMoney(plan.summary.usTaxUsd, 'USD')} / {fmtKrw(plan.summary.usTaxKrw)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>KR gross tax</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.krTaxKrw)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>US FTC limit / used</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.usForeignTaxCreditLimitKrw)} / <span className="text-success">-{fmtKrw(plan.summary.usForeignTaxCreditKrw)}</span></span></div>
-            <div className="flex items-center justify-between gap-3"><span>KR credit used</span><span className="tabular-nums text-success">-{fmtKrw(plan.summary.krForeignTaxCreditKrw)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>Combined after credit</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.estimatedTaxKrw)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>After-tax proceeds</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.estimatedAfterTaxKrw)}</span></div>
-            <div className="text-[11px] leading-relaxed text-ink-3">Method: {plan.summary.taxCalculationMethod}. FTC is applied only in the selected credit mode; source and treaty percentages remain manual inputs.</div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.federalShortTerm}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.usFederalShortTermTaxKrw)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.federalLongTerm}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.usFederalLongTermTaxKrw)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.niit}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.usNiitTaxKrw)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.californiaState}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.usStateTaxKrw)}</span></div>
+            <div className="flex items-center justify-between gap-3 border-t border-line-subtle pt-2"><span>{copy.page.usGrossEstimate}</span><span className="tabular-nums text-ink">{fmtMoney(plan.summary.usTaxUsd, 'USD')} / {fmtKrw(plan.summary.usTaxKrw)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.krGrossTax}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.krTaxKrw)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.usFtcLimitUsed}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.usForeignTaxCreditLimitKrw)} / <span className="text-success">-{fmtKrw(plan.summary.usForeignTaxCreditKrw)}</span></span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.krCreditUsed}</span><span className="tabular-nums text-success">-{fmtKrw(plan.summary.krForeignTaxCreditKrw)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.combinedAfterCredit}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.estimatedTaxKrw)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.afterTaxProceeds}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.estimatedAfterTaxKrw)}</span></div>
+            <div className="text-[11px] leading-relaxed text-ink-3">{copy.page.methodNote(plan.summary.taxCalculationMethod)}</div>
           </div>
         </Card>
 
         <Card title={copy.page.warnings} accent={plan.summary.warnings.length + operational.staleItems.length > 0}>
           {plan.summary.warnings.length === 0 && operational.staleItems.length === 0 ? (
-            <EmptyState ok>No planner warnings</EmptyState>
+            <EmptyState ok>{copy.page.noPlannerWarnings}</EmptyState>
           ) : (
             <ul className="space-y-2 text-[12px] text-ink-2">
-              {operational.staleItems.length > 0 && <li><Badge tone="warning">Inputs</Badge> Resolve {fmtNumber(operational.staleItems.length)} freshness issue(s) before trading.</li>}
+              {operational.staleItems.length > 0 && <li><Badge tone="warning">{copy.page.inputs}</Badge> {copy.page.resolveFreshness(fmtNumber(operational.staleItems.length))}</li>}
               {plan.summary.warnings.map((warning) => (
-                <li key={warning}><Badge tone="warning">Review</Badge> {warning}</li>
+                <li key={warning}><Badge tone="warning">{copy.page.review}</Badge> {warning}</li>
               ))}
             </ul>
           )}

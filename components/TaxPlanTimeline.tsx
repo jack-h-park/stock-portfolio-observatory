@@ -3,8 +3,10 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { updateSavedInstructionExecutionAction } from '@/app/tax-planning/actions'
-import { Badge, Button, Card, EmptyState , marketTone } from '@/components/ui'
+import { getTaxPlanningCopy } from '@/app/tax-planning/copy'
+import { Badge, Button, Card, EmptyState, marketTone } from '@/components/ui'
 import { fmtKrw, fmtNumber } from '@/lib/format'
+import type { Language } from '@/lib/i18n'
 import { positionHref } from '@/lib/position-url'
 import type {
   MasterPlanInstruction,
@@ -15,9 +17,9 @@ import type { SavedInstructionExecution, SavedInstructionStatus } from '@/lib/ta
 
 const PAGE_SIZE = 50
 
-function dateLabel(value: string | null | undefined) {
+function dateLabel(value: string | null | undefined, language: Language) {
   if (!value) return 'n/a'
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat(language === 'ko' ? 'ko-KR' : 'en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -25,8 +27,8 @@ function dateLabel(value: string | null | undefined) {
   }).format(new Date(`${value.slice(0, 10)}T00:00:00Z`))
 }
 
-function compactKrw(value: number) {
-  return new Intl.NumberFormat('en-US', {
+function compactKrw(value: number, language: Language) {
+  return new Intl.NumberFormat(language === 'ko' ? 'ko-KR' : 'en-US', {
     style: 'currency',
     currency: 'KRW',
     notation: 'compact',
@@ -43,11 +45,18 @@ function signedKrw(value: number) {
   )
 }
 
-function profileLabel(value: string | undefined) {
+function profileLabel(value: string | undefined, copy: ReturnType<typeof getTaxPlanningCopy>['timeline']) {
   if (value === 'US_AND_KR') return 'US + KR'
-  if (value === 'US_ONLY') return 'US only'
-  if (value === 'KR_ONLY') return 'KR only'
-  return value ?? 'No profile'
+  if (value === 'US_ONLY') return copy.usOnly
+  if (value === 'KR_ONLY') return copy.krOnly
+  return value ?? copy.noProfile
+}
+
+function instructionStatusLabel(status: SavedInstructionStatus, copy: ReturnType<typeof getTaxPlanningCopy>['timeline']) {
+  if (status === 'reviewed') return copy.reviewedStatus
+  if (status === 'executed') return copy.executedStatus
+  if (status === 'skipped') return copy.skippedStatus
+  return copy.plannedStatus
 }
 
 const EXECUTION_TONE: Record<SavedInstructionStatus, 'neutral' | 'info' | 'success' | 'warning'> = {
@@ -61,10 +70,12 @@ function ExecutionStatusControl({
   planId,
   instructionId,
   execution,
+  copy,
 }: {
   planId: string
   instructionId: string
   execution?: SavedInstructionExecution
+  copy: ReturnType<typeof getTaxPlanningCopy>['timeline']
 }) {
   const status = execution?.status ?? 'planned'
   return (
@@ -75,48 +86,48 @@ function ExecutionStatusControl({
         <select
           name="status"
           defaultValue={status}
-          aria-label="Execution status"
+          aria-label={copy.executionStatus}
           className="rounded-sm border border-line bg-card px-2 py-1 text-[11px] text-ink outline-none focus:border-info"
         >
-          <option value="planned">Planned</option>
-          <option value="reviewed">Reviewed</option>
-          <option value="executed">Executed</option>
-          <option value="skipped">Skipped</option>
+          <option value="planned">{copy.plannedStatus}</option>
+          <option value="reviewed">{copy.reviewedStatus}</option>
+          <option value="executed">{copy.executedStatus}</option>
+          <option value="skipped">{copy.skippedStatus}</option>
         </select>
-        <Button type="submit">Save</Button>
+        <Button type="submit">{copy.save}</Button>
       </div>
       <details className="mt-1.5 text-[10px] text-ink-3">
-        <summary className="cursor-pointer">Actuals and note</summary>
+        <summary className="cursor-pointer">{copy.actualsAndNote}</summary>
         <div className="mt-2 grid gap-1.5">
           <input
             type="date"
             name="executedAt"
             defaultValue={execution?.executedAt ?? ''}
-            aria-label="Executed date"
+            aria-label={copy.executedDate}
             className="rounded-sm border border-line bg-card px-2 py-1 text-[11px] text-ink outline-none"
           />
           <input
             type="number"
             name="actualProceedsKrw"
             defaultValue={execution?.actualProceedsKrw ?? ''}
-            placeholder="Actual proceeds KRW"
-            aria-label="Actual proceeds KRW"
+            placeholder={copy.actualProceedsKrw}
+            aria-label={copy.actualProceedsKrw}
             className="rounded-sm border border-line bg-card px-2 py-1 text-[11px] text-ink outline-none"
           />
           <input
             type="number"
             name="actualGainKrw"
             defaultValue={execution?.actualGainKrw ?? ''}
-            placeholder="Actual gain/loss KRW"
-            aria-label="Actual gain or loss KRW"
+            placeholder={copy.actualGainLossKrw}
+            aria-label={copy.actualGainOrLossKrw}
             className="rounded-sm border border-line bg-card px-2 py-1 text-[11px] text-ink outline-none"
           />
           <input
             type="text"
             name="note"
             defaultValue={execution?.note ?? ''}
-            placeholder="Execution note"
-            aria-label="Execution note"
+            placeholder={copy.executionNote}
+            aria-label={copy.executionNote}
             className="rounded-sm border border-line bg-card px-2 py-1 text-[11px] text-ink outline-none"
           />
         </div>
@@ -129,10 +140,14 @@ function MonthDetailCard({
   row,
   savedPlanId,
   execution,
+  copy,
+  language,
 }: {
   row: MasterPlanInstruction
   savedPlanId?: string
   execution?: SavedInstructionExecution
+  copy: ReturnType<typeof getTaxPlanningCopy>['timeline']
+  language: Language
 }) {
   return (
     <article className="rounded-md border border-line-subtle bg-card p-3">
@@ -153,25 +168,25 @@ function MonthDetailCard({
           </div>
         </div>
         <Badge tone={row.role === 'loss' ? 'danger' : row.role === 'gain' ? 'info' : 'neutral'}>
-          {row.role === 'loss' ? 'Loss offset' : row.role === 'gain' ? 'Gain sale' : 'Neutral'}
+          {row.role === 'loss' ? copy.lossOffset : row.role === 'gain' ? copy.gainSale : copy.neutral}
         </Badge>
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-y border-line-subtle py-2 text-[11px]">
         <div>
-          <div className="text-ink-3">Sale date</div>
-          <div className="mt-0.5 font-mono text-ink">{dateLabel(row.plannedDate)}</div>
+          <div className="text-ink-3">{copy.saleDate}</div>
+          <div className="mt-0.5 font-mono text-ink">{dateLabel(row.plannedDate, language)}</div>
         </div>
         <div className="text-right">
-          <div className="text-ink-3">Quantity</div>
+          <div className="text-ink-3">{copy.quantity}</div>
           <div className="mt-0.5 tabular-nums text-ink">{fmtNumber(row.quantity, 4)}</div>
         </div>
         <div>
-          <div className="text-ink-3">Est. proceeds</div>
+          <div className="text-ink-3">{copy.estimatedProceeds}</div>
           <div className="mt-0.5 tabular-nums text-ink">{fmtKrw(row.proceedsKrw)}</div>
         </div>
         <div className="text-right">
-          <div className="text-ink-3">Est. gain / loss</div>
+          <div className="text-ink-3">{copy.estimatedGainLoss}</div>
           <div className="mt-0.5 tabular-nums">{signedKrw(row.gainKrw)}</div>
         </div>
       </div>
@@ -182,33 +197,35 @@ function MonthDetailCard({
       </div>
       {row.washSaleRisk && (
         <div className="mt-2 flex items-start gap-2 rounded-md border border-warning/30 bg-warning/5 px-2.5 py-2 text-[10px] leading-relaxed text-ink-2">
-          <Badge tone="warning">Wash sale review</Badge>
+          <Badge tone="warning">{copy.washSaleReview}</Badge>
           <span>{row.washSaleNote}</span>
         </div>
       )}
       {savedPlanId && (
         <div className="mt-3 border-t border-line-subtle pt-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-[10px] font-medium uppercase text-ink-3">Execution</span>
-            <Badge tone={EXECUTION_TONE[execution?.status ?? 'planned']}>{execution?.status ?? 'planned'}</Badge>
+            <span className="text-[10px] font-medium uppercase text-ink-3">{copy.execution}</span>
+            <Badge tone={EXECUTION_TONE[execution?.status ?? 'planned']}>
+              {instructionStatusLabel(execution?.status ?? 'planned', copy)}
+            </Badge>
           </div>
-          <ExecutionStatusControl planId={savedPlanId} instructionId={row.id} execution={execution} />
+          <ExecutionStatusControl planId={savedPlanId} instructionId={row.id} execution={execution} copy={copy} />
         </div>
       )}
     </article>
   )
 }
 
-function MonthSummary({ month }: { month: MasterPlanMonth }) {
+function MonthSummary({ month, copy }: { month: MasterPlanMonth; copy: ReturnType<typeof getTaxPlanningCopy>['timeline'] }) {
   const grossGainKrw = month.gainKrw + month.lossKrw
   return (
     <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line-subtle bg-line-subtle sm:grid-cols-5">
       {[
-        ['Planned sales', fmtKrw(month.proceedsKrw), 'text-ink'],
-        ['Positions', fmtNumber(month.positionCount), 'text-ink'],
-        ['Gross gains', fmtKrw(grossGainKrw), 'text-success'],
-        ['Paired losses', `-${fmtKrw(month.lossKrw)}`, 'text-danger'],
-        ['Net gain / loss', fmtKrw(month.gainKrw), month.gainKrw >= 0 ? 'text-success' : 'text-danger'],
+        [copy.plannedSales, fmtKrw(month.proceedsKrw), 'text-ink'],
+        [copy.position, fmtNumber(month.positionCount), 'text-ink'],
+        [copy.grossGains, fmtKrw(grossGainKrw), 'text-success'],
+        [copy.pairedLosses, `-${fmtKrw(month.lossKrw)}`, 'text-danger'],
+        [copy.netGainLoss, fmtKrw(month.gainKrw), month.gainKrw >= 0 ? 'text-success' : 'text-danger'],
       ].map(([label, value, tone]) => (
         <div key={label} className="bg-card px-3 py-2.5">
           <div className="text-[10px] font-medium uppercase text-ink-3">{label}</div>
@@ -225,13 +242,16 @@ export function TaxPlanTimeline({
   initialPage,
   savedPlanId,
   execution = {},
+  language = 'en',
 }: {
   plan: MonthlySaleMasterPlan
   initialMonth: string
   initialPage: number
   savedPlanId?: string
   execution?: Record<string, SavedInstructionExecution>
+  language?: Language
 }) {
+  const copy = getTaxPlanningCopy(language).timeline
   const fallbackMonth = plan.months[0]?.yearMonth ?? ''
   const [selectedMonth, setSelectedMonth] = useState(initialMonth || fallbackMonth)
   const [page, setPage] = useState(initialPage)
@@ -270,33 +290,33 @@ export function TaxPlanTimeline({
 
   return (
     <Card
-      title="Sale timeline"
-      info="Each column is one active sale month. Bar height shows planned proceeds relative to the busiest month; color shows whether that month's net result is a gain or loss."
+      title={copy.saleTimeline}
+      info={copy.saleTimelineInfo}
       className="mb-5"
       accent
-      action={<Badge tone="info">{fmtNumber(plan.months.length)} active months</Badge>}
+      action={<Badge tone="info">{copy.activeMonths(fmtNumber(plan.months.length))}</Badge>}
     >
       {activeMonth ? (
         <>
           <div className="flex flex-col gap-3 border-b border-line-subtle pb-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <div className="text-[10px] font-medium uppercase text-ink-3">Execution span</div>
+              <div className="text-[10px] font-medium uppercase text-ink-3">{copy.executionSpan}</div>
               <div className="mt-1 text-[16px] font-medium text-ink">
-                {dateLabel(plan.summary.startDate)} <span className="text-ink-3">to</span>{' '}
-                {dateLabel(plan.summary.endDate)}
+                {dateLabel(plan.summary.startDate, language)} <span className="text-ink-3">{copy.to}</span>{' '}
+                {dateLabel(plan.summary.endDate, language)}
               </div>
               <p className="mt-1 text-[11px] leading-relaxed text-ink-3">
-                Select a month to inspect exact lots and quantities. Selection stays in place without reloading the page.
+                {copy.inspectHint}
               </p>
             </div>
             <div className="flex items-center gap-4 text-[10px] text-ink-3">
               <span className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-[color:var(--accent-info)]" />
-                Net gain
+                {copy.netGain}
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-[color:var(--accent-danger)]" />
-                Net loss
+                {copy.netLoss}
               </span>
             </div>
           </div>
@@ -307,12 +327,12 @@ export function TaxPlanTimeline({
                 <section
                   key={group.year}
                   className={groupIndex > 0 ? 'ml-4 border-l border-line pl-4' : undefined}
-                  aria-label={`${group.year} sale timeline`}
+                  aria-label={copy.saleTimelineAria(group.year)}
                 >
                   <div className="mb-2 flex items-center justify-between gap-4">
                     <div className="text-[13px] font-medium text-ink">{group.year}</div>
                     <Badge tone={group.profile === 'US_AND_KR' ? 'warning' : 'info'}>
-                      {profileLabel(group.profile)}
+                      {profileLabel(group.profile, copy)}
                     </Badge>
                   </div>
                   <div className="relative flex gap-1.5 pt-2">
@@ -326,7 +346,7 @@ export function TaxPlanTimeline({
                           type="button"
                           onClick={() => chooseMonth(month.yearMonth)}
                           aria-pressed={selected}
-                          aria-label={`${month.label}: ${fmtKrw(month.proceedsKrw)} planned sales`}
+                          aria-label={copy.plannedSalesAria(month.label, fmtKrw(month.proceedsKrw))}
                           className={`group relative flex h-[8.5rem] w-[5.1rem] shrink-0 flex-col items-center rounded-md border px-1.5 py-2 text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-info ${
                             selected
                               ? 'border-info bg-[color:var(--accent-info)]/5 shadow-card'
@@ -334,12 +354,12 @@ export function TaxPlanTimeline({
                           }`}
                         >
                           <span className="text-[11px] font-medium text-ink">
-                            {new Intl.DateTimeFormat('en-US', { month: 'short', timeZone: 'UTC' }).format(
+                            {new Intl.DateTimeFormat(language === 'ko' ? 'ko-KR' : 'en-US', { month: 'short', timeZone: 'UTC' }).format(
                               new Date(`${month.yearMonth}-01T00:00:00Z`)
                             )}
                           </span>
                           <span className="mt-0.5 text-[9px] tabular-nums text-ink-3">
-                            {fmtNumber(month.positionCount)} positions
+                            {fmtNumber(month.positionCount)} {copy.positions}
                           </span>
                           <span className="mt-auto flex h-[3.25rem] items-end">
                             <span
@@ -352,7 +372,7 @@ export function TaxPlanTimeline({
                             />
                           </span>
                           <span className="mt-1 text-[10px] font-medium tabular-nums text-ink">
-                            {compactKrw(month.proceedsKrw)}
+                            {compactKrw(month.proceedsKrw, language)}
                           </span>
                           {selected && (
                             <span
@@ -374,18 +394,18 @@ export function TaxPlanTimeline({
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-[16px] font-medium text-ink">{activeMonth.label}</h3>
-                  <Badge>{fmtNumber(activeMonth.instructionCount)} instructions</Badge>
+                  <Badge>{copy.instructions(fmtNumber(activeMonth.instructionCount))}</Badge>
                 </div>
                 <p className="mt-1 text-[11px] text-ink-3">
-                  Exact sale lots for this month. Tax is netted at the annual level shown below.
+                  {copy.monthDetailHint}
                 </p>
               </div>
               <div className="text-[11px] text-ink-3">
-                Page <span className="font-medium text-ink">{activePage}</span> of {pageCount}
+                {copy.page} <span className="font-medium text-ink">{activePage}</span> {copy.of} {pageCount}
               </div>
             </div>
 
-            <MonthSummary month={activeMonth} />
+            <MonthSummary month={activeMonth} copy={copy} />
 
             <div className="mt-3 space-y-2 sm:hidden">
               {visibleInstructions.map((row) => (
@@ -394,6 +414,8 @@ export function TaxPlanTimeline({
                   row={row}
                   savedPlanId={savedPlanId}
                   execution={execution[row.id]}
+                  copy={copy}
+                  language={language}
                 />
               ))}
             </div>
@@ -402,23 +424,23 @@ export function TaxPlanTimeline({
               <table className="min-w-full text-left text-[12px]">
                 <thead className="sticky top-0 bg-surface text-[10px] uppercase text-ink-3">
                   <tr>
-                    <th className="px-3 py-2 font-medium">Sale date</th>
-                    <th className="px-3 py-2 font-medium">Position</th>
-                    <th className="px-3 py-2 font-medium">Account</th>
-                    <th className="px-3 py-2 text-right font-medium">Quantity</th>
-                    <th className="px-3 py-2 font-medium">Purpose</th>
-                    <th className="px-3 py-2 text-right font-medium">Est. proceeds</th>
-                    <th className="px-3 py-2 text-right font-medium">Est. G/L</th>
-                    {savedPlanId && <th className="px-3 py-2 font-medium">Execution</th>}
+                    <th className="px-3 py-2 font-medium">{copy.saleDate}</th>
+                    <th className="px-3 py-2 font-medium">{copy.position}</th>
+                    <th className="px-3 py-2 font-medium">{copy.account}</th>
+                    <th className="px-3 py-2 text-right font-medium">{copy.quantity}</th>
+                    <th className="px-3 py-2 font-medium">{copy.purpose}</th>
+                    <th className="px-3 py-2 text-right font-medium">{copy.estimatedProceeds}</th>
+                    <th className="px-3 py-2 text-right font-medium">{copy.estimatedGainLoss}</th>
+                    {savedPlanId && <th className="px-3 py-2 font-medium">{copy.execution}</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line-subtle">
                   {visibleInstructions.map((row) => (
                     <tr key={row.id} className="align-top hover:bg-surface/60">
                       <td className="whitespace-nowrap px-3 py-2.5 font-mono text-ink">
-                        {dateLabel(row.plannedDate)}
+                        {dateLabel(row.plannedDate, language)}
                         <div className="mt-1 text-[10px] text-ink-3">
-                          LT from {dateLabel(row.longTermEligibleDate)}
+                          {copy.longTermFrom(dateLabel(row.longTermEligibleDate, language))}
                         </div>
                       </td>
                       <td className="min-w-[16rem] px-3 py-2.5">
@@ -435,7 +457,7 @@ export function TaxPlanTimeline({
                         <div className="mt-1 max-w-[28rem] text-[10px] leading-relaxed text-ink-3">{row.reason}</div>
                         {row.washSaleRisk && (
                           <div className="mt-1 max-w-[28rem] text-[10px] leading-relaxed text-warning">
-                            Wash-sale review: {row.washSaleMatches} same-ticker open-lot acquisition(s) in the configured window.
+                            {copy.washSaleReviewDetail(row.washSaleMatches)}
                           </div>
                         )}
                       </td>
@@ -452,7 +474,7 @@ export function TaxPlanTimeline({
                             {row.holdingBucket}
                           </Badge>
                           <Badge tone={row.role === 'loss' ? 'danger' : row.role === 'gain' ? 'info' : 'neutral'}>
-                            {row.role === 'loss' ? 'Loss offset' : row.role === 'gain' ? 'Gain sale' : 'Neutral'}
+                            {row.role === 'loss' ? copy.lossOffset : row.role === 'gain' ? copy.gainSale : copy.neutral}
                           </Badge>
                         </div>
                       </td>
@@ -462,13 +484,14 @@ export function TaxPlanTimeline({
                         <td className="px-3 py-2.5">
                           <div className="mb-1.5">
                             <Badge tone={EXECUTION_TONE[execution[row.id]?.status ?? 'planned']}>
-                              {execution[row.id]?.status ?? 'planned'}
+                              {instructionStatusLabel(execution[row.id]?.status ?? 'planned', copy)}
                             </Badge>
                           </div>
                           <ExecutionStatusControl
                             planId={savedPlanId}
                             instructionId={row.id}
                             execution={execution[row.id]}
+                            copy={copy}
                           />
                         </td>
                       )}
@@ -481,8 +504,8 @@ export function TaxPlanTimeline({
             {pageCount > 1 && (
               <div className="mt-3 flex items-center justify-between border-t border-line-subtle pt-3">
                 <span className="text-[10px] text-ink-3">
-                  Showing {(activePage - 1) * PAGE_SIZE + 1}-
-                  {Math.min(activePage * PAGE_SIZE, activeMonth.instructionCount)} of{' '}
+                  {copy.showing} {(activePage - 1) * PAGE_SIZE + 1}-
+                  {Math.min(activePage * PAGE_SIZE, activeMonth.instructionCount)} {copy.of}{' '}
                   {activeMonth.instructionCount}
                 </span>
                 <div className="flex items-center gap-2">
@@ -490,13 +513,13 @@ export function TaxPlanTimeline({
                     onClick={() => choosePage(activePage - 1)}
                     disabled={activePage === 1}
                   >
-                    Previous
+                    {copy.previous}
                   </Button>
                   <Button
                     onClick={() => choosePage(activePage + 1)}
                     disabled={activePage === pageCount}
                   >
-                    Next
+                    {copy.next}
                   </Button>
                 </div>
               </div>
@@ -504,7 +527,7 @@ export function TaxPlanTimeline({
           </section>
         </>
       ) : (
-        <EmptyState>No scheduled sale instructions</EmptyState>
+        <EmptyState>{copy.noScheduledSaleInstructions}</EmptyState>
       )}
     </Card>
   )
