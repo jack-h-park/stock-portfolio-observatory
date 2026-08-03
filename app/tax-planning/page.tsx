@@ -4,6 +4,7 @@ import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
 import { Badge, Card, EmptyState, InfoTooltip, marketTone } from '@/components/ui'
 import { getOperationalHealth, getOverview, getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
+import { getLanguage } from '@/lib/i18n-server'
 import {
   buildMonthlySalePlanSet,
   buildMultiYearTaxPlan,
@@ -23,6 +24,7 @@ import {
 } from '@/lib/tax-policy'
 
 import { CandidateTable, MasterPlanAnnualTax, MasterPlanOverview, MasterScenarioComparison, SavedPlansPanel } from './components'
+import { getTaxPlanningCopy } from './copy'
 import { DecisionSummary, PlanningMap, buildOpportunityRows, opportunitySummary, type OpportunityCoverage } from './opportunity-analysis'
 import { pct, sameKrw, signedKrw } from './view-utils'
 
@@ -72,6 +74,8 @@ export default async function TaxPlanningPage({
   }>
 }) {
   const params = await searchParams
+  const language = await getLanguage()
+  const copy = getTaxPlanningCopy(language)
   const taxPolicy = getTaxPolicyState()
   const activeScenario = scenario(params.scenario, taxPolicy.policy.activeScenario)
   const objective = params.objective || 'minimize-tax'
@@ -125,15 +129,15 @@ export default async function TaxPlanningPage({
   return (
     <>
       <PageHeader
-        eyebrow="Tax"
-        title="Tax Planning"
-        emphasis="Planning"
-        subtitle="Compare Korea and US stock sale timing across multiple years. Results are review estimates, not tax filing advice."
+        eyebrow={copy.page.eyebrow}
+        title={copy.page.title}
+        emphasis={copy.page.emphasis}
+        subtitle={copy.page.subtitle}
         action={
           <div className="flex items-center gap-2">
-            {taxPolicy.source === 'example' && <Badge tone="warning">Using example assumptions</Badge>}
+            {taxPolicy.source === 'example' && <Badge tone="warning">{copy.page.usingExampleAssumptions}</Badge>}
             <Link href="/tax-settings" className="text-[12px] font-medium text-info hover:underline">
-              Edit assumptions
+              {copy.page.editAssumptions}
             </Link>
           </div>
         }
@@ -142,55 +146,55 @@ export default async function TaxPlanningPage({
       <section className="mb-5 rounded-md border border-line bg-card shadow-card">
         <div className="flex flex-col gap-1 border-b border-line-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-[14px] font-medium text-ink">Plan Settings</h2>
+            <h2 className="text-[14px] font-medium text-ink">{copy.settings.title}</h2>
             <p className="mt-0.5 text-[11px] text-ink-3">
-              Choose sale-timing rules and date ranges, then recalculate the plan.
+              {copy.settings.subtitle}
             </p>
           </div>
-          <Badge>Calculated with current prices and FX</Badge>
+          <Badge>{copy.settings.badge}</Badge>
         </div>
         <form className="grid gap-4 p-4 lg:grid-cols-[minmax(14rem,1.4fr)_minmax(11rem,0.8fr)_minmax(10rem,0.7fr)_auto] lg:items-end">
           <label className="block">
             <span className="mb-1.5 flex items-center text-[10px] font-medium uppercase text-ink-3">
               <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface text-[10px] text-ink">1</span>
-              Scheduling rule
-              <InfoTooltip align="left">Choose the deterministic scheduling rule. Tax calculations remain rule-based; no market forecast or LLM judgment is applied here.</InfoTooltip>
+              {copy.settings.schedulingRule}
+              <InfoTooltip align="left">{copy.settings.schedulingRuleInfo}</InfoTooltip>
             </span>
             <select name="master" defaultValue={selectedMasterStrategy} className="w-full rounded-md border border-line bg-card px-3 py-2.5 text-[13px] text-ink outline-none focus:border-info">
-              <option value="STAGED">Stage sales after long-term eligibility</option>
-              <option value="EARLIEST_LT">Sell at earliest long-term eligibility</option>
-              <option value="WAIT_US_ONLY">Wait for US-only filing</option>
-              <option value="ACCELERATE_LOSSES">Accelerate loss harvesting</option>
+              <option value="STAGED">{copy.settings.staged}</option>
+              <option value="EARLIEST_LT">{copy.settings.earliestLongTerm}</option>
+              <option value="WAIT_US_ONLY">{copy.settings.waitUsOnly}</option>
+              <option value="ACCELERATE_LOSSES">{copy.settings.accelerateLosses}</option>
             </select>
-            <span className="mt-1 block text-[10px] text-ink-3">Controls when each tax lot first enters the schedule.</span>
+            <span className="mt-1 block text-[10px] text-ink-3">{copy.settings.schedulingHint}</span>
           </label>
           <label className="block">
             <span className="mb-1.5 flex items-center text-[10px] font-medium uppercase text-ink-3">
               <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface text-[10px] text-ink">2</span>
-              Execution window
-              <InfoTooltip align="left">For the staged plan, divide current priced lot value across this many months. Other plans use their earliest permitted dates.</InfoTooltip>
+              {copy.settings.executionWindow}
+              <InfoTooltip align="left">{copy.settings.executionWindowInfo}</InfoTooltip>
             </span>
             <select name="pace" defaultValue={executionMonths} className="w-full rounded-md border border-line bg-card px-3 py-2.5 text-[13px] text-ink outline-none focus:border-info">
               {[12, 18, 24, 36, 48].map((months) => (
-                <option key={months} value={months}>{months} months</option>
+                <option key={months} value={months}>{months} {copy.settings.months}</option>
               ))}
             </select>
-            <span className="mt-1 block text-[10px] text-ink-3">Applies to staged plans.</span>
+            <span className="mt-1 block text-[10px] text-ink-3">{copy.settings.executionHint}</span>
           </label>
           <label className="block">
             <span className="mb-1.5 flex items-center text-[10px] font-medium uppercase text-ink-3">
               <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface text-[10px] text-ink">3</span>
-              Tax horizon
+              {copy.settings.taxHorizon}
             </span>
             <select name="horizon" defaultValue={horizonYears} className="w-full rounded-md border border-line bg-card px-3 py-2.5 text-[13px] text-ink outline-none focus:border-info">
               {[3, 4, 5, 7, 10].map((yearCount) => (
-                <option key={yearCount} value={yearCount}>{yearCount} years</option>
+                <option key={yearCount} value={yearCount}>{yearCount} {copy.settings.years}</option>
               ))}
             </select>
-            <span className="mt-1 block text-[10px] text-ink-3">Includes annual filing-profile changes.</span>
+            <span className="mt-1 block text-[10px] text-ink-3">{copy.settings.horizonHint}</span>
           </label>
           <button type="submit" className="rounded-md border border-ink bg-ink px-5 py-2.5 text-[13px] font-medium text-card transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-info">
-            Rebuild plan
+            {copy.settings.rebuild}
           </button>
         </form>
       </section>
@@ -199,6 +203,7 @@ export default async function TaxPlanningPage({
         planSet={masterPlanSet}
         inputIssueCount={plan.summary.missingValuationCount + operational.staleItems.length}
         fullHoldingsValueKrw={opportunityCoverage.holdingsMarketValueKrw}
+        copy={copy}
       />
 
       <SavedPlansPanel
@@ -206,11 +211,13 @@ export default async function TaxPlanningPage({
         selectedStrategy={selectedMasterStrategy}
         executionMonths={executionMonths}
         horizonYears={horizonYears}
+        copy={copy}
       />
 
       <MasterScenarioComparison
         planSet={masterPlanSet}
         horizonYears={horizonYears}
+        copy={copy}
       />
 
       <TaxPlanTimeline
@@ -220,11 +227,11 @@ export default async function TaxPlanningPage({
         initialPage={schedulePage}
       />
 
-      <MasterPlanAnnualTax plan={masterPlanSet.selectedPlan} />
+      <MasterPlanAnnualTax plan={masterPlanSet.selectedPlan} copy={copy} />
 
       <details className="mb-5 rounded-md border border-line bg-card shadow-card">
         <summary className="cursor-pointer px-4 py-3 text-[13px] font-medium text-ink">
-          Open static opportunity analysis
+          {copy.page.openStaticOpportunityAnalysis}
         </summary>
         <div className="border-t border-line-subtle p-4">
           <DecisionSummary
@@ -249,8 +256,8 @@ export default async function TaxPlanningPage({
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[1.2fr_0.8fr]">
         <Card
-          title="Annual filing profile"
-          info="Filing flags track whether that country needs reporting work in a year. Tax calc flags decide whether that country's tax estimate is included in planning math."
+          title={copy.page.annualFilingProfile}
+          info={copy.page.annualFilingProfileInfo}
           accent
         >
           <div className="overflow-x-auto">
@@ -294,7 +301,7 @@ export default async function TaxPlanningPage({
           </div>
         </Card>
 
-        <Card title="Base assumptions">
+        <Card title={copy.page.baseAssumptions}>
           <div className="space-y-2 text-[12px] text-ink-2">
             <div className="flex items-center justify-between gap-3"><span>Scenario</span><Badge tone="info">{plan.assumptions.scenario}</Badge></div>
             <div className="flex items-center justify-between gap-3"><span>Filing / state</span><span className="text-ink">{assumptionString(taxPolicy.policy, 'US', 'filingStatus', 'n/a')} / {assumptionString(taxPolicy.policy, 'US', 'stateCode', 'n/a')}</span></div>
@@ -313,7 +320,7 @@ export default async function TaxPlanningPage({
 
       {hasPlanningTarget ? (
         <Card
-          title="Annual target scenario comparison"
+          title={copy.page.annualTargetScenarioComparison}
           info="These rows compare how to satisfy the same annual KRW sale target across the planning horizon. They do not model whether Korea or the US return is filed first within the same year."
           className="mb-5"
           accent
@@ -358,7 +365,7 @@ export default async function TaxPlanningPage({
           </div>
         </Card>
       ) : (
-        <Card title="Annual target scenario comparison" className="mb-5">
+        <Card title={copy.page.annualTargetScenarioComparison} className="mb-5">
           <div className="grid gap-3 md:grid-cols-[1fr_18rem]">
             <div className="text-[13px] leading-relaxed text-ink-2">
               This comparison is hidden until an annual test amount is entered. Without a repeated yearly sale amount, labels like lowest tax or same tax are not decision-grade because the planner has not been asked to satisfy a concrete sale range.
@@ -379,7 +386,7 @@ export default async function TaxPlanningPage({
       )}
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <Card title="Selected single-year tax split" info="This is the tax estimate for the currently selected lot sequence, not the full portfolio. Federal and California amounts are incremental tax above projected wage income.">
+        <Card title={copy.page.selectedSingleYearTaxSplit} info="This is the tax estimate for the currently selected lot sequence, not the full portfolio. Federal and California amounts are incremental tax above projected wage income.">
           <div className="space-y-2 text-[12px] text-ink-2">
             <div className="flex items-center justify-between gap-3"><span>Federal short-term</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.usFederalShortTermTaxKrw)}</span></div>
             <div className="flex items-center justify-between gap-3"><span>Federal long-term</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.usFederalLongTermTaxKrw)}</span></div>
@@ -395,7 +402,7 @@ export default async function TaxPlanningPage({
           </div>
         </Card>
 
-        <Card title="Warnings" accent={plan.summary.warnings.length + operational.staleItems.length > 0}>
+        <Card title={copy.page.warnings} accent={plan.summary.warnings.length + operational.staleItems.length > 0}>
           {plan.summary.warnings.length === 0 && operational.staleItems.length === 0 ? (
             <EmptyState ok>No planner warnings</EmptyState>
           ) : (
@@ -409,12 +416,12 @@ export default async function TaxPlanningPage({
         </Card>
       </div>
 
-      <Card title="Recommended sale-lot sequence" className="mb-5" accent>
-        <CandidateTable rows={plan.recommended} />
+      <Card title={copy.page.recommendedSaleLotSequence} className="mb-5" accent>
+        <CandidateTable rows={plan.recommended} copy={copy} />
       </Card>
 
-      <Card title="All open lot candidates">
-        <CandidateTable rows={plan.candidates.slice(0, 80)} />
+      <Card title={copy.page.allOpenLotCandidates}>
+        <CandidateTable rows={plan.candidates.slice(0, 80)} copy={copy} />
       </Card>
     </>
   )
