@@ -1,6 +1,5 @@
 import { Badge, Card, EmptyState, InfoTooltip, MetricField, marketTone } from '@/components/ui'
 import { fmtKrw, fmtNumber } from '@/lib/format'
-import { GLOSSARY } from '@/lib/glossary'
 import {
   buildTaxPlan,
   summarizeTaxCandidates,
@@ -8,6 +7,7 @@ import {
   type TaxPlanningLot,
 } from '@/lib/tax-planning'
 import { scenarioFromTaxYearProfile, type FilingScenario, type TaxPolicy, type TaxYearProfile } from '@/lib/tax-policy'
+import type { TaxPlanningCopy } from './copy'
 import { marketAmount, pct, sameKrw, signedKrw } from './view-utils'
 
 type OpportunityRow = {
@@ -158,7 +158,7 @@ function groupOpportunityRows(rows: OpportunityRow[]): OpportunityGroup[] {
   return groups
 }
 
-function buildTakeaways(rows: OpportunityRow[], policy: TaxPolicy, assumptionsAreExample: boolean): OpportunityTakeaway[] {
+function buildTakeaways(rows: OpportunityRow[], policy: TaxPolicy, assumptionsAreExample: boolean, copy: TaxPlanningCopy): OpportunityTakeaway[] {
   const groups = groupOpportunityRows(rows)
   const takeaways: OpportunityTakeaway[] = []
   const usGroups = groups.filter((group) => group.market === 'US')
@@ -172,22 +172,22 @@ function buildTakeaways(rows: OpportunityRow[], policy: TaxPolicy, assumptionsAr
     )
     if (afterCreditDifference > 0) {
       takeaways.push({
-        label: 'Timing signal',
-        title: `Deferring optional US-market gains may reduce tax by ${fmtKrw(afterCreditDifference)}`,
-        body: `${highestKrTax.yearLabel} has ${fmtKrw(highestKrTax.krTaxIfAllSoldKrw)} of gross KR tax and ${fmtKrw(highestKrTax.estimatedCrossBorderTaxCreditKrw)} of estimated cross-border credit. The remaining KR increment is ${fmtKrw(highestKrTax.incrementalKrTaxAfterCreditKrw)}.`,
-        action: `Compare executing optional gains in ${lowestKrTax.yearLabel}, after confirming the credit limitation and source treatment.`,
-        caveat: `The estimate uses only modeled US federal tax as the credit pool and excludes California and NIIT from that pool. Final creditability, FX, and Form 1116/Korean filing treatment require review.${assumptionsAreExample ? ' The deduction and rate are example defaults.' : ''}`,
-        metric: `${fmtKrw(afterCreditDifference)} after credit`,
+        label: copy.opportunity.timingSignal,
+        title: copy.opportunity.timingSignalTitle(fmtKrw(afterCreditDifference)),
+        body: copy.opportunity.timingSignalBody(highestKrTax.yearLabel, fmtKrw(highestKrTax.krTaxIfAllSoldKrw), fmtKrw(highestKrTax.estimatedCrossBorderTaxCreditKrw), fmtKrw(highestKrTax.incrementalKrTaxAfterCreditKrw)),
+        action: copy.opportunity.timingSignalAction(lowestKrTax.yearLabel),
+        caveat: copy.opportunity.timingSignalCaveat(assumptionsAreExample),
+        metric: copy.opportunity.afterCreditMetric(fmtKrw(afterCreditDifference)),
         tone: 'success',
       })
     } else {
       takeaways.push({
-        label: 'Filing-profile only',
-        title: 'The filing-profile change alone shows ₩0 saving',
-        body: `${highestKrTax.yearLabel} gross KR tax is ${fmtKrw(highestKrTax.krTaxIfAllSoldKrw)}, but the estimated credit is ${fmtKrw(highestKrTax.estimatedCrossBorderTaxCreditKrw)}. That leaves ${fmtKrw(highestKrTax.incrementalKrTaxAfterCreditKrw)} of additional KR tax and ${fmtKrw(highestKrTax.combinedTaxAfterCreditsKrw)} combined tax, the same modeled total as ${lowestKrTax.yearLabel}.`,
-        action: 'Do not treat this as a sell-now signal. A real timing decision must also roll each lot forward from short-term to long-term and model future prices and FX.',
-        caveat: `This static comparison freezes today's short/long buckets in every year. By 2028, current short-term lots may become long-term and reduce US federal tax, which can also change the Korea credit ceiling. US-listed gains are treated as US-source; California and NIIT are excluded from the credit pool.${assumptionsAreExample ? ' The rates are example defaults.' : ''}`,
-        metric: `${fmtKrw(afterCreditDifference)} modeled saving`,
+        label: copy.opportunity.filingProfileOnly,
+        title: copy.opportunity.filingProfileOnlyTitle,
+        body: copy.opportunity.filingProfileOnlyBody(highestKrTax.yearLabel, fmtKrw(highestKrTax.krTaxIfAllSoldKrw), fmtKrw(highestKrTax.estimatedCrossBorderTaxCreditKrw), fmtKrw(highestKrTax.incrementalKrTaxAfterCreditKrw), fmtKrw(highestKrTax.combinedTaxAfterCreditsKrw), lowestKrTax.yearLabel),
+        action: copy.opportunity.filingProfileOnlyAction,
+        caveat: copy.opportunity.filingProfileOnlyCaveat(assumptionsAreExample),
+        metric: copy.opportunity.modeledSavingMetric(fmtKrw(afterCreditDifference)),
         tone: 'info',
       })
     }
@@ -206,24 +206,24 @@ function buildTakeaways(rows: OpportunityRow[], policy: TaxPolicy, assumptionsAr
       Number(policy.jurisdictions.find((item) => item.code === 'US')?.manualAssumptions.netInvestmentIncomeTaxRatePct ?? 0)
     const screeningTaxImpactKrw = pairableShortGainKrw * (shortRatePct / 100)
     takeaways.push({
-      label: 'Potential pairing',
-      title: 'Pair KR loss lots with US short-term gains in the same US tax year',
-      body: `The current screen shows ${fmtKrw(krLoss.shortLossHarvestKrw)} of KR short-term unrealized losses and ${fmtKrw(usGain.netShortGainKrw)} of net US-market short-term gains. A screening match of up to ${fmtKrw(pairableShortGainKrw)} could reduce the modeled US short-term gain.`,
-      action: 'When a US short-term gain sale is planned, review enough KR short-term loss lots in that same US tax year before choosing the exact tickers.',
-      caveat: `The screening tax effect is up to ${fmtKrw(screeningTaxImpactKrw)} at the current ${fmtNumber(shortRatePct, 2)}% assumption. A KRW loss is not automatically the US tax loss: USD tax basis, transaction-date FX, account eligibility, wash-sale rules, and other capital activity must be verified.`,
-      metric: `${fmtKrw(pairableShortGainKrw)} gain to screen`,
+      label: copy.opportunity.potentialPairing,
+      title: copy.opportunity.potentialPairingTitle,
+      body: copy.opportunity.potentialPairingBody(fmtKrw(krLoss.shortLossHarvestKrw), fmtKrw(usGain.netShortGainKrw), fmtKrw(pairableShortGainKrw)),
+      action: copy.opportunity.potentialPairingAction,
+      caveat: copy.opportunity.potentialPairingCaveat(fmtKrw(screeningTaxImpactKrw), fmtNumber(shortRatePct, 2)),
+      metric: copy.opportunity.gainToScreenMetric(fmtKrw(pairableShortGainKrw)),
       tone: 'info',
     })
   }
 
   if (krLoss && krLoss.lossLotProceedsKrw > 0) {
     takeaways.push({
-      label: 'Meaning of the number',
-      title: `${fmtKrw(krLoss.lossLotProceedsKrw)} is loss-lot proceeds, not a tax-free allowance`,
-      body: `Selling the currently identified KR loss lots would produce about ${fmtKrw(krLoss.lossLotProceedsKrw)} of cash and realize about ${fmtKrw(krLoss.lossHarvestKrw)} of loss at today's values. Profitable KR lots are not included in that proceeds number.`,
-      action: 'Use the loss amount as offset inventory and the proceeds amount only for liquidity planning.',
-      caveat: 'US tax can still apply to profitable Korea-listed stock sales because US citizens and residents generally report worldwide income.',
-      metric: `${fmtKrw(krLoss.lossHarvestKrw)} loss inventory`,
+      label: copy.opportunity.meaningOfNumber,
+      title: copy.opportunity.meaningOfNumberTitle(fmtKrw(krLoss.lossLotProceedsKrw)),
+      body: copy.opportunity.meaningOfNumberBody(fmtKrw(krLoss.lossLotProceedsKrw), fmtKrw(krLoss.lossHarvestKrw)),
+      action: copy.opportunity.meaningOfNumberAction,
+      caveat: copy.opportunity.meaningOfNumberCaveat,
+      metric: copy.opportunity.lossInventoryMetric(fmtKrw(krLoss.lossHarvestKrw)),
       tone: 'warning',
     })
   }
@@ -237,6 +237,7 @@ export function DecisionSummary({
   opportunities,
   inputIssueCount,
   openLotCount,
+  copy,
 }: {
   hasPlanningTarget: boolean
   tiedTax: boolean
@@ -244,70 +245,71 @@ export function DecisionSummary({
   opportunities: ReturnType<typeof opportunitySummary>
   inputIssueCount: number
   openLotCount: number
+  copy: TaxPlanningCopy
 }) {
   const title = !hasPlanningTarget
-    ? 'Review timing signals before choosing sales'
+    ? copy.opportunity.reviewTimingSignals
     : tiedTax
-      ? 'No tax difference across timing choices'
-      : `Current lowest-tax path: ${bestScenario?.label ?? 'n/a'}`
+      ? copy.opportunity.noTaxDifference
+      : copy.opportunity.currentLowestTaxPath(bestScenario?.label ?? 'n/a')
   const body = !hasPlanningTarget
-    ? 'The opportunity map separates gross timing differences, loss-pairing candidates, and jurisdiction estimates. Use those signals to choose a plausible annual range before testing exact sale amounts.'
+    ? copy.opportunity.noPlanningTargetBody
     : tiedTax
-      ? 'Under the current assumptions, changing the market order does not change estimated tax. Focus on cash needs, exposure, and data issues before reading the lot table.'
-      : 'Use the yearly action plan first. The lot table below is only the execution detail behind the selected market timing path.'
+      ? copy.opportunity.tiedTaxBody
+      : copy.opportunity.recommendationBody
 
   return (
-    <Card title="Current decision" className="mb-5" accent>
+    <Card title={copy.opportunity.currentDecision} className="mb-5" accent>
       <div className="grid gap-4 xl:grid-cols-[1fr_26rem]">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={!hasPlanningTarget ? 'warning' : tiedTax ? 'neutral' : 'success'}>
-              {!hasPlanningTarget ? 'Explore' : tiedTax ? 'Tie' : 'Recommendation'}
+              {!hasPlanningTarget ? copy.opportunity.explore : tiedTax ? copy.opportunity.tie : copy.opportunity.recommendation}
             </Badge>
             <h2 className="text-[22px] font-medium leading-tight tracking-tight text-ink">{title}</h2>
           </div>
           <p className="mt-2 max-w-[56rem] text-[13px] leading-relaxed text-ink-2">{body}</p>
           <div className="mt-4 grid gap-2 md:grid-cols-3">
             <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-              <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">Step 1</div>
-              <div className="mt-1 text-[12px] text-ink">Find timing signals and loss inventory</div>
+              <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.step1}</div>
+              <div className="mt-1 text-[12px] text-ink">{copy.opportunity.step1Body}</div>
             </div>
             <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-              <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">Step 2</div>
-              <div className="mt-1 text-[12px] text-ink">Pick a tentative annual range</div>
+              <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.step2}</div>
+              <div className="mt-1 text-[12px] text-ink">{copy.opportunity.step2Body}</div>
             </div>
             <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-              <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">Step 3</div>
-              <div className="mt-1 text-[12px] text-ink">Test that range against scenarios</div>
+              <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.step3}</div>
+              <div className="mt-1 text-[12px] text-ink">{copy.opportunity.step3Body}</div>
             </div>
           </div>
         </div>
         <div className="grid gap-3 rounded-md border border-line-subtle bg-surface p-3 sm:grid-cols-2">
           <MetricField
-            label="Open Lots"
+            label={copy.opportunity.openLots}
             value={fmtNumber(openLotCount)}
-            hint="Available tax-lot rows"
+            hint={copy.opportunity.openLotsHint}
             valueClassName="text-[18px]"
           />
           <MetricField
-            label="Input Issues"
+            label={copy.opportunity.inputIssues}
             value={fmtNumber(inputIssueCount)}
-            info={GLOSSARY.inputIssues.description}
-            hint="Items to resolve before relying on output"
+            info={copy.opportunity.inputIssuesInfo}
+            hint={copy.opportunity.inputIssuesHint}
             tone={inputIssueCount ? 'warning' : 'success'}
             valueClassName="text-[18px]"
           />
           <MetricField
-            label={hasPlanningTarget ? 'Annual Test' : 'Loss-Lot Proceeds'}
+            label={hasPlanningTarget ? copy.opportunity.annualTest : copy.opportunity.lossLotProceeds}
             value={hasPlanningTarget ? fmtKrw(bestScenario?.years[0]?.targetCashKrw ?? 0) : fmtKrw(opportunities.lossLotProceedsKrw)}
-            hint={!hasPlanningTarget && opportunities.bestLoss ? `${opportunities.bestLoss.year} ${opportunities.bestLoss.market}` : 'Scenario input amount'}
+            hint={!hasPlanningTarget && opportunities.bestLoss ? `${opportunities.bestLoss.year} ${opportunities.bestLoss.market}` : copy.opportunity.scenarioInputAmount}
             tone={hasPlanningTarget ? 'neutral' : 'success'}
             valueClassName="text-[18px]"
           />
           <MetricField
-            label={hasPlanningTarget ? 'Est. Tax' : 'Loss Harvest'}
+            label={hasPlanningTarget ? copy.opportunity.estimatedTax : copy.opportunity.lossHarvest}
             value={hasPlanningTarget ? fmtKrw(bestScenario?.summary.taxKrw ?? 0) : fmtKrw(opportunities.lossHarvestKrw)}
-            hint={hasPlanningTarget ? pct(bestScenario?.summary.effectiveTaxRatePct) : opportunities.bestLoss ? `${opportunities.bestLoss.year} ${opportunities.bestLoss.market}` : 'Modeled loss inventory'}
+            hint={hasPlanningTarget ? pct(bestScenario?.summary.effectiveTaxRatePct) : opportunities.bestLoss ? `${opportunities.bestLoss.year} ${opportunities.bestLoss.market}` : copy.opportunity.modeledLossInventory}
             tone={!hasPlanningTarget ? 'info' : (bestScenario?.summary.taxKrw ?? 0) > 0 ? 'warning' : 'success'}
             valueClassName="text-[18px]"
           />
@@ -325,6 +327,7 @@ export function PlanningMap({
   coverage,
   policy,
   assumptionsAreExample,
+  copy,
 }: {
   scenario: MultiYearTaxScenario | null
   hasPlanningTarget: boolean
@@ -333,29 +336,30 @@ export function PlanningMap({
   coverage: OpportunityCoverage
   policy: TaxPolicy
   assumptionsAreExample: boolean
+  copy: TaxPlanningCopy
 }) {
   return (
     <Card
-      title={hasPlanningTarget ? 'Year-by-year action plan' : 'Opportunity map'}
-      info={hasPlanningTarget ? 'This is the decision layer: which market to realize in each tax year. Specific lots are shown later as execution detail.' : 'This exploration layer separates timing signals, loss inventory, and jurisdiction-level tax estimates before you commit to a target amount.'}
+      title={hasPlanningTarget ? copy.opportunity.actionPlanTitle : copy.opportunity.opportunityMapTitle}
+      info={hasPlanningTarget ? copy.opportunity.actionPlanInfo : copy.opportunity.opportunityMapInfo}
       className="mb-5"
       accent
       action={hasPlanningTarget && scenario ? <Badge tone="info">{scenario.label}</Badge> : undefined}
     >
       {!hasPlanningTarget || !scenario ? (
-        <OpportunityTable rows={opportunityRows} coverage={coverage} policy={policy} assumptionsAreExample={assumptionsAreExample} />
+        <OpportunityTable rows={opportunityRows} coverage={coverage} policy={policy} assumptionsAreExample={assumptionsAreExample} copy={copy} />
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-[12px]">
             <thead className="text-[10px] uppercase tracking-[0.08em] text-ink-3">
               <tr>
-                <th className="pb-2 pr-4 font-medium">Year</th>
-                <th className="pb-2 pr-4 font-medium">Filing profile</th>
-                <th className="pb-2 pr-4 text-right font-medium">Sell KR market</th>
-                <th className="pb-2 pr-4 text-right font-medium">Sell US market</th>
-                <th className="pb-2 pr-4 text-right font-medium">Target</th>
-                <th className="pb-2 pr-4 text-right font-medium">Est. tax</th>
-                <th className="pb-2 pr-4 font-medium">Readout</th>
+                <th className="pb-2 pr-4 font-medium">{copy.opportunity.year}</th>
+                <th className="pb-2 pr-4 font-medium">{copy.opportunity.filingProfile}</th>
+                <th className="pb-2 pr-4 text-right font-medium">{copy.opportunity.sellKrMarket}</th>
+                <th className="pb-2 pr-4 text-right font-medium">{copy.opportunity.sellUsMarket}</th>
+                <th className="pb-2 pr-4 text-right font-medium">{copy.opportunity.target}</th>
+                <th className="pb-2 pr-4 text-right font-medium">{copy.opportunity.estimatedTax}</th>
+                <th className="pb-2 pr-4 font-medium">{copy.opportunity.readout}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line-subtle">
@@ -363,12 +367,12 @@ export function PlanningMap({
                 const krAmount = marketAmount(year, 'KR')
                 const usAmount = marketAmount(year, 'US')
                 const readout = krAmount > usAmount
-                  ? 'Mostly Korea-listed sales'
+                  ? copy.opportunity.mostlyKrSales
                   : usAmount > krAmount
-                    ? 'Mostly US-listed sales'
+                    ? copy.opportunity.mostlyUsSales
                     : krAmount + usAmount > 0
-                      ? 'Mixed market sales'
-                      : 'No planned sale'
+                      ? copy.opportunity.mixedMarketSales
+                      : copy.opportunity.noPlannedSale
                 return (
                   <tr key={year.year}>
                     <td className="py-3 pr-4 font-mono text-ink">{year.year}</td>
@@ -394,35 +398,37 @@ function OpportunityTable({
   coverage,
   policy,
   assumptionsAreExample,
+  copy,
 }: {
   rows: OpportunityRow[]
   coverage: OpportunityCoverage
   policy: TaxPolicy
   assumptionsAreExample: boolean
+  copy: TaxPlanningCopy
 }) {
-  if (rows.length === 0) return <EmptyState>No planning opportunities from current tax lots</EmptyState>
+  if (rows.length === 0) return <EmptyState>{copy.opportunity.noPlanningOpportunities}</EmptyState>
   const groups = groupOpportunityRows(rows)
-  const takeaways = buildTakeaways(rows, policy, assumptionsAreExample)
+  const takeaways = buildTakeaways(rows, policy, assumptionsAreExample, copy)
   return (
     <>
       <div className="mb-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] leading-relaxed text-ink-3">
-        This is a sell-all stress test for every currently priced open tax lot with an acquisition record. It is not quite the full holdings balance: positions without complete lot allocation are excluded from tax-term analysis. Each future year currently reuses today&apos;s price, FX, and short/long classification, so the table isolates filing-profile changes rather than forecasting an actual future sale. Gross country tax, estimated cross-border credit, and after-credit tax are shown separately.
+        {copy.opportunity.stressTestNote}
       </div>
       <div className="mb-4 grid overflow-hidden rounded-md border border-line-subtle bg-card sm:grid-cols-2 xl:grid-cols-4">
         <div className="border-b border-line-subtle px-3 py-2 sm:border-r xl:border-b-0">
-          <div className="text-[10px] uppercase tracking-[0.08em] text-ink-3">Full holdings unrealized G/L</div>
+          <div className="text-[10px] uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.fullHoldingsGl}</div>
           <div className="mt-1 text-[14px] font-medium tabular-nums text-ink">{fmtKrw(coverage.holdingsUnrealizedGainKrw)}</div>
         </div>
         <div className="border-b border-line-subtle px-3 py-2 xl:border-b-0 xl:border-r">
-          <div className="text-[10px] uppercase tracking-[0.08em] text-ink-3">Tax-lot modeled G/L</div>
+          <div className="text-[10px] uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.taxLotModeledGl}</div>
           <div className="mt-1 text-[14px] font-medium tabular-nums text-ink">{fmtKrw(coverage.modeledGainKrw)}</div>
         </div>
         <div className="border-b border-line-subtle px-3 py-2 sm:border-b-0 sm:border-r">
-          <div className="text-[10px] uppercase tracking-[0.08em] text-ink-3">Unallocated holding value</div>
+          <div className="text-[10px] uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.unallocatedHoldingValue}</div>
           <div className="mt-1 text-[14px] font-medium tabular-nums text-warning">{fmtKrw(coverage.unallocatedMarketValueKrw)}</div>
         </div>
         <div className="px-3 py-2">
-          <div className="text-[10px] uppercase tracking-[0.08em] text-ink-3">Unmodeled G/L difference</div>
+          <div className="text-[10px] uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.unmodeledGlDifference}</div>
           <div className="mt-1 text-[14px] font-medium tabular-nums text-warning">{fmtKrw(coverage.unmodeledGainKrw)}</div>
         </div>
       </div>
@@ -437,7 +443,7 @@ function OpportunityTable({
               <div className="mt-2 text-[13px] font-medium leading-tight text-ink">{takeaway.title}</div>
               <div className="mt-1 text-[11px] leading-relaxed text-ink-2">{takeaway.body}</div>
               <div className="mt-3 border-t border-line-subtle pt-2">
-                <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">What to consider</div>
+                <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.whatToConsider}</div>
                 <div className="mt-1 text-[11px] leading-relaxed text-ink">{takeaway.action}</div>
               </div>
               <div className="mt-auto pt-3 text-[10px] leading-relaxed text-ink-3">{takeaway.caveat}</div>
@@ -449,55 +455,55 @@ function OpportunityTable({
         <table className="min-w-full text-left text-[12px]">
           <thead className="text-[10px] uppercase tracking-[0.08em] text-ink-3">
             <tr>
-              <th className="pb-2 pr-4 font-medium">Years</th>
-              <th className="pb-2 pr-4 font-medium">Market</th>
+              <th className="pb-2 pr-4 font-medium">{copy.opportunity.years}</th>
+              <th className="pb-2 pr-4 font-medium">{copy.opportunity.market}</th>
               <th className="pb-2 pr-4 font-medium">
-                Tax profile
-                <InfoTooltip align="left">Which country tax calculations are enabled for that year. US_AND_KR means both US and Korea estimates are included.</InfoTooltip>
+                {copy.opportunity.taxProfile}
+                <InfoTooltip align="left">{copy.opportunity.taxProfileInfo}</InfoTooltip>
               </th>
               <th className="pb-2 pr-4 text-right font-medium">
-                Net G/L
-                <InfoTooltip align="right">Estimated gain or loss if every currently priced lot in this market were sold. This stress case is not a sale recommendation.</InfoTooltip>
+                {copy.opportunity.netGainLoss}
+                <InfoTooltip align="right">{copy.opportunity.netGainLossInfo}</InfoTooltip>
               </th>
               <th className="pb-2 pr-4 text-right font-medium">
-                Loss inventory
-                <InfoTooltip align="right">Unrealized loss in the loss lots. The related sale proceeds are shown in the row detail; they are not a tax-free allowance.</InfoTooltip>
+                {copy.opportunity.lossInventory}
+                <InfoTooltip align="right">{copy.opportunity.lossInventoryInfo}</InfoTooltip>
               </th>
               <th className="pb-2 pr-4 text-right font-medium">
-                US estimate
-                <InfoTooltip align="right">US planning estimate after short-term and long-term netting. It uses KRW gains as a proxy; filing requires USD basis and transaction-date FX.</InfoTooltip>
+                {copy.opportunity.usEstimate}
+                <InfoTooltip align="right">{copy.opportunity.usEstimateInfo}</InfoTooltip>
               </th>
               <th className="pb-2 pr-4 text-right font-medium">
-                KR estimate
-                <InfoTooltip align="right">Korea planning estimate after applicable loss netting and the configured annual deduction. Domestic listed-stock taxability follows Tax Settings.</InfoTooltip>
+                {copy.opportunity.krEstimate}
+                <InfoTooltip align="right">{copy.opportunity.krEstimateInfo}</InfoTooltip>
               </th>
               <th className="pb-2 pr-4 text-right font-medium">
-                Before credits
-                <InfoTooltip align="right">US plus Korea estimates before any foreign tax credit. Do not interpret this as final combined cash tax.</InfoTooltip>
+                {copy.opportunity.beforeCredits}
+                <InfoTooltip align="right">{copy.opportunity.beforeCreditsInfo}</InfoTooltip>
               </th>
               <th className="pb-2 pr-4 text-right font-medium">
-                Est. credit
-                <InfoTooltip align="right">Estimated Korea credit for modeled US federal tax attributable to US-market gains, capped at gross KR tax. California and NIIT are excluded from this credit pool.</InfoTooltip>
+                {copy.opportunity.estimatedCredit}
+                <InfoTooltip align="right">{copy.opportunity.estimatedCreditInfo}</InfoTooltip>
               </th>
               <th className="pb-2 pr-4 text-right font-medium">
-                After credit
-                <InfoTooltip align="right">US estimate plus KR gross tax minus the estimated cross-border credit. This is still a planning estimate, not a filed credit calculation.</InfoTooltip>
+                {copy.opportunity.afterCredit}
+                <InfoTooltip align="right">{copy.opportunity.afterCreditInfo}</InfoTooltip>
               </th>
               <th className="pb-2 pr-4 font-medium">
-                Why it matters
-                <InfoTooltip align="left">The specific timing or jurisdiction implication to review before selecting individual lots.</InfoTooltip>
+                {copy.opportunity.whyItMatters}
+                <InfoTooltip align="left">{copy.opportunity.whyItMattersInfo}</InfoTooltip>
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line-subtle">
             {groups.map((row) => {
               const readout = row.market === 'US' && row.krTaxIfAllSoldKrw > 0
-                ? `KR gross ${fmtKrw(row.krTaxIfAllSoldKrw)} - estimated credit ${fmtKrw(row.estimatedCrossBorderTaxCreditKrw)} = ${fmtKrw(row.incrementalKrTaxAfterCreditKrw)} incremental KR tax.`
+                ? copy.opportunity.rowReadoutUsKr(fmtKrw(row.krTaxIfAllSoldKrw), fmtKrw(row.estimatedCrossBorderTaxCreditKrw), fmtKrw(row.incrementalKrTaxAfterCreditKrw))
                 : row.market === 'US'
-                  ? 'KR tax calc is off in this profile; the US estimate remains.'
+                  ? copy.opportunity.rowReadoutUsOnly
                   : row.usTaxIfAllSoldKrw > 0
-                    ? 'US estimate still applies to Korea-listed gains under the worldwide-income assumption.'
-                    : 'No positive aggregate tax is modeled for this row.'
+                    ? copy.opportunity.rowReadoutKrUs
+                    : copy.opportunity.rowReadoutNone
               return (
                 <tr key={`${row.yearLabel}-${row.market}-${row.filingScenario}`}>
                   <td className="py-3 pr-4 font-mono text-ink">{row.yearLabel}</td>
@@ -513,7 +519,7 @@ function OpportunityTable({
                   <td className="py-3 pr-4 text-ink-2">
                     <div>{readout}</div>
                     <div className="mt-0.5 text-[11px] text-ink-3">
-                      {fmtNumber(row.candidateCount)} priced lots · loss-lot proceeds {fmtKrw(row.lossLotProceedsKrw)} · all-lot proceeds {fmtKrw(row.totalProceedsKrw)}
+                      {copy.opportunity.rowDetail(fmtNumber(row.candidateCount), fmtKrw(row.lossLotProceedsKrw), fmtKrw(row.totalProceedsKrw))}
                     </div>
                   </td>
                 </tr>

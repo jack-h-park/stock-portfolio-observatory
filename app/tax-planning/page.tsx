@@ -241,6 +241,7 @@ export default async function TaxPlanningPage({
             opportunities={opportunities}
             inputIssueCount={plan.summary.missingValuationCount + operational.staleItems.length}
             openLotCount={plan.summary.candidateCount}
+            copy={copy}
           />
           <PlanningMap
             scenario={multiYearPlan.bestScenario}
@@ -250,6 +251,7 @@ export default async function TaxPlanningPage({
             coverage={opportunityCoverage}
             policy={taxPolicy.policy}
             assumptionsAreExample={taxPolicy.source === 'example'}
+            copy={copy}
           />
         </div>
       </details>
@@ -380,7 +382,7 @@ export default async function TaxPlanningPage({
       {hasPlanningTarget && (
         <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
         {multiYearPlan.scenarios.slice(0, 4).map((scenarioRow) => (
-          <ScenarioTimeline key={scenarioRow.key} scenario={scenarioRow} />
+          <ScenarioTimeline key={scenarioRow.key} scenario={scenarioRow} copy={copy} />
         ))}
         </div>
       )}
@@ -427,7 +429,7 @@ export default async function TaxPlanningPage({
   )
 }
 
-function ScenarioTimeline({ scenario }: { scenario: MultiYearTaxScenario }) {
+function ScenarioTimeline({ scenario, copy }: { scenario: MultiYearTaxScenario; copy: ReturnType<typeof getTaxPlanningCopy> }) {
   return (
     <Card title={scenario.label} action={<Badge tone={scenario.summary.taxKrw > 0 ? 'warning' : 'success'}>{fmtKrw(scenario.summary.taxKrw)}</Badge>}>
       <div className="space-y-3">
@@ -445,7 +447,7 @@ function ScenarioTimeline({ scenario }: { scenario: MultiYearTaxScenario }) {
             </div>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
               {year.markets.length === 0 ? (
-                <div className="text-[11px] text-ink-3">No allocated sale lots</div>
+                <div className="text-[11px] text-ink-3">{copy.opportunity.noAllocatedSaleLots}</div>
               ) : (
                 year.markets.map((market) => (
                   <div key={market.market} className="rounded-sm border border-line bg-card px-2.5 py-2 text-[11px]">
@@ -454,7 +456,7 @@ function ScenarioTimeline({ scenario }: { scenario: MultiYearTaxScenario }) {
                       <span className="tabular-nums text-ink">{fmtKrw(market.proceedsKrw)}</span>
                     </div>
                     <div className="mt-1 flex items-center justify-between gap-2 text-ink-3">
-                      <span>Tax</span>
+                      <span>{copy.opportunity.tax}</span>
                       <span className="tabular-nums">{fmtKrw(market.taxKrw)}</span>
                     </div>
                   </div>
