@@ -551,7 +551,34 @@ export function getOverview() {
   try {
     const totals = conn
       .prepare(
-        `select
+        `with holding_terms as (
+          select
+            h.*,
+            coalesce(sum(l.open_quantity), 0) as lot_term_qty,
+            coalesce(sum(case when l.tax_term = 'Long-term' then l.open_quantity else 0 end), 0) as lot_long_term_qty,
+            coalesce(sum(case when l.tax_term = 'Short-term' then l.open_quantity else 0 end), 0) as lot_short_term_qty
+          from holdings h
+          left join tax_lots l
+            on l.market = h.market
+           and l.account = h.account
+           and l.ticker = h.ticker
+          group by h.id
+        ), term_ready_holdings as (
+          select
+            *,
+            case
+              when coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0) > 0 then coalesce(long_term_qty, 0)
+              when lot_term_qty > 0 then lot_long_term_qty
+              else 0
+            end as term_long_qty,
+            case
+              when coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0) > 0 then coalesce(short_term_qty, 0)
+              when lot_term_qty > 0 then lot_short_term_qty
+              else 0
+            end as term_short_qty
+          from holding_terms
+        )
+        select
           count(*) as holding_count,
           coalesce(sum(quantity), 0) as share_count,
           coalesce(sum(case when currency = 'KRW' then native_cost else 0 end), 0) as krw_cost,
@@ -582,44 +609,44 @@ export function getOverview() {
           coalesce(sum(case when market = 'CRYPTO' and base_market_value is not null then base_cost else 0 end), 0) as crypto_priced_base_cost,
           coalesce(sum(case when market = 'CRYPTO' then base_market_value else 0 end), 0) as crypto_base_market_value,
           coalesce(sum(case when market = 'CRYPTO' and base_market_value is not null then base_market_value - base_cost else 0 end), 0) as crypto_base_unrealized_gl,
-          coalesce(sum(long_term_qty), 0) as long_term_qty,
-          coalesce(sum(short_term_qty), 0) as short_term_qty,
+          coalesce(sum(term_long_qty), 0) as long_term_qty,
+          coalesce(sum(term_short_qty), 0) as short_term_qty,
           coalesce(sum(case
-            when coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0) > 0
+            when coalesce(term_long_qty, 0) + coalesce(term_short_qty, 0) > 0
             then coalesce(base_market_value, base_cost, 0)
             else 0
           end), 0) as term_classified_base_value,
           coalesce(sum(case
-            when coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0) > 0
-            then coalesce(base_market_value, base_cost, 0) * coalesce(long_term_qty, 0) / (coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0))
+            when coalesce(term_long_qty, 0) + coalesce(term_short_qty, 0) > 0
+            then coalesce(base_market_value, base_cost, 0) * coalesce(term_long_qty, 0) / (coalesce(term_long_qty, 0) + coalesce(term_short_qty, 0))
             else 0
           end), 0) as term_long_base_value,
           coalesce(sum(case
-            when coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0) > 0
-            then coalesce(base_market_value, base_cost, 0) * coalesce(short_term_qty, 0) / (coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0))
+            when coalesce(term_long_qty, 0) + coalesce(term_short_qty, 0) > 0
+            then coalesce(base_market_value, base_cost, 0) * coalesce(term_short_qty, 0) / (coalesce(term_long_qty, 0) + coalesce(term_short_qty, 0))
             else 0
           end), 0) as term_short_base_value,
           coalesce(sum(case
-            when coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0) = 0
+            when coalesce(term_long_qty, 0) + coalesce(term_short_qty, 0) = 0
             then coalesce(base_market_value, base_cost, 0)
             else 0
           end), 0) as term_unclassified_base_value,
           coalesce(sum(case
-            when market = 'KR' and coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0) > 0
-            then coalesce(base_market_value, base_cost, 0) * coalesce(short_term_qty, 0) / (coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0))
+            when market = 'KR' and coalesce(term_long_qty, 0) + coalesce(term_short_qty, 0) > 0
+            then coalesce(base_market_value, base_cost, 0) * coalesce(term_short_qty, 0) / (coalesce(term_long_qty, 0) + coalesce(term_short_qty, 0))
             else 0
           end), 0) as kr_term_short_base_value,
           coalesce(sum(case
-            when market = 'US' and coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0) > 0
-            then coalesce(base_market_value, base_cost, 0) * coalesce(short_term_qty, 0) / (coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0))
+            when market = 'US' and coalesce(term_long_qty, 0) + coalesce(term_short_qty, 0) > 0
+            then coalesce(base_market_value, base_cost, 0) * coalesce(term_short_qty, 0) / (coalesce(term_long_qty, 0) + coalesce(term_short_qty, 0))
             else 0
           end), 0) as us_term_short_base_value,
           coalesce(sum(case
-            when market = 'CRYPTO' and coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0) > 0
-            then coalesce(base_market_value, base_cost, 0) * coalesce(short_term_qty, 0) / (coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0))
+            when market = 'CRYPTO' and coalesce(term_long_qty, 0) + coalesce(term_short_qty, 0) > 0
+            then coalesce(base_market_value, base_cost, 0) * coalesce(term_short_qty, 0) / (coalesce(term_long_qty, 0) + coalesce(term_short_qty, 0))
             else 0
           end), 0) as crypto_term_short_base_value
-        from holdings`
+        from term_ready_holdings`
       )
       .get() as any
     const dividends = conn
