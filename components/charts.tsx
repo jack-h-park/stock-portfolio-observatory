@@ -22,6 +22,13 @@ const AXIS = { fontSize: 10, fill: 'var(--text-tertiary)' }
 // per-bar gradient). Used on time-series trends to carry the brand identity
 // without sacrificing readability. Categorical charts keep a single `color`.
 const BRAND_BARS = ['var(--brand-pink)', 'var(--brand-purple)', 'var(--brand-blue)', 'var(--brand-cyan)']
+const MARKET_BARS: Record<string, string> = {
+  KR: 'var(--accent-success)',
+  US: 'var(--accent-info)',
+  CRYPTO: 'var(--accent-warning)',
+  KRW: 'var(--accent-success)',
+  USD: 'var(--accent-info)',
+}
 
 export function TrendBarChart({
   data,
@@ -34,8 +41,11 @@ export function TrendBarChart({
   onBarSelect,
   xTickFormatter,
   xAxisInterval,
-  xAxisHeight,
+  xAxisHeight = 30,
   xTickAngle = 0,
+  barColorKey,
+  barColorMap = MARKET_BARS,
+  allowDecimals = false,
   yAxisPrefix = '',
   yAxisSuffix = '',
   yAxisLabel,
@@ -57,6 +67,9 @@ export function TrendBarChart({
   xAxisInterval?: number | 'preserveStart' | 'preserveEnd' | 'preserveStartEnd' | 'equidistantPreserveStart'
   xAxisHeight?: number
   xTickAngle?: number
+  barColorKey?: string
+  barColorMap?: Record<string, string>
+  allowDecimals?: boolean
   yAxisPrefix?: string
   yAxisSuffix?: string
   yAxisLabel?: string
@@ -64,9 +77,21 @@ export function TrendBarChart({
   const interactive = !!onBarSelect
   const hasSelection = selectedKey != null && selectedKey !== ''
   const formatAxisValue = (value: number) => `${yAxisPrefix}${value.toLocaleString()}${yAxisSuffix}`
+  const chartData = data.map((d) => {
+    const value = Number(d[yKey])
+    return { ...d, [yKey]: Number.isFinite(value) ? value : 0 }
+  })
+  const values = chartData.map((d) => Number(d[yKey])).filter(Number.isFinite)
+  const minValue = Math.min(0, ...values)
+  const maxValue = Math.max(0, ...values)
+  const domainPadding = Math.max(1, (maxValue - minValue) * 0.1)
+  const yDomain: [number, number] = [
+    Math.floor(minValue < 0 ? minValue - domainPadding : 0),
+    Math.ceil(maxValue + domainPadding),
+  ]
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
+      <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
         <XAxis
           dataKey={xKey}
@@ -83,7 +108,8 @@ export function TrendBarChart({
           tick={AXIS}
           tickLine={false}
           axisLine={false}
-          allowDecimals={false}
+          allowDecimals={allowDecimals}
+          domain={yDomain}
           tickFormatter={formatAxisValue}
           label={yAxisLabel ? { value: yAxisLabel, angle: -90, position: 'insideLeft', style: AXIS } : undefined}
         />
@@ -102,17 +128,19 @@ export function TrendBarChart({
           fill={color}
           radius={[3, 3, 0, 0]}
           maxBarSize={28}
+          minPointSize={2}
           cursor={interactive ? 'pointer' : undefined}
           onClick={interactive ? (entry: Record<string, unknown>) => onBarSelect!(String(entry[xKey])) : undefined}
         >
-          {data.map((d, i) => {
+          {chartData.map((d, i) => {
             const isSelected = hasSelection && String(d[xKey]) === selectedKey
             const dimmed = hasSelection && !isSelected
+            const mappedColor = barColorKey ? barColorMap[String(d[barColorKey])] : undefined
             // Selected bar: full opacity + a dark outline so it pops; others fade hard.
             return (
               <Cell
                 key={i}
-                fill={multicolor ? BRAND_BARS[i % BRAND_BARS.length] : color}
+                fill={mappedColor ?? (multicolor ? BRAND_BARS[i % BRAND_BARS.length] : color)}
                 fillOpacity={dimmed ? 0.25 : 1}
                 stroke={isSelected ? 'var(--text-primary)' : undefined}
                 strokeWidth={isSelected ? 1.5 : 0}

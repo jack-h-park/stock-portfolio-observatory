@@ -6,6 +6,9 @@ import { fmtMoney, fmtNumber } from '@/lib/format'
 
 export const dynamic = 'force-dynamic'
 
+const dividendChartAmount = (currency: string, amount: number) =>
+  currency === 'KRW' ? Number((amount / 1000).toFixed(1)) : Number(amount.toFixed(2))
+
 export default function DividendsPage() {
   const rows = getDividendByYear()
   const byCurrency = rows.reduce((m, r) => {
@@ -25,11 +28,13 @@ export default function DividendsPage() {
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card title="Annual dividend income">
           <TrendBarChart
-            data={rows.map((r) => ({ year: `${r.currency} ${r.year}`, amount: Math.round(r.currency === 'KRW' ? r.amount / 1000 : r.amount) }))}
+            data={rows.map((r) => ({ year: `${r.currency} ${r.year}`, currency: r.currency, amount: dividendChartAmount(r.currency, r.amount) }))}
             xKey="year"
             yKey="amount"
             height={300}
             color="var(--accent-success)"
+            barColorKey="currency"
+            allowDecimals
             yAxisLabel="KRW thousand / USD"
           />
           <p className="mt-2 text-[11px] text-ink-3">KR bars are KRW thousands; US bars are native USD.</p>

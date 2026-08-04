@@ -42,6 +42,12 @@ function trendRangeDays(days: number | 'ytd') {
 }
 
 const shortAxisLabel = (value: string) => value.length > 20 ? `${value.slice(0, 19)}...` : value
+const positionAxisLabel = (market: string, name: string, ticker: string) => {
+  if (market === 'KR') return shortAxisLabel(name || ticker)
+  return shortAxisLabel(ticker || name)
+}
+const dividendChartAmount = (currency: string, amount: number) =>
+  currency === 'KRW' ? Number((amount / 1000).toFixed(1)) : Number(amount.toFixed(2))
 
 const TREND_METRICS = [
   { key: 'market_value', label: 'Market value', color: 'var(--brand-blue)' },
@@ -378,7 +384,8 @@ export default async function OverviewPage({
   const topFiveShare = globalBase > 0 ? Math.round((topFiveBase / globalBase) * 100) : 0
   const largestPositions = top.slice(0, 5)
   const topHoldingChartData = top.map((r) => ({
-    name: shortAxisLabel(`${r.name} (${r.ticker})`),
+    name: positionAxisLabel(r.market, r.name, r.ticker),
+    market: r.market,
     value: Math.round((r.base_cost ?? 0) / 1_000_000),
   }))
   const marketBreakdown = [
@@ -725,10 +732,10 @@ export default async function OverviewPage({
             xKey="name"
             yKey="value"
             height={240}
-            multicolor
             xAxisInterval={0}
             xAxisHeight={52}
             xTickAngle={-16}
+            barColorKey="market"
             yAxisPrefix="₩"
             yAxisSuffix="M"
             yAxisLabel={copy.chartAxisKrw}
@@ -738,11 +745,13 @@ export default async function OverviewPage({
 
         <Card title={copy.dividendTrend}>
           <TrendBarChart
-            data={dividendYears.map((r) => ({ year: `${r.currency} ${r.year}`, amount: Math.round(r.currency === 'KRW' ? r.amount / 1000 : r.amount) }))}
+            data={dividendYears.map((r) => ({ year: `${r.currency} ${r.year}`, currency: r.currency, amount: dividendChartAmount(r.currency, r.amount) }))}
             xKey="year"
             yKey="amount"
             height={240}
             color="var(--accent-success)"
+            barColorKey="currency"
+            allowDecimals
             yAxisLabel={copy.dividendAxis}
           />
           <p className="mt-2 text-[11px] text-ink-3">{copy.dividendTrendNote}</p>
