@@ -147,11 +147,13 @@ const COPY = {
     concentration: 'Top Holding Concentration',
     concentrationInfo: 'Share of the total portfolio held by the top five positions, measured by cost basis.',
     concentrationHint: 'Cost-basis share of the top five holdings',
-    termMix: 'Holding-Period Mix',
-    termMixInfo: 'Splits quantity into long-term and short-term buckets for tax review.',
-    longTermShare: 'Long-term quantity share',
-    longTerm: 'Long term',
-    shortTerm: 'Short term',
+    termMix: 'Holding-Period Classification',
+    termMixInfo: 'Value-weighted tax-lot holding-period coverage. Positions with no long/short split are shown as unclassified; crypto is included when lot terms are present.',
+    termCoverage: 'classified by value',
+    shortTermExposure: 'Short-term exposure',
+    longTerm: 'Long-term value',
+    shortTerm: 'Short-term value',
+    unclassifiedTerm: 'Unclassified',
     marketValue: 'Market value',
     costBasis: 'Cost basis',
     gain: 'Gain',
@@ -247,11 +249,13 @@ const COPY = {
     concentration: '상위 종목 집중도',
     concentrationInfo: '취득원가 기준 상위 5개 종목이 전체 포트폴리오에서 차지하는 비율입니다.',
     concentrationHint: '상위 5개 종목의 취득원가 비중',
-    termMix: '보유기간 구성',
-    termMixInfo: '세금 계산 기준에 따라 장기 보유와 단기 보유 수량을 나눕니다.',
-    longTermShare: '장기 보유 수량 비중',
-    longTerm: '장기 보유',
-    shortTerm: '단기 보유',
+    termMix: '보유기간 분류',
+    termMixInfo: 'Tax lot의 장기/단기 분류가 있는 평가액 기준입니다. 장/단기 수량 분리가 없는 포지션은 미분류로 표시하며, 가상자산도 lot 기간 정보가 있으면 포함합니다.',
+    termCoverage: '평가액 기준 분류됨',
+    shortTermExposure: '단기 노출',
+    longTerm: '장기 평가액',
+    shortTerm: '단기 평가액',
+    unclassifiedTerm: '미분류',
     marketValue: '평가금액',
     costBasis: '취득원가',
     gain: '손익',
@@ -357,8 +361,19 @@ export default async function OverviewPage({
   const operationalIssues = operational.staleItems.length
   const fxLabel = usdKrw ? `USD/KRW ${fmtNumber(usdKrw.rate, 2)} (${usdKrw.as_of_date})` : null
 
-  const totalTerm = (overview.totals.long_term_qty ?? 0) + (overview.totals.short_term_qty ?? 0)
-  const longTermPct = totalTerm > 0 ? Math.round((overview.totals.long_term_qty / totalTerm) * 100) : 0
+  const termClassifiedValue = overview.totals.term_classified_base_value ?? 0
+  const termLongValue = overview.totals.term_long_base_value ?? 0
+  const termShortValue = overview.totals.term_short_base_value ?? 0
+  const termUnclassifiedValue = overview.totals.term_unclassified_base_value ?? 0
+  const termTotalValue = termClassifiedValue + termUnclassifiedValue
+  const termCoveragePct = termTotalValue > 0 ? Math.round((termClassifiedValue / termTotalValue) * 100) : 0
+  const shortTermExposurePct = termClassifiedValue > 0 ? Math.round((termShortValue / termClassifiedValue) * 100) : 0
+  const termSegmentWidth = (value: number) => (termTotalValue > 0 ? Math.max(value > 0 ? 1 : 0, (value / termTotalValue) * 100) : 0)
+  const termShortByMarket = [
+    { market: 'KR', label: copy.korea, value: overview.totals.kr_term_short_base_value ?? 0 },
+    { market: 'US', label: copy.us, value: overview.totals.us_term_short_base_value ?? 0 },
+    { market: 'CRYPTO', label: copy.crypto, value: overview.totals.crypto_term_short_base_value ?? 0 },
+  ]
   // Market-scoped, not currency-scoped: crypto holds KRW positions on Bithumb and
   // USD positions on Robinhood, so summing by currency would file each of them
   // under the KR or US card.
@@ -592,20 +607,37 @@ export default async function OverviewPage({
 
         <Card title={copy.termMix} info={copy.termMixInfo}>
           <div className="flex h-full min-h-[190px] flex-col justify-center">
-            <div className="text-[44px] font-medium leading-none tabular-nums text-ink">{longTermPct}%</div>
-            <div className="mt-1 text-[12px] text-ink-3">{copy.longTermShare}</div>
-            <div className="mt-5 h-2 overflow-hidden rounded-pill bg-surface">
-              <div className="h-full rounded-pill bg-success" style={{ width: `${longTermPct}%` }} />
+            <div className="text-[44px] font-medium leading-none tabular-nums text-ink">{termCoveragePct}%</div>
+            <div className="mt-1 text-[12px] text-ink-3">{copy.termCoverage} · {copy.shortTermExposure} {shortTermExposurePct}%</div>
+            <div className="mt-5 flex h-2 overflow-hidden rounded-pill bg-surface">
+              <div className="h-full bg-success" style={{ width: `${termSegmentWidth(termLongValue)}%` }} />
+              <div className="h-full bg-warning" style={{ width: `${termSegmentWidth(termShortValue)}%` }} />
+              <div className="h-full bg-line" style={{ width: `${termSegmentWidth(termUnclassifiedValue)}%` }} />
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-3 text-[12px]">
+            <div className="mt-3 grid grid-cols-3 gap-3 text-[12px]">
               <div>
                 <div className="text-ink-3">{copy.longTerm}</div>
-                <div className="font-medium tabular-nums text-ink">{fmtNumber(overview.totals.long_term_qty)}</div>
+                <div className="font-medium tabular-nums text-ink">{fmtKrw(termLongValue)}</div>
               </div>
               <div>
                 <div className="text-ink-3">{copy.shortTerm}</div>
-                <div className="font-medium tabular-nums text-ink">{fmtNumber(overview.totals.short_term_qty)}</div>
+                <div className="font-medium tabular-nums text-ink">{fmtKrw(termShortValue)}</div>
               </div>
+              <div>
+                <div className="text-ink-3">{copy.unclassifiedTerm}</div>
+                <div className="font-medium tabular-nums text-ink">{fmtKrw(termUnclassifiedValue)}</div>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-2 text-[12px]">
+              {termShortByMarket.map((row) => (
+                <div key={row.market} className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Badge tone={marketTone(row.market)}>{row.market}</Badge>
+                    <span className="truncate text-ink-3">{row.label}</span>
+                  </div>
+                  <span className="shrink-0 font-medium tabular-nums text-ink">{fmtKrw(row.value)}</span>
+                </div>
+              ))}
             </div>
           </div>
         </Card>

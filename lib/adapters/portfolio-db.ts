@@ -583,7 +583,42 @@ export function getOverview() {
           coalesce(sum(case when market = 'CRYPTO' then base_market_value else 0 end), 0) as crypto_base_market_value,
           coalesce(sum(case when market = 'CRYPTO' and base_market_value is not null then base_market_value - base_cost else 0 end), 0) as crypto_base_unrealized_gl,
           coalesce(sum(long_term_qty), 0) as long_term_qty,
-          coalesce(sum(short_term_qty), 0) as short_term_qty
+          coalesce(sum(short_term_qty), 0) as short_term_qty,
+          coalesce(sum(case
+            when coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0) > 0
+            then coalesce(base_market_value, base_cost, 0)
+            else 0
+          end), 0) as term_classified_base_value,
+          coalesce(sum(case
+            when coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0) > 0
+            then coalesce(base_market_value, base_cost, 0) * coalesce(long_term_qty, 0) / (coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0))
+            else 0
+          end), 0) as term_long_base_value,
+          coalesce(sum(case
+            when coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0) > 0
+            then coalesce(base_market_value, base_cost, 0) * coalesce(short_term_qty, 0) / (coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0))
+            else 0
+          end), 0) as term_short_base_value,
+          coalesce(sum(case
+            when coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0) = 0
+            then coalesce(base_market_value, base_cost, 0)
+            else 0
+          end), 0) as term_unclassified_base_value,
+          coalesce(sum(case
+            when market = 'KR' and coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0) > 0
+            then coalesce(base_market_value, base_cost, 0) * coalesce(short_term_qty, 0) / (coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0))
+            else 0
+          end), 0) as kr_term_short_base_value,
+          coalesce(sum(case
+            when market = 'US' and coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0) > 0
+            then coalesce(base_market_value, base_cost, 0) * coalesce(short_term_qty, 0) / (coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0))
+            else 0
+          end), 0) as us_term_short_base_value,
+          coalesce(sum(case
+            when market = 'CRYPTO' and coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0) > 0
+            then coalesce(base_market_value, base_cost, 0) * coalesce(short_term_qty, 0) / (coalesce(long_term_qty, 0) + coalesce(short_term_qty, 0))
+            else 0
+          end), 0) as crypto_term_short_base_value
         from holdings`
       )
       .get() as any
