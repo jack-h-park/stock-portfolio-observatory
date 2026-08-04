@@ -397,7 +397,7 @@ export default async function OverviewPage({
   const cryptoShare = globalValue > 0 ? Math.round((overview.totals.crypto_base_market_value / globalValue) * 100) : 0
   const topFiveBase = top.slice(0, 5).reduce((sum, r) => sum + (r.base_cost ?? 0), 0)
   const topFiveShare = globalBase > 0 ? Math.round((topFiveBase / globalBase) * 100) : 0
-  const largestPositions = top.slice(0, 5)
+  const largestPositions = top
   const topHoldingChartData = top.map((r) => ({
     name: positionAxisLabel(r.market, r.name, r.ticker),
     market: r.market,
