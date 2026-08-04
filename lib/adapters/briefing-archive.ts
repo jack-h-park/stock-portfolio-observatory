@@ -63,15 +63,32 @@ export type BriefingSessionMove = {
   priceTo: number
   quantity: number
   marketValue: number
+  /**
+   * Set when the price moved by exactly a split factor while the share count
+   * stood still — the shape of a corporate action the sheet has not caught up
+   * with. The briefing leaves such a move at full weight in the session P/L,
+   * because on that day nothing in the sheet can tell it from a real fall.
+   */
+  suspectedRestatement?: string
 }
 
-/** A share-count change between snapshots — a trade the sheet revealed. */
+/**
+ * A share-count change between snapshots — usually a trade the sheet revealed.
+ *
+ * `split` is NOT a trade: the briefing marks a count that moved while total cost
+ * stood still, which is a split, a bonus issue, or the sheet correcting itself.
+ * Rendering it with a trade verb states an acquisition that never happened, so
+ * it carries its own wording. `ratio`/`ratioLabel` are present only for `split`,
+ * and `ratioLabel` is null when the ratio is not a recognisable one.
+ */
 export type BriefingActivity = {
   ticker: string
-  kind: 'bought' | 'sold' | 'opened' | 'closed'
+  kind: 'bought' | 'sold' | 'opened' | 'closed' | 'split'
   quantityChange: number
   quantity: number
   cost: number
+  ratio?: number
+  ratioLabel?: string | null
 }
 
 /**

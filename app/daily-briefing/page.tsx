@@ -10,6 +10,7 @@ import {
   type BriefingPosition,
   type BriefingSessionMove,
 } from '@/lib/adapters/briefing-archive'
+import { activityBadge, activityWording, moverNote } from '@/lib/briefing-copy'
 import { fmtNumber, fmtQuantity } from '@/lib/format'
 import { GLOSSARY } from '@/lib/glossary'
 import { positionHref } from '@/lib/position-url'
@@ -104,7 +105,7 @@ function SessionMoverList({ movers, notes, direction, market }: { movers: Briefi
           </div>
           <div className="min-w-0">
             <p className="text-[12px] leading-relaxed text-ink-2">
-              {notes[m.ticker]?.why ?? 'No researched note for this session move.'}
+              {moverNote(m, notes)}
             </p>
             <div className="mt-0.5 text-[10px] tabular-nums text-ink-3">
               {priceOf(m.priceFrom, market)} → {priceOf(m.priceTo, market)}
@@ -116,8 +117,14 @@ function SessionMoverList({ movers, notes, direction, market }: { movers: Briefi
   )
 }
 
+// `split` is deliberately absent from both maps. It is not a trade, so it gets
+// neither a buy/sell tone nor a trade verb — the row below writes its own
+// wording, and the tone falls through to neutral. A verb here would put "Split
+// 3 shares" where "Bought 3 shares" used to be: the same false claim, reworded.
+// `split` is deliberately absent: it is not a trade, so it gets neither a
+// buy/sell tone nor a trade verb, and falls through to a neutral badge. The
+// wording lives in lib/briefing-copy.ts, where it can be tested.
 const TRADE_TONE: Record<string, Tone> = { bought: 'success', opened: 'success', sold: 'danger', closed: 'danger' }
-const TRADE_VERB: Record<string, string> = { bought: 'Bought', sold: 'Sold', opened: 'Opened', closed: 'Closed' }
 
 /** Section heading that separates the session band from the cumulative band. */
 function Band({ title, subtitle }: { title: string; subtitle: string }) {
@@ -362,12 +369,8 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                       <span className="w-20 shrink-0">
                         <TickerLink ticker={a.ticker} market={m} />
                       </span>
-                      <Badge tone={TRADE_TONE[a.kind] ?? 'neutral'}>{a.kind}</Badge>
-                      <span className="text-ink-2">
-                        {TRADE_VERB[a.kind] ?? a.kind} {fmtQuantity(Math.abs(a.quantityChange), 4)} share
-                        {Math.abs(a.quantityChange) === 1 ? '' : 's'}
-                        {a.kind === 'closed' ? '' : ` · now holding ${fmtQuantity(a.quantity, 4)}`}
-                      </span>
+                      <Badge tone={TRADE_TONE[a.kind] ?? 'neutral'}>{activityBadge(a)}</Badge>
+                      <span className="text-ink-2">{activityWording(a, fmtQuantity)}</span>
                     </li>
                   ))}
                 </ul>
