@@ -33,6 +33,9 @@ export function TrendBarChart({
   selectedKey,
   onBarSelect,
   xTickFormatter,
+  xAxisInterval,
+  xAxisHeight,
+  xTickAngle = 0,
   yAxisPrefix = '',
   yAxisSuffix = '',
   yAxisLabel,
@@ -51,6 +54,9 @@ export function TrendBarChart({
   selectedKey?: string
   onBarSelect?: (key: string) => void
   xTickFormatter?: (value: string) => string
+  xAxisInterval?: number | 'preserveStart' | 'preserveEnd' | 'preserveStartEnd' | 'equidistantPreserveStart'
+  xAxisHeight?: number
+  xTickAngle?: number
   yAxisPrefix?: string
   yAxisSuffix?: string
   yAxisLabel?: string
@@ -68,6 +74,10 @@ export function TrendBarChart({
           tickLine={false}
           axisLine={{ stroke: 'var(--border-default)' }}
           tickFormatter={xTickFormatter}
+          interval={xAxisInterval}
+          height={xAxisHeight}
+          angle={xTickAngle}
+          textAnchor={xTickAngle === 0 ? 'middle' : 'end'}
         />
         <YAxis
           tick={AXIS}

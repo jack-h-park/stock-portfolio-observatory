@@ -41,6 +41,8 @@ function trendRangeDays(days: number | 'ytd') {
   return Math.max(1, Math.floor((now.getTime() - yearStart.getTime()) / 86_400_000) + 1)
 }
 
+const shortAxisLabel = (value: string) => value.length > 20 ? `${value.slice(0, 19)}...` : value
+
 const TREND_METRICS = [
   { key: 'market_value', label: 'Market value', color: 'var(--brand-blue)' },
   { key: 'cost_basis', label: 'Cost basis', color: 'var(--brand-purple)' },
@@ -376,7 +378,7 @@ export default async function OverviewPage({
   const topFiveShare = globalBase > 0 ? Math.round((topFiveBase / globalBase) * 100) : 0
   const largestPositions = top.slice(0, 5)
   const topHoldingChartData = top.map((r) => ({
-    name: `${r.name} (${r.ticker})`,
+    name: shortAxisLabel(`${r.name} (${r.ticker})`),
     value: Math.round((r.base_cost ?? 0) / 1_000_000),
   }))
   const marketBreakdown = [
@@ -724,6 +726,9 @@ export default async function OverviewPage({
             yKey="value"
             height={240}
             multicolor
+            xAxisInterval={0}
+            xAxisHeight={52}
+            xTickAngle={-16}
             yAxisPrefix="₩"
             yAxisSuffix="M"
             yAxisLabel={copy.chartAxisKrw}
