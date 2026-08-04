@@ -140,7 +140,7 @@ const COPY = {
     count: (value: string) => `${value} rows`,
     marketAllocation: 'Market Allocation',
     marketBreakdown: 'Market Breakdown',
-    marketBreakdownInfo: 'Market-value share, cost basis, and unrealized gain/loss by market. Use this after the headline portfolio value.',
+    marketBreakdownInfo: 'Market-value share as one portfolio mix, followed by cost basis and unrealized gain/loss by market.',
     activitySummary: 'Activity Summary',
     korea: 'Korea',
     us: 'United States',
@@ -244,7 +244,7 @@ const COPY = {
     count: (value: string) => `${value}건`,
     marketAllocation: '시장별 비중',
     marketBreakdown: '시장별 상세',
-    marketBreakdownInfo: '시장별 평가액 비중, 취득원가, 평가손익입니다. 전체 평가금액을 먼저 본 뒤 원인을 확인할 때 사용합니다.',
+    marketBreakdownInfo: '전체 포트폴리오 안의 시장별 평가액 비중과 각 시장의 취득원가, 평가손익입니다.',
     activitySummary: '활동 요약',
     korea: '한국',
     us: '미국',
@@ -427,6 +427,7 @@ export default async function OverviewPage({
       gain: overview.totals.kr_base_unrealized_gl,
       returnPct: krUnrealizedPct,
       share: krShare,
+      barStyle: 'linear-gradient(90deg, var(--accent-success), var(--brand-cyan))',
     },
     {
       key: 'US',
@@ -437,6 +438,7 @@ export default async function OverviewPage({
       gain: overview.totals.us_base_unrealized_gl,
       returnPct: usUnrealizedPct,
       share: usShare,
+      barStyle: 'linear-gradient(90deg, var(--accent-info), var(--brand-blue))',
     },
     {
       key: 'CRYPTO',
@@ -447,6 +449,7 @@ export default async function OverviewPage({
       gain: overview.totals.crypto_base_unrealized_gl,
       returnPct: cryptoUnrealizedPct,
       share: cryptoShare,
+      barStyle: 'linear-gradient(90deg, var(--accent-warning), var(--brand-purple))',
     },
   ]
   const trendData = portfolioSnapshots
@@ -547,6 +550,34 @@ export default async function OverviewPage({
       </div>
 
       <Card title={copy.marketBreakdown} info={copy.marketBreakdownInfo} className="mb-5">
+        <div className="mb-5">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-[12px] font-medium text-ink-2">{copy.marketAllocation}</div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              {marketBreakdown.map((market) => (
+                <div key={market.key} className="flex items-center gap-1.5 text-[12px] text-ink-3">
+                  <span className="h-2 w-2 rounded-pill" style={{ backgroundImage: market.barStyle }} />
+                  <span>{market.label}</span>
+                  <span className="font-medium tabular-nums text-ink">{market.share}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="flex h-3 overflow-hidden rounded-pill bg-surface">
+            {marketBreakdown.map((market, index) => (
+              <div
+                key={market.key}
+                className="h-full"
+                title={`${market.label} ${market.share}%`}
+                style={{
+                  width: `${Math.max(market.share > 0 ? 1 : 0, market.share)}%`,
+                  backgroundImage: market.barStyle,
+                  borderLeft: index === 0 ? undefined : '1px solid var(--bg-card)',
+                }}
+              />
+            ))}
+          </div>
+        </div>
         <div className="grid gap-4 lg:grid-cols-3">
           {marketBreakdown.map((market) => (
             <div key={market.key} className="min-w-0">
@@ -556,15 +587,6 @@ export default async function OverviewPage({
                   <span className="text-[13px] font-medium text-ink">{market.label}</span>
                 </div>
                 <span className="text-[12px] tabular-nums text-ink-3">{copy.share} {market.share}%</span>
-              </div>
-              <div className="mb-3 h-2 overflow-hidden rounded-pill bg-surface">
-                <div
-                  className="h-full rounded-pill"
-                  style={{
-                    width: `${Math.max(1, market.share)}%`,
-                    backgroundImage: market.key === 'KR' ? 'linear-gradient(90deg, var(--accent-success), var(--brand-cyan))' : market.key === 'US' ? 'linear-gradient(90deg, var(--accent-info), var(--brand-blue))' : 'linear-gradient(90deg, var(--accent-warning), var(--brand-purple))',
-                  }}
-                />
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
                 <MetricField label={copy.marketValue} value={money(market.marketValue, 'KRW')} labelClassName="normal-case tracking-normal" />
