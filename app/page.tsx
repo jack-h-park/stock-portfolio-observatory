@@ -130,7 +130,7 @@ const COPY = {
     count: (value: string) => `${value} rows`,
     marketAllocation: 'Market Allocation',
     marketBreakdown: 'Market Breakdown',
-    marketBreakdownInfo: 'Cost basis and unrealized gain/loss by market. Use this after the headline portfolio value.',
+    marketBreakdownInfo: 'Market-value share, cost basis, and unrealized gain/loss by market. Use this after the headline portfolio value.',
     activitySummary: 'Activity Summary',
     korea: 'Korea',
     us: 'United States',
@@ -230,7 +230,7 @@ const COPY = {
     count: (value: string) => `${value}건`,
     marketAllocation: '시장별 비중',
     marketBreakdown: '시장별 상세',
-    marketBreakdownInfo: '시장별 취득원가와 평가손익입니다. 전체 평가금액을 먼저 본 뒤 원인을 확인할 때 사용합니다.',
+    marketBreakdownInfo: '시장별 평가액 비중, 취득원가, 평가손익입니다. 전체 평가금액을 먼저 본 뒤 원인을 확인할 때 사용합니다.',
     activitySummary: '활동 요약',
     korea: '한국',
     us: '미국',
@@ -369,9 +369,9 @@ export default async function OverviewPage({
       : 0
   const globalUnrealizedPct =
     overview.totals.global_priced_base_cost > 0 ? (overview.totals.global_base_unrealized_gl / overview.totals.global_priced_base_cost) * 100 : 0
-  const krShare = globalBase > 0 ? Math.round((krBase / globalBase) * 100) : 0
-  const usShare = globalBase > 0 ? Math.round((usBase / globalBase) * 100) : 0
-  const cryptoShare = globalBase > 0 ? Math.round((cryptoBase / globalBase) * 100) : 0
+  const krShare = globalValue > 0 ? Math.round((overview.totals.kr_base_market_value / globalValue) * 100) : 0
+  const usShare = globalValue > 0 ? Math.round((overview.totals.us_base_market_value / globalValue) * 100) : 0
+  const cryptoShare = globalValue > 0 ? Math.round((overview.totals.crypto_base_market_value / globalValue) * 100) : 0
   const topFiveBase = top.slice(0, 5).reduce((sum, r) => sum + (r.base_cost ?? 0), 0)
   const topFiveShare = globalBase > 0 ? Math.round((topFiveBase / globalBase) * 100) : 0
   const largestPositions = top.slice(0, 5)
