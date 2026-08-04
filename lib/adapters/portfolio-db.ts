@@ -2365,9 +2365,23 @@ export function getTopHoldings(limit = 10) {
   try {
     return conn
       .prepare(
-        `select id, market, currency, ticker, name, native_cost as value, base_cost
+        `select
+           min(id) as id,
+           market,
+           base_currency as currency,
+           ticker,
+           (
+             select h2.name
+             from holdings h2
+             where h2.market = holdings.market and h2.ticker = holdings.ticker
+             order by coalesce(h2.base_cost, 0) desc, h2.id
+             limit 1
+           ) as name,
+           coalesce(sum(base_cost), 0) as value,
+           coalesce(sum(base_cost), 0) as base_cost
          from holdings
-         order by base_cost desc, native_cost desc
+         group by market, ticker
+         order by base_cost desc, value desc
          limit ?`
       )
       .all(limit) as { id: number; market: string; currency: string; ticker: string; name: string; value: number; base_cost: number }[]

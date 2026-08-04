@@ -82,6 +82,13 @@ db.prepare(
     long_term_qty, short_term_qty, lot_count
   ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 ).run('US', 'USD', 'KRW', 'Brokerage Account', 'AAPL', 'Apple', 10, 100, 1000, 100000, 1000000, 100000, null, null, null)
+db.prepare(
+  `insert into holdings (
+    market, currency, base_currency, account, ticker, name, quantity,
+    native_cost, native_market_value, base_cost, base_market_value, total_cost_krw,
+    long_term_qty, short_term_qty, lot_count
+  ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+).run('US', 'USD', 'KRW', 'Second Account', 'AAPL', 'Apple', 5, 60, 600, 60000, 600000, 60000, 5, 0, 1)
 
 const lotInsert = db.prepare(
   `insert into tax_lots (
@@ -98,9 +105,19 @@ test('overview classifies holdings from tax lots when holding term fields are em
   const { getOverview } = await import('../lib/adapters/portfolio-db')
   const { totals } = getOverview()
 
-  assert.equal(totals.term_classified_base_value, 1_000_000)
-  assert.equal(totals.term_long_base_value, 400_000)
+  assert.equal(totals.term_classified_base_value, 1_600_000)
+  assert.equal(totals.term_long_base_value, 1_000_000)
   assert.equal(totals.term_short_base_value, 600_000)
   assert.equal(totals.term_unclassified_base_value, 0)
   assert.equal(totals.us_term_short_base_value, 600_000)
+})
+
+test('top holdings aggregate the same ticker across accounts', async () => {
+  process.env.STOCK_DB_PATH = dbPath
+  const { getTopHoldings } = await import('../lib/adapters/portfolio-db')
+  const top = getTopHoldings(10)
+
+  assert.equal(top.filter((row) => row.market === 'US' && row.ticker === 'AAPL').length, 1)
+  assert.equal(top[0].ticker, 'AAPL')
+  assert.equal(top[0].base_cost, 160_000)
 })
