@@ -16,7 +16,9 @@ import {
 } from '@/lib/adapters/portfolio-db'
 import type { PortfolioSnapshot } from '@/lib/adapters/portfolio-db'
 import { config } from '@/config'
-import { fmtDateTime, fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
+import { fmtDateTime, fmtNumber } from '@/lib/format'
+import { convertMoney, createMoneyFormatter } from '@/lib/currency'
+import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
@@ -116,7 +118,7 @@ const COPY = {
     freshnessTitle: 'Data Freshness',
     allAssets: 'All Assets Summary',
     portfolioValue: 'Total Portfolio Value',
-    portfolioValueInfo: 'Current market value converted to KRW across all priced holdings.',
+    portfolioValueInfo: 'Current market value converted to the selected display currency across all priced holdings.',
     allMarkets: 'All markets',
     valueHint: 'Current value after applying prices and FX',
     returnOnPricedCost: 'Return on priced cost',
@@ -167,6 +169,7 @@ const COPY = {
     trendUnit: (metric: string, unit: string) => `${metric} · ${unit}`,
     percentagePoints: 'percentage points',
     krwMillions: 'KRW millions',
+    usdMillions: 'USD millions',
     costPriced: (value: string) => `${value}% of cost basis priced`,
     positionsPriced: (value: string) => `${value}% of positions priced`,
     noCoveredHistory: 'No sufficiently covered history',
@@ -180,12 +183,13 @@ const COPY = {
     firstSnapshotHint: 'Run pnpm refresh or pnpm ingest to record the first snapshot.',
     chartAxisReturn: 'Percentage points',
     chartAxisKrw: 'KRW million',
+    chartAxisUsd: 'USD million',
     trendRangeSummary: (start: string, end: string, valued: number, total: number, gaps: number) =>
       `${start} to ${end} · ${valued} valued / ${total} total snapshot(s)${gaps ? ` · ${gaps} gap(s)` : ''}`,
     snapshotsOnce: 'Snapshots are recorded once per ingest date.',
-    trendExplanation: 'Cost basis, holdings, and dividends are reconstructed from tax-lot and transaction dates. Foreign-currency quotes are converted to KRW using historical FX snapshots. Valuation points below 90% cost-basis coverage remain visible as chart gaps; 90–95% coverage is marked partial. Cost-basis history itself does not require a market price.',
+    trendExplanation: 'Cost basis, holdings, and dividends are reconstructed from tax-lot and transaction dates. Foreign-currency quotes are converted using FX snapshots, then displayed in the selected currency. Valuation points below 90% cost-basis coverage remain visible as chart gaps; 90–95% coverage is marked partial. Cost-basis history itself does not require a market price.',
     topHoldingsByCost: 'Top holdings by base cost',
-    topHoldingsNote: 'Bar values are KRW millions after applying the configured FX snapshot.',
+    topHoldingsNote: 'Bar values use the selected display currency after applying the configured FX snapshot.',
     dividendTrend: 'Dividend trend',
     dividendTrendNote: 'KR bars are KRW thousands; US bars are native USD.',
     dividendAxis: 'KRW thousand / USD',
@@ -218,7 +222,7 @@ const COPY = {
     freshnessTitle: '데이터 최신 상태',
     allAssets: '전체 자산 요약',
     portfolioValue: '전체 평가금액',
-    portfolioValueInfo: '가격과 환율을 적용해 원화로 환산한 전체 보유자산의 현재 평가금액입니다.',
+    portfolioValueInfo: '가격과 환율을 적용해 선택한 표시 통화로 환산한 전체 보유자산의 현재 평가금액입니다.',
     allMarkets: '전체 시장',
     valueHint: '현재 가격과 환율을 적용한 평가금액',
     returnOnPricedCost: '가격 확인된 취득원가 대비 수익률',
@@ -269,6 +273,7 @@ const COPY = {
     trendUnit: (metric: string, unit: string) => `${metric} · ${unit}`,
     percentagePoints: '퍼센트포인트',
     krwMillions: '백만 원 단위',
+    usdMillions: '백만 달러 단위',
     costPriced: (value: string) => `취득원가의 ${value}% 가격 확인`,
     positionsPriced: (value: string) => `종목의 ${value}% 가격 확인`,
     noCoveredHistory: '충분히 가격이 확인된 이력이 없습니다.',
@@ -282,12 +287,13 @@ const COPY = {
     firstSnapshotHint: '첫 스냅샷을 기록하려면 pnpm refresh 또는 pnpm ingest를 실행하세요.',
     chartAxisReturn: '퍼센트포인트',
     chartAxisKrw: '백만 원',
+    chartAxisUsd: '백만 달러',
     trendRangeSummary: (start: string, end: string, valued: number, total: number, gaps: number) =>
       `${start}부터 ${end}까지 · 가격 확인 ${valued}개 / 전체 ${total}개 스냅샷${gaps ? ` · 공백 ${gaps}개` : ''}`,
     snapshotsOnce: '스냅샷은 ingest 날짜마다 한 번 기록됩니다.',
-    trendExplanation: '취득원가, 보유수량, 배당은 세금 단위와 거래일 기준으로 재구성됩니다. 외화 가격은 과거 환율 스냅샷으로 원화 환산됩니다. 취득원가 기준 가격 확인률이 90% 미만인 평가 지점은 차트 공백으로 남기고, 90~95%는 부분 평가로 표시합니다. 취득원가 이력 자체에는 시장 가격이 필요하지 않습니다.',
+    trendExplanation: '취득원가, 보유수량, 배당은 세금 단위와 거래일 기준으로 재구성됩니다. 외화 가격은 환율 스냅샷으로 환산한 뒤 선택 표시 통화로 표시됩니다. 취득원가 기준 가격 확인률이 90% 미만인 평가 지점은 차트 공백으로 남기고, 90~95%는 부분 평가로 표시합니다. 취득원가 이력 자체에는 시장 가격이 필요하지 않습니다.',
     topHoldingsByCost: '취득원가 상위 보유종목',
-    topHoldingsNote: '막대 값은 설정된 환율 스냅샷을 적용한 백만 원 단위입니다.',
+    topHoldingsNote: '막대 값은 설정된 환율 스냅샷을 적용한 선택 표시 통화 단위입니다.',
     dividendTrend: '배당 추이',
     dividendTrendNote: '한국 막대는 천 원 단위, 미국 막대는 현지 USD 단위입니다.',
     dividendAxis: '천 원 / USD',
@@ -317,7 +323,15 @@ export default async function OverviewPage({
   searchParams: Promise<{ trend?: string; metric?: string; scope?: string; view?: string }>
 }) {
   const language = await getLanguage()
+  const currencyPreferences = await getCurrencyPreferences()
   const copy = COPY[language]
+  const money = createMoneyFormatter(currencyPreferences)
+  const displayBaseValue = (value: number | null | undefined) =>
+    convertMoney(Number(value ?? 0), 'KRW', currencyPreferences.displayCurrency, currencyPreferences.usdKrwRate).value
+  const displayBaseMillions = (value: number | null | undefined) => displayBaseValue(value) / 1_000_000
+  const displayPrefix = currencyPreferences.displayCurrency === 'USD' ? '$' : '₩'
+  const displayMillionsLabel = currencyPreferences.displayCurrency === 'USD' ? copy.usdMillions : copy.krwMillions
+  const displayAxisLabel = currencyPreferences.displayCurrency === 'USD' ? copy.chartAxisUsd : copy.chartAxisKrw
   const glossary = getGlossary(language)
   if (!dbAvailable()) {
     return (
@@ -401,7 +415,7 @@ export default async function OverviewPage({
   const topHoldingChartData = top.map((r) => ({
     name: positionAxisLabel(r.market, r.name, r.ticker),
     market: r.market,
-    value: Math.round((r.base_cost ?? 0) / 1_000_000),
+    value: Math.round(displayBaseMillions(r.base_cost ?? 0)),
   }))
   const marketBreakdown = [
     {
@@ -444,15 +458,15 @@ export default async function OverviewPage({
         ? null
         : selectedMetric.key === 'return_pct'
           ? Number(snapshot[selectedField as TrendFieldKey])
-          : Number(snapshot[selectedField as TrendFieldKey]) / 1_000_000,
+          : displayBaseMillions(Number(snapshot[selectedField as TrendFieldKey])),
       coverage: snapshot[selectedCoverageField],
     }))
   const combinedTrendData = portfolioSnapshots
     .map((snapshot) => ({
       date: snapshot.snapshot_date,
-      market_value: snapshot[TREND_FIELDS[selectedScope].market_value as TrendFieldKey] == null || Number(snapshot[selectedCoverageField]) < MIN_TREND_COST_COVERAGE ? null : Number(snapshot[TREND_FIELDS[selectedScope].market_value as TrendFieldKey]) / 1_000_000,
-      cost_basis: snapshot[TREND_FIELDS[selectedScope].cost_basis as TrendFieldKey] == null ? null : Number(snapshot[TREND_FIELDS[selectedScope].cost_basis as TrendFieldKey]) / 1_000_000,
-      unrealized_gl: snapshot[TREND_FIELDS[selectedScope].unrealized_gl as TrendFieldKey] == null || Number(snapshot[selectedCoverageField]) < MIN_TREND_COST_COVERAGE ? null : Number(snapshot[TREND_FIELDS[selectedScope].unrealized_gl as TrendFieldKey]) / 1_000_000,
+      market_value: snapshot[TREND_FIELDS[selectedScope].market_value as TrendFieldKey] == null || Number(snapshot[selectedCoverageField]) < MIN_TREND_COST_COVERAGE ? null : displayBaseMillions(Number(snapshot[TREND_FIELDS[selectedScope].market_value as TrendFieldKey])),
+      cost_basis: snapshot[TREND_FIELDS[selectedScope].cost_basis as TrendFieldKey] == null ? null : displayBaseMillions(Number(snapshot[TREND_FIELDS[selectedScope].cost_basis as TrendFieldKey])),
+      unrealized_gl: snapshot[TREND_FIELDS[selectedScope].unrealized_gl as TrendFieldKey] == null || Number(snapshot[selectedCoverageField]) < MIN_TREND_COST_COVERAGE ? null : displayBaseMillions(Number(snapshot[TREND_FIELDS[selectedScope].unrealized_gl as TrendFieldKey])),
     }))
   const valuedTrendData = trendData.filter((point): point is typeof point & { value: number } => typeof point.value === 'number')
   const firstTrendPoint = valuedTrendData[0]
@@ -465,7 +479,7 @@ export default async function OverviewPage({
   const latestTrendCoverage = latestSnapshot?.[selectedCoverageField] ?? null
   const latestPositionCoverage = selectedScope === 'global' ? latestSnapshot?.position_coverage ?? null : null
   const missingTrendPoints = trendData.length - valuedTrendData.length
-  const trendValueLabel = (value: number) => selectedMetric.key === 'return_pct' ? `${fmtNumber(value, 1)}%` : fmtKrw(value * 1_000_000)
+  const trendValueLabel = (value: number) => selectedMetric.key === 'return_pct' ? `${fmtNumber(value, 1)}%` : money(value * 1_000_000, currencyPreferences.displayCurrency)
   const trendChangeLabel = selectedMetric.key === 'return_pct'
     ? `${trendChange >= 0 ? '+' : ''}${fmtNumber(trendChange, 1)}%p`
     : `${trendChange >= 0 ? '+' : ''}${trendValueLabel(trendChange)}${trendChangePct == null ? '' : ` · ${trendChangePct >= 0 ? '+' : ''}${fmtNumber(trendChangePct, 1)}%`}`
@@ -485,14 +499,14 @@ export default async function OverviewPage({
           title={copy.portfolioValue}
           info={copy.portfolioValueInfo}
           eyebrow={copy.allMarkets}
-          value={fmtKrw(globalValue)}
+          value={money(globalValue, 'KRW')}
           hint={copy.valueHint}
         >
           <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
-            <MetricField label={copy.totalCost} value={fmtKrw(globalBase)} info={glossary.costBasis.description} valueClassName="text-[18px]" />
+            <MetricField label={copy.totalCost} value={money(globalBase, 'KRW')} info={glossary.costBasis.description} valueClassName="text-[18px]" />
             <MetricField
               label={copy.totalGain}
-              value={fmtKrw(overview.totals.global_base_unrealized_gl)}
+              value={money(overview.totals.global_base_unrealized_gl, 'KRW')}
               info={glossary.unrealizedGl.description}
               tone={overview.totals.global_base_unrealized_gl >= 0 ? 'success' : 'danger'}
               valueClassName="text-[18px]"
@@ -519,8 +533,8 @@ export default async function OverviewPage({
               <div className="h-px bg-line-subtle" />
               <MetricField
                 label={copy.dividends}
-                value={fmtKrw(overview.dividends.krw_amount)}
-                hint={`${fmtMoney(overview.dividends.usd_amount, 'USD')} · ${copy.count(fmtNumber(overview.dividends.count))}`}
+                value={money(overview.dividends.krw_amount, 'KRW')}
+                hint={`${money(overview.dividends.usd_amount, 'USD')} · ${copy.count(fmtNumber(overview.dividends.count))}`}
                 tone="success"
                 valueClassName="text-[18px]"
               />
@@ -553,11 +567,11 @@ export default async function OverviewPage({
                 />
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
-                <MetricField label={copy.marketValue} value={fmtKrw(market.marketValue)} labelClassName="normal-case tracking-normal" />
-                <MetricField label={copy.costBasis} value={fmtKrw(market.cost)} info={glossary.costBasis.description} labelClassName="normal-case tracking-normal" />
+                <MetricField label={copy.marketValue} value={money(market.marketValue, 'KRW')} labelClassName="normal-case tracking-normal" />
+                <MetricField label={copy.costBasis} value={money(market.cost, 'KRW')} info={glossary.costBasis.description} labelClassName="normal-case tracking-normal" />
                 <MetricField
                   label={copy.gain}
-                  value={fmtKrw(market.gain)}
+                  value={money(market.gain, 'KRW')}
                   info={glossary.unrealizedGl.description}
                   tone={market.gain >= 0 ? 'success' : 'danger'}
                   labelClassName="normal-case tracking-normal"
@@ -598,7 +612,7 @@ export default async function OverviewPage({
                     <span className="min-w-0 truncate text-ink">{p.name}</span>
                     <span className="shrink-0 font-mono text-[11px] text-ink-3">{p.ticker}</span>
                   </div>
-                  <span className="shrink-0 tabular-nums text-ink-3">{fmtKrw(p.base_cost ?? 0)}</span>
+                  <span className="shrink-0 tabular-nums text-ink-3">{money(p.base_cost ?? 0, 'KRW')}</span>
                 </div>
               ))}
             </div>
@@ -617,15 +631,15 @@ export default async function OverviewPage({
             <div className="mt-3 grid grid-cols-3 gap-3 text-[12px]">
               <div>
                 <div className="text-ink-3">{copy.longTerm}</div>
-                <div className="font-medium tabular-nums text-ink">{fmtKrw(termLongValue)}</div>
+                <div className="font-medium tabular-nums text-ink">{money(termLongValue, 'KRW')}</div>
               </div>
               <div>
                 <div className="text-ink-3">{copy.shortTerm}</div>
-                <div className="font-medium tabular-nums text-ink">{fmtKrw(termShortValue)}</div>
+                <div className="font-medium tabular-nums text-ink">{money(termShortValue, 'KRW')}</div>
               </div>
               <div>
                 <div className="text-ink-3">{copy.unclassifiedTerm}</div>
-                <div className="font-medium tabular-nums text-ink">{fmtKrw(termUnclassifiedValue)}</div>
+                <div className="font-medium tabular-nums text-ink">{money(termUnclassifiedValue, 'KRW')}</div>
               </div>
             </div>
             <div className="mt-4 grid gap-2 text-[12px]">
@@ -635,7 +649,7 @@ export default async function OverviewPage({
                     <Badge tone={marketTone(row.market)}>{row.market}</Badge>
                     <span className="truncate text-ink-3">{row.label}</span>
                   </div>
-                  <span className="shrink-0 font-medium tabular-nums text-ink">{fmtKrw(row.value)}</span>
+                  <span className="shrink-0 font-medium tabular-nums text-ink">{money(row.value, 'KRW')}</span>
                 </div>
               ))}
             </div>
@@ -672,7 +686,7 @@ export default async function OverviewPage({
                     return (
                       <div key={metric.key}>
                         <div className="flex items-center gap-1.5 text-[11px] text-ink-3"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: metric.color }} />{copy.metricLabels[metric.key]}</div>
-                        <div className="mt-0.5 text-[18px] font-medium tabular-nums text-ink">{typeof latest === 'number' ? fmtKrw(latest * 1_000_000) : '—'}</div>
+                        <div className="mt-0.5 text-[18px] font-medium tabular-nums text-ink">{typeof latest === 'number' ? money(latest * 1_000_000, currencyPreferences.displayCurrency) : '—'}</div>
                       </div>
                     )
                   })}
@@ -681,7 +695,7 @@ export default async function OverviewPage({
             ) : (
               <>
                 <div className="text-[12px] text-ink-3">
-                  {copy.trendUnit(`${selectedScopeLabel} · ${selectedMetricLabel}`, selectedMetric.key === 'return_pct' ? copy.percentagePoints : copy.krwMillions)}
+                  {copy.trendUnit(`${selectedScopeLabel} · ${selectedMetricLabel}`, selectedMetric.key === 'return_pct' ? copy.percentagePoints : displayMillionsLabel)}
                   {latestTrendCoverage != null && latestTrendCoverage < 1 ? ` · ${copy.costPriced(fmtNumber(latestTrendCoverage * 100, 2))}` : ''}
                   {latestPositionCoverage != null && latestPositionCoverage < 1 ? ` · ${copy.positionsPriced(fmtNumber(latestPositionCoverage * 100, 1))}` : ''}
                 </div>
@@ -744,9 +758,9 @@ export default async function OverviewPage({
             data={trendData}
             dataKey="value"
             color={selectedMetric.color}
-            valuePrefix={selectedMetric.key === 'return_pct' ? '' : '₩'}
+            valuePrefix={selectedMetric.key === 'return_pct' ? '' : displayPrefix}
             valueSuffix={selectedMetric.key === 'return_pct' ? '%' : 'M'}
-            axisLabel={selectedMetric.key === 'return_pct' ? copy.chartAxisReturn : copy.chartAxisKrw}
+            axisLabel={selectedMetric.key === 'return_pct' ? copy.chartAxisReturn : displayAxisLabel}
           />
         )}
         <div className="mt-1 text-[11px] text-ink-3">
@@ -768,9 +782,9 @@ export default async function OverviewPage({
             xAxisHeight={52}
             xTickAngle={-16}
             barColorKey="market"
-            yAxisPrefix="₩"
+            yAxisPrefix={displayPrefix}
             yAxisSuffix="M"
-            yAxisLabel={copy.chartAxisKrw}
+            yAxisLabel={displayAxisLabel}
           />
           <p className="mt-2 text-[11px] text-ink-3">{copy.topHoldingsNote}</p>
         </Card>
@@ -800,7 +814,7 @@ export default async function OverviewPage({
                 <li key={a.account} className="flex items-center gap-3 py-2">
                   <div className="min-w-0 flex-1 truncate text-[13px] text-ink">{a.account}</div>
                   <div className="text-[12px] tabular-nums text-ink-3">{copy.holdingRows(a.count)}</div>
-                  <div className="w-36 text-right text-[12px] font-medium tabular-nums text-ink">{fmtMoney(a.value, a.currency)}</div>
+                  <div className="w-36 text-right text-[12px] font-medium tabular-nums text-ink">{money(a.value, a.currency)}</div>
                 </li>
               ))}
             </ul>
@@ -816,7 +830,7 @@ export default async function OverviewPage({
                 <Link href={positionHref(h.market, h.ticker)} className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink hover:underline">
                   {h.name}
                 </Link>
-                <span className="text-[12px] tabular-nums text-ink-3">{fmtKrw(h.base_cost ?? 0)}</span>
+                <span className="text-[12px] tabular-nums text-ink-3">{money(h.base_cost ?? 0, 'KRW')}</span>
               </li>
             ))}
           </ul>

@@ -4,7 +4,9 @@ import { FreshnessRows } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
 import { getOperationalHealth, getPortfolioReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
-import { fmtKrw, fmtMoney, fmtNumber, fmtQuantity } from '@/lib/format'
+import { fmtNumber, fmtQuantity } from '@/lib/format'
+import { createMoneyFormatter } from '@/lib/currency'
+import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
@@ -15,9 +17,13 @@ function pct(value: number | null | undefined) {
   return value == null ? 'n/a' : `${fmtNumber(value, 2)}%`
 }
 
-function signedMoney(value: number | null | undefined, currency: string) {
+function signedMoney(
+  value: number | null | undefined,
+  currency: string,
+  money: (value: number | null | undefined, currency?: string | null | undefined) => string
+) {
   const numeric = Number(value ?? 0)
-  return <span className={numeric >= 0 ? 'text-success' : 'text-danger'}>{value == null ? 'n/a' : fmtMoney(value, currency)}</span>
+  return <span className={numeric >= 0 ? 'text-success' : 'text-danger'}>{value == null ? 'n/a' : money(value, currency)}</span>
 }
 
 function PositionLink({ row }: { row: ReviewPosition }) {
@@ -131,7 +137,17 @@ const COPY = {
 
 type ReviewCopy = (typeof COPY)[keyof typeof COPY]
 
-function PositionTable({ rows, mode, copy }: { rows: ReviewPosition[]; mode: 'gain' | 'loss' | 'size' | 'term' | 'missing'; copy: ReviewCopy }) {
+function PositionTable({
+  rows,
+  mode,
+  copy,
+  money,
+}: {
+  rows: ReviewPosition[]
+  mode: 'gain' | 'loss' | 'size' | 'term' | 'missing'
+  copy: ReviewCopy
+  money: (value: number | null | undefined, currency?: string | null | undefined) => string
+}) {
   if (rows.length === 0) return <EmptyState ok>{copy.noRows}</EmptyState>
   return (
     <DataTable
@@ -140,13 +156,13 @@ function PositionTable({ rows, mode, copy }: { rows: ReviewPosition[]; mode: 'ga
         { key: 'ticker', label: copy.columns.position, render: (r) => <PositionLink row={r} /> },
         { key: 'account_count', label: copy.columns.accounts, align: 'right', render: (r) => fmtNumber(r.account_count) },
         { key: 'quantity', label: copy.columns.quantity, align: 'right', render: (r) => fmtQuantity(r.quantity, 4) },
-        { key: 'native_market_value', label: copy.columns.market, align: 'right', render: (r) => (r.native_market_value == null ? 'n/a' : fmtMoney(r.native_market_value, r.currency)) },
-        { key: 'base_market_value', label: copy.columns.baseMarket, align: 'right', render: (r) => (r.base_market_value == null ? 'n/a' : fmtKrw(r.base_market_value)) },
+        { key: 'native_market_value', label: copy.columns.market, align: 'right', render: (r) => (r.native_market_value == null ? 'n/a' : money(r.native_market_value, r.currency)) },
+        { key: 'base_market_value', label: copy.columns.baseMarket, align: 'right', render: (r) => (r.base_market_value == null ? 'n/a' : money(r.base_market_value)) },
         {
           key: 'base_unrealized_gl',
           label: mode === 'term' ? copy.columns.shortPct : copy.columns.baseGl,
           align: 'right',
-          render: (r) => (mode === 'term' ? pct(r.short_term_ratio) : signedMoney(r.base_unrealized_gl, 'KRW')),
+          render: (r) => (mode === 'term' ? pct(r.short_term_ratio) : signedMoney(r.base_unrealized_gl, 'KRW', money)),
         },
         {
           key: 'base_unrealized_gl_pct',
@@ -161,6 +177,7 @@ function PositionTable({ rows, mode, copy }: { rows: ReviewPosition[]; mode: 'ga
 
 export default async function ReviewPage() {
   const language = await getLanguage()
+  const money = createMoneyFormatter(await getCurrencyPreferences())
   const copy = COPY[language]
   const glossary = getGlossary(language)
   const review = getPortfolioReview()
@@ -184,13 +201,13 @@ export default async function ReviewPage() {
           title={copy.baseMarketValue}
           info={copy.baseMarketValueInfo}
           eyebrow={copy.reviewHeadline}
-          value={fmtKrw(review.totals.base_market_value)}
+          value={money(review.totals.base_market_value)}
           hint={copy.globalValueHint}
         >
           <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
             <MetricField
               label={copy.unrealizedGl}
-              value={fmtKrw(review.totals.base_unrealized_gl)}
+              value={money(review.totals.base_unrealized_gl)}
               info={glossary.unrealizedGl.description}
               hint={pct(totalReturnPct)}
               tone={review.totals.base_unrealized_gl >= 0 ? 'success' : 'danger'}
@@ -246,10 +263,10 @@ export default async function ReviewPage() {
               <li key={row.market} className="grid grid-cols-[4rem_1fr_auto] items-center gap-3 py-2 text-[12px]">
                 <Badge tone={marketTone(row.market)}>{row.market}</Badge>
                 <div className="min-w-0">
-                  <div className="font-medium tabular-nums text-ink">{fmtKrw(row.base_market_value)}</div>
+                  <div className="font-medium tabular-nums text-ink">{money(row.base_market_value)}</div>
                   <div className="text-[11px] text-ink-3">{copy.positionCount(fmtNumber(row.position_count))}</div>
                 </div>
-                <div className="text-right">{signedMoney(row.base_unrealized_gl, 'KRW')}</div>
+                <div className="text-right">{signedMoney(row.base_unrealized_gl, 'KRW', money)}</div>
               </li>
             ))}
           </ul>
@@ -286,24 +303,24 @@ export default async function ReviewPage() {
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card title={copy.largestPositions}>
-          <PositionTable rows={review.largestPositions} mode="size" copy={copy} />
+          <PositionTable rows={review.largestPositions} mode="size" copy={copy} money={money} />
         </Card>
         <Card title={copy.topGains}>
-          <PositionTable rows={review.topGainers} mode="gain" copy={copy} />
+          <PositionTable rows={review.topGainers} mode="gain" copy={copy} money={money} />
         </Card>
       </div>
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card title={copy.topLosses}>
-          <PositionTable rows={review.topLosers} mode="loss" copy={copy} />
+          <PositionTable rows={review.topLosers} mode="loss" copy={copy} money={money} />
         </Card>
         <Card title={copy.shortTermHeavy}>
-          <PositionTable rows={review.shortTermHeavy} mode="term" copy={copy} />
+          <PositionTable rows={review.shortTermHeavy} mode="term" copy={copy} money={money} />
         </Card>
       </div>
 
       <Card title={copy.missingMarketValue} accent={review.noMarketValue.length > 0}>
-        <PositionTable rows={review.noMarketValue} mode="missing" copy={copy} />
+        <PositionTable rows={review.noMarketValue} mode="missing" copy={copy} money={money} />
       </Card>
     </>
   )

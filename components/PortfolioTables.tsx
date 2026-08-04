@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { Badge, Button , marketTone } from '@/components/ui'
 import { DataTable } from '@/components/DataTable'
 import { GlossaryTerm } from '@/components/GlossaryTerm'
-import { fmtMoney, fmtNumber, fmtQuantity } from '@/lib/format'
+import { fmtNumber, fmtQuantity } from '@/lib/format'
+import { useMoneyFormatter } from '@/components/LanguageProvider'
 import type { Language } from '@/lib/i18n'
 import { positionHref } from '@/lib/position-url'
 import { getUiCopy } from '@/lib/ui-copy'
@@ -250,6 +251,7 @@ const HOLDINGS_COPY = {
 } as const
 
 export function HoldingsTable({ rows, language = 'en' }: { rows: any[]; language?: Language }) {
+  const money = useMoneyFormatter()
   const labels = getUiCopy(language).common
   const copy = HOLDINGS_COPY[language]
   const [market, setMarket] = useState('All')
@@ -330,16 +332,16 @@ export function HoldingsTable({ rows, language = 'en' }: { rows: any[]; language
         </div>
         <div>
           <div className="text-[12px] text-ink-3"><GlossaryTerm term="costBasis" compact language={language} /></div>
-          <div className="font-medium tabular-nums text-ink">{fmtMoney(totals.cost, 'KRW')}</div>
+          <div className="font-medium tabular-nums text-ink">{money(totals.cost, 'KRW')}</div>
         </div>
         <div>
           <div className="text-[12px] text-ink-3">{copy.marketValue}</div>
-          <div className="font-medium tabular-nums text-ink">{fmtMoney(totals.marketValue, 'KRW')}</div>
+          <div className="font-medium tabular-nums text-ink">{money(totals.marketValue, 'KRW')}</div>
         </div>
         <div>
           <div className="text-[12px] text-ink-3"><GlossaryTerm term="unrealizedGl" compact language={language} /></div>
           <div className={totals.unrealized >= 0 ? 'font-medium tabular-nums text-success' : 'font-medium tabular-nums text-danger'}>
-            {fmtMoney(totals.unrealized, 'KRW')}
+            {money(totals.unrealized, 'KRW')}
           </div>
         </div>
       </div>
@@ -355,12 +357,12 @@ export function HoldingsTable({ rows, language = 'en' }: { rows: any[]; language
           </div>
           <div className="grid gap-x-5 gap-y-1 text-[11px] sm:grid-cols-5 lg:text-right">
             <div><span className="text-ink-3">{copy.quantity} </span><span className="tabular-nums text-ink">{fmtQuantity(selected.quantity, 2)}</span></div>
-            <div><span className="text-ink-3">{copy.costBasis} </span><span className="tabular-nums text-ink">{fmtMoney(selected.native_cost, selected.currency)}</span></div>
-            <div><span className="text-ink-3">{copy.marketValue} </span><span className="tabular-nums text-ink">{selected.native_market_value == null ? copy.noValue : fmtMoney(selected.native_market_value, selected.currency)}</span></div>
+            <div><span className="text-ink-3">{copy.costBasis} </span><span className="tabular-nums text-ink">{money(selected.native_cost, selected.currency)}</span></div>
+            <div><span className="text-ink-3">{copy.marketValue} </span><span className="tabular-nums text-ink">{selected.native_market_value == null ? copy.noValue : money(selected.native_market_value, selected.currency)}</span></div>
             <div>
               <span className="text-ink-3">{HOLDINGS_COPY[language].sort.gain} </span>
               <span className={Number(selected.native_unrealized_gl ?? 0) >= 0 ? 'tabular-nums text-success' : 'tabular-nums text-danger'}>
-                {selected.native_unrealized_gl == null ? copy.noValue : fmtMoney(selected.native_unrealized_gl, selected.currency)}
+                {selected.native_unrealized_gl == null ? copy.noValue : money(selected.native_unrealized_gl, selected.currency)}
               </span>
             </div>
             <Link href={positionHref(selected.market, selected.ticker)} className="font-medium text-info hover:underline">
@@ -391,9 +393,9 @@ export function HoldingsTable({ rows, language = 'en' }: { rows: any[]; language
             ),
           },
           { key: 'quantity', label: copy.quantity, align: 'right', render: (r) => fmtQuantity(r.quantity, 2), nowrap: true },
-          { key: 'native_cost', label: copy.costBasis, description: copy.nativeCostDescription, align: 'right', render: (r) => fmtMoney(r.native_cost, r.currency), priority: 'secondary', nowrap: true },
-          { key: 'base_cost', label: copy.baseCost, description: copy.baseCostDescription, align: 'right', render: (r) => (r.base_cost == null ? copy.noValue : fmtMoney(r.base_cost, 'KRW')), priority: 'tertiary', nowrap: true },
-          { key: 'native_market_value', label: copy.marketValue, align: 'right', render: (r) => (r.native_market_value == null ? copy.noValue : fmtMoney(r.native_market_value, r.currency)), nowrap: true },
+          { key: 'native_cost', label: copy.costBasis, description: copy.nativeCostDescription, align: 'right', render: (r) => money(r.native_cost, r.currency), priority: 'secondary', nowrap: true },
+          { key: 'base_cost', label: copy.baseCost, description: copy.baseCostDescription, align: 'right', render: (r) => (r.base_cost == null ? copy.noValue : money(r.base_cost, 'KRW')), priority: 'tertiary', nowrap: true },
+          { key: 'native_market_value', label: copy.marketValue, align: 'right', render: (r) => (r.native_market_value == null ? copy.noValue : money(r.native_market_value, r.currency)), nowrap: true },
           {
             key: 'native_unrealized_gl',
             label: copy.sort.gain,
@@ -404,7 +406,7 @@ export function HoldingsTable({ rows, language = 'en' }: { rows: any[]; language
                 copy.noValue
               ) : (
                 <span className={r.native_unrealized_gl >= 0 ? 'text-success' : 'text-danger'}>
-                  {fmtMoney(r.native_unrealized_gl, r.currency)}
+                  {money(r.native_unrealized_gl, r.currency)}
                 </span>
               ),
           },
@@ -419,7 +421,7 @@ export function HoldingsTable({ rows, language = 'en' }: { rows: any[]; language
                 copy.noValue
               ) : (
                 <span className={r.base_unrealized_gl >= 0 ? 'text-success' : 'text-danger'}>
-                  {fmtMoney(r.base_unrealized_gl, 'KRW')}
+                  {money(r.base_unrealized_gl, 'KRW')}
                 </span>
               ),
           },
@@ -433,6 +435,7 @@ export function HoldingsTable({ rows, language = 'en' }: { rows: any[]; language
 }
 
 export function CostBasisHoldingsTable({ rows }: { rows: CostBasisHolding[] }) {
+  const money = useMoneyFormatter()
   const [market, setMarket] = useState('All')
   const [brokerage, setBrokerage] = useState('All')
   const [account, setAccount] = useState('All')
@@ -522,13 +525,13 @@ export function CostBasisHoldingsTable({ rows }: { rows: CostBasisHolding[] }) {
         <div>
           <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Total value</div>
           <div className="font-medium tabular-nums text-ink">
-            {singleCurrency ? fmtMoney(totals.value, singleCurrency) : fmtMoney(totals.baseValue, 'KRW')}
+            {singleCurrency ? money(totals.value, singleCurrency) : money(totals.baseValue, 'KRW')}
           </div>
         </div>
         <div>
           <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Total cost</div>
           <div className="font-medium tabular-nums text-ink">
-            {singleCurrency ? fmtMoney(totals.cost, singleCurrency) : 'Mixed currencies'}
+            {singleCurrency ? money(totals.cost, singleCurrency) : 'Mixed currencies'}
           </div>
         </div>
         <div>
@@ -560,18 +563,18 @@ export function CostBasisHoldingsTable({ rows }: { rows: CostBasisHolding[] }) {
           { key: 'brokerage', label: 'Broker' },
           { key: 'account', label: 'Account', render: (r) => <span className="whitespace-nowrap">{r.account}</span> },
           { key: 'quantity', label: 'Shares', align: 'right', render: (r) => fmtQuantity(r.quantity, 6) },
-          { key: 'native_price', label: 'Price', align: 'right', render: (r) => (r.native_price == null ? 'n/a' : fmtMoney(r.native_price, r.currency)) },
+          { key: 'native_price', label: 'Price', align: 'right', render: (r) => (r.native_price == null ? 'n/a' : money(r.native_price, r.currency)) },
           {
             key: 'native_market_value',
             label: 'Value',
             align: 'right',
-            render: (r) => (r.native_market_value == null ? 'n/a' : fmtMoney(r.native_market_value, r.currency)),
+            render: (r) => (r.native_market_value == null ? 'n/a' : money(r.native_market_value, r.currency)),
           },
           {
             key: 'native_cost',
             label: 'Total Cost',
             align: 'right',
-            render: (r) => (r.native_cost == null ? 'n/a' : fmtMoney(r.native_cost, r.currency)),
+            render: (r) => (r.native_cost == null ? 'n/a' : money(r.native_cost, r.currency)),
           },
           {
             key: 'native_unrealized_gl',
@@ -582,7 +585,7 @@ export function CostBasisHoldingsTable({ rows }: { rows: CostBasisHolding[] }) {
                 'n/a'
               ) : (
                 <span className={r.native_unrealized_gl >= 0 ? 'text-success' : 'text-danger'}>
-                  {fmtMoney(r.native_unrealized_gl, r.currency)}
+                  {money(r.native_unrealized_gl, r.currency)}
                 </span>
               ),
           },
@@ -604,7 +607,7 @@ export function CostBasisHoldingsTable({ rows }: { rows: CostBasisHolding[] }) {
               r.day_change == null ? (
                 'n/a'
               ) : (
-                <span className={r.day_change >= 0 ? 'text-success' : 'text-danger'}>{fmtMoney(r.day_change, r.currency)}</span>
+                <span className={r.day_change >= 0 ? 'text-success' : 'text-danger'}>{money(r.day_change, r.currency)}</span>
               ),
           },
           {
@@ -632,6 +635,7 @@ export function CostBasisHoldingsTable({ rows }: { rows: CostBasisHolding[] }) {
 }
 
 export function LotsTable({ rows }: { rows: any[] }) {
+  const money = useMoneyFormatter()
   const [market, setMarket] = useState('All')
   const [brokerage, setBrokerage] = useState('All')
   const [account, setAccount] = useState('All')
@@ -707,7 +711,7 @@ export function LotsTable({ rows }: { rows: any[] }) {
         </div>
         <div>
           <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Base cost</div>
-          <div className="font-medium tabular-nums text-ink">{fmtMoney(totals.cost, 'KRW')}</div>
+          <div className="font-medium tabular-nums text-ink">{money(totals.cost, 'KRW')}</div>
         </div>
       </div>
       {selectedLots.length > 0 && (
@@ -719,7 +723,7 @@ export function LotsTable({ rows }: { rows: any[] }) {
             <span className="text-[11px] text-ink-3">{selectedLots.length} lot(s) selected</span>
           </div>
           <div className="mt-1 text-[11px] text-ink-3">
-            {selectedLots[0].brokerage} · {selectedLots[0].account} · {fmtMoney(selectedLots.reduce((sum, row) => sum + Number(row.cost_basis_krw ?? 0), 0), 'KRW')} base cost
+            {selectedLots[0].brokerage} · {selectedLots[0].account} · {money(selectedLots.reduce((sum, row) => sum + Number(row.cost_basis_krw ?? 0), 0), 'KRW')} base cost
             <Link href={positionHref(selectedLots[0].market, selectedLots[0].ticker)} className="ml-3 font-medium text-info hover:underline">
               Detail
             </Link>
@@ -748,8 +752,8 @@ export function LotsTable({ rows }: { rows: any[] }) {
           },
           { key: 'acquired_date', label: 'Acquired' },
           { key: 'open_quantity', label: 'Qty', align: 'right', render: (r) => fmtNumber(r.open_quantity, 2) },
-          { key: 'native_cost_basis', label: 'Cost Basis', align: 'right', render: (r) => fmtMoney(r.native_cost_basis, r.currency) },
-          { key: 'cost_basis_krw', label: 'Base Cost', align: 'right', render: (r) => fmtMoney(r.cost_basis_krw, 'KRW') },
+          { key: 'native_cost_basis', label: 'Cost Basis', align: 'right', render: (r) => money(r.native_cost_basis, r.currency) },
+          { key: 'cost_basis_krw', label: 'Base Cost', align: 'right', render: (r) => money(r.cost_basis_krw, 'KRW') },
           { key: 'holding_days', label: 'Days', align: 'right' },
           { key: 'tax_term', label: 'Term' },
         ]}
@@ -759,6 +763,7 @@ export function LotsTable({ rows }: { rows: any[] }) {
 }
 
 export function TransactionsTable({ rows }: { rows: any[] }) {
+  const money = useMoneyFormatter()
   const [market, setMarket] = useState('All')
   const [brokerage, setBrokerage] = useState('All')
   const [type, setType] = useState('All')
@@ -787,8 +792,8 @@ export function TransactionsTable({ rows }: { rows: any[] }) {
           { key: 'ticker', label: 'Ticker' },
           { key: 'name', label: 'Name' },
           { key: 'quantity', label: 'Qty', align: 'right', render: (r) => fmtQuantity(r.quantity, 2) },
-          { key: 'native_amount', label: 'Amount', align: 'right', render: (r) => fmtMoney(r.native_amount, r.currency) },
-          { key: 'amount_krw', label: 'Base Amount', align: 'right', render: (r) => (r.amount_krw == null ? 'n/a' : fmtMoney(r.amount_krw, 'KRW')) },
+          { key: 'native_amount', label: 'Amount', align: 'right', render: (r) => money(r.native_amount, r.currency) },
+          { key: 'amount_krw', label: 'Base Amount', align: 'right', render: (r) => (r.amount_krw == null ? 'n/a' : money(r.amount_krw, 'KRW')) },
           { key: 'source', label: 'Source' },
           { key: 'page', label: 'Page', align: 'right' },
         ]}

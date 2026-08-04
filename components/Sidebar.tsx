@@ -4,7 +4,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { clsx } from 'clsx'
-import { LanguageSwitcher } from '@/components/LanguageSwitcher'
+import { CurrencySwitcher, LanguageSwitcher } from '@/components/LanguageSwitcher'
+import type { DisplayCurrency } from '@/lib/currency'
 import type { Language } from '@/lib/i18n'
 
 const COPY = {
@@ -15,6 +16,8 @@ const COPY = {
     tagline: 'Portfolio monitoring',
     readOnly: 'Read-only portfolio',
     source: 'Generated from local sources',
+    language: 'Language',
+    currency: 'Currency',
     sections: [
       {
         label: 'Core Workflows',
@@ -64,6 +67,8 @@ const COPY = {
     tagline: '자산 모니터링',
     readOnly: '조회 전용 포트폴리오',
     source: '로컬 원본에서 생성됨',
+    language: '언어',
+    currency: '화폐',
     sections: [
       {
         label: '핵심 업무',
@@ -108,7 +113,7 @@ const COPY = {
   },
 } as const
 
-export function Sidebar({ language }: { language: Language }) {
+export function Sidebar({ language, displayCurrency }: { language: Language; displayCurrency: DisplayCurrency }) {
   const copy = COPY[language]
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
@@ -205,8 +210,15 @@ export function Sidebar({ language }: { language: Language }) {
 
         <div className="mx-1 mt-3 h-px rounded-pill opacity-70" style={{ backgroundImage: 'var(--gradient-mini)' }} />
 
-        <div className="mt-4 px-1">
-          <LanguageSwitcher language={language} />
+        <div className="mt-4 grid gap-2 px-1">
+          <div>
+            <div className="mb-1.5 px-0.5 text-[10px] font-medium text-ink-3">{copy.language}</div>
+            <LanguageSwitcher language={language} />
+          </div>
+          <div>
+            <div className="mb-1.5 px-0.5 text-[10px] font-medium text-ink-3">{copy.currency}</div>
+            <CurrencySwitcher displayCurrency={displayCurrency} />
+          </div>
         </div>
 
         <nav className="mt-5 flex flex-col gap-4" aria-label={copy.navLabel}>

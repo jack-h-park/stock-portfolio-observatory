@@ -3,7 +3,9 @@ import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard } from '@/components/ui'
 import { getCryptoPremium } from '@/lib/adapters/portfolio-db'
-import { fmtDateTime, fmtKrw, fmtMoney, fmtNumber, fmtQuantity } from '@/lib/format'
+import { fmtDateTime, fmtNumber, fmtQuantity } from '@/lib/format'
+import { createMoneyFormatter } from '@/lib/currency'
+import { getCurrencyPreferences } from '@/lib/currency-server'
 import { GLOSSARY } from '@/lib/glossary'
 
 export const dynamic = 'force-dynamic'
@@ -25,17 +27,18 @@ function signedPct(value: number | null | undefined) {
   )
 }
 
-function signedKrw(value: number | null | undefined) {
+function signedMoney(value: number | null | undefined, money: (value: number | null | undefined, currency?: string | null | undefined) => string) {
   if (value == null) return <span className="text-ink-3">n/a</span>
   return (
     <span className={value >= 0 ? 'text-success' : 'text-danger'}>
       {value >= 0 ? '+' : '-'}
-      {fmtKrw(Math.abs(value))}
+      {money(Math.abs(value), 'KRW')}
     </span>
   )
 }
 
-export default function CryptoPremiumPage() {
+export default async function CryptoPremiumPage() {
+  const money = createMoneyFormatter(await getCurrencyPreferences())
   const premium = getCryptoPremium()
   const chartData = premium.history.map((point) => ({
     date: point.date.slice(5),
@@ -86,13 +89,13 @@ export default function CryptoPremiumPage() {
               <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
                 <MetricField
                   label="Premium-Bearing Value"
-                  value={fmtKrw(premium.exposure.heldValueKrw)}
+                  value={money(premium.exposure.heldValueKrw)}
                   hint="KRW-venue positions marked at their own book"
                   valueClassName="text-[18px]"
                 />
                 <MetricField
                   label="Value From Premium"
-                  value={fmtKrw(premium.exposure.premiumValueKrw)}
+                  value={money(premium.exposure.premiumValueKrw)}
                   hint="What parity would remove"
                   tone={premium.exposure.premiumValueKrw >= 0 ? 'success' : 'danger'}
                   valueClassName="text-[18px]"
@@ -146,9 +149,9 @@ export default function CryptoPremiumPage() {
                       </div>
                     ),
                   },
-                  { key: 'krwPrice', label: 'Bithumb (KRW)', align: 'right', render: (r) => fmtKrw(r.krwPrice) },
-                  { key: 'usdPrice', label: 'Global (USD)', align: 'right', render: (r) => fmtMoney(r.usdPrice, 'USD') },
-                  { key: 'impliedKrw', label: 'Implied KRW', align: 'right', render: (r) => fmtKrw(r.impliedKrw) },
+                  { key: 'krwPrice', label: 'Bithumb (KRW)', align: 'right', render: (r) => money(r.krwPrice) },
+                  { key: 'usdPrice', label: 'Global (USD)', align: 'right', render: (r) => money(r.usdPrice, 'USD') },
+                  { key: 'impliedKrw', label: 'Implied KRW', align: 'right', render: (r) => money(r.impliedKrw) },
                   { key: 'premiumPct', label: 'Premium', align: 'right', render: (r) => signedPct(r.premiumPct) },
                   {
                     key: 'heldQuantity',
@@ -160,7 +163,7 @@ export default function CryptoPremiumPage() {
                     key: 'premiumValueKrw',
                     label: 'Value From Premium',
                     align: 'right',
-                    render: (r) => (r.heldQuantity > 0 ? signedKrw(r.premiumValueKrw) : '—'),
+                    render: (r) => (r.heldQuantity > 0 ? signedMoney(r.premiumValueKrw, money) : '—'),
                   },
                 ]}
               />

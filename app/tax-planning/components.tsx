@@ -3,12 +3,16 @@ import { Fragment } from 'react'
 import { createSavedTaxPlanAction } from '@/app/tax-planning/actions'
 import { DataTable } from '@/components/DataTable'
 import { Badge, Card, EmptyState, MetricField, marketTone, type Tone } from '@/components/ui'
-import { fmtDateTime, fmtKrw, fmtMoney, fmtNumber, fmtQuantity } from '@/lib/format'
+import { fmtDateTime, fmtNumber, fmtQuantity } from '@/lib/format'
+import { useMoneyFormatter } from '@/components/LanguageProvider'
 import { positionHref } from '@/lib/position-url'
 import type { MonthlySaleMasterPlan, MonthlySalePlanSet, TaxPlanCandidate, MasterPlanStrategyKey } from '@/lib/tax-planning'
 import { savedTaxPlanProgress, type SavedTaxPlan } from '@/lib/tax-plan-store'
 import type { TaxPlanningCopy } from './copy'
-import { signedKrw } from './view-utils'
+
+function signedMoney(value: number, money: (value: number | null | undefined, currency?: string | null | undefined) => string) {
+  return <span className={value >= 0 ? 'text-success' : 'text-danger'}>{money(value, 'KRW')}</span>
+}
 
 function PositionCell({ row }: { row: TaxPlanCandidate }) {
   return (
@@ -25,6 +29,7 @@ function PositionCell({ row }: { row: TaxPlanCandidate }) {
 }
 
 export function CandidateTable({ rows, copy }: { rows: TaxPlanCandidate[]; copy: TaxPlanningCopy }) {
+  const money = useMoneyFormatter()
   if (rows.length === 0) return <EmptyState>{copy.candidateTable.empty}</EmptyState>
   return (
     <DataTable
@@ -35,10 +40,10 @@ export function CandidateTable({ rows, copy }: { rows: TaxPlanCandidate[]; copy:
         { key: 'acquired_date', label: copy.candidateTable.acquired },
         { key: 'holdingBucket', label: copy.candidateTable.term, render: (r) => <Badge tone={r.holdingBucket === 'long' ? 'success' : 'warning'}>{r.holdingBucket}</Badge> },
         { key: 'open_quantity', label: copy.candidateTable.quantity, align: 'right', render: (r) => fmtQuantity(r.open_quantity, 4) },
-        { key: 'proceedsNative', label: copy.candidateTable.proceeds, align: 'right', render: (r) => (r.proceedsNative == null ? copy.candidateTable.notAvailable : fmtMoney(r.proceedsNative, r.currency)) },
-        { key: 'gainKrw', label: copy.candidateTable.baseGainLoss, align: 'right', render: (r) => signedKrw(r.gainKrw) },
-        { key: 'estimatedTaxKrw', label: copy.candidateTable.grossLotTax, align: 'right', render: (r) => fmtKrw(r.estimatedTaxKrw) },
-        { key: 'estimatedAfterTaxKrw', label: copy.candidateTable.afterTax, align: 'right', render: (r) => (r.estimatedAfterTaxKrw == null ? copy.candidateTable.notAvailable : fmtKrw(r.estimatedAfterTaxKrw)) },
+        { key: 'proceedsNative', label: copy.candidateTable.proceeds, align: 'right', render: (r) => (r.proceedsNative == null ? copy.candidateTable.notAvailable : money(r.proceedsNative, r.currency)) },
+        { key: 'gainKrw', label: copy.candidateTable.baseGainLoss, align: 'right', render: (r) => signedMoney(r.gainKrw, money) },
+        { key: 'estimatedTaxKrw', label: copy.candidateTable.grossLotTax, align: 'right', render: (r) => money(r.estimatedTaxKrw) },
+        { key: 'estimatedAfterTaxKrw', label: copy.candidateTable.afterTax, align: 'right', render: (r) => (r.estimatedAfterTaxKrw == null ? copy.candidateTable.notAvailable : money(r.estimatedAfterTaxKrw)) },
       ]}
     />
   )
@@ -99,6 +104,7 @@ export function MasterPlanOverview({
   fullHoldingsValueKrw: number
   copy: TaxPlanningCopy
 }) {
+  const money = useMoneyFormatter()
   const plan = planSet.selectedPlan
   const earliest = planSet.scenarios.find((item) => item.strategy === 'EARLIEST_LT')
   const wait = planSet.scenarios.find((item) => item.strategy === 'WAIT_US_ONLY')
@@ -137,18 +143,18 @@ export function MasterPlanOverview({
       <div className="grid grid-cols-2 divide-x divide-line-subtle border-b border-line-subtle md:grid-cols-4">
         <PlanMetric
           label={copy.overview.plannedSales}
-          value={fmtKrw(plan.summary.proceedsKrw)}
+          value={money(plan.summary.proceedsKrw)}
           hint={copy.overview.pricedLots(fmtNumber(plan.summary.lotCount))}
         />
         <PlanMetric
           label={copy.overview.estimatedTax}
-          value={fmtKrw(plan.summary.estimatedTaxKrw)}
+          value={money(plan.summary.estimatedTaxKrw)}
           hint={copy.overview.longTermPct(fmtNumber(plan.summary.longTermSalePct, 1))}
           tone={plan.summary.estimatedTaxKrw > 0 ? 'warning' : 'success'}
         />
         <PlanMetric
           label={copy.overview.afterTaxCash}
-          value={fmtKrw(plan.summary.afterTaxKrw)}
+          value={money(plan.summary.afterTaxKrw)}
           hint={copy.overview.saleInstructions(fmtNumber(plan.summary.instructionCount))}
           tone="success"
         />
@@ -173,7 +179,7 @@ export function MasterPlanOverview({
           <div className="text-[10px] font-medium uppercase text-ink-3">{copy.overview.lotsStillWaiting}</div>
           <div className="mt-1 text-[12px] leading-relaxed text-ink-2">
             <span className="font-medium tabular-nums text-ink">
-              {copy.overview.waitingLots(fmtNumber(planSet.timing.waitingLotCount), fmtKrw(planSet.timing.waitingProceedsKrw), planSet.timing.nextLongTermDate ? dateLabel(planSet.timing.nextLongTermDate) : null)}
+              {copy.overview.waitingLots(fmtNumber(planSet.timing.waitingLotCount), money(planSet.timing.waitingProceedsKrw), planSet.timing.nextLongTermDate ? dateLabel(planSet.timing.nextLongTermDate) : null)}
             </span>
           </div>
         </div>
@@ -181,7 +187,7 @@ export function MasterPlanOverview({
           <div className="text-[10px] font-medium uppercase text-ink-3">{copy.overview.estimatedTermBenefit}</div>
           <div className="mt-1 text-[12px] leading-relaxed text-ink-2">
             <span className="font-medium tabular-nums text-success">
-              {copy.overview.termBenefit(fmtKrw(planSet.timing.estimatedFederalTaxAvoidedKrw))}
+              {copy.overview.termBenefit(money(planSet.timing.estimatedFederalTaxAvoidedKrw))}
             </span>
           </div>
         </div>
@@ -189,7 +195,7 @@ export function MasterPlanOverview({
           <div className="text-[10px] font-medium uppercase text-ink-3">{copy.overview.waitingUntil2028}</div>
           <div className="mt-1 text-[12px] leading-relaxed text-ink-2">
             <span className={`font-medium tabular-nums ${waitSavings >= 0 ? 'text-success' : 'text-danger'}`}>
-              {copy.overview.waitUntil2028(waitSavings >= 0 ? copy.overview.saving : copy.overview.extraTax, fmtKrw(Math.abs(waitSavings)), durationLabel(Math.max(waitDays, 0)), fmtKrw(earliestKrTopUp), fmtKrw(waitKrTopUp))}
+              {copy.overview.waitUntil2028(waitSavings >= 0 ? copy.overview.saving : copy.overview.extraTax, money(Math.abs(waitSavings)), durationLabel(Math.max(waitDays, 0)), money(earliestKrTopUp), money(waitKrTopUp))}
             </span>
           </div>
         </div>
@@ -207,6 +213,7 @@ export function MasterScenarioComparison({
   horizonYears: number
   copy: TaxPlanningCopy
 }) {
+  const money = useMoneyFormatter()
   const baseline = planSet.scenarios.find((item) => item.strategy === 'EARLIEST_LT')
   const minTax = Math.min(...planSet.scenarios.map((item) => item.summary.estimatedTaxKrw))
   const maxTax = Math.max(...planSet.scenarios.map((item) => item.summary.estimatedTaxKrw), 1)
@@ -219,7 +226,7 @@ export function MasterScenarioComparison({
       <div className="mb-3 flex flex-col gap-1 border-b border-line-subtle pb-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="text-[10px] font-medium uppercase text-ink-3">{copy.comparison.lowestEstimatedTax}</div>
-          <div className="mt-1 text-[18px] font-medium tabular-nums text-success">{fmtKrw(minTax)}</div>
+          <div className="mt-1 text-[18px] font-medium tabular-nums text-success">{money(minTax)}</div>
         </div>
         <div className="text-[11px] text-ink-3">{copy.comparison.scale}</div>
       </div>
@@ -255,7 +262,7 @@ export function MasterScenarioComparison({
                 <div className="flex items-end justify-between gap-3">
                   <span className="text-[10px] uppercase text-ink-3">{copy.comparison.estimatedTax}</span>
                   <span className="text-[13px] font-medium tabular-nums text-ink">
-                    {fmtKrw(scenarioRow.summary.estimatedTaxKrw)}
+                    {money(scenarioRow.summary.estimatedTaxKrw)}
                   </span>
                 </div>
                 <div className="mt-1.5 h-1.5 overflow-hidden rounded-pill bg-line-subtle">
@@ -265,7 +272,7 @@ export function MasterScenarioComparison({
                   />
                 </div>
                 <div className={`mt-1 text-right text-[10px] tabular-nums ${delta <= 0 ? 'text-success' : 'text-danger'}`}>
-                  {delta === 0 ? copy.comparison.earliestBaseline : delta < 0 ? copy.comparison.less(fmtKrw(Math.abs(delta))) : copy.comparison.more(fmtKrw(delta))}
+                  {delta === 0 ? copy.comparison.earliestBaseline : delta < 0 ? copy.comparison.less(money(Math.abs(delta))) : copy.comparison.more(money(delta))}
                 </div>
               </div>
 
@@ -279,7 +286,7 @@ export function MasterScenarioComparison({
                 <dt className="text-ink-3">{copy.comparison.averageWait}</dt>
                 <dd className="text-right tabular-nums text-ink">{durationLabel(scenarioRow.summary.averageWaitDays)}</dd>
                 <dt className="text-ink-3">{copy.comparison.krTopUp}</dt>
-                <dd className="text-right tabular-nums text-ink">{fmtKrw(scenarioRow.summary.incrementalKrTaxAfterCreditKrw)}</dd>
+                <dd className="text-right tabular-nums text-ink">{money(scenarioRow.summary.incrementalKrTaxAfterCreditKrw)}</dd>
               </dl>
             </div>
           )
@@ -302,6 +309,7 @@ export function SavedPlansPanel({
   horizonYears: number
   copy: TaxPlanningCopy
 }) {
+  const money = useMoneyFormatter()
   const visiblePlans = plans.filter((plan) => plan.status !== 'archived').slice(0, 5)
   return (
     <Card
@@ -367,7 +375,7 @@ export function SavedPlansPanel({
                       </div>
                     </div>
                     <div className="text-[11px] tabular-nums text-ink-2">
-                      <div>{fmtKrw(saved.plan.summary.proceedsKrw)} {copy.savedPlans.planned}</div>
+                      <div>{money(saved.plan.summary.proceedsKrw)} {copy.savedPlans.planned}</div>
                       <div className="mt-0.5 text-ink-3">{copy.savedPlans.executed(fmtNumber(progress.executed), fmtNumber(progress.total))}</div>
                     </div>
                     <div className="text-right text-[10px] text-ink-3">{fmtDateTime(saved.updatedAt)}</div>
@@ -387,6 +395,7 @@ export function SavedPlansPanel({
 }
 
 export function MasterPlanAnnualTax({ plan, copy }: { plan: MonthlySaleMasterPlan; copy: TaxPlanningCopy }) {
+  const money = useMoneyFormatter()
   return (
     <Card
       title={copy.annualTax.title}
@@ -403,26 +412,26 @@ export function MasterPlanAnnualTax({ plan, copy }: { plan: MonthlySaleMasterPla
               </div>
               <div className="text-right">
                 <div className="text-[10px] uppercase text-ink-3">{copy.annualTax.netTax}</div>
-                <div className="mt-0.5 text-[15px] font-medium tabular-nums text-ink">{fmtKrw(year.estimatedTaxKrw)}</div>
+                <div className="mt-0.5 text-[15px] font-medium tabular-nums text-ink">{money(year.estimatedTaxKrw)}</div>
               </div>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-y border-line-subtle py-2 text-[11px]">
-              <div><span className="text-ink-3">{copy.annualTax.sales}</span><div className="mt-0.5 tabular-nums text-ink">{fmtKrw(year.proceedsKrw)}</div></div>
-              <div className="text-right"><span className="text-ink-3">{copy.annualTax.netGainLoss}</span><div className="mt-0.5 tabular-nums">{signedKrw(year.gainKrw)}</div></div>
-              <div><span className="text-ink-3">{copy.annualTax.usGross}</span><div className="mt-0.5 tabular-nums text-ink">{fmtKrw(year.usGrossTaxKrw ?? 0)}</div></div>
-              <div className="text-right"><span className="text-ink-3">{copy.annualTax.krGross}</span><div className="mt-0.5 tabular-nums text-ink">{fmtKrw(year.krGrossTaxKrw ?? 0)}</div></div>
-              <div><span className="text-ink-3">{copy.annualTax.creditUsed}</span><div className="mt-0.5 tabular-nums text-success">-{fmtKrw(year.estimatedCrossBorderTaxCreditKrw)}</div></div>
-              <div className="text-right"><span className="text-ink-3">{copy.annualTax.afterTaxCash}</span><div className="mt-0.5 tabular-nums text-ink">{fmtKrw(year.afterTaxKrw)}</div></div>
+              <div><span className="text-ink-3">{copy.annualTax.sales}</span><div className="mt-0.5 tabular-nums text-ink">{money(year.proceedsKrw)}</div></div>
+              <div className="text-right"><span className="text-ink-3">{copy.annualTax.netGainLoss}</span><div className="mt-0.5 tabular-nums">{signedMoney(year.gainKrw, money)}</div></div>
+              <div><span className="text-ink-3">{copy.annualTax.usGross}</span><div className="mt-0.5 tabular-nums text-ink">{money(year.usGrossTaxKrw ?? 0)}</div></div>
+              <div className="text-right"><span className="text-ink-3">{copy.annualTax.krGross}</span><div className="mt-0.5 tabular-nums text-ink">{money(year.krGrossTaxKrw ?? 0)}</div></div>
+              <div><span className="text-ink-3">{copy.annualTax.creditUsed}</span><div className="mt-0.5 tabular-nums text-success">-{money(year.estimatedCrossBorderTaxCreditKrw)}</div></div>
+              <div className="text-right"><span className="text-ink-3">{copy.annualTax.afterTaxCash}</span><div className="mt-0.5 tabular-nums text-ink">{money(year.afterTaxKrw)}</div></div>
             </div>
             <details className="mt-2 text-[10px] text-ink-3">
               <summary className="cursor-pointer font-medium text-info">{copy.annualTax.taxComponents}</summary>
               <div className="mt-2 grid grid-cols-2 gap-1.5">
-                <span>{copy.annualTax.federalShortTerm} {fmtKrw(year.usFederalShortTermTaxKrw ?? 0)}</span>
-                <span>{copy.annualTax.federalLongTerm} {fmtKrw(year.usFederalLongTermTaxKrw ?? 0)}</span>
-                <span>{copy.annualTax.niit} {fmtKrw(year.usNiitTaxKrw ?? 0)}</span>
-                <span>{copy.annualTax.california} {fmtKrw(year.usStateTaxKrw ?? 0)}</span>
-                <span>{copy.annualTax.usFtcLimit} {fmtKrw(year.usForeignTaxCreditLimitKrw ?? 0)}</span>
-                <span>{copy.annualTax.krCreditUsed} {fmtKrw(year.krForeignTaxCreditKrw ?? 0)}</span>
+                <span>{copy.annualTax.federalShortTerm} {money(year.usFederalShortTermTaxKrw ?? 0)}</span>
+                <span>{copy.annualTax.federalLongTerm} {money(year.usFederalLongTermTaxKrw ?? 0)}</span>
+                <span>{copy.annualTax.niit} {money(year.usNiitTaxKrw ?? 0)}</span>
+                <span>{copy.annualTax.california} {money(year.usStateTaxKrw ?? 0)}</span>
+                <span>{copy.annualTax.usFtcLimit} {money(year.usForeignTaxCreditLimitKrw ?? 0)}</span>
+                <span>{copy.annualTax.krCreditUsed} {money(year.krForeignTaxCreditKrw ?? 0)}</span>
               </div>
             </details>
           </article>
@@ -449,24 +458,24 @@ export function MasterPlanAnnualTax({ plan, copy }: { plan: MonthlySaleMasterPla
                 <tr>
                   <td className="pt-3 pr-4 font-mono text-ink">{year.year}</td>
                   <td className="pt-3 pr-4"><Badge tone="info">{year.filingScenario}</Badge></td>
-                  <td className="pt-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(year.proceedsKrw)}</td>
-                  <td className="pt-3 pr-4 text-right tabular-nums">{signedKrw(year.gainKrw)}</td>
-                  <td className="pt-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(year.usGrossTaxKrw ?? 0)}</td>
-                  <td className="pt-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(year.krGrossTaxKrw ?? 0)}</td>
-                  <td className="pt-3 pr-4 text-right tabular-nums text-success">-{fmtKrw(year.estimatedCrossBorderTaxCreditKrw)}</td>
-                  <td className="pt-3 pr-4 text-right tabular-nums font-medium text-ink">{fmtKrw(year.estimatedTaxKrw)}</td>
-                  <td className="pt-3 text-right tabular-nums text-ink">{fmtKrw(year.afterTaxKrw)}</td>
+                  <td className="pt-3 pr-4 text-right tabular-nums text-ink">{money(year.proceedsKrw)}</td>
+                  <td className="pt-3 pr-4 text-right tabular-nums">{signedMoney(year.gainKrw, money)}</td>
+                  <td className="pt-3 pr-4 text-right tabular-nums text-ink">{money(year.usGrossTaxKrw ?? 0)}</td>
+                  <td className="pt-3 pr-4 text-right tabular-nums text-ink">{money(year.krGrossTaxKrw ?? 0)}</td>
+                  <td className="pt-3 pr-4 text-right tabular-nums text-success">-{money(year.estimatedCrossBorderTaxCreditKrw)}</td>
+                  <td className="pt-3 pr-4 text-right tabular-nums font-medium text-ink">{money(year.estimatedTaxKrw)}</td>
+                  <td className="pt-3 text-right tabular-nums text-ink">{money(year.afterTaxKrw)}</td>
                 </tr>
                 <tr>
                   <td colSpan={9} className="pb-3 pt-2">
                     <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-md bg-surface px-3 py-2 text-[10px] text-ink-3">
-                      <span>{copy.annualTax.federalShortTerm} <strong className="font-medium text-ink">{fmtKrw(year.usFederalShortTermTaxKrw ?? 0)}</strong></span>
-                      <span>{copy.annualTax.federalLongTerm} <strong className="font-medium text-ink">{fmtKrw(year.usFederalLongTermTaxKrw ?? 0)}</strong></span>
-                      <span>{copy.annualTax.niit} <strong className="font-medium text-ink">{fmtKrw(year.usNiitTaxKrw ?? 0)}</strong></span>
-                      <span>{copy.annualTax.california} <strong className="font-medium text-ink">{fmtKrw(year.usStateTaxKrw ?? 0)}</strong></span>
-                      <span>{copy.annualTax.usFtcLimit} <strong className="font-medium text-ink">{fmtKrw(year.usForeignTaxCreditLimitKrw ?? 0)}</strong></span>
-                      <span>{copy.annualTax.usFtcUsed} <strong className="font-medium text-success">-{fmtKrw(year.usForeignTaxCreditKrw ?? 0)}</strong></span>
-                      <span>{copy.annualTax.krCreditUsed} <strong className="font-medium text-success">-{fmtKrw(year.krForeignTaxCreditKrw ?? 0)}</strong></span>
+                      <span>{copy.annualTax.federalShortTerm} <strong className="font-medium text-ink">{money(year.usFederalShortTermTaxKrw ?? 0)}</strong></span>
+                      <span>{copy.annualTax.federalLongTerm} <strong className="font-medium text-ink">{money(year.usFederalLongTermTaxKrw ?? 0)}</strong></span>
+                      <span>{copy.annualTax.niit} <strong className="font-medium text-ink">{money(year.usNiitTaxKrw ?? 0)}</strong></span>
+                      <span>{copy.annualTax.california} <strong className="font-medium text-ink">{money(year.usStateTaxKrw ?? 0)}</strong></span>
+                      <span>{copy.annualTax.usFtcLimit} <strong className="font-medium text-ink">{money(year.usForeignTaxCreditLimitKrw ?? 0)}</strong></span>
+                      <span>{copy.annualTax.usFtcUsed} <strong className="font-medium text-success">-{money(year.usForeignTaxCreditKrw ?? 0)}</strong></span>
+                      <span>{copy.annualTax.krCreditUsed} <strong className="font-medium text-success">-{money(year.krForeignTaxCreditKrw ?? 0)}</strong></span>
                     </div>
                   </td>
                 </tr>

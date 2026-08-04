@@ -4,7 +4,9 @@ import { PageHeader } from '@/components/PageHeader'
 import { TrendBarChart } from '@/components/charts'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
 import { getIncomeReview } from '@/lib/adapters/portfolio-db'
-import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
+import { fmtNumber } from '@/lib/format'
+import { createMoneyFormatter } from '@/lib/currency'
+import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
@@ -138,6 +140,7 @@ const COPY = {
 
 export default async function IncomePage() {
   const language = await getLanguage()
+  const money = createMoneyFormatter(await getCurrencyPreferences())
   const copy = COPY[language]
   const glossary = getGlossary(language)
   const income = getIncomeReview()
@@ -159,13 +162,13 @@ export default async function IncomePage() {
           title={copy.trailing12mIncome}
           info={copy.trailing12mInfo}
           eyebrow={copy.incomeRunRate}
-          value={fmtKrw(income.totals.trailing_12m_base_income)}
+          value={money(income.totals.trailing_12m_base_income)}
           hint={copy.baseIncomeHint}
         >
           <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
             <MetricField
               label={copy.ytdIncome}
-              value={fmtKrw(income.totals.ytd_base_income)}
+              value={money(income.totals.ytd_base_income)}
               hint={copy.latestMonth(latestMonthLabel)}
               tone="success"
               valueClassName="text-[18px]"
@@ -192,7 +195,7 @@ export default async function IncomePage() {
             <div className="space-y-4">
               <MetricField
                 label={copy.nativeTotals}
-                value={`${fmtMoney(income.totals.krw_income, 'KRW')} / ${fmtMoney(income.totals.usd_income, 'USD')}`}
+                value={`${money(income.totals.krw_income, 'KRW')} / ${money(income.totals.usd_income, 'USD')}`}
                 hint={copy.sourceRows(fmtNumber(income.totals.row_count))}
                 valueClassName="text-[18px]"
               />
@@ -218,15 +221,15 @@ export default async function IncomePage() {
           <div className="grid gap-3 text-[12px]">
             <div className="flex items-center justify-between">
               <span className="text-ink-3">{copy.dividendDistribution}</span>
-              <span className="font-medium tabular-nums text-ink">{fmtKrw(income.totals.dividend_base_income)}</span>
+              <span className="font-medium tabular-nums text-ink">{money(income.totals.dividend_base_income)}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-ink-3">{copy.interest}</span>
-              <span className="font-medium tabular-nums text-ink">{fmtKrw(income.totals.interest_base_income)}</span>
+              <span className="font-medium tabular-nums text-ink">{money(income.totals.interest_base_income)}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-ink-3">{copy.otherIncome}</span>
-              <span className="font-medium tabular-nums text-ink">{fmtKrw(income.totals.other_base_income)}</span>
+              <span className="font-medium tabular-nums text-ink">{money(income.totals.other_base_income)}</span>
             </div>
           </div>
         </Card>
@@ -237,8 +240,8 @@ export default async function IncomePage() {
               <li key={`${row.market}:${row.currency}`} className="flex items-center gap-3 py-2 text-[12px]">
                 <Badge tone={marketTone(row.market)}>{row.market}</Badge>
                 <div className="min-w-0 flex-1">
-                  <div className="font-medium tabular-nums text-ink">{fmtKrw(row.base_income)}</div>
-                  <div className="text-[11px] text-ink-3">{fmtMoney(row.native_income, row.currency)} {copy.native} · {fmtNumber(row.row_count)} {copy.rows}</div>
+                  <div className="font-medium tabular-nums text-ink">{money(row.base_income)}</div>
+                  <div className="text-[11px] text-ink-3">{money(row.native_income, row.currency)} {copy.native} · {fmtNumber(row.row_count)} {copy.rows}</div>
                 </div>
               </li>
             ))}
@@ -286,8 +289,8 @@ export default async function IncomePage() {
               { key: 'year', label: copy.columns.year },
               { key: 'currency', label: copy.columns.currency },
               { key: 'row_count', label: copy.columns.rows, align: 'right', render: (r) => fmtNumber(r.row_count) },
-              { key: 'native_income', label: copy.columns.native, align: 'right', render: (r) => fmtMoney(r.native_income, r.currency) },
-              { key: 'base_income', label: copy.columns.base, align: 'right', render: (r) => fmtKrw(r.base_income) },
+              { key: 'native_income', label: copy.columns.native, align: 'right', render: (r) => money(r.native_income, r.currency) },
+              { key: 'base_income', label: copy.columns.base, align: 'right', render: (r) => money(r.base_income) },
             ]}
           />
         </Card>
@@ -314,9 +317,9 @@ export default async function IncomePage() {
                 ),
               },
               { key: 'row_count', label: copy.columns.rows, align: 'right', render: (r) => fmtNumber(r.row_count) },
-              { key: 'native_income', label: copy.columns.nativeIncome, align: 'right', render: (r) => fmtMoney(r.native_income, r.currency) },
-              { key: 'base_income', label: copy.columns.baseIncome, align: 'right', render: (r) => fmtKrw(r.base_income) },
-              { key: 'market_value', label: copy.columns.marketValue, align: 'right', render: (r) => (r.market_value == null ? 'n/a' : fmtKrw(r.market_value)) },
+              { key: 'native_income', label: copy.columns.nativeIncome, align: 'right', render: (r) => money(r.native_income, r.currency) },
+              { key: 'base_income', label: copy.columns.baseIncome, align: 'right', render: (r) => money(r.base_income) },
+              { key: 'market_value', label: copy.columns.marketValue, align: 'right', render: (r) => (r.market_value == null ? 'n/a' : money(r.market_value)) },
               { key: 'trailing_yield', label: copy.columns.yield, align: 'right', render: (r) => pct(r.trailing_yield) },
               { key: 'yield_on_cost', label: copy.columns.yieldOnCost, align: 'right', render: (r) => pct(r.yield_on_cost) },
             ]}
@@ -334,8 +337,8 @@ export default async function IncomePage() {
                 { key: 'type', label: copy.columns.type },
                 { key: 'name', label: copy.columns.name },
                 { key: 'row_count', label: copy.columns.rows, align: 'right', render: (r) => fmtNumber(r.row_count) },
-                { key: 'native_income', label: copy.columns.native, align: 'right', render: (r) => fmtMoney(r.native_income, r.currency) },
-                { key: 'base_income', label: copy.columns.base, align: 'right', render: (r) => fmtKrw(r.base_income) },
+                { key: 'native_income', label: copy.columns.native, align: 'right', render: (r) => money(r.native_income, r.currency) },
+                { key: 'base_income', label: copy.columns.base, align: 'right', render: (r) => money(r.base_income) },
               ]}
             />
           )}

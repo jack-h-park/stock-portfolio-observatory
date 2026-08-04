@@ -4,7 +4,9 @@ import { FreshnessRows } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone, type Tone } from '@/components/ui'
 import { getDataOpsReview } from '@/lib/adapters/portfolio-db'
-import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
+import { fmtNumber } from '@/lib/format'
+import { createMoneyFormatter } from '@/lib/currency'
+import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
@@ -171,6 +173,7 @@ const COPY = {
 
 export default async function DataOpsPage() {
   const language = await getLanguage()
+  const money = createMoneyFormatter(await getCurrencyPreferences())
   const copy = COPY[language]
   const glossary = getGlossary(language)
   const priorityLabels = getUiCopy(language).priority
@@ -300,7 +303,7 @@ export default async function DataOpsPage() {
               { key: 'mapping_status', label: copy.columns.status, render: (r) => <Badge tone={r.mapping_status.includes('tickerless') ? 'warning' : 'success'}>{r.mapping_status}</Badge> },
               { key: 'income_category', label: copy.columns.category },
               { key: 'row_count', label: copy.columns.rows, align: 'right', render: (r) => fmtNumber(r.row_count) },
-              { key: 'base_income', label: copy.columns.baseIncome, align: 'right', render: (r) => fmtKrw(r.base_income) },
+              { key: 'base_income', label: copy.columns.baseIncome, align: 'right', render: (r) => money(r.base_income) },
             ]}
           />
         </Card>
@@ -318,7 +321,7 @@ export default async function DataOpsPage() {
                 { key: 'brokerage', label: copy.columns.broker },
                 { key: 'income_category', label: copy.columns.category },
                 { key: 'row_count', label: copy.columns.rows, align: 'right', render: (r) => fmtNumber(r.row_count) },
-                { key: 'base_income', label: copy.columns.base, align: 'right', render: (r) => fmtKrw(r.base_income) },
+                { key: 'base_income', label: copy.columns.base, align: 'right', render: (r) => money(r.base_income) },
                 { key: 'rule', label: copy.columns.suggestedRule, render: (r) => <code className="block max-w-[24rem] whitespace-pre-wrap font-mono text-[11px] text-ink-2">{r.rule}</code> },
               ]}
             />
@@ -363,8 +366,8 @@ export default async function DataOpsPage() {
               { key: 'name', label: copy.columns.name },
               { key: 'type', label: copy.columns.type },
               { key: 'row_count', label: copy.columns.rows, align: 'right', render: (r) => fmtNumber(r.row_count) },
-              { key: 'native_income', label: copy.columns.native, align: 'right', render: (r) => fmtMoney(r.native_income, r.currency) },
-              { key: 'base_income', label: copy.columns.base, align: 'right', render: (r) => fmtKrw(r.base_income) },
+              { key: 'native_income', label: copy.columns.native, align: 'right', render: (r) => money(r.native_income, r.currency) },
+              { key: 'base_income', label: copy.columns.base, align: 'right', render: (r) => money(r.base_income) },
               { key: 'suggestion', label: copy.columns.suggestion },
               { key: 'suggestedRule', label: copy.columns.rule, render: (r) => <code className="block max-w-[18rem] whitespace-pre-wrap font-mono text-[11px] text-ink-3">{r.suggestedRule}</code> },
             ]}
@@ -392,8 +395,8 @@ export default async function DataOpsPage() {
                 },
                 { key: 'name', label: copy.columns.name },
                 { key: 'account', label: copy.columns.account },
-                { key: 'native_cost', label: copy.columns.nativeCost, align: 'right', render: (r) => fmtMoney(r.native_cost, r.currency) },
-                { key: 'base_cost', label: copy.columns.baseCost, align: 'right', render: (r) => (r.base_cost == null ? 'n/a' : fmtKrw(r.base_cost)) },
+                { key: 'native_cost', label: copy.columns.nativeCost, align: 'right', render: (r) => money(r.native_cost, r.currency) },
+                { key: 'base_cost', label: copy.columns.baseCost, align: 'right', render: (r) => (r.base_cost == null ? 'n/a' : money(r.base_cost)) },
                 { key: 'reason', label: copy.columns.reason },
                 { key: 'suggestion', label: copy.columns.suggestion },
               ]}

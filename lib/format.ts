@@ -1,13 +1,14 @@
+import { formatKrw, formatUsd } from '@/lib/currency'
+
 export function fmtKrw(value: number | null | undefined) {
-  const n = Number(value ?? 0)
-  return `₩${Math.round(n).toLocaleString('ko-KR')}`
+  return formatKrw(value)
 }
 
 export function fmtMoney(value: number | null | undefined, currency: string | null | undefined) {
   const n = Number(value ?? 0)
   const code = currency || 'KRW'
   if (code === 'KRW') return fmtKrw(n)
-  if (code === 'USD') return `$${n.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`
+  if (code === 'USD') return formatUsd(n)
   return `${n.toLocaleString()} ${code}`
 }
 

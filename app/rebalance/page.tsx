@@ -3,7 +3,9 @@ import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
 import { getOperationalHealth, getRebalanceReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
-import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
+import { fmtNumber } from '@/lib/format'
+import { createMoneyFormatter } from '@/lib/currency'
+import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
@@ -28,8 +30,8 @@ function PositionLink({ row }: { row: ReviewPosition }) {
   )
 }
 
-function signedKrw(value: number) {
-  return <span className={value >= 0 ? 'text-success' : 'text-danger'}>{fmtKrw(value)}</span>
+function signedMoney(value: number, money: (value: number | null | undefined, currency?: string | null | undefined) => string) {
+  return <span className={value >= 0 ? 'text-success' : 'text-danger'}>{money(value, 'KRW')}</span>
 }
 
 const COPY = {
@@ -167,6 +169,7 @@ const COPY = {
 
 export default async function RebalancePage() {
   const language = await getLanguage()
+  const money = createMoneyFormatter(await getCurrencyPreferences())
   const copy = COPY[language]
   const glossary = getGlossary(language)
   const rebalance = getRebalanceReview()
@@ -195,7 +198,7 @@ export default async function RebalancePage() {
           <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
             <MetricField
               label={copy.baseMarketValue}
-              value={fmtKrw(rebalance.totals.base_market_value)}
+              value={money(rebalance.totals.base_market_value)}
               hint={copy.baseMarketValueHint}
               valueClassName="text-[18px]"
             />
@@ -251,7 +254,7 @@ export default async function RebalancePage() {
               { key: 'market', label: copy.columns.market, render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
               { key: 'currentPct', label: copy.columns.current, align: 'right', render: (r) => pct(r.currentPct) },
               { key: 'targetPct', label: copy.columns.target, align: 'right', render: (r) => pct(r.targetPct) },
-              { key: 'gapValue', label: copy.columns.gap, align: 'right', render: (r) => signedKrw(r.gapValue) },
+              { key: 'gapValue', label: copy.columns.gap, align: 'right', render: (r) => signedMoney(r.gapValue, money) },
               { key: 'action', label: copy.columns.action, render: (r) => <Badge tone={r.action === 'Hold' ? 'success' : 'warning'}>{r.action}</Badge> },
             ]}
           />
@@ -266,7 +269,7 @@ export default async function RebalancePage() {
                 <li key={row.market} className="flex items-center gap-3 py-2 text-[12px]">
                   <Badge tone={marketTone(row.market)}>{row.market}</Badge>
                   <div className="min-w-0 flex-1">
-                    <div className="font-medium tabular-nums text-ink">{fmtKrw(row.gapValue)} {copy.underTarget}</div>
+                    <div className="font-medium tabular-nums text-ink">{money(row.gapValue)} {copy.underTarget}</div>
                     <div className="text-[11px] text-ink-3">{pct(row.gapPct)} {copy.gap} · {copy.existingPositions(fmtNumber(row.candidateCount))}</div>
                   </div>
                 </li>
@@ -285,7 +288,7 @@ export default async function RebalancePage() {
                   <li key={row.market} className="flex items-center gap-3 py-2 text-[12px]">
                     <Badge tone={marketTone(row.market)}>{row.market}</Badge>
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium tabular-nums text-ink">{fmtKrw(row.currentValue)}</div>
+                      <div className="font-medium tabular-nums text-ink">{money(row.currentValue)}</div>
                       <div className="text-[11px] text-ink-3">{copy.ofPortfolioNoTarget(pct(row.currentPctOfPortfolio))}</div>
                     </div>
                   </li>
@@ -330,8 +333,8 @@ export default async function RebalancePage() {
                 { key: 'ticker', label: copy.columns.position, render: (r) => <PositionLink row={r} /> },
                 { key: 'currentPct', label: copy.columns.currentPct, align: 'right', render: (r) => pct(r.currentPct) },
                 { key: 'capGapPct', label: copy.columns.overCap, align: 'right', render: (r) => pct(r.capGapPct) },
-                { key: 'capGapValue', label: copy.columns.gapValue, align: 'right', render: (r) => fmtKrw(r.capGapValue) },
-                { key: 'base_unrealized_gl', label: copy.columns.baseGl, align: 'right', render: (r) => (r.base_unrealized_gl == null ? 'n/a' : fmtKrw(r.base_unrealized_gl)) },
+                { key: 'capGapValue', label: copy.columns.gapValue, align: 'right', render: (r) => money(r.capGapValue) },
+                { key: 'base_unrealized_gl', label: copy.columns.baseGl, align: 'right', render: (r) => (r.base_unrealized_gl == null ? 'n/a' : money(r.base_unrealized_gl)) },
                 { key: 'short_term_ratio', label: copy.columns.shortPct, align: 'right', render: (r) => pct(r.short_term_ratio) },
               ]}
             />
@@ -346,7 +349,7 @@ export default async function RebalancePage() {
               rows={rebalance.taxSensitive}
               columns={[
                 { key: 'ticker', label: copy.columns.position, render: (r) => <PositionLink row={r} /> },
-                { key: 'base_market_value', label: copy.columns.baseMarket, align: 'right', render: (r) => (r.base_market_value == null ? 'n/a' : fmtKrw(r.base_market_value)) },
+                { key: 'base_market_value', label: copy.columns.baseMarket, align: 'right', render: (r) => (r.base_market_value == null ? 'n/a' : money(r.base_market_value)) },
                 { key: 'short_term_ratio', label: copy.columns.shortPct, align: 'right', render: (r) => pct(r.short_term_ratio) },
                 { key: 'short_term_qty', label: copy.columns.shortQty, align: 'right', render: (r) => fmtNumber(r.short_term_qty, 4) },
                 { key: 'reason', label: copy.columns.reason },
@@ -374,8 +377,8 @@ export default async function RebalancePage() {
                 rows={rebalance.watchCandidates}
                 columns={[
                   { key: 'ticker', label: copy.columns.position, render: (r) => <PositionLink row={r} /> },
-                  { key: 'base_cost', label: copy.columns.baseCost, align: 'right', render: (r) => fmtKrw(r.base_cost) },
-                  { key: 'native_cost', label: copy.columns.nativeCost, align: 'right', render: (r) => fmtMoney(r.native_cost, r.currency) },
+                  { key: 'base_cost', label: copy.columns.baseCost, align: 'right', render: (r) => money(r.base_cost) },
+                  { key: 'native_cost', label: copy.columns.nativeCost, align: 'right', render: (r) => money(r.native_cost, r.currency) },
                   { key: 'reason', label: copy.columns.reason },
                 ]}
               />

@@ -5,7 +5,8 @@ import { useState } from 'react'
 import { updateSavedInstructionExecutionAction } from '@/app/tax-planning/actions'
 import { getTaxPlanningCopy } from '@/app/tax-planning/copy'
 import { Badge, Button, Card, EmptyState, marketTone } from '@/components/ui'
-import { fmtKrw, fmtNumber } from '@/lib/format'
+import { fmtNumber } from '@/lib/format'
+import { useMoneyFormatter } from '@/components/LanguageProvider'
 import type { Language } from '@/lib/i18n'
 import { positionHref } from '@/lib/position-url'
 import type {
@@ -36,11 +37,11 @@ function compactKrw(value: number, language: Language) {
   }).format(value)
 }
 
-function signedKrw(value: number) {
+function signedMoney(value: number, money: (value: number | null | undefined, currency?: string | null | undefined) => string) {
   return (
     <span className={value >= 0 ? 'text-success' : 'text-danger'}>
       {value > 0 ? '+' : ''}
-      {fmtKrw(value)}
+      {money(value, 'KRW')}
     </span>
   )
 }
@@ -142,12 +143,14 @@ function MonthDetailCard({
   execution,
   copy,
   language,
+  money,
 }: {
   row: MasterPlanInstruction
   savedPlanId?: string
   execution?: SavedInstructionExecution
   copy: ReturnType<typeof getTaxPlanningCopy>['timeline']
   language: Language
+  money: (value: number | null | undefined, currency?: string | null | undefined) => string
 }) {
   return (
     <article className="rounded-md border border-line-subtle bg-card p-3">
@@ -183,11 +186,11 @@ function MonthDetailCard({
         </div>
         <div>
           <div className="text-ink-3">{copy.estimatedProceeds}</div>
-          <div className="mt-0.5 tabular-nums text-ink">{fmtKrw(row.proceedsKrw)}</div>
+          <div className="mt-0.5 tabular-nums text-ink">{money(row.proceedsKrw, 'KRW')}</div>
         </div>
         <div className="text-right">
           <div className="text-ink-3">{copy.estimatedGainLoss}</div>
-          <div className="mt-0.5 tabular-nums">{signedKrw(row.gainKrw)}</div>
+          <div className="mt-0.5 tabular-nums">{signedMoney(row.gainKrw, money)}</div>
         </div>
       </div>
 
@@ -216,16 +219,24 @@ function MonthDetailCard({
   )
 }
 
-function MonthSummary({ month, copy }: { month: MasterPlanMonth; copy: ReturnType<typeof getTaxPlanningCopy>['timeline'] }) {
+function MonthSummary({
+  month,
+  copy,
+  money,
+}: {
+  month: MasterPlanMonth
+  copy: ReturnType<typeof getTaxPlanningCopy>['timeline']
+  money: (value: number | null | undefined, currency?: string | null | undefined) => string
+}) {
   const grossGainKrw = month.gainKrw + month.lossKrw
   return (
     <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line-subtle bg-line-subtle sm:grid-cols-5">
       {[
-        [copy.plannedSales, fmtKrw(month.proceedsKrw), 'text-ink'],
+        [copy.plannedSales, money(month.proceedsKrw, 'KRW'), 'text-ink'],
         [copy.position, fmtNumber(month.positionCount), 'text-ink'],
-        [copy.grossGains, fmtKrw(grossGainKrw), 'text-success'],
-        [copy.pairedLosses, `-${fmtKrw(month.lossKrw)}`, 'text-danger'],
-        [copy.netGainLoss, fmtKrw(month.gainKrw), month.gainKrw >= 0 ? 'text-success' : 'text-danger'],
+        [copy.grossGains, money(grossGainKrw, 'KRW'), 'text-success'],
+        [copy.pairedLosses, `-${money(month.lossKrw, 'KRW')}`, 'text-danger'],
+        [copy.netGainLoss, money(month.gainKrw, 'KRW'), month.gainKrw >= 0 ? 'text-success' : 'text-danger'],
       ].map(([label, value, tone]) => (
         <div key={label} className="bg-card px-3 py-2.5">
           <div className="text-[10px] font-medium uppercase text-ink-3">{label}</div>
@@ -251,6 +262,7 @@ export function TaxPlanTimeline({
   execution?: Record<string, SavedInstructionExecution>
   language?: Language
 }) {
+  const money = useMoneyFormatter()
   const copy = getTaxPlanningCopy(language).timeline
   const fallbackMonth = plan.months[0]?.yearMonth ?? ''
   const [selectedMonth, setSelectedMonth] = useState(initialMonth || fallbackMonth)
@@ -346,7 +358,7 @@ export function TaxPlanTimeline({
                           type="button"
                           onClick={() => chooseMonth(month.yearMonth)}
                           aria-pressed={selected}
-                          aria-label={copy.plannedSalesAria(month.label, fmtKrw(month.proceedsKrw))}
+                          aria-label={copy.plannedSalesAria(month.label, money(month.proceedsKrw, 'KRW'))}
                           className={`group relative flex h-[8.5rem] w-[5.1rem] shrink-0 flex-col items-center rounded-md border px-1.5 py-2 text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-info ${
                             selected
                               ? 'border-info bg-[color:var(--accent-info)]/5 shadow-card'
@@ -405,7 +417,7 @@ export function TaxPlanTimeline({
               </div>
             </div>
 
-            <MonthSummary month={activeMonth} copy={copy} />
+            <MonthSummary month={activeMonth} copy={copy} money={money} />
 
             <div className="mt-3 space-y-2 sm:hidden">
               {visibleInstructions.map((row) => (
@@ -416,6 +428,7 @@ export function TaxPlanTimeline({
                   execution={execution[row.id]}
                   copy={copy}
                   language={language}
+                  money={money}
                 />
               ))}
             </div>
@@ -478,8 +491,8 @@ export function TaxPlanTimeline({
                           </Badge>
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-ink">{fmtKrw(row.proceedsKrw)}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">{signedKrw(row.gainKrw)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-ink">{money(row.proceedsKrw, 'KRW')}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{signedMoney(row.gainKrw, money)}</td>
                       {savedPlanId && (
                         <td className="px-3 py-2.5">
                           <div className="mb-1.5">

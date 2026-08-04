@@ -3,7 +3,9 @@ import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone, type Tone } from '@/components/ui'
 import { getReconciliationReview } from '@/lib/adapters/portfolio-db'
-import { fmtKrw, fmtMoney, fmtNumber, fmtQuantity } from '@/lib/format'
+import { fmtNumber, fmtQuantity } from '@/lib/format'
+import { createMoneyFormatter } from '@/lib/currency'
+import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
@@ -154,6 +156,7 @@ const COPY = {
 
 export default async function ReconciliationPage() {
   const language = await getLanguage()
+  const money = createMoneyFormatter(await getCurrencyPreferences())
   const copy = COPY[language]
   const glossary = getGlossary(language)
   const priorityLabels = getUiCopy(language).priority
@@ -265,8 +268,8 @@ export default async function ReconciliationPage() {
             { key: 'lot_rows', label: copy.columns.lotRows, align: 'right', render: (r) => fmtNumber(r.lot_rows) },
             { key: 'transaction_rows', label: copy.columns.txRows, align: 'right', render: (r) => fmtNumber(r.transaction_rows) },
             { key: 'dividend_rows', label: copy.columns.incomeRows, align: 'right', render: (r) => fmtNumber(r.dividend_rows) },
-            { key: 'holding_base_cost', label: copy.columns.holdingCost, align: 'right', render: (r) => fmtKrw(r.holding_base_cost) },
-            { key: 'lot_base_cost', label: copy.columns.lotCost, align: 'right', render: (r) => fmtKrw(r.lot_base_cost) },
+            { key: 'holding_base_cost', label: copy.columns.holdingCost, align: 'right', render: (r) => money(r.holding_base_cost) },
+            { key: 'lot_base_cost', label: copy.columns.lotCost, align: 'right', render: (r) => money(r.lot_base_cost) },
           ]}
         />
       </Card>
@@ -293,7 +296,7 @@ export default async function ReconciliationPage() {
               { key: 'holding_quantity', label: copy.columns.holdingQty, align: 'right', render: (r) => fmtQuantity(r.holding_quantity, 4) },
               { key: 'lot_quantity', label: copy.columns.lotQty, align: 'right', render: (r) => fmtQuantity(r.lot_quantity, 4) },
               { key: 'quantity_diff', label: copy.columns.qtyDiff, align: 'right', render: (r) => (r.quantity_diff == null ? 'n/a' : fmtQuantity(r.quantity_diff, 4)) },
-              { key: 'base_cost_diff', label: copy.columns.costDiff, align: 'right', render: (r) => (r.base_cost_diff == null ? 'n/a' : fmtKrw(r.base_cost_diff)) },
+              { key: 'base_cost_diff', label: copy.columns.costDiff, align: 'right', render: (r) => (r.base_cost_diff == null ? 'n/a' : money(r.base_cost_diff)) },
             ]}
           />
         )}
@@ -311,7 +314,7 @@ export default async function ReconciliationPage() {
                 { key: 'brokerage', label: copy.columns.brokerage },
                 { key: 'income_category', label: copy.columns.category },
                 { key: 'row_count', label: copy.columns.rows, align: 'right', render: (r) => fmtNumber(r.row_count) },
-                { key: 'base_income', label: copy.columns.baseIncome, align: 'right', render: (r) => fmtKrw(r.base_income) },
+                { key: 'base_income', label: copy.columns.baseIncome, align: 'right', render: (r) => money(r.base_income) },
               ]}
             />
           )}
@@ -335,8 +338,8 @@ export default async function ReconciliationPage() {
                   ),
                 },
                 { key: 'brokerage', label: copy.columns.brokerage },
-                { key: 'native_cost', label: copy.columns.nativeCost, align: 'right', render: (r) => fmtMoney(r.native_cost, r.currency) },
-                { key: 'base_cost', label: copy.columns.baseCost, align: 'right', render: (r) => (r.base_cost == null ? 'n/a' : fmtKrw(r.base_cost)) },
+                { key: 'native_cost', label: copy.columns.nativeCost, align: 'right', render: (r) => money(r.native_cost, r.currency) },
+                { key: 'base_cost', label: copy.columns.baseCost, align: 'right', render: (r) => (r.base_cost == null ? 'n/a' : money(r.base_cost)) },
               ]}
             />
           )}

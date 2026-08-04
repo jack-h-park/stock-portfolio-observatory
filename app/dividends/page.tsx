@@ -2,20 +2,23 @@ import { PageHeader } from '@/components/PageHeader'
 import { Button, Card } from '@/components/ui'
 import { TrendBarChart } from '@/components/charts'
 import { getDividendByYear } from '@/lib/adapters/portfolio-db'
-import { fmtMoney, fmtNumber } from '@/lib/format'
+import { fmtNumber } from '@/lib/format'
+import { createMoneyFormatter } from '@/lib/currency'
+import { getCurrencyPreferences } from '@/lib/currency-server'
 
 export const dynamic = 'force-dynamic'
 
 const dividendChartAmount = (currency: string, amount: number) =>
   currency === 'KRW' ? Number((amount / 1000).toFixed(1)) : Number(amount.toFixed(2))
 
-export default function DividendsPage() {
+export default async function DividendsPage() {
+  const money = createMoneyFormatter(await getCurrencyPreferences())
   const rows = getDividendByYear()
   const byCurrency = rows.reduce((m, r) => {
     m.set(r.currency, (m.get(r.currency) || 0) + r.amount)
     return m
   }, new Map<string, number>())
-  const totalLabel = Array.from(byCurrency.entries()).map(([currency, amount]) => fmtMoney(amount, currency)).join(' / ')
+  const totalLabel = Array.from(byCurrency.entries()).map(([currency, amount]) => money(amount, currency)).join(' / ')
   return (
     <>
       <PageHeader
@@ -45,7 +48,7 @@ export default function DividendsPage() {
               <li key={r.year} className="flex items-center justify-between py-2 text-[13px]">
                 <span className="font-medium text-ink">{r.currency} {r.year}</span>
                 <span className="text-ink-3">{fmtNumber(r.count)} rows</span>
-                <span className="font-medium tabular-nums text-ink">{fmtMoney(r.amount, r.currency)}</span>
+                <span className="font-medium tabular-nums text-ink">{money(r.amount, r.currency)}</span>
               </li>
             ))}
           </ul>

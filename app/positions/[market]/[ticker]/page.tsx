@@ -6,6 +6,8 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard } from '@/components/ui'
 import { getOperationalHealth, getPositionDetail, type FreshnessItem } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtMoney, fmtNumber, fmtQuantity, shortHash } from '@/lib/format'
+import { createMoneyFormatter } from '@/lib/currency'
+import { getCurrencyPreferences } from '@/lib/currency-server'
 import { buildTaxPlan } from '@/lib/tax-planning'
 import { getTaxPolicyState } from '@/lib/tax-policy'
 import { GLOSSARY } from '@/lib/glossary'
@@ -76,6 +78,7 @@ function ReconciliationStrip({
 }
 
 export default async function PositionPage({ params }: { params: Promise<{ market: string; ticker: string }> }) {
+  const fmtMoney = createMoneyFormatter(await getCurrencyPreferences())
   const { market: rawMarket, ticker: rawTicker } = await params
   const market = decodeURIComponent(rawMarket).toUpperCase()
   const ticker = decodeURIComponent(rawTicker)
