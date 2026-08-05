@@ -363,9 +363,9 @@ which PDF page each row came from. They describe themselves as copies.
 
 | Sheet | Role now |
 | --- | --- |
-| 국내 주식 보유 현황 및 수익률 | **view + annotations.** Korean data no longer flows from it. |
+| 국내 주식 보유 현황 및 수익률 | **one live tab.** `미실현수익 정리` is kept as a view; `배당금 내역`, `Tax Lots`, `Realized Lots` and `거래원장` were frozen on 2026-08-04 — see below. |
 | 미국 주식 보유 현황 및 수익률 | **view + annotations**, but still the input `reconcile-holdings.mjs` compares against the broker exports. Retiring it needs US realized gains in the database first. |
-| 주식 매도 & 손익 | **still a source.** 67 hand-entered rows, 2022-08 → 2026-05, and the only structured record of US realized gains outside the 1099-B PDFs. |
+| 주식 매도 & 손익 | **a journal, not a source.** Its figures were all ingested by 2026-08-04 and the money columns were cleared; what remains is `비고` — why a sale happened, and what the broker's own app said about it. See below. |
 
 What is genuinely not derivable from them is small and worth keeping:
 
@@ -373,10 +373,80 @@ What is genuinely not derivable from them is small and worth keeping:
   disagreed (`Resolved: 2025-09-22 Buy 1 share + 2026-07-02 SPL 3 shares = 4`).
   The ticker-mapping ones (`BRKB → BRK.B`) are configuration, not annotation,
   and belong in `data/manual-mappings.json`.
-- 주식 매도 & 손익 → `비고`, which records dividends received while a position
-  was held (`누적배당금: $217.4`). That is what makes its return figures total
-  return rather than price return. The database holds 846 dividend rows and 215
-  realized lots and never joins them, so it cannot yet say the same thing.
+- 주식 매도 & 손익 → `비고`, on 40 of its 65 rows. 22 of those record the
+  dividends a position paid while it was held (`누적배당금: $217.47` on IWM),
+  which is what made its return figures total return rather than price return.
+  The ingest now joins the two — 39 payments onto 23 of 32 realized lots — but
+  **only for `market = 'US'`**, and every one of these 22 sales went through a
+  Korean broker. Extending that attribution to the Korean side is what would
+  make them derivable.
+  The other 18 never will be: 14 quote a figure from 미래에셋's own app
+  (`MY종목분석:3년간+136,447원`), and the rest record intent — `Fidelity 이전 후
+  소수점 처분`, `환차손익 +23,287원`, `기준환율:1,436.10`. No statement carries
+  why a position was closed.
+
+### Freezing the Korean detail tabs (2026-08-04)
+
+Four of the Korean sheet's five tabs were archived rather than maintained. The
+sheet's numbers were a snapshot of what one hand-run extraction reached, and the
+parsers have since reached considerably further:
+
+| Tab | Sheet (2026-07-15) | Database (2026-08-04) |
+| --- | --- | --- |
+| 미실현수익 정리 | 47 | 48 |
+| Tax Lots | 563 | 573 |
+| 배당금 내역 | 151 | **916** |
+| Realized Lots | 49 | **2,986** |
+| 거래원장 | 777 | **11,232** |
+
+Dividends is the clearest case: the certificates fill a different column per
+currency, and reading only the KRW one booked every foreign trade at zero — the
+496 rows recovered from that included 247 dividends. The sheet's 151 predate the
+fix.
+
+Keeping a second copy would not be redundancy but an unchecked number: the
+validations (`toss_holdings_lots_provenance` and the rest) run against the
+database, so a sheet that disagrees has nothing to answer to. Archived rather
+than deleted — the tabs stay readable, and the decision is reversible.
+
+`미실현수익 정리` is kept because neither surface replaces it: the Observatory is
+tailnet-only and the briefing is a fixed 08:00 document, while the sheet is a
+table you can sort, filter and compute in, priced live by `GOOGLEFINANCE`. It is
+a candidate to become a generated view written from the database.
+
+### Shrinking 주식 매도 & 손익 to a journal (2026-08-04)
+
+Its `Sheet1` became `매매일지`, columns G through V — 매수단가 through
+손익(달러환산) — were cleared, and the whole tab was duplicated to
+`[보관] 전체 기록 (2026-08-04)` first. 날짜, 증권사, 주식, 계좌, 수량 and 비고
+stay. The sheet's own last row always said what it was for: `미래에셋(앱) ->
+주식매매일지`.
+
+**It was never the US realized record this file called it.** 59 of its 66 rows
+are Korean brokers — 미래에셋 36, 미래에셋(ISA) 14, 토스 9 — against 5 Robinhood
+and 1 Merrill. What made it look otherwise is that most of those Korean rows are
+US-listed securities bought through Korean accounts.
+
+Checking the figures took three passes, and the first two were wrong:
+
+- **By date, 59 of 65 rows looked missing.** They are not. Its dates are the
+  trade dates a person wrote down; the certificates report T+2 settlement, and
+  one whole block is dated 2025-10-26, a Sunday. The rule stated further down
+  this file — match on symbol, quantity and unit price, never on date — exists
+  for exactly this.
+- **By ticker, a quarter still looked missing.** Also wrong: Korean ETF names
+  (`TIGER`, `KODEX`, `RISE`) have no ticker to extract, and Toss's 소수점 매수
+  splits one line of this sheet across hundreds of lots — its 2025-10 alone
+  holds 2,211.
+- **The absence of `currency = 'USD'` on Toss rows is not the absence of the
+  trades.** `toss_statements.py` books both statement sections in KRW on
+  purpose, verified against MSFT's 2022-08-04 단가 of 363,074 = $277.7 ×
+  1,307.20. A dollar reading would make it a $363,074 share.
+
+What was genuinely missing was four sales whose purchases predated the 종합
+account's earliest certificate, and the 2018-2019 and 2020-2021 certificates
+closed all four — 태양, 파세코, ES큐브 (bought 2021-01-25 under its former name
+라이브플렉스) and SPDR S&P 500's full 10 shares.
 
 One hazard remains in the US sheet: its `미실현수익 정리` header carries
 `USD/KRW Rate | 1423.92` as a literal. That is the same shape as the FX rate
