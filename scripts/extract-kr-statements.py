@@ -84,6 +84,8 @@ def nfc(value):
 
 
 DATE_CELL = re.compile(r"^\d{4}/\d{2}/\d{2}$")
+# How 미래에셋 writes a symbol change in the 종목명 column: `FB -> META`.
+TICKER_CHANGE = re.compile(r"^([A-Z0-9.]{1,12})\s*->\s*([A-Z0-9.]{1,12})$")
 
 # 거래종류 → the shared vocabulary in ingest-stock-data.mjs. Anything absent from
 # this table is reported at the end rather than silently dropped: an unmapped
@@ -97,6 +99,15 @@ TYPE_MAP = {
     "외화채권매수입고": "BUY",
     "장내당일채권매수입고": "BUY",
     "공모주입고": "BUY",
+    # The 2018-2019 certificate names the same two events differently — the
+    # broker changed its wording somewhere in 2018, and the older file carries
+    # both vocabularies. These are securities legs despite reading like cash
+    # ones: `주식매수` on 2018-06-11 fills 거래수량 3 and 단가 31,810 against a
+    # 거래금액 of 95,430, which is the same shape `주식매수입고` has, and there is
+    # no paired 주식매수출금 to double-count against — 15 of the former against 3
+    # of the latter in that file.
+    "주식매수": "BUY",
+    "해외주식매수결제": "BUY",
     "주식매도출고": "SELL",
     "해외주식매도출고": "SELL",
     "외화채권매도출고": "SELL",
@@ -105,6 +116,11 @@ TYPE_MAP = {
     "채권만기상환출고(해외)": "CORPORATE_ACTION",
     "액면분할입고(해외)": "STOCK_SPLIT",
     "액면분할출고(해외)": "STOCK_SPLIT",
+    # A reverse split, the same event running the other way. The odd-lot
+    # remainder it leaves is paid out in cash, which is income and not a
+    # disposal — the same treatment 무상단수주대금입금 already gets below.
+    "액면병합출고": "STOCK_SPLIT",
+    "액면병합입고(액면병합)": "STOCK_SPLIT",
     "신주인수권증서입고": "CORPORATE_ACTION",
     "신주인수권증서말소출고": "CORPORATE_ACTION",
     "해외주식티커변경": "CORPORATE_ACTION",
@@ -115,9 +131,11 @@ TYPE_MAP = {
     # income
     "배당금입금": "DIVIDEND",
     "배당금외화입금": "DIVIDEND",
+    "해외주식배당금": "DIVIDEND",
     "ETF/상장클래스 분배금입금": "DIVIDEND",
     "배당단수주대금입금": "DIVIDEND",
     "예탁금이용료입금": "INTEREST",
+    "예탁금이용료정기입금": "INTEREST",
     "외화예탁금이용료입금": "INTEREST",
     "채권이자외화입금": "INTEREST",
     "사채이자입금": "INTEREST",
@@ -125,6 +143,8 @@ TYPE_MAP = {
     "세금환급": "OTHER_INCOME",
     "선환전차액입금": "OTHER_INCOME",
     "무상단수주대금입금": "OTHER_INCOME",
+    "액면병합단수주대금": "OTHER_INCOME",
+    "신규이벤트입금": "OTHER_INCOME",
     # movements between accounts and institutions
     "이체출고": "TRANSFER_OUT",
     "이체송금": "TRANSFER_OUT",
@@ -143,6 +163,7 @@ TYPE_MAP = {
     "외화매수외화입금": "JOURNAL",
     "외화매도외화출금": "JOURNAL",
     "외화매도원화입금": "JOURNAL",
+    "환전매수": "JOURNAL",
     # withholding
     "배당세금출금": "FEE",
     "배당세출금": "FEE",
@@ -532,10 +553,45 @@ def build_lots(transactions, as_of_by_account):
     A broker should not be able to age another broker's lots.
     """
     open_lots = {}
-    taxlots, realized, notes = [], [], []
+    taxlots, realized, notes, carried = [], [], [], []
 
     for r in sorted(transactions, key=lambda x: (x["Date"], x["Source"], int(x["Page"]))):
         ticker, qty = r["Ticker"], float(r["Quantity"] or 0)
+
+        # A ticker change moves no shares, so it is filtered out by the quantity
+        # guard below — but the OPEN LOTS have to follow the symbol, or the
+        # position splits in two: one half stranded under a name the broker no
+        # longer uses and never consumed by a later sale, the other short of the
+        # cost basis that belonged to it.
+        #
+        # 미래에셋 states the change outright — `해외주식티커변경`, with `FB ->
+        # META` in the name — so this reads the certificate rather than waiting
+        # for someone to notice and write a manual mapping. `tickerRenames` in
+        # manual-mappings.json stays for renames no statement declares (a fund
+        # rebranding seen only across two brokers' exports); it runs in the
+        # ingest, after these lots are already built, so it cannot do this job.
+        #
+        # Found when the 2020-2021 certificate arrived: FB bought 2020-07-06 sat
+        # open at ₩316,052 while the 2025-10-29 sale of 4 META shares found only
+        # its 3 META lots — a position closed in reality, showing as held.
+        renamed = TICKER_CHANGE.match(nfc(r["Name"] or "").strip())
+        if renamed and ticker:
+            old_key = (r["Account"], ticker)
+            new_key = (r["Account"], renamed.group(2))
+            moved = open_lots.pop(old_key, [])
+            if moved:
+                merged = open_lots.setdefault(new_key, []) + moved
+                merged.sort(key=lambda lot: lot["acquired"])
+                open_lots[new_key] = merged
+                # Reported apart from `notes`: that channel means a disposal
+                # found no lot, which is a statement someone has to go and get.
+                # This is the ordinary handling of an event the broker declared,
+                # and filing it under the same warning is how a real alarm stops
+                # being read.
+                carried.append(f"{r['Date']} {r['Account']} {ticker} -> {renamed.group(2)}: "
+                               f"{len(moved)} open lot(s) carried across ({r['Raw Type']})")
+            continue
+
         if not ticker or qty <= 0:
             continue
         key = (r["Account"], ticker)
@@ -620,7 +676,7 @@ def build_lots(transactions, as_of_by_account):
                 "Holding Days": days, "As Of Date": as_of,
                 "Tax Term": tax_term(days), "Source": lot["source"],
             })
-    return taxlots, realized, notes
+    return taxlots, realized, notes, carried
 
 
 def resolve_as_of(transactions, statements_dir, report):
@@ -1077,7 +1133,9 @@ def main():
     dividends.sort(key=lambda r: (r["Date"], r["Source"], r["Page"]))
 
     as_of_map = resolve_as_of(transactions, statements_dir, report)
-    taxlots, realized, lot_notes = build_lots(transactions, as_of_map)
+    taxlots, realized, lot_notes, lot_carried = build_lots(transactions, as_of_map)
+    for line in lot_carried:
+        print(f"[kr-statement] {line}", file=sys.stderr)
     check_lots_against_snapshot(taxlots, toss_snapshot, report)
 
     write_tsv(OUT_DIR / "transactions.tsv", TRANSACTION_COLUMNS, transactions)
