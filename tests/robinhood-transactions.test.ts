@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import Database from 'better-sqlite3'
+import { writeSheetPayloads } from './sheet-payloads'
 
 // Two things the Robinhood transaction CSV was carrying that the ingest was not
 // reading: the order of its rows, and the origin of each trade.
@@ -24,27 +25,12 @@ function csv(rows: string[]) {
   return [CSV_HEADER, ...rows].join('\n') + '\n'
 }
 
-const PAYLOAD_HEADERS: Record<string, string> = {
-  'summary.noapost.tsv':
-    'Account\tTicker\tName\tQuantity\tAverage Unit Cost\tTotal Cost\tCurrent Price\tPE\tEPS\tUnrealized G/L Amt.\tUnrealized Gain/Loss (%)\tLong-Term Qty\tShort-Term Qty\tLot Count',
-  'taxlots.tsv':
-    'Account\tTicker\tName\tAcquired Date\tOpen Quantity\tCost Basis (KRW)\tUnit Cost\tHolding Days as of 2026-07-15\tTax Term\tSource',
-  'transactions.tsv':
-    'Date\tAccount\tType\tRaw Type\tTicker\tName\tQuantity\tAmount (KRW)\tSettlement (KRW)\tUnit Price\tFee\tTax\tBalance\tSource\tPage',
-  'dividends.tsv': 'Date\tAccount\tSymbol\tName\tAmount (KRW)\tType\tSource\tPage',
-  'realized.tsv':
-    'Account\tTicker\tName\tAcquired Date\tSold Date\tQuantity Sold\tCost Basis (KRW)\tProceeds (KRW)\tRealized G/L (KRW)\tHolding Days\tTax Term\tSource',
-}
-
 /** Run a real ingest over a scratch data dir holding only this CSV. */
 function ingest(csvBody: string) {
   const dir = mkdtempSync(path.join(tmpdir(), 'rh-txn-'))
   mkdirSync(path.join(dir, 'us-transactions'), { recursive: true })
   writeFileSync(path.join(dir, 'us-transactions', 'robinhood-transactions-midterm-20260731.csv'), csvBody, 'utf8')
-  mkdirSync(path.join(dir, '.codex_sheet_payloads'), { recursive: true })
-  for (const [name, header] of Object.entries(PAYLOAD_HEADERS)) {
-    writeFileSync(path.join(dir, '.codex_sheet_payloads', name), header + '\n', 'utf8')
-  }
+  writeSheetPayloads(dir)
   const repoData = mkdtempSync(path.join(tmpdir(), 'rh-data-'))
   cpSync(path.join(REPO_ROOT, 'data'), repoData, { recursive: true })
 

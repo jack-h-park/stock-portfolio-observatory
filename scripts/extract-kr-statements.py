@@ -112,7 +112,25 @@ TYPE_MAP = {
     "해외주식매도출고": "SELL",
     "외화채권매도출고": "SELL",
     "소수해외매도출고": "SELL",
-    "배당주입고": "REINVEST",
+    # The share leg of a 주식배당, and it conveys nothing on its own. All three
+    # rows on the books carry no quantity and no amount — the statement line is
+    # date, type and ticker with no figures after it — and the position balance
+    # is unchanged across every one of them: 096770 reads 5 before and after
+    # 2022-04-26, and 7 before and after 2023-04-26. The whole entitlement was
+    # fractional and settled in cash.
+    #
+    # The economics are in the two rows filed beside it, both already typed:
+    # 배당세금출금 is the withholding and 배당단수주대금입금 is the 단수주 paid
+    # out. REINVEST claimed the opposite of what happened — nothing was
+    # reinvested, the cash was paid OUT — and put the row in OPENING_TYPES,
+    # where it asserted a lot it never had the shares to open. CORPORATE_ACTION
+    # is what a stock dividend is, and is in neither the opening nor the closing
+    # set, which is what a row that moves nothing should be.
+    #
+    # A bigger declaration would deposit whole shares, and CORPORATE_ACTION
+    # would then ignore them — so the parse loop reports a 배당주입고 that ever
+    # carries a quantity rather than letting the shares go quiet.
+    "배당주입고": "CORPORATE_ACTION",
     "채권만기상환출고(해외)": "CORPORATE_ACTION",
     "액면분할입고(해외)": "STOCK_SPLIT",
     "액면분할출고(해외)": "STOCK_SPLIT",
@@ -283,6 +301,12 @@ def statement_coverage(path, report):
 # distinction is the whole point of the report file: an unresolved ISIN still
 # produces a transaction, an unmapped 거래종류 produces nothing at all.
 DROPPING_KINDS = {"unmapped-type", "samsung-unmapped-type", "mirae-unmapped-type"}
+
+# Types classified on the evidence that they carry no shares. The classification
+# is only as good as that, so the day one arrives with a quantity on it, the
+# parser says so instead of the shares going quiet — see 배당주입고 in TYPE_MAP.
+# The row is kept either way, which is why this is a note and not a fault.
+SHARELESS_TYPES = {"배당주입고"}
 
 PART_SUFFIX_RE = re.compile(r"-\d+of\d+$")
 TRAILING_NUMBER_RE = re.compile(r"-\d+$")
@@ -504,11 +528,60 @@ REALIZED_COLUMNS = [
 # consumes lots but is NOT a disposal, so it produces no realized gain. Booking
 # the 19 transfers to Toss as sales would invent capital gains that were never
 # realized and were never taxable.
-OPENING_TYPES = {"BUY", "REINVEST", "TRANSFER_IN"}
+#
+# SHARE_REWARD opens a lot like the rest: a granted share is held and eventually
+# sold, and the grant's value is its cost basis. It is the reason the two Toss
+# promotion codes could be typed REINVEST for so long without a lot going
+# missing — REINVEST was standing in for membership of this set.
+OPENING_TYPES = {"BUY", "REINVEST", "TRANSFER_IN", "SHARE_REWARD"}
 CLOSING_TYPES = {"SELL", "TRANSFER_OUT"}
+
+# The dividends table is the income table, and this is the one list that decides
+# what reaches it. All three broker blocks below used to spell the same tuple
+# out separately; the ingest asserts that its own `isIncomeType()` count matches
+# the number of rows here, so a type added to one side and not the other fails
+# the build rather than quietly losing income.
+INCOME_TYPES = ("DIVIDEND", "INTEREST", "OTHER_INCOME", "SHARE_REWARD")
 # "More than a year", so a lot held exactly 365 days is still short-term. The
 # boundary is not academic: three ISA lots sit exactly on it.
 LONG_TERM_DAYS = 365
+
+
+def value_share_reward(row):
+    """Give a granted share the value it was received at, in place.
+
+    A grant settles no cash, so the certificate leaves 거래금액 empty and puts
+    everything in 단가 — which is why these rows reach here with an amount of
+    zero and a real unit price. Zero is not the answer: the shares ARE income at
+    what they were worth, and the same figure is the basis they will be sold
+    against later.
+
+    `lot_cost` already fell back to quantity × 단가 for exactly this shape, so
+    the lot is unchanged by this; what changes is that the income side now sees
+    the same number instead of nothing. 결제금액 is deliberately left alone —
+    no money moved, and the settlement columns are where money movement is read.
+
+    Not rounded, deliberately. Once the amount is filled in, `lot_cost` prefers
+    it over the product it used to compute, so rounding here would quietly move
+    every one of these cost bases by a fraction of a won. The figure written is
+    the same float the lot was already built from.
+    """
+    if row["Type"] != "SHARE_REWARD":
+        return row
+    if (row["Native Amount"] or 0) > 0:
+        return row
+    quantity = row["Quantity"] or 0
+    unit_price = row["Unit Price"] or 0
+    value = quantity * unit_price
+    if not value:
+        return row
+    row["Native Amount"] = value
+    rate = row["FX Rate"] or 0
+    # The rate rides along on every Toss row as the day's USD/KRW whatever the
+    # trade's own currency, so it may only be applied when the amount is not
+    # already won.
+    row["Amount (KRW)"] = value if row["Currency"] == "KRW" else value * rate
+    return row
 
 
 def lot_cost(quantity, unit_price, native_amount):
@@ -1058,22 +1131,35 @@ def main():
                     "Source": name,
                     "Page": page_no,
                 }
+                if raw_type in SHARELESS_TYPES and float(row["Quantity"] or 0):
+                    report(
+                        "shareless-type-carried-shares",
+                        f"{raw_type} {row['Ticker']} {row['Date']}: {row['Quantity']} unit(s) "
+                        f"({name} p{page_no}) — typed {mapped} on the evidence that it carries "
+                        f"none, and {mapped} opens no lot",
+                    )
+                value_share_reward(row)
                 transactions.append(row)
                 # The dividends table is the income table — the US side files
                 # every isIncomeType() row there too, and the ingest checks the
                 # two counts agree. Deposit interest and tax refunds are income
                 # the portfolio should see, so they belong here with 배당; `Type`
                 # keeps the 거래종류 that distinguishes them.
-                if mapped in ("DIVIDEND", "INTEREST", "OTHER_INCOME"):
+                #
+                # Amounts are read back off `row` rather than from the locals
+                # they were built from, so that anything which revalues the row
+                # — `value_share_reward` above — reaches the income table too
+                # instead of being silently dropped between the two appends.
+                if mapped in INCOME_TYPES:
                     dividends.append({
                         "Date": row["Date"],
                         "Account": account,
                         "Symbol": row["Ticker"],
                         "Name": row["Name"],
                         "Currency": currency,
-                        "Native Amount": native,
+                        "Native Amount": row["Native Amount"],
                         "FX Rate": rate,
-                        "Amount (KRW)": krw,
+                        "Amount (KRW)": row["Amount (KRW)"],
                         "Type": raw_type,
                         "Source": name,
                         "Page": page_no,
@@ -1088,7 +1174,8 @@ def main():
     # rule puts it in the income table: the ingest checks that the two counts
     # agree, and a dividend present in one and absent from the other fails it.
     for row in toss_rows:
-        if row["Type"] in ("DIVIDEND", "INTEREST", "OTHER_INCOME"):
+        value_share_reward(row)
+        if row["Type"] in INCOME_TYPES:
             dividends.append({
                 "Date": row["Date"],
                 "Account": row["Account"],
@@ -1114,7 +1201,8 @@ def main():
     # Same income rule as the other two brokers; the ingest checks that the
     # transaction and dividend counts agree.
     for row in samsung_rows:
-        if row["Type"] in ("DIVIDEND", "INTEREST", "OTHER_INCOME"):
+        value_share_reward(row)
+        if row["Type"] in INCOME_TYPES:
             dividends.append({
                 "Date": row["Date"],
                 "Account": row["Account"],

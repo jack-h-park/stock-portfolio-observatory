@@ -99,11 +99,19 @@ TYPE_MAP = {
     # The whole reason this parser exists. Each row is one lot from the sending
     # broker with its acquisition cost already restated into 단가.
     "타사대체입고": "TRANSFER_IN",
-    # Shares granted by a promotion — no cash leg, but a real opening lot at the
-    # 단가 the statement records, so it must open one or the eventual sale has
-    # no cost to sell against.
-    "소수점이벤트입고": "REINVEST",
-    "주식퀴즈이벤트입고": "REINVEST",
+    # Shares granted by a promotion — a 소수점 giveaway and a stock-quiz prize.
+    # No cash leg, but a real opening lot at the 단가 the statement records, so
+    # it must open one or the eventual sale has no cost to sell against.
+    #
+    # These were REINVEST, which was never what they are: nothing was reinvested
+    # because no dividend was paid. REINVEST was standing in for "opens a lot",
+    # the only property the type was being used for at the time. SHARE_REWARD
+    # says what they are and carries the second half a grant has — it is income
+    # at the value received, on a different basis from the eventual capital gain,
+    # which REINVEST silently dropped. It is in OPENING_TYPES alongside the
+    # others, so the lot still opens exactly as before.
+    "소수점이벤트입고": "SHARE_REWARD",
+    "주식퀴즈이벤트입고": "SHARE_REWARD",
     "주식분할입고": "STOCK_SPLIT",
     "주식분할출고": "STOCK_SPLIT",
     "신주인수권증서입고": "CORPORATE_ACTION",

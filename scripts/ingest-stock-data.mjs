@@ -269,13 +269,38 @@ function normalizeUsTransactionType(value, action = '') {
   if (explicit === 'int') return 'INTEREST'
   if (explicit === 'slip') return 'STOCK_LENDING_INCOME'
   if (explicit === 'rtp') return 'TRANSFER_IN'
-  if (explicit === 'ach') return 'TRANSFER_OUT'
+  // `ACH` is a rail, not a direction. Robinhood files money in and money out
+  // under the one Trans Code and says which in the description, so reading the
+  // code alone sent 22 of the 25 ACH rows the wrong way — every deposit booked
+  // as a withdrawal. Nothing here defaults: a bare `ACH` with a silent
+  // description falls through to surface as an unmapped type, because a
+  // confident guess at the direction of a cash movement is worse than a
+  // visible gap.
+  if (explicit === 'ach') {
+    // A cancel reverses a deposit, so the money leaves the way a withdrawal does.
+    if (act.includes('withdraw') || act.includes('cancel')) return 'TRANSFER_OUT'
+    if (act.includes('deposit')) return 'TRANSFER_IN'
+  }
   if (explicit === 'itrf') return 'INTERNAL_TRANSFER'
   if (explicit === 'spl') return 'STOCK_SPLIT'
   if (explicit === 'spr' || explicit === 'sxch') return 'CORPORATE_ACTION'
   if (explicit === 'gmpc') return 'OTHER_INCOME'
   if (explicit === 'gold') return 'FEE'
-  if (explicit === 'rec') return 'REINVEST'
+  // `REC` is a receipt of securities, not a reinvestment. Chase prints its own
+  // `Reinvest` code for reinvestments — 10 rows carry it, at the fractional
+  // quantities and negative amounts a reinvestment has — while the two `REC`
+  // rows are whole positions arriving with no amount and no price at all. The
+  // delivering side names them: Fidelity booked `TRANSFER OF ASSETS ACAT
+  // DELIVER` for exactly -318 QQQI and -1 SCHD on 2026-07-21, the same day
+  // Chase received 318 and 1. Robinhood uses the code for the same shape from
+  // the other end — its one `REC` row is the sign-up share it handed over, also
+  // shares arriving with no money against them.
+  //
+  // TRANSFER_IN is the classification only. What such a row COST is settled
+  // downstream by the US replay, which dispatches on the absence of a cost on
+  // the row rather than on the type, and can still tell an ACAT receive from a
+  // grant by whether a delivery was in transit.
+  if (explicit === 'rec') return 'TRANSFER_IN'
   if (explicit === 'bnk') return 'CASH_SWEEP'
   if (explicit === 'jnl') return 'JOURNAL'
   if (explicit === 'stk splt') return 'STOCK_SPLIT'
@@ -2547,12 +2572,20 @@ const usPricedArrivals = []
 // The brokers' own lot exports, indexed by where they came from and when they
 // opened, so the replay can ask them what a row does not say.
 //
-// Robinhood books a dividend reinvestment as `REC` with the Price and Amount
+// Robinhood books a share it hands you as `REC` with the Price and Amount
 // columns empty — the shares are stated, the money is not — so the replay had
 // nothing to open the lot with and opened it at zero. Meanwhile the same lot
 // sits in Robinhood's tax-lot export with its cost on it: 0.011612 MSFT
 // acquired 2024-06-17 for $5.14. The two never disagreed; they were just never
 // introduced.
+//
+// That row is a granted share, not the dividend reinvestment #88 read it as.
+// It is the FIRST MSFT row in the history — the next MSFT purchase is
+// 2024-10-15, so on 2024-06-17 the position was zero and there was no dividend
+// to reinvest. The 2024-09-12 `CDIV` then pays on exactly 0.011612 shares: the
+// REC opened the position rather than being paid by one. It lands three days
+// after the first $100 ACH deposit, which is when Robinhood hands out its
+// sign-up share.
 //
 // Keyed on acquisition date rather than quantity, because the quantities are
 // rounded differently by the two exports — the CSV says 0.0116 where the lot
@@ -2712,9 +2745,10 @@ function usHoldingDays(from, to) {
     if (r.type === 'BUY' || r.type === 'REINVEST' || r.type === 'TRANSFER_IN') {
       if (amount <= 0 && unitPrice <= 0) {
         // A row with neither an amount nor a price is not a purchase: it is
-        // shares arriving. The type cannot settle it — Chase books an ACAT
-        // receive as `REC`, which normalizes to REINVEST — but the absence of
-        // any cost on the row can. Take the delivering broker's lots so the
+        // shares arriving. The type cannot settle it — an ACAT receive and a
+        // grant both normalize to TRANSFER_IN, and a reinvestment that the
+        // broker priced nowhere on the row reaches here too — but the absence
+        // of any cost on the row can. Take the delivering broker's lots so the
         // acquisition dates and cost survive the move, which is what decides
         // the holding period on a later sale.
         let remaining = qty
@@ -2749,13 +2783,22 @@ function usHoldingDays(from, to) {
             //
             // ORDER MATTERS HERE. This test used to be "nothing was in transit,
             // therefore granted", which was true only while the two branches
-            // above did not exist. A dividend reinvestment has nothing in
-            // transit either — Robinhood books it as a bare `REC` with the
-            // Price and Amount columns empty — so reaching this conclusion
-            // before asking the lot export would retype a reinvestment as a
-            // reward and invent income that was never received. The grant is
-            // what remains after every source that could name a cost has been
-            // asked and declined.
+            // above did not exist. Plenty of costed arrivals have nothing in
+            // transit — a reinvestment the broker priced only in its lot export
+            // is one — so reaching this conclusion before asking the lot export
+            // would retype them as rewards and invent income never received.
+            // The grant is what remains after every source that could name a
+            // cost has been asked and declined.
+            //
+            // The consequence, deliberately left as it is: an arrival that IS a
+            // grant but that the broker's lot export prices takes the branch
+            // above and books no SHARE_REWARD income. The basis is right either
+            // way — a grant is based at the market value the lot export already
+            // carries — so nothing on the gain side is wrong; what is missing is
+            // the 1099-MISC side of a share received for nothing. The
+            // 2024-06-17 Robinhood MSFT sign-up share is exactly this case.
+            // Deciding it needs a rule for telling a priced grant from a priced
+            // reinvestment, which no column on either export currently gives.
             //
             // A zero-cost lot books its whole proceeds as gain on a later sale
             // and looks exactly like a real answer, so zero survives only where
@@ -3652,15 +3695,37 @@ function check(name, ok, detail, severity = 'error') {
 // ordinary — shares come in from institutions this pipeline has never seen —
 // and where it matters, `us_replay_arrivals_carry_cost` already reports the
 // ones that landed without a cost.
+// The two sides of the stack disagree about the sign of a departure and the
+// filter below used to believe only one of them. US brokers write an outbound
+// quantity NEGATIVE — Fidelity's ACAT deliver is `-318` — while the Korean
+// parsers write a magnitude and put the direction in the type. `r.quantity > 0`
+// therefore excluded every US outbound leg there has ever been (Chase 51,
+// Fidelity 8, Merrill 1), leaving the loop with nothing but the 20 Korean ones.
+// The check below then reported "every outbound transfer lands in another
+// account" over a set that contained no US transfer at all — a green tick
+// computed from an empty room, which is worse than a red one because nobody
+// goes looking.
+//
+// Direction is the type's job, magnitude is the quantity's, and reading each
+// from where it lives is what makes both conventions work.
+const transferQty = (r) => Math.abs(number(r.quantity) ?? 0)
+// A sweep fund is the cash balance wearing a ticker, and its withdrawals are
+// spending rather than securities leaving. All 51 of Chase's outbound rows with
+// a ticker are `QACDS` intra-day sweep movements; admitting them would invent 51
+// unexplained departures and hand them to the basis-carry below, which exists to
+// write lots nobody documented.
+const transferPairable = (r) =>
+  text(r.ticker) && !US_CASH_EQUIVALENT_TICKERS.has(text(r.ticker)) && transferQty(r) > 0 && r.date
+
 const TRANSFER_PAIR_WINDOW_DAYS = 14
 const transferInPool = transactionRows
-  .filter((r) => r.type === 'TRANSFER_IN' && text(r.ticker) && r.quantity > 0 && r.date)
-  .map((r) => ({ row: r, left: r.quantity }))
+  .filter((r) => r.type === 'TRANSFER_IN' && transferPairable(r))
+  .map((r) => ({ row: r, left: transferQty(r) }))
 const unpairedTransferOut = []
 for (const out of transactionRows
-  .filter((r) => r.type === 'TRANSFER_OUT' && text(r.ticker) && r.quantity > 0 && r.date)
+  .filter((r) => r.type === 'TRANSFER_OUT' && transferPairable(r))
   .sort((a, b) => a.date.localeCompare(b.date))) {
-  let need = out.quantity
+  let need = transferQty(out)
   for (const candidate of transferInPool) {
     if (need <= 1e-9) break
     const { row, left } = candidate
@@ -3747,17 +3812,24 @@ if (unpairedTransferOut.length) {
     // FIFO over the sending account's own rows, to learn when the departing
     // shares were acquired rather than assuming they were acquired on the way
     // out.
+    //
+    // Magnitude here for the same reason as above, and it matters twice: a US
+    // disposal is negative, so the old filter dropped every SELL and
+    // TRANSFER_OUT from the walk. `out` itself was one of them — it could never
+    // appear in its own replay, so `acquired` stayed empty and the carry always
+    // declined — and the lots those disposals had already consumed stayed in the
+    // queue, which would have handed back purchases that were sold years ago.
     const queue = []
     let acquired = []
     for (const r of transactionRows
-      .filter((r) => r.account === out.account && r.ticker === out.ticker && r.date && r.quantity > 0)
+      .filter((r) => r.account === out.account && r.ticker === out.ticker && r.date && transferQty(r) > 0)
       .sort((a, b) => a.date.localeCompare(b.date))) {
       if (OPENING_TRANSFER_TYPES.has(r.type)) {
-        queue.push({ date: r.date, qty: r.quantity })
+        queue.push({ date: r.date, qty: transferQty(r) })
         continue
       }
       if (!CLOSING_TRANSFER_TYPES.has(r.type)) continue
-      let need = r.quantity
+      let need = transferQty(r)
       const consumed = []
       while (need > 1e-9 && queue.length) {
         const head = queue[0]
