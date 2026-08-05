@@ -339,7 +339,13 @@ function isIncomeType(type) {
   // in coin, so it simultaneously opens a tax lot and books income, and the two
   // are taxed on different bases. Collapsing it into an existing type would hide
   // that from the income views.
-  return ['DIVIDEND', 'INTEREST', 'STOCK_LENDING_INCOME', 'OTHER_INCOME', 'STAKING_REWARD'].includes(type)
+  //
+  // SHARE_REWARD is the equity side of the same shape — a granted share, paid in
+  // stock. It is not assigned by the type normalizer: a grant and an ACAT
+  // receive both arrive as a bare `REC` with no amount, and only the FIFO replay
+  // can tell them apart by whether a delivery was in transit. See the arrival
+  // branch of the US replay, which is where the type is set.
+  return ['DIVIDEND', 'INTEREST', 'STOCK_LENDING_INCOME', 'OTHER_INCOME', 'STAKING_REWARD', 'SHARE_REWARD'].includes(type)
 }
 
 function loadManualMappings() {
@@ -385,6 +391,10 @@ function defaultIncomeCategory(row) {
   if (type.includes('INTEREST') || name.includes('INTEREST PAYMENT')) return 'interest'
   if (type.includes('STOCK_LENDING') || name.includes('STOCK LENDING')) return 'stock_lending'
   if (type.includes('OTHER_INCOME')) return 'other'
+  // A granted share is ordinary income at its receipt-date value, not a payout
+  // on a position already held — it is 1099-MISC, not 1099-DIV. Stated rather
+  // than left to the fallback so it cannot drift into the dividend bucket.
+  if (type.includes('SHARE_REWARD')) return 'other'
   if (type.includes('DIVIDEND') || type.includes('배당') || type.includes('분배')) return 'dividend'
   return 'other'
 }
@@ -943,6 +953,39 @@ function usdOn(nativeAmount, currency, date) {
   }
   const rate = best?.rate ?? fxRate('USD')?.rate ?? null
   return rate ? nativeAmount / rate : null
+}
+
+// Closing prices for US tickers, by date. The crypto side already values a
+// reward at its receipt-date close rather than at zero (see
+// `crypto_rewards_valued_at_receipt`); this is the same table put to the same
+// use for a US share that arrived without a price on it.
+const usHistoricalCloses = new Map()
+for (const p of historicalPriceDocument.prices ?? []) {
+  if (text(p.market) !== 'US') continue
+  const ticker = text(p.ticker)
+  const date = text(p.price_date)
+  const close = number(p.close)
+  if (!ticker || !date || !(close > 0)) continue
+  if (!usHistoricalCloses.has(ticker)) usHistoricalCloses.set(ticker, [])
+  usHistoricalCloses.get(ticker).push({ date, close })
+}
+for (const series of usHistoricalCloses.values()) series.sort((a, b) => a.date.localeCompare(b.date))
+
+/**
+ * Close for a US ticker on a date, falling back to the most recent earlier one
+ * so a receipt dated to a market holiday still resolves. Returns the entry
+ * rather than the number, because a caller that values something off a
+ * different day's close has to be able to say so.
+ */
+function usCloseOn(ticker, date) {
+  const series = usHistoricalCloses.get(ticker)
+  if (!series) return null
+  let best = null
+  for (const entry of series) {
+    if (entry.date > date) break
+    best = entry
+  }
+  return best
 }
 
 /** Won amount for a Korea row: the parser's figure when it had one, else converted. */
@@ -2497,6 +2540,9 @@ const US_LONG_TERM_DAYS = 365
 const usRealizedRows = []
 const usReplayNotes = []
 const usReplayLotCostLookups = []
+// Arrivals whose cost this repo estimated from a historical close because no
+// source carried one. Their own check, so the estimate stays declared.
+const usPricedArrivals = []
 
 // The brokers' own lot exports, indexed by where they came from and when they
 // opened, so the replay can ask them what a row does not say.
@@ -2694,16 +2740,86 @@ function usHoldingDays(from, to) {
                 `from the broker's lot export (${r.type}/${text(r.raw_type)} carried no cost)`
             )
           } else {
-            // Named, not absorbed. A zero-cost lot books its whole proceeds as
-            // gain on a later sale and looks exactly like a real answer.
+            // No delivery claimed these shares, no statement carried a cost, and
+            // the broker's own lot export does not list them either. What is
+            // left is a grant, and a granted share is property received at its
+            // market value — that value is the holder's basis in it. Take the
+            // day's close, the same figure the crypto side already uses for a
+            // staking reward.
+            //
+            // ORDER MATTERS HERE. This test used to be "nothing was in transit,
+            // therefore granted", which was true only while the two branches
+            // above did not exist. A dividend reinvestment has nothing in
+            // transit either — Robinhood books it as a bare `REC` with the
+            // Price and Amount columns empty — so reaching this conclusion
+            // before asking the lot export would retype a reinvestment as a
+            // reward and invent income that was never received. The grant is
+            // what remains after every source that could name a cost has been
+            // asked and declined.
+            //
+            // A zero-cost lot books its whole proceeds as gain on a later sale
+            // and looks exactly like a real answer, so zero survives only where
+            // there is no close to use.
+            const close = usCloseOn(ticker, r.date)
             lotsFor(key).push({
-              acquired: r.date, qty: remaining, unit: 0, name: text(r.name), account: r.account,
+              acquired: r.date,
+              qty: remaining,
+              unit: close?.close ?? 0,
+              name: text(r.name),
+              account: r.account,
             })
-            usReplayNotes.push(
+            const arrival =
               `${r.date} ${r.brokerage} ${ticker}: ${usRound(remaining, 6)} of ${usRound(qty, 6)} unit(s) ` +
-                `arrived with no cost on the row, none in transit, and none on a broker lot opened that ` +
-                `day (${r.type}/${text(r.raw_type)}) — opened at zero cost`
-            )
+              `arrived with no cost on the row, none in transit, and none on a broker lot opened that ` +
+              `day (${r.type}/${text(r.raw_type)})`
+            if (close) {
+              const value = remaining * close.close
+              // The grant is income as well as a lot: shares received for nothing
+              // are ordinary income at that same receipt-date value, and the two
+              // are taxed on different bases. This is the double life STAKING_REWARD
+              // already has on the crypto side, which is why the type mirrors it.
+              //
+              // Retyped here rather than by the type normalizer because only this
+              // point in the replay knows it is a grant — the normalizer sees a
+              // bare `REC`, which is equally an ACAT receive. `raw_type` keeps the
+              // broker's own code, so nothing the source said is overwritten.
+              r.type = 'SHARE_REWARD'
+              r.native_amount = usRound(value, 4)
+              r.amount_krw = krwOn(value, r.currency || 'USD', r.date)
+              r.native_unit_price = usRound(close.close, 4)
+              r.unit_price = krwOn(close.close, r.currency || 'USD', r.date)
+              // `native_settlement` is deliberately left alone: a grant settles no
+              // cash, and the settlement columns are what the account's money
+              // movements are read from.
+              dividendRows.push({
+                market: 'US',
+                currency: r.currency || 'USD',
+                base_currency: fxConfig.baseCurrency || 'KRW',
+                brokerage: r.brokerage,
+                account_type: r.account_type,
+                source_system: r.source_system,
+                date: r.date,
+                account: r.account,
+                ticker,
+                name: text(r.name),
+                native_amount: usRound(value, 4),
+                native_tax_withheld: null,
+                amount_krw: krwOn(value, r.currency || 'USD', r.date) ?? 0,
+                type: r.type,
+                source: r.source,
+                page: null,
+              })
+              // An estimate, not a reported figure. Recorded separately from the
+              // notes so it can be raised as its own standing warning rather than
+              // passing for a cost the broker actually gave us.
+              const note =
+                `${arrival} — booked as SHARE_REWARD income and valued at the ${close.date} close of ` +
+                `$${usRound(close.close, 4)} = $${usRound(value, 2)}`
+              usPricedArrivals.push(note)
+              usReplayNotes.push(note)
+            } else {
+              usReplayNotes.push(`${arrival} — opened at zero cost`)
+            }
           }
         }
       } else {
@@ -3797,6 +3913,7 @@ const unmappedTypes = transactionRows.filter(
       'CORPORATE_ACTION',
       'FEE',
       'STAKING_REWARD',
+      'SHARE_REWARD',
     ].includes(r.type)
 )
 const missingFxHoldings = holdingRows.filter((r) => r.currency !== r.base_currency && (r.fx_rate_to_base == null || r.base_cost == null))
@@ -4558,6 +4675,19 @@ check(
       ? 'no transfer needed its basis carried'
       : `${transferCarriedLots.length} lot(s) carried from the sending account's own row: ${transferCarriedLots.slice(0, 5).join('; ')}`
     : `${transferCarryDeclined.length} transfer(s) could not have their basis carried: ${transferCarryDeclined.slice(0, 5).join('; ')}`,
+  'warning'
+)
+
+// An arrival valued from a historical close carries a cost, so the zero-cost
+// check passes on it — but the figure is this repo's estimate, not one any
+// broker reported, and a sale of that lot books a gain against it. Raised on its
+// own so an estimated basis cannot quietly read as a filed one.
+check(
+  'us_replay_arrivals_priced_from_close',
+  usPricedArrivals.length === 0,
+  usPricedArrivals.length === 0
+    ? 'every replayed arrival took its cost from the row, the delivering lot, or the broker lot export'
+    : `${usPricedArrivals.length} arrival(s) valued at a historical close: ${usPricedArrivals.slice(0, 3).join('; ')}`,
   'warning'
 )
 
