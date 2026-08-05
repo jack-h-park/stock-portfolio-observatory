@@ -196,6 +196,48 @@ split did not bump the version: no field changed shape or meaning, and a reader
 keying on `status !== "success"` simply stops distrusting data it should never
 have distrusted.
 
+## The Korean holdings sheet
+
+`pnpm publish:kr-sheet` writes the 국내 시트's `미실현수익 정리 (자동)` tab from the
+database. It is the second thing this app publishes rather than reads, and the
+narrower one: a single tab, on demand, dry-run unless `--apply`.
+
+The sheet stays because it is the only surface that is a **table**. This app is
+tailnet-only and the daily briefing is a fixed 08:00 document; neither sorts,
+filters, or takes a column of arithmetic beside it. What ended was maintaining it
+by hand — the other four Korean tabs were archived on 2026-08-04 once the parsers
+overtook the one hand-run extraction behind them.
+
+**The sheet keeps its formulas**, which is the design rather than a concession.
+GOOGLEFINANCE prices the position live, which no snapshot here can do, and PE/EPS
+exist nowhere else at all — `pe` and `eps` are null for all 140 positions. So the
+columns divide by owner, and every generated row carries its formulas with it: a
+row written without them is an error nowhere, and that ticker simply stops being
+priced. Holdings churn — 47 to 48 already — so that is the normal case.
+
+`DB Price` sits beside `Current Price` with `Δ` between them, and `Δ` is a
+formula on purpose. The two legitimately disagree, and how much they disagree is
+the only visible sign that a refresh has stopped; computing it here would freeze
+it at write time and report nothing. `DB As Of` says which of the two is the
+stale one. This gap has been paid for twice — a Korean table that had not moved
+in a fortnight sitting beside a same-morning summary in one document, and an FX
+rate frozen at 1300 running every won figure 13% light for 203 days. Neither was
+a crash.
+
+The run names any position the sheet could not price, because a blank
+`Current Price` drops that row's gain out of 합계 silently. Today that is
+`KR103502GA34` — a government bond, which has no market symbol and never will.
+
+Names are the certificate's, not the sheet's — `에스케이하이닉스` where the old tab
+wrote `SK하이닉스`, `현대자동차` where it wrote `현대차`. They read as unfamiliar and
+are deliberate: the broker's own wording is what the row can be checked against,
+and a friendlier alias would be a second name for the same holding maintained
+nowhere. This is a decision, not drift; do not "fix" it back.
+
+Not wired into `pnpm refresh`: it needs `STOCK_SHEETS_SA_KEY` on the host and
+Editor on the spreadsheet, and a scheduled writer should be a deliberate step
+rather than a side effect of an ingest.
+
 ## macOS launchd deployment
 
 Production deployments on a private macOS host can run under launchd on port

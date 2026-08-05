@@ -30,6 +30,7 @@
     "backfill:history": "node scripts/backfill-portfolio-history.mjs",
     "refresh": "node scripts/refresh.mjs",
     "summary": "tsx scripts/summary.mjs",
+    "publish:kr-sheet": "node scripts/publish-kr-sheet.mjs",
     "seed:sample": "node scripts/seed-sample.mjs",
     "test": "tsx --test tests/*.test.ts tests/*.test.mjs",
     "lint": "next lint",
