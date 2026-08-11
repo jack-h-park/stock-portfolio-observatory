@@ -26,6 +26,26 @@ function coverageTone(status: AccountCoverage['status']): Tone {
   return 'success'
 }
 
+function coverageDateLabel(row: AccountCoverage, language: string): string {
+  const date = (value: string | null) => value ? fmtDate(value) : 'n/a'
+  if (row.method === 'mixed') {
+    return language === 'ko'
+      ? `API ${date(row.apiCoveredThrough)} · statement ${date(row.statementCoveredThrough)}`
+      : `API ${date(row.apiCoveredThrough)} · statement ${date(row.statementCoveredThrough)}`
+  }
+  return date(row.coveredThrough)
+}
+
+function coverageLagLabel(row: AccountCoverage, language: string): string {
+  const days = (value: number | null) => value == null ? (language === 'ko' ? '기준일 없음' : 'No cutoff') : language === 'ko' ? `${fmtNumber(value)}일 전` : `${fmtNumber(value)}d ago`
+  if (row.method === 'mixed') {
+    return language === 'ko'
+      ? `API ${days(row.apiLagDays)} · statement ${days(row.statementLagDays)}`
+      : `API ${days(row.apiLagDays)} · statement ${days(row.statementLagDays)}`
+  }
+  return days(row.lagDays)
+}
+
 const COPY = {
   en: {
     eyebrow: 'System & Advanced',
@@ -260,8 +280,8 @@ export default async function DataOpsPage() {
                     <div className="flex items-center gap-2"><Badge tone={coverageTone(row.status)}>{coverageCopy.status[row.status]}</Badge><span className="font-medium text-ink">{row.brokerage}</span></div>
                     <div className="mt-1 text-[11px] text-ink-3">{row.account}</div>
                   </td>
-                  <td className="px-2 py-3 tabular-nums text-ink-2">{row.coveredThrough ? fmtDate(row.coveredThrough) : 'n/a'}</td>
-                  <td className="px-2 py-3 tabular-nums text-ink-2">{coverageCopy.days(row.lagDays)}{row.overdueDays ? <span className="ml-1 text-danger">(+{row.overdueDays})</span> : null}</td>
+                  <td className="px-2 py-3 tabular-nums text-ink-2">{coverageDateLabel(row, language)}</td>
+                  <td className="px-2 py-3 tabular-nums text-ink-2">{coverageLagLabel(row, language)}{row.method !== 'mixed' && row.overdueDays ? <span className="ml-1 text-danger">(+{row.overdueDays})</span> : null}</td>
                   <td className="max-w-[24rem] px-2 py-3"><div className="font-medium text-ink">{row.requiredArtifact}</div><div className="mt-1 text-[11px] text-ink-3">{row.format}</div><div className="mt-1 text-[11px] leading-relaxed text-ink-3">{row.action}</div>{row.lastFile ? <code className="mt-1 block truncate text-[10px] text-ink-3" title={row.lastFile}>last: {row.lastFile}</code> : null}</td>
                   <td className="px-2 py-3 whitespace-nowrap text-ink-2">{coverageCopy.methodLabel[row.method]}</td>
                   <td className="px-2 py-3"><code className="text-[11px] text-ink-3">{row.destination}</code><div className="mt-1 max-w-[15rem] text-[11px] leading-relaxed text-ink-3">{row.detail}</div></td>

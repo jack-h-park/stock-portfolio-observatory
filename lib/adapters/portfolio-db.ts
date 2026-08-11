@@ -165,6 +165,10 @@ export type AccountCoverage = {
   account: string
   coveredThrough: string | null
   lagDays: number | null
+  apiCoveredThrough: string | null
+  apiLagDays: number | null
+  statementCoveredThrough: string | null
+  statementLagDays: number | null
   maxLagDays: number
   overdueDays: number | null
   status: AccountCoverageStatus
@@ -1848,12 +1852,17 @@ export function getAccountCoverage(): AccountCoverageSummary {
       .prepare(`select market, coalesce(brokerage, 'Unknown') as brokerage, account, max(date) as covered_through
                 from transactions group by market, brokerage, account`)
       .all() as { market: string; brokerage: string; account: string; covered_through: string | null }[]
+    const statementRows = conn
+      .prepare(`select market, coalesce(brokerage, 'Unknown') as brokerage, account, max(as_of_date) as covered_through
+                from tax_lots group by market, brokerage, account`)
+      .all() as { market: string; brokerage: string; account: string; covered_through: string | null }[]
     const checkRows = conn.prepare('select name, detail, status from validation_checks').all() as { name: string; detail: string; status: string }[]
     const checks = new Map(checkRows.map((row) => [row.name, row]))
     const coverageKey = (row: { market: string; brokerage: string; account: string }) =>
       row.market === 'US' && row.brokerage !== 'Robinhood' ? `${row.market}|${row.brokerage}|${row.brokerage}` : `${row.market}|${row.brokerage}|${row.account}`
     const holdingsByKey = new Map<string, (typeof holdingRows)[number]>()
     const txByKey = new Map<string, (typeof transactionRows)[number]>()
+    const statementByKey = new Map<string, (typeof statementRows)[number]>()
     const accountNames = new Map<string, Set<string>>()
     for (const row of holdingRows) {
       const key = coverageKey(row)
@@ -1867,6 +1876,11 @@ export function getAccountCoverage(): AccountCoverageSummary {
       const previous = txByKey.get(key)
       if (!previous || String(row.covered_through ?? '') > String(previous.covered_through ?? '')) txByKey.set(key, row)
     }
+    for (const row of statementRows) {
+      const key = coverageKey(row)
+      const previous = statementByKey.get(key)
+      if (!previous || String(row.covered_through ?? '') > String(previous.covered_through ?? '')) statementByKey.set(key, row)
+    }
     const keys = new Set([...holdingRows, ...transactionRows].map(coverageKey))
     const rows: AccountCoverage[] = []
 
@@ -1874,8 +1888,11 @@ export function getAccountCoverage(): AccountCoverageSummary {
       const [market, brokerage, rawAccount] = key.split('|')
       const holding = holdingsByKey.get(key)
       const transaction = txByKey.get(key)
+      const statement = statementByKey.get(key)
       const account = [...(accountNames.get(key) ?? new Set())].join(' / ') || rawAccount || brokerage
       let coveredThrough = isoDate(holding?.covered_through ?? transaction?.covered_through)
+      let apiCoveredThrough: string | null = null
+      const statementCoveredThrough = isoDate(statement?.covered_through)
       let maxLagDays = market === 'US' ? 14 : market === 'CRYPTO' ? 35 : 35
       let method: AccountCoverage['method'] = 'inbox'
       let requiredArtifact = '최근 거래내역서'
@@ -1884,6 +1901,8 @@ export function getAccountCoverage(): AccountCoverageSummary {
       let action = '최근 조회기간이 오늘까지 포함된 자료를 다운로드해 inbox에 넣으세요.'
       let detail = '문서가 선언한 조회기간의 마지막 날짜를 기준으로 계산합니다.'
       const brokerLower = brokerage.toLowerCase()
+
+      if (market === 'KR' && statementCoveredThrough) coveredThrough = statementCoveredThrough
 
       if (market === 'US' && brokerLower === 'robinhood') {
         method = 'mcp'
@@ -1916,12 +1935,19 @@ export function getAccountCoverage(): AccountCoverageSummary {
         destination = 'crypto-robinhood/'
         action = '누락된 최신 월의 Crypto Statement PDF를 다운로드해 inbox에 넣으세요.'
         detail = '월별 statement가 끊기지 않는지 기준일을 계산합니다.'
-      } else if (market === 'KR' && brokerLower.includes('toss')) {
+      } else if (market === 'KR' && (brokerLower.includes('toss') || brokerLower.includes('토스'))) {
         method = 'mixed'
         requiredArtifact = '토스증권 거래내역서 PDF (Open API 보완)'
         maxLagDays = 35
         action = 'Open API가 최신이면 조치하지 않아도 됩니다. statement cutoff가 뒤처지면 새 거래내역서를 다운로드하세요.'
         detail = checks.get('toss_positions_fresh')?.detail ?? 'statement와 Open API snapshot을 함께 표시합니다.'
+        apiCoveredThrough = [holding?.covered_through, transaction?.covered_through]
+          .filter(Boolean)
+          .map((date) => isoDate(date))
+          .filter(Boolean)
+          .sort()
+          .at(-1) ?? null
+        coveredThrough = statementCoveredThrough ?? apiCoveredThrough
       } else if (market === 'KR' && brokerLower.includes('삼성')) {
         requiredArtifact = '삼성증권 주식보상 계좌거래내역서'
         maxLagDays = 120
@@ -1930,9 +1956,12 @@ export function getAccountCoverage(): AccountCoverageSummary {
       } else if (market === 'KR') {
         requiredArtifact = `${brokerage} ${account} 거래내역증명서`
         action = `${brokerage} ${account}의 최신 거래내역증명서를 다운로드해 inbox에 넣으세요.`
+        coveredThrough = statementCoveredThrough ?? coveredThrough
       }
 
       const lagDays = calendarAgeDays(coveredThrough)
+      const apiLagDays = calendarAgeDays(apiCoveredThrough)
+      const statementLagDays = calendarAgeDays(statementCoveredThrough)
       const overdueDays = lagDays == null ? null : Math.max(0, lagDays - maxLagDays)
       const status = coverageStatus(lagDays, maxLagDays)
       const sourceNeedles = [brokerLower.replace(/증권|\s+/g, ''), account.toLowerCase().replace(/\s+/g, '')]
@@ -1943,6 +1972,10 @@ export function getAccountCoverage(): AccountCoverageSummary {
         account,
         coveredThrough,
         lagDays,
+        apiCoveredThrough,
+        apiLagDays,
+        statementCoveredThrough,
+        statementLagDays,
         maxLagDays,
         overdueDays,
         status,
