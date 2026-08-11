@@ -10,6 +10,7 @@ export const dynamic = 'force-dynamic'
 
 function statusTone(status: string): Tone {
   if (status === 'used') return 'success'
+  if (status === 'derived' || status === 'archive') return 'neutral'
   if (status === 'unused') return 'warning'
   if (status === 'drift') return 'warning'
   return 'danger'
@@ -114,7 +115,7 @@ export default async function DataMapPage() {
   const glossary = getGlossary(language)
   const meta = getMeta()
   const inventory = getSourceInventory()
-  const actionItems = inventory.items.filter((item) => item.status !== 'used').slice(0, 20)
+  const actionItems = inventory.items.filter((item) => ['unused', 'drift', 'missing'].includes(item.status)).slice(0, 20)
   const reviewCount = inventory.summary.missing + inventory.summary.drift + inventory.summary.unused
   return (
     <>

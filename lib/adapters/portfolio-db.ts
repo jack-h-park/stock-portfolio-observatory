@@ -228,7 +228,7 @@ export type SourceInventoryItem = {
   relativePath: string
   path: string
   category: string
-  status: 'used' | 'unused' | 'drift' | 'missing'
+  status: 'used' | 'unused' | 'drift' | 'missing' | 'derived' | 'archive'
   bytes: number | null
   mtimeMs: number | null
   rowCount: number | null
@@ -1136,6 +1136,13 @@ function trackedInventoryItem(dataDir: string, source: any): SourceInventoryItem
 function untrackedInventoryItem(dataDir: string, filePath: string): SourceInventoryItem {
   const stat = fs.statSync(filePath)
   const relativePath = relativeToDataDir(dataDir, filePath)
+  const derived =
+    relativePath.startsWith('.codex_drive_pdfs/') ||
+    relativePath.startsWith('.codex_sheet_payloads/') ||
+    relativePath.startsWith('outputs/') ||
+    relativePath.includes('/briefing-archive.backup-') ||
+    relativePath.includes('.bak-') ||
+    relativePath.endsWith('.sample.txt')
   return {
     id: `untracked:${relativePath}`,
     name: path.basename(filePath),
@@ -1143,12 +1150,14 @@ function untrackedInventoryItem(dataDir: string, filePath: string): SourceInvent
     relativePath,
     path: filePath,
     category: fileCategory(filePath, relativePath),
-    status: 'unused',
+    status: derived ? 'derived' : 'unused',
     bytes: stat.size,
     mtimeMs: stat.mtimeMs,
     rowCount: null,
     sha256: null,
-    detail: 'Detected in STOCK_DATA_DIR but not recorded in the latest ingest source_files table.',
+    detail: derived
+      ? 'Derived, cached, or generated artifact; not a canonical ingest source.'
+      : 'Detected in STOCK_DATA_DIR but not recorded in the latest ingest source_files table.',
   }
 }
 
@@ -2754,7 +2763,7 @@ export function getSourceInventory(): SourceInventory {
           .map((filePath) => untrackedInventoryItem(dataDir, filePath))
       : []
     const items = [...tracked, ...discovered].sort((a, b) => {
-      const statusScore = { missing: 0, drift: 1, unused: 2, used: 3 } as Record<SourceInventoryItem['status'], number>
+      const statusScore = { missing: 0, drift: 1, unused: 2, archive: 3, derived: 4, used: 5 } as Record<SourceInventoryItem['status'], number>
       return statusScore[a.status] - statusScore[b.status] || a.relativePath.localeCompare(b.relativePath)
     })
     return {
