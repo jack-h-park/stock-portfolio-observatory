@@ -612,6 +612,11 @@ def tax_term(days):
 def build_lots(transactions, as_of_by_account):
     """Replay every transaction in order, consuming lots first-in-first-out.
 
+    Returns `(taxlots, realized, notes, carried)`. `notes` are `(kind, detail)`
+    pairs so the caller can file each one under its own name — they are two
+    different problems that happen to be found in the same loop, and printing
+    them under one heading described only the second and mislabelled the first.
+
     FIFO is an assumption, stated here rather than buried: the certificates
     record what left the account, not which lot the broker chose. Where the
     broker used a different method the per-lot split will differ from its own
@@ -728,10 +733,12 @@ def build_lots(transactions, as_of_by_account):
             # One-sided in the statements, or nothing open to restate — the
             # inbound shares are real either way, so fall through to the
             # direction rule rather than dropping them.
-            notes.append(
+            notes.append((
+                "split-not-restatable",
                 f"{r['Date']} {r['Account']} {ticker}: split not restatable "
-                f"({'no open lot' if factor else 'one side only'}) — replayed as a movement"
-            )
+                f"({'no open lot' if factor else 'one side only'}) — replayed as a "
+                f"movement, so the acquisition date becomes the split date",
+            ))
 
         # Corporate actions move a position, and 출고 means it left: a matured
         # bond is redeemed by 채권만기상환출고, rights lapse by 신주인수권증서말소출고.
@@ -785,8 +792,11 @@ def build_lots(transactions, as_of_by_account):
                 # Shares left an account that never recorded them arriving: the
                 # opening side is in a statement we do not have. Named, not
                 # silently absorbed into a zero-cost lot.
-                notes.append(f"{r['Date']} {r['Account']} {ticker}: "
-                             f"{remaining:g} unit(s) disposed with no matching open lot ({r['Raw Type']})")
+                notes.append((
+                    "disposal-without-open-lot",
+                    f"{r['Date']} {r['Account']} {ticker}: "
+                    f"{remaining:g} unit(s) disposed with no matching open lot ({r['Raw Type']})",
+                ))
 
     for (account, ticker), held in sorted(open_lots.items()):
         for lot in held:
@@ -1297,11 +1307,28 @@ def main():
     as_of_shown = ", ".join(f"{a} {d}" for a, d in sorted(as_of_map.items()))
     print(f"Wrote {OUT_DIR}/taxlots.tsv ({len(taxlots)} open lot(s), as of — {as_of_shown})")
     print(f"Wrote {OUT_DIR}/realized.tsv ({len(realized)} realized lot(s))")
+    # These reached stderr and stopped there, which is the same shape as the
+    # `unmapped-type` failure this file already paid for: the run printed the
+    # problem and every check passed. On 2026-08-10 a split stopped being
+    # restatable, `split not restatable` was printed on each of six runs, and
+    # nothing failed — it surfaced only because #90 happened to add a dividend
+    # attribution check that tripped over the same broken date. The holding
+    # period had been wrong the whole time. So they go through `report()` like
+    # every other finding, and the ingest turns them into a named check.
+    #
+    # Neither kind drops a row, so both are notes rather than faults. That is
+    # not the same as harmless: `split-not-restatable` leaves the acquisition
+    # date sitting on the split, which is what decides long versus short term.
+    for kind, detail in lot_notes:
+        report(kind, detail)
     if lot_notes:
-        print(f"\nWARNING: {len(lot_notes)} lot issue(s) — a disposal with no open lot means "
-              f"the opening side is in a statement we do not have:", file=sys.stderr)
-        for note in lot_notes[:20]:
-            print(f"  {note}", file=sys.stderr)
+        kinds = {}
+        for kind, _ in lot_notes:
+            kinds[kind] = kinds.get(kind, 0) + 1
+        summary = ", ".join(f"{n} {k}" for k, n in sorted(kinds.items()))
+        print(f"\nWARNING: {len(lot_notes)} lot issue(s) — {summary}:", file=sys.stderr)
+        for _, detail in lot_notes[:20]:
+            print(f"  {detail}", file=sys.stderr)
         if len(lot_notes) > 20:
             print(f"  … and {len(lot_notes) - 20} more", file=sys.stderr)
     if unconverted:
