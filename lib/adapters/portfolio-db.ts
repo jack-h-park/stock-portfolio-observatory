@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 import Database from 'better-sqlite3'
 import { config } from '@/config'
 import type { TaxPlanningLot } from '@/lib/tax-planning'
@@ -1033,19 +1034,29 @@ function sourceFreshness(source: any): FreshnessItem {
   const recordedMtime = Number(source.mtime_ms)
   const mtimeChanged = Math.abs(stat.mtimeMs - recordedMtime) > 1000
   const sizeChanged = stat.size !== Number(source.bytes)
+  // Generated snapshots can be rewritten with identical content, which changes
+  // mtime without changing the source data. Use the recorded content hash as
+  // the authoritative signal whenever it is available; retain the metadata
+  // fallback for legacy source rows that predate SHA-256 recording.
+  const currentSha256 = source.sha256 && !sizeChanged
+    ? createHash('sha256').update(fs.readFileSync(source.path)).digest('hex')
+    : null
+  const contentChanged = sizeChanged || (source.sha256 ? currentSha256 !== source.sha256 : mtimeChanged)
   const observedAt = new Date(recordedMtime).toISOString()
   return {
     key: `source:${source.name}`,
     label: source.name,
     category: 'source',
-    status: mtimeChanged || sizeChanged ? 'drift' : 'fresh',
+    status: contentChanged ? 'drift' : 'fresh',
     observedAt,
     thresholdMs: null,
     ageMs: ageMs(observedAt),
     detail:
-      mtimeChanged || sizeChanged
+      contentChanged
         ? `Changed since ingest. Recorded ${source.bytes} bytes; current ${stat.size} bytes.`
-        : 'Matches the size and modified time captured at ingest.',
+        : mtimeChanged
+          ? 'Content matches the SHA-256 captured at ingest; only modified time changed.'
+          : 'Matches the content fingerprint captured at ingest.',
     path: source.path,
     rowCount: source.row_count,
   }
@@ -2044,7 +2055,8 @@ export function getDataOpsReview(): DataOpsReview {
             coalesce(sum(native_amount), 0) as native_income,
             coalesce(sum(amount_krw), 0) as base_income
            from dividends
-           where ticker is null or trim(ticker) = ''
+           where (ticker is null or trim(ticker) = '')
+             and coalesce(mapping_status, 'tickerless') = 'tickerless'
            group by market, currency, brokerage, account, income_category, mapping_status, type, name, source
            order by base_income desc
            limit 50`

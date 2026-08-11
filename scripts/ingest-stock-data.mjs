@@ -393,6 +393,8 @@ function includesText(value, needle) {
 
 function mappingMatches(row, match = {}) {
   return (
+    (!match.date || text(row.date) === text(match.date)) &&
+    (match.amountKrw == null || Number(row.amount_krw) === Number(match.amountKrw)) &&
     includesText(row.market, match.market) &&
     includesText(row.currency, match.currency) &&
     includesText(row.brokerage, match.brokerage) &&
