@@ -240,11 +240,35 @@ rather than a side effect of an ingest.
 
 ## macOS launchd deployment
 
-Production deployments on a private macOS host can run under launchd on port
-3101. Keep real brokerage exports, generated databases, and runtime JSON files
-outside git or in ignored local files.
+### One machine is production. The other is not.
 
-There are **three** launchd jobs across **two** machines. The web service below
+| | machine | role |
+| --- | --- | --- |
+| **Production** | Jack's iMac — `ssh imac-hermes`, user `hermes-runner` | every scheduled job, and the only database anyone should quote |
+| **Development** | Jack's MacBook Pro | editing, testing, and where broker exports are downloaded |
+
+**The laptop is development and test only.** It is worth saying outright because
+nothing on either machine says it: both run a launchd service named
+`com.jackpark.stock-observatory`, both serve port 3101, and both hold a
+`stock-portfolio-observatory.db`. A figure read locally looks exactly like the
+live one. Running the same ingest on each has already produced different check
+counts and different holding totals on the same day — both correct for their own
+machine, and only one of them the portfolio.
+
+So: a number is a fact about the machine it was read on. When reporting the
+state of the portfolio, read it on the host, or say which machine answered.
+
+Deploying means the host. A merged pull request changes nothing until
+`git pull` runs there — and `make redeploy` when code changed, since `next start`
+keeps serving the old build until launchd restarts it.
+
+**The alias is `imac-hermes`.** `imac-runner` appears in older prose and is
+defined nowhere; it will not connect.
+
+Keep real brokerage exports, generated databases, and runtime JSON files outside
+git or in ignored local files.
+
+There are **three** launchd jobs across the two machines. The web service below
 and the [scheduled refresh](#scheduled-refresh) run on the host; the
 [source push](#source-push) runs on the laptop where the broker exports land.
 Installing only the host pair leaves the pipeline reading a directory nothing
@@ -384,7 +408,7 @@ make refresh-status            # state, run count, last exit code
 make uninstall-refresh-service
 ```
 
-The production host (`hermes-runner@imac-runner`) should deploy this change with a full `pnpm refresh` after the application build. The ingest recreates the SQLite schema compatibly and the following history-backfill step rewrites the monthly snapshots with the unified coverage formula; restarting only the web process leaves the old trend rows in place until that refresh completes.
+The production host (`hermes-runner@imac-hermes`) should deploy this change with a full `pnpm refresh` after the application build. The ingest recreates the SQLite schema compatibly and the following history-backfill step rewrites the monthly snapshots with the unified coverage formula; restarting only the web process leaves the old trend rows in place until that refresh completes.
 
 Six-hourly rather than once after the US close, because the snapshot has more than
 one reader now and they do not share a clock: `/health` and `/review` are opened at
