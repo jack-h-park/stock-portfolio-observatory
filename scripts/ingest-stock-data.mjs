@@ -2623,6 +2623,13 @@ let usReplayReconcilableCount = 0
 // `${brokerage}|${ticker}` -> ascending [date, quantity held after that date's
 // rows]. Needed to divide a dividend by the shares that actually earned it.
 const usPositionTimeline = new Map()
+// `${brokerage}|${ticker}` -> the restatements applied to it, ascending. The
+// timeline above is stated in the share units in effect ON EACH DATE, while a
+// lot is stated in the units it ended in, so converting between them needs the
+// factors that ran in between. Recorded where they are applied rather than
+// re-derived from the rows, because `restate()` is the only place that knows
+// what a corporate action resolved to.
+const usSplitFactors = new Map()
 
 /** Shares held at the START of a date: the closing balance of the last day before it.
  *
@@ -2718,6 +2725,8 @@ function usHoldingDays(from, to) {
       lot.qty *= factor
       lot.unit /= factor
     }
+    if (!usSplitFactors.has(key)) usSplitFactors.set(key, [])
+    usSplitFactors.get(key).push({ date, factor })
   }
 
   const snapshot = (key, date) => {
@@ -3482,7 +3491,16 @@ const us1099bCoverage = new Map() // `${brokerage}|${year}` -> source filename
       // sold. Apportioning across the sold lots alone put $144.68 of JEPQ
       // dividends onto a 0.786-share lot, because 0.786 shares were all this
       // list could see of a 293-share position.
-      const heldQty = usPositionAsOf(key, dividend.date)
+      // Converted into the lots' share units before it is divided by. The
+      // timeline is stated in the units in effect on the pay date; a lot is
+      // stated in the units it ended in, so a payment made before a split would
+      // otherwise be divided by the smaller number and paid onto the larger one,
+      // and come out multiplied by the split factor. At or after, not after: the
+      // timeline answers with the balance at the START of a date, so a split
+      // booked on the pay date has not been applied to it yet.
+      const heldQty =
+        usPositionAsOf(key, dividend.date) *
+        (usSplitFactors.get(key) ?? []).reduce((f, s) => (s.date >= dividend.date ? f * s.factor : f), 1)
       if (heldQty <= 0) continue
       const perShare = dividend.amount / heldQty
       // Strict on the acquisition side: a reinvestment lot is created BY the
@@ -3491,10 +3509,12 @@ const us1099bCoverage = new Map() // `${brokerage}|${year}` -> source filename
       const holders = lots.filter((r) => r.acquired_date < dividend.date && dividend.date <= r.sold_date)
       if (!holders.length) continue
       for (const holder of holders) {
-        // The lot's size while it was held is taken as the quantity later sold.
-        // A split restates it mid-life, so a payment either side of one is
-        // apportioned on the post-split count; the error is small and bounded,
-        // and the alternative is to carry a per-lot quantity timeline.
+        // The lot's size while it was held is taken as the quantity later sold,
+        // which is exact for a lot disposed of in one go and an approximation
+        // for one sold in pieces. Both sides of the division are now in the
+        // lot's own share units, so a split crossing the payment no longer
+        // multiplies it — that was not the "small and bounded" error this
+        // comment used to claim, it was the full split factor.
         holder.dividends_native += perShare * (holder.quantity_sold ?? 0)
       }
       attributed += 1
