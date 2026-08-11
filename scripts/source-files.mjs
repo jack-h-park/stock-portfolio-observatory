@@ -423,6 +423,14 @@ const US_CASH_EQUIVALENT_TICKERS = new Set(['SPAXX', 'QACDS', 'FDRXX', 'SPRXX'])
 const TICKER_CELL = /^([A-Z][A-Z0-9.-]{0,11})\b/
 
 /** Every ticker held across the resolved US holdings files, sorted. */
+// A quantity cell that states a number. Blank is NOT zero here: `Number('')` is
+// 0 and passes `Number.isFinite`, so testing the parse alone lets every empty
+// cell through — which is exactly the shape the non-position rows have.
+const isQuantity = (value) => {
+  const cell = String(value ?? '').replace(/,/g, '').trim()
+  return cell !== '' && Number.isFinite(Number(cell))
+}
+
 export function readUsHoldingTickers(files) {
   const tickers = new Set()
   const add = (value) => {
@@ -447,6 +455,19 @@ export function readUsHoldingTickers(files) {
     if (brokerage === 'Fidelity') {
       for (const row of csvObjects(rows, (r) => r.includes('Account number') && r.includes('Symbol'))) {
         if (!/^[A-Z0-9]{6,}$/.test(String(row['Account number'] ?? '').trim())) continue
+        // A POSITION HAS A QUANTITY. Fidelity files `Pending activity` as a row
+        // of its own, under a real account number, with the label sitting in the
+        // Symbol column and every numeric cell empty — so the account-number
+        // guard above passes it and `Pending activity` is sent to Yahoo as a
+        // ticker. The miss exits non-zero and fails the whole refresh BEFORE the
+        // ingest runs: a 2026-08-11 download appeared on the host and three days
+        // of trades stayed out of the database with the refresh reporting only
+        // that a price was missing.
+        //
+        // The ingest's own Fidelity reader already drops the row on exactly this
+        // test. These two readers disagreeing IS the failure mode — the ingest
+        // was right and unaffected, and the pipeline still stopped.
+        if (!isQuantity(row.Quantity)) continue
         add(row.Symbol)
       }
       continue
@@ -464,13 +485,13 @@ export function readUsHoldingTickers(files) {
         for (const row of rows.slice(headerIndex + 1)) {
           const label = String(row[symbolAt] ?? '').trim()
           if (!label || MERRILL_NON_POSITION_ROWS.has(label)) continue
-          if (!Number.isFinite(Number(String(row[quantityAt] ?? '').replace(/,/g, '')))) continue
+          if (!isQuantity(row[quantityAt])) continue
           add(TICKER_CELL.exec(label)?.[1])
         }
       } else {
         for (const row of rows) {
           const symbol = TICKER_CELL.exec(String(row[1] ?? '').trim())?.[1]
-          if (symbol && Number.isFinite(Number(String(row[2] ?? '').replace(/,/g, '')))) add(symbol)
+          if (symbol && isQuantity(row[2])) add(symbol)
         }
       }
     }
