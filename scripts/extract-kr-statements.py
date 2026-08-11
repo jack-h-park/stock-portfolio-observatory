@@ -628,6 +628,41 @@ def build_lots(transactions, as_of_by_account):
     open_lots = {}
     taxlots, realized, notes, carried = [], [], [], []
 
+    # A SPLIT RESTATES THE LOTS IT ALREADY HAS. It is booked as an out and one
+    # or more ins, and replaying that literally closes every open lot and opens
+    # new ones dated the split day — which loses the acquisition date, and with
+    # it the holding period. 애플's four post-split shares read as acquired
+    # 2020-08-31, 테슬라's fifteen as 2022-08-25 (its SECOND split, the first
+    # having already overwritten the original), SCHD's fifty-seven as
+    # 2024-10-11. Eight lots in all, and the dates are the whole basis of the
+    # long/short call: SCHD's came out at 383 days, eighteen above the line.
+    #
+    # So the pool is scaled instead — quantity times the factor, unit cost
+    # divided by it — which is what the US replay already does for the same
+    # event. Total cost is preserved by construction, and no acquisition date
+    # moves. This is deliberately NOT the redistribution an earlier version
+    # attempted: nothing here reads the inbound rows' own per-lot costs, so
+    # there is no second inbound row to mistake for an outbound.
+    #
+    # The factor comes from the group, not from a row, because the ins arrive
+    # several at a time: SCHD's 19 out against 6 + 12 + 9 + 30 in is one 3-for-1.
+    split_totals = {}
+    for r in transactions:
+        if r["Type"] != "STOCK_SPLIT":
+            continue
+        raw = nfc(r["Raw Type"])
+        side = "in" if "입고" in raw else "출고" in raw and "out" or None
+        if not side:
+            continue
+        group = split_totals.setdefault((r["Account"], r["Ticker"], r["Date"]), {"in": 0.0, "out": 0.0})
+        group[side] += abs(float(r["Quantity"] or 0))
+    split_factors = {
+        k: g["in"] / g["out"]
+        for k, g in split_totals.items()
+        if g["in"] > 0 and g["out"] > 0
+    }
+    applied_splits = set()
+
     for r in sorted(transactions, key=lambda x: (x["Date"], x["Source"], int(x["Page"]))):
         ticker, qty = r["Ticker"], float(r["Quantity"] or 0)
 
@@ -670,14 +705,35 @@ def build_lots(transactions, as_of_by_account):
         key = (r["Account"], ticker)
         kind, unit = r["Type"], float(r["Unit Price"] or 0)
 
-        # A split is booked as an out and one-or-more ins, and the certificate has
-        # ALREADY restated the per-lot unit cost across them (SCHD: 19 @ 82.31017
-        # out, 57 in across four lots whose costs still sum to the same 1,563.90).
-        # So a split needs no arithmetic of its own — only the direction, which
-        # lives in the raw type rather than the normalized one. An earlier version
-        # tried to redistribute the cost itself, mistook the second inbound row for
-        # another outbound, and silently emptied the position.
-        # Corporate actions move a position too, and 출고 means it left: a matured
+        # A split restates the open lots rather than replacing them — see the
+        # factor table built above. One application per (account, ticker, date):
+        # the sibling rows of the same event carry no further information once
+        # the ratio is known.
+        if kind == "STOCK_SPLIT":
+            event = (r["Account"], ticker, r["Date"])
+            if event in applied_splits:
+                continue
+            factor = split_factors.get(event)
+            held = open_lots.get(key) or []
+            if factor and held:
+                applied_splits.add(event)
+                for lot in held:
+                    lot["qty"] *= factor
+                    lot["unit"] /= factor
+                carried.append(
+                    f"{r['Date']} {r['Account']} {ticker}: {len(held)} lot(s) restated "
+                    f"x{round(factor, 6)} ({r['Raw Type']}), acquisition dates kept"
+                )
+                continue
+            # One-sided in the statements, or nothing open to restate — the
+            # inbound shares are real either way, so fall through to the
+            # direction rule rather than dropping them.
+            notes.append(
+                f"{r['Date']} {r['Account']} {ticker}: split not restatable "
+                f"({'no open lot' if factor else 'one side only'}) — replayed as a movement"
+            )
+
+        # Corporate actions move a position, and 출고 means it left: a matured
         # bond is redeemed by 채권만기상환출고, rights lapse by 신주인수권증서말소출고.
         # Leaving them out of the lot walk left the redeemed US Treasury sitting in
         # the account a year past maturity — a position the dashboard would show
