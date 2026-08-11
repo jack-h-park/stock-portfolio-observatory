@@ -10,33 +10,56 @@ PUSH_PLIST_SRC := deploy/$(PUSH_LABEL).plist
 PUSH_PLIST_DST := $(HOME)/Library/LaunchAgents/$(PUSH_LABEL).plist
 PORT        := 3101
 
-# launchd needs an absolute pnpm path + explicit PATH because it does not run a
-# login shell. Resolve these on the target machine during install-service.
-PNPM_BIN := $(shell command -v pnpm)
-NODE_BIN := $(dir $(shell command -v node))
+# Nothing that runs this Makefile unattended sources a login profile: not
+# launchd, not Hermes cron, and not `ssh host 'make redeploy'`. On hermes-runner
+# pnpm and node live in the user prefix, so a bare `pnpm` in a recipe is only
+# found when a human is at an interactive shell. Resolve both explicitly, from
+# the same candidate directories as deploy/hermes/observatory-refresh-cron.sh,
+# and use the resolved paths in the recipes as well as in the plists.
+TOOL_DIRS := $(HOME)/.local/bin /opt/homebrew/bin /usr/local/bin
+find-tool = $(firstword $(shell command -v $(1) 2>/dev/null) \
+                       $(wildcard $(foreach d,$(TOOL_DIRS),$(d)/$(1))))
+PNPM_BIN := $(call find-tool,pnpm)
+NODE_EXE := $(call find-tool,node)
+NODE_BIN := $(dir $(NODE_EXE))
 
-.PHONY: install ingest refresh dev build start stop restart redeploy status refresh-status wait-listen install-service install-refresh-service uninstall-service uninstall-refresh-service install-push-service uninstall-push-service push-status push-sources file-downloads file-downloads-dry logs typecheck
+# pnpm spawns node and the package scripts spawn it again, so an absolute pnpm
+# is not enough on its own — node's directory has to be on PATH for the children.
+PNPM := PATH="$(NODE_BIN):$$PATH" $(PNPM_BIN)
 
-install:
-	pnpm install
+.PHONY: install ingest refresh dev build start stop restart redeploy status refresh-status wait-listen require-tools install-service install-refresh-service uninstall-service uninstall-refresh-service install-push-service uninstall-push-service push-status push-sources file-downloads file-downloads-dry logs typecheck
 
-ingest:
-	pnpm ingest
+# Every pnpm-invoking target depends on this, so a stripped PATH fails here —
+# before a target has done anything — instead of part-way through.
+require-tools:
+	@test -n "$(PNPM_BIN)" || { \
+	  echo "pnpm not found: not on PATH, and not in $(TOOL_DIRS)."; \
+	  echo "A non-interactive shell (ssh, launchd, cron) does not source your login profile."; \
+	  exit 1; }
+	@test -n "$(NODE_EXE)" || { \
+	  echo "node not found: not on PATH, and not in $(TOOL_DIRS)."; \
+	  exit 1; }
 
-refresh:
-	pnpm refresh
+install: require-tools
+	$(PNPM) install
 
-dev:
-	pnpm dev
+ingest: require-tools
+	$(PNPM) ingest
 
-build:
-	pnpm build
+refresh: require-tools
+	$(PNPM) refresh
 
-start:
-	pnpm start
+dev: require-tools
+	$(PNPM) dev
 
-typecheck:
-	pnpm typecheck
+build: require-tools
+	$(PNPM) build
+
+start: require-tools
+	$(PNPM) start
+
+typecheck: require-tools
+	$(PNPM) typecheck
 
 stop:
 	-launchctl unload $(PLIST_DST) 2>/dev/null
@@ -58,18 +81,40 @@ restart:
 	@$(MAKE) wait-listen
 	@$(MAKE) status
 
-redeploy:
-	git pull --ff-only
-	pnpm build
-	# Schema and snapshot formulas ship with the app. Refresh before restart so
-	# hermes-runner never serves a new reader against pre-migration trend rows.
-	pnpm refresh
-	launchctl kickstart -k gui/$(shell id -u)/$(PLIST_LABEL)
+# The pull has to come first — the build builds what was pulled — so any failure
+# after it leaves the checkout on new code while the running `next start` keeps
+# serving the old build, and nothing reports the disagreement. Two guards:
+# require-tools runs BEFORE the pull, so the failure that actually happened
+# (pnpm missing over ssh) can no longer reach that state; and anything that does
+# fail after the pull says the state is mixed and prints the way back.
+#
+# Schema and snapshot formulas ship with the app. Refresh before restart so
+# hermes-runner never serves a new reader against pre-migration trend rows.
+redeploy: require-tools
+	@set -e; \
+	before=$$(git rev-parse HEAD); \
+	git pull --ff-only; \
+	after=$$(git rev-parse HEAD); \
+	fail() { \
+	  echo ""; \
+	  echo "*** redeploy FAILED at: $$1"; \
+	  if [ "$$before" != "$$after" ]; then \
+	    echo "*** MIXED STATE — the checkout is at $$after, but :$(PORT) is still"; \
+	    echo "*** serving the build from $$before. Source and served app disagree."; \
+	    echo "*** Fix forward by re-running 'make redeploy', or roll the checkout back:"; \
+	    echo "***   git -C $(CURDIR) reset --hard $$before"; \
+	  else \
+	    echo "*** Checkout unchanged ($$before) and the service was not restarted."; \
+	  fi; \
+	  exit 1; \
+	}; \
+	$(PNPM) build   || fail "pnpm build"; \
+	$(PNPM) refresh || fail "pnpm refresh"; \
+	launchctl kickstart -k gui/$(shell id -u)/$(PLIST_LABEL) || fail "launchctl kickstart"
 	@$(MAKE) wait-listen
 	@$(MAKE) status
 
-install-service: build
-	@test -n "$(PNPM_BIN)" || { echo "pnpm not found on PATH -- cannot generate plist"; exit 1; }
+install-service: require-tools build
 	mkdir -p $(HOME)/Library/LaunchAgents logs
 	sed -e "s|__WORKDIR__|$(CURDIR)|g" -e "s|__HOME__|$(HOME)|g" \
 	    -e "s|__PNPM__|$(PNPM_BIN)|g" -e "s|__NODE_BIN__|$(NODE_BIN)|g" $(PLIST_SRC) > $(PLIST_DST)
@@ -77,8 +122,7 @@ install-service: build
 	launchctl load $(PLIST_DST)
 	@echo "installed: $(PLIST_DST) -> http://localhost:$(PORT) (pnpm: $(PNPM_BIN))"
 
-install-refresh-service:
-	@test -n "$(PNPM_BIN)" || { echo "pnpm not found on PATH -- cannot generate plist"; exit 1; }
+install-refresh-service: require-tools
 	mkdir -p $(HOME)/Library/LaunchAgents logs
 	sed -e "s|__WORKDIR__|$(CURDIR)|g" -e "s|__HOME__|$(HOME)|g" \
 		-e "s|__PNPM__|$(PNPM_BIN)|g" -e "s|__NODE_BIN__|$(NODE_BIN)|g" $(REFRESH_PLIST_SRC) > $(REFRESH_PLIST_DST)
@@ -127,8 +171,8 @@ push-sources:
 # it. The hourly push runs this first, so this target is for the impatient and
 # for the dry run — which is worth doing every time, since it prints the same
 # plan and moves nothing.
-file-downloads-dry:
-	pnpm file:downloads --dry-run
+file-downloads-dry: require-tools
+	$(PNPM) file:downloads --dry-run
 
-file-downloads:
-	pnpm file:downloads
+file-downloads: require-tools
+	$(PNPM) file:downloads

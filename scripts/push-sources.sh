@@ -180,5 +180,7 @@ fi
 if [ -z "$DRY" ]; then
   echo
   echo "pushed. The refresh reads these on its next run; to apply them now:"
-  echo "  ssh $HOST 'cd ~/workspace/code/core/jackhpark-stock-observatory && pnpm refresh'"
+  # `make refresh`, not `pnpm refresh`: a non-interactive ssh shell does not
+  # source the login profile, so bare pnpm is not on PATH; the Makefile resolves it.
+  echo "  ssh $HOST 'cd ~/workspace/code/core/jackhpark-stock-observatory && make refresh'"
 fi

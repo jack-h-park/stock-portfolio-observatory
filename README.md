@@ -267,6 +267,14 @@ make redeploy          # git pull --ff-only -> pnpm build -> service restart -> 
 a new `.next/` build; the running `next start` process keeps serving the old build
 until launchd is restarted with `make restart` or `make redeploy`.
 
+Prefer `make <target>` over `pnpm <script>` when driving the host over SSH.
+A non-interactive `ssh host '...'` does not source the login profile, so `pnpm`
+and `node` — which live in `~/.local/bin` on the host — are not on PATH; the
+Makefile resolves both absolutely, the way launchd and the Hermes cron wrapper
+already have to. Missing tooling now fails on `require-tools` before `redeploy`
+pulls anything, and a failure after the pull prints the commit the service is
+still serving alongside the commit the checkout moved to.
+
 Use a hostname or private-network address that resolves from the client browser;
 SSH aliases are not necessarily browser-resolvable DNS names.
 
