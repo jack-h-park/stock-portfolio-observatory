@@ -3594,6 +3594,41 @@ let krDividendStats = null
     return qty
   }
 
+  // The certificate replay restates a split IN PLACE, so a lot acquired before
+  // one is stated in POST-split shares while the timeline above, read at a date
+  // before it, is still in pre-split ones. Dividing a payment by the pre-split
+  // count and then paying it onto post-split lot quantities multiplies it by the
+  // split factor — Apple's 4-for-1 would turn a ₩1,012 payment into ₩4,048. So
+  // convert the denominator into the lots' units by applying every split that
+  // happened after the payment. Splits dated ON the pay date count: the timeline
+  // answers with the balance at the START of a date, before that day's rows.
+  const krSplits = new Map()
+  {
+    const legs = new Map()
+    for (const r of transactionRows) {
+      if (r.type !== 'STOCK_SPLIT' && r.type !== 'CORPORATE_ACTION') continue
+      const ticker = text(r.ticker)
+      const qty = Math.abs(number(r.quantity) ?? 0)
+      if (!ticker || !(qty > 0)) continue
+      const raw = text(r.raw_type)
+      const side = raw.includes('입고') ? 'in' : raw.includes('출고') ? 'out' : null
+      if (!side) continue
+      const id = `${r.account}\t${ticker}\t${text(r.date)}`
+      if (!legs.has(id)) legs.set(id, { in: 0, out: 0 })
+      legs.get(id)[side] += qty
+    }
+    for (const [id, leg] of legs) {
+      if (!(leg.in > 0) || !(leg.out > 0)) continue
+      const [account, ticker, date] = id.split('\t')
+      const key = `${account}|${ticker}`
+      if (!krSplits.has(key)) krSplits.set(key, [])
+      krSplits.get(key).push({ date, factor: leg.in / leg.out })
+    }
+  }
+  /** The lots' share units per share held on `date`. */
+  const krSplitFactorSince = (key, date) =>
+    (krSplits.get(key) ?? []).reduce((factor, s) => (s.date >= date ? factor * s.factor : factor), 1)
+
   const byKey = new Map()
   for (const d of dividendRows) {
     if (d.market !== 'KR') continue
@@ -3625,7 +3660,7 @@ let krDividendStats = null
       // have earned it — and inclusive on the sale side, since shares sold on
       // the pay date were held when it was declared.
       const holders = lots.filter((r) => r.acquired_date < dividend.date && dividend.date <= r.sold_date)
-      const heldQty = krPositionAsOf(key, dividend.date)
+      const heldQty = krPositionAsOf(key, dividend.date) * krSplitFactorSince(key, dividend.date)
       if (!holders.length || heldQty <= 0) {
         // Most dividends were paid on shares still held, and those have no
         // realized lot to attach to by definition. Of the rest, one class is
