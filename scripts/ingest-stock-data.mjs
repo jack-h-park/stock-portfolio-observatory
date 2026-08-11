@@ -732,7 +732,16 @@ create table realized_lots (
   superseded_by text,
   -- Dividends received on this ticker between acquisition and sale. Makes the
   -- realized figure a total return rather than a price return.
+  --
+  -- Two columns because the two markets can honestly fill different ones. A US
+  -- lot and every dividend it earned are quoted in the same currency, so the
+  -- native figure is exact. A Korean position is not so tidy: the same security
+  -- in one 미래에셋 account can carry lots booked in won and lots booked in
+  -- dollars, depending on how each order was placed, while its dividend arrives
+  -- in one currency for the whole position. Won is the unit both sides of that
+  -- always have, so Korea attributes there and leaves the native column null.
   dividends_native real,
+  dividends_krw real,
   source text
 );
 
@@ -3498,6 +3507,167 @@ const us1099bCoverage = new Map() // `${brokerage}|${year}` -> source filename
   )
 }
 
+const krDividendNotes = []
+let krDividendStats = null
+
+// ---------------------------------------------------------------------------
+// The same join, for Korea
+// ---------------------------------------------------------------------------
+//
+// This is the half the US block above could not reach, and it is the half the
+// 「주식 매도 & 손익」 sheet was still being kept by hand for: 22 of its `비고`
+// entries are a `누적배당금` against a closed position, and every one of them went
+// through a Korean broker.
+//
+// Three things differ from the US side, and each is a decision rather than a
+// port.
+//
+// INCOME IS NOT ALL DIVIDENDS HERE. The US dividend rows arrive already typed;
+// Korea's carry the broker's own wording — `배당금외화입금`, but also `세금환급`,
+// `예탁금이용료입금`, `선환전차액입금`. 76 of the 1,011 rows are zero-amount tax
+// refunds. `defaultIncomeCategory` already knows the difference and already
+// reads 배당/분배, so it decides rather than a second list drifting beside it.
+//
+// THE POSITION IS ONE POSITION, WHATEVER CURRENCY EACH TRADE WAS BOOKED IN. A
+// 미래에셋 종합 holding can carry lots in both — SCHD has four won-booked lots
+// and three dollar-booked ones, all sold the same day — because the currency
+// follows how each order was placed, not what the security is. A dividend is
+// earned by the shares, so the denominator counts them all and the match is on
+// account and ticker alone.
+//
+// WHICH IS WHY THE FIGURE IS IN WON. It is the unit both sides always have:
+// every Korean row carries `amount_krw` / `cost_basis_krw`, converted at the
+// historical rate on its own date. Attributing in the lot's native currency
+// would have to skip the mixed-currency positions or silently add dollars to a
+// won lot, and those positions are exactly the ones the sheet recorded.
+{
+  // Shares held per account|ticker over time, from the transactions the
+  // certificates rebuild. Same shape as the US timeline and for the same
+  // reason: a payment is divided by the shares that earned it.
+  const krTimeline = new Map()
+  {
+    // The same direction rule the certificate lot engine uses, and it has to be
+    // the same one. A split is booked as an out and one or more ins, and the
+    // direction lives in the broker's wording rather than in the normalized
+    // type — so counting only BUY/SELL leaves the position short by whatever a
+    // split added. That understates the denominator, which overstates the
+    // per-share figure, which overstates every lot it touches: before this the
+    // 2025-10 미래에셋 disposals came out roughly double the 누적배당금 the
+    // sheet had recorded by hand for the same tickers.
+    const opening = new Set(['BUY', 'TRANSFER_IN', 'REINVEST'])
+    const closing = new Set(['SELL', 'TRANSFER_OUT'])
+    const directional = new Set(['STOCK_SPLIT', 'CORPORATE_ACTION'])
+    const held = new Map()
+    const ordered = [...transactionRows]
+      .filter((r) => text(r.ticker) && number(r.quantity))
+      .sort((a, b) => text(a.date).localeCompare(text(b.date)))
+    for (const r of ordered) {
+      const key = `${r.account}|${text(r.ticker)}`
+      const qty = Math.abs(number(r.quantity) ?? 0)
+      let kind = r.type
+      if (directional.has(kind)) {
+        const raw = text(r.raw_type)
+        kind = raw.includes('입고') ? 'TRANSFER_IN' : raw.includes('출고') ? 'TRANSFER_OUT' : null
+      }
+      if (opening.has(kind)) held.set(key, (held.get(key) ?? 0) + qty)
+      else if (closing.has(kind)) held.set(key, (held.get(key) ?? 0) - qty)
+      else continue
+      if (!krTimeline.has(key)) krTimeline.set(key, [])
+      const timeline = krTimeline.get(key)
+      const last = timeline[timeline.length - 1]
+      if (last && last.date === r.date) last.quantity = held.get(key)
+      else timeline.push({ date: r.date, quantity: held.get(key) })
+    }
+  }
+
+  /** Shares held at the START of a date — the balance before that day's rows.
+   *  A payment is earned by what was held when it was declared, and the same
+   *  day routinely carries the disposal that ended the position. */
+  const krPositionAsOf = (key, date) => {
+    const timeline = krTimeline.get(key)
+    if (!timeline?.length) return 0
+    let qty = 0
+    for (const entry of timeline) {
+      if (entry.date >= date) break
+      qty = entry.quantity
+    }
+    return qty
+  }
+
+  const byKey = new Map()
+  for (const d of dividendRows) {
+    if (d.market !== 'KR') continue
+    if (defaultIncomeCategory(d) !== 'dividend') continue
+    const ticker = text(d.ticker)
+    const amount = number(d.amount_krw) ?? 0
+    if (!ticker || !(amount > 0)) continue
+    const key = `${d.account}|${ticker}`
+    if (!byKey.has(key)) byKey.set(key, [])
+    byKey.get(key).push({ date: text(d.date), amount })
+  }
+
+  const lotsByKey = new Map()
+  const krLots = realizedRows.filter((r) => r.market === 'KR' && r.acquired_date && r.sold_date)
+  for (const lot of krLots) {
+    lot.dividends_krw = 0
+    const key = `${lot.account}|${text(lot.ticker)}`
+    if (!lotsByKey.has(key)) lotsByKey.set(key, [])
+    lotsByKey.get(key).push(lot)
+  }
+
+  let attributed = 0
+  let afterClose = 0
+  const unattributed = krDividendNotes
+  for (const [key, dividends] of byKey) {
+    const lots = lotsByKey.get(key) ?? []
+    for (const dividend of dividends) {
+      // Strict on the acquisition side — a lot opened by the payment cannot
+      // have earned it — and inclusive on the sale side, since shares sold on
+      // the pay date were held when it was declared.
+      const holders = lots.filter((r) => r.acquired_date < dividend.date && dividend.date <= r.sold_date)
+      const heldQty = krPositionAsOf(key, dividend.date)
+      if (!holders.length || heldQty <= 0) {
+        // Most dividends were paid on shares still held, and those have no
+        // realized lot to attach to by definition. Of the rest, one class is
+        // expected and one is not.
+        //
+        // KOREA PAYS LONG AFTER THE RECORD DATE — a quarter or more. 삼성전자's
+        // 미래에셋 종합 position closed on 2024-04-01 and its next two payments
+        // landed on 04-19 and 05-20, earned by shares that were held when the
+        // register closed and paid to an account that no longer had them. The
+        // certificates carry no record date, so there is nothing here to
+        // attribute those against; counted, not warned about, and deliberately
+        // not fixed with a guessed grace window that would misfile a payment
+        // whenever a position was closed and reopened inside it.
+        if (!lots.length) continue
+        const lastSold = lots.reduce((max, r) => (r.sold_date > max ? r.sold_date : max), '')
+        if (dividend.date > lastSold) afterClose += 1
+        else unattributed.push(`${dividend.date} ${key}`)
+        continue
+      }
+      const perShare = dividend.amount / heldQty
+      for (const holder of holders) {
+        holder.dividends_krw += perShare * (holder.quantity_sold ?? 0)
+      }
+      attributed += 1
+    }
+  }
+  for (const lot of krLots) lot.dividends_krw = Math.round(lot.dividends_krw)
+  const paid = krLots.filter((r) => (r.dividends_krw ?? 0) > 0)
+  const total = paid.reduce((sum, r) => sum + r.dividends_krw, 0)
+  krDividendStats = { attributed, lots: paid.length, of: krLots.length, krw: total, afterClose }
+  console.error(
+    `[kr-realized] ${attributed} dividend payment(s) attributed to ${paid.length} of ${krLots.length} ` +
+      `realized lot(s), ₩${total.toLocaleString('en-US')} in all`
+  )
+  if (afterClose) {
+    console.error(`[kr-realized]   ${afterClose} payment(s) landed after the position closed — Korea pays long after the record date`)
+  }
+  if (unattributed.length) {
+    console.error(`[kr-realized]   ${unattributed.length} payment(s) inside a closed position's life matched no lot window`)
+  }
+}
+
 realizedRows.push(...usRealizedRows, ...us1099bRows)
 
 for (let i = 0; i < dividendRows.length; i += 1) {
@@ -3587,6 +3757,7 @@ insertMany(db, 'realized_lots', realizedRows, [
   'form_8949_box',
   'superseded_by',
   'dividends_native',
+  'dividends_krw',
   'source',
 ])
 insertMany(db, 'transactions', transactionRows, [
@@ -4773,6 +4944,25 @@ check(
     : us1099bNotes.length === 0
       ? `${us1099bRows.length} filed 1099-B lot(s) matched to recorded sales across ${us1099bCoverage.size} broker-year(s)`
       : `${us1099bNotes.length} issue(s): ${us1099bNotes.slice(0, 3).join('; ')}`,
+  'warning'
+)
+
+// A dividend dated INSIDE a closed position's life should land on one of its
+// lots; one that does not means the two halves disagree about when the position
+// existed. Payments that arrive after the last disposal are excluded from the
+// fault and counted separately — Korea pays a quarter or more after the record
+// date, so they are the normal tail of closing a position rather than a defect.
+check(
+  'kr_realized_dividends_attributed',
+  krDividendNotes.length === 0,
+  krDividendStats == null
+    ? 'no Korean realized lots to attribute against'
+    : krDividendNotes.length === 0
+      ? `${krDividendStats.attributed} payment(s) attributed to ${krDividendStats.lots} of ` +
+        `${krDividendStats.of} lot(s), ₩${Math.round(krDividendStats.krw).toLocaleString('en-US')} in all` +
+        (krDividendStats.afterClose ? `; ${krDividendStats.afterClose} paid after the position closed` : '')
+      : `${krDividendNotes.length} payment(s) inside a closed position's life matched no lot window: ` +
+        krDividendNotes.slice(0, 3).join('; '),
   'warning'
 )
 
