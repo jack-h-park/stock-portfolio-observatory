@@ -1,10 +1,11 @@
 import { PageHeader } from '@/components/PageHeader'
 import { FreshnessRows } from '@/components/Freshness'
 import { Badge, Card, EmptyState, type Tone } from '@/components/ui'
-import { getEvidenceReports, getMeta, getOperationalHealth, getOverview, getRefreshRuns, getSourceFiles, getValidationChecks } from '@/lib/adapters/portfolio-db'
+import { getAccountCoverage, getEvidenceReports, getMeta, getOperationalHealth, getOverview, getRefreshRuns, getSourceFiles, getValidationChecks } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtDuration, fmtNumber, shortHash } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { getUiCopy } from '@/lib/ui-copy'
+import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,6 +51,7 @@ export default async function HealthPage() {
   const sources = getSourceFiles()
   const evidence = getEvidenceReports()
   const operational = getOperationalHealth()
+  const accountCoverage = getAccountCoverage()
   const refreshRuns = getRefreshRuns()
   const latestRefresh = refreshRuns[0]
   const failed = checks.filter((c) => c.status !== 'pass')
@@ -67,6 +69,14 @@ export default async function HealthPage() {
       />
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
+        <Card title="Account coverage" info="How far each brokerage account's source data reaches. This is separate from file integrity." accent={accountCoverage.actionNeeded > 0} className="xl:col-span-3" action={<Link href="/data-ops#account-coverage" className="text-[12px] font-medium text-info hover:underline">Open updates</Link>}>
+          <div className="grid grid-cols-3 gap-3 text-[12px]">
+            <div><div className="text-[12px] text-ink-3">Action needed</div><div className="font-medium tabular-nums text-danger">{fmtNumber(accountCoverage.actionNeeded)}</div></div>
+            <div><div className="text-[12px] text-ink-3">Due soon</div><div className="font-medium tabular-nums text-warning">{fmtNumber(accountCoverage.dueSoon)}</div></div>
+            <div><div className="text-[12px] text-ink-3">Current</div><div className="font-medium tabular-nums text-success">{fmtNumber(accountCoverage.current)}</div></div>
+          </div>
+          <div className="mt-3 text-[11px] leading-relaxed text-ink-3">The account table names the exact document, account, cutoff date, and destination path. “Fresh” below continues to mean file integrity.</div>
+        </Card>
         <Card title="Operational Status" info="Shows whether prices, FX rates, and source files are collected normally and agree with each other." accent={issueCount > 0}>
           <div className="grid grid-cols-2 gap-3 text-[12px]">
             <div>

@@ -3,8 +3,8 @@ import { DataTable } from '@/components/DataTable'
 import { FreshnessRows } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone, type Tone } from '@/components/ui'
-import { getDataOpsReview } from '@/lib/adapters/portfolio-db'
-import { fmtNumber } from '@/lib/format'
+import { getAccountCoverage, getDataOpsReview, type AccountCoverage } from '@/lib/adapters/portfolio-db'
+import { fmtDate, fmtNumber } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
@@ -18,6 +18,12 @@ function priorityTone(priority: string): Tone {
   if (priority === 'high') return 'danger'
   if (priority === 'medium') return 'warning'
   return 'info'
+}
+
+function coverageTone(status: AccountCoverage['status']): Tone {
+  if (status === 'action_needed' || status === 'missing') return 'danger'
+  if (status === 'due_soon') return 'warning'
+  return 'success'
 }
 
 const COPY = {
@@ -178,7 +184,45 @@ export default async function DataOpsPage() {
   const glossary = getGlossary(language)
   const priorityLabels = getUiCopy(language).priority
   const ops = getDataOpsReview()
+  const coverage = getAccountCoverage()
   const issueCount = ops.actionQueue.reduce((sum, item) => sum + item.count, 0)
+  const coverageCopy = language === 'ko'
+    ? {
+        title: '계좌 데이터 업데이트',
+        info: '파일 무결성(Fresh)과 별도로, 각 계좌의 자료가 어느 날짜까지 반영되었는지 보여줍니다.',
+        action: '지금 필요한 계좌',
+        due: '곧 필요한 계좌',
+        current: '현재 기준 계좌',
+        status: { action_needed: '업데이트 필요', missing: '자료 없음', due_soon: '곧 필요', current: '현재 기준' },
+        account: '계좌',
+        coverage: '반영 기준일',
+        lag: '지연',
+        artifact: '받을 자료',
+        method: '방식',
+        destination: '넣을 위치',
+        detail: '설명',
+        days: (value: number | null) => value == null ? '기준일 없음' : `${fmtNumber(value)}일 전`,
+        methodLabel: { inbox: 'inbox', api: '자동 API', mcp: 'MCP', mixed: 'API + 파일' },
+        none: '모든 계좌가 허용 범위 안에 있습니다.',
+      }
+    : {
+        title: 'Account data updates',
+        info: 'Separate from file integrity: this shows how far each account’s actual coverage has reached.',
+        action: 'Action needed',
+        due: 'Due soon',
+        current: 'Current',
+        status: { action_needed: 'Update needed', missing: 'No data', due_soon: 'Due soon', current: 'Current' },
+        account: 'Account',
+        coverage: 'Covered through',
+        lag: 'Lag',
+        artifact: 'Get this',
+        method: 'Method',
+        destination: 'Destination',
+        detail: 'Detail',
+        days: (value: number | null) => value == null ? 'No cutoff' : `${fmtNumber(value)}d ago`,
+        methodLabel: { inbox: 'inbox', api: 'API', mcp: 'MCP', mixed: 'API + file' },
+        none: 'All accounts are within their configured coverage window.',
+      }
 
   return (
     <>
@@ -189,6 +233,45 @@ export default async function DataOpsPage() {
         subtitle={copy.subtitle}
         action={issueCount ? <Badge tone="warning">{copy.needsReview(fmtNumber(issueCount))}</Badge> : <Badge tone="success">{copy.noPending}</Badge>}
       />
+
+      <Card title={coverageCopy.title} info={coverageCopy.info} accent={coverage.actionNeeded > 0} className="mb-5" action={<Link href="#account-coverage" className="text-[12px] font-medium text-info hover:underline">{language === 'ko' ? '전체 보기' : 'View all'}</Link>}>
+        <div className="mb-4 grid grid-cols-3 gap-3">
+          <MetricField label={coverageCopy.action} value={fmtNumber(coverage.actionNeeded)} tone={coverage.actionNeeded ? 'danger' : 'success'} valueClassName="text-[20px]" />
+          <MetricField label={coverageCopy.due} value={fmtNumber(coverage.dueSoon)} tone={coverage.dueSoon ? 'warning' : 'success'} valueClassName="text-[20px]" />
+          <MetricField label={coverageCopy.current} value={fmtNumber(coverage.current)} tone="success" valueClassName="text-[20px]" />
+        </div>
+        <div id="account-coverage" className="overflow-x-auto">
+          <table className="w-full min-w-[980px] text-left text-[12px]">
+            <caption className="sr-only">{coverageCopy.title}</caption>
+            <thead className="border-y border-line-subtle text-[11px] uppercase tracking-[0.06em] text-ink-3">
+              <tr>
+                <th scope="col" className="px-2 py-2">{coverageCopy.account}</th>
+                <th scope="col" className="px-2 py-2">{coverageCopy.coverage}</th>
+                <th scope="col" className="px-2 py-2">{coverageCopy.lag}</th>
+                <th scope="col" className="px-2 py-2">{coverageCopy.artifact}</th>
+                <th scope="col" className="px-2 py-2">{coverageCopy.method}</th>
+                <th scope="col" className="px-2 py-2">{coverageCopy.destination}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line-subtle">
+              {coverage.rows.map((row) => (
+                <tr key={row.id} className="align-top">
+                  <td className="px-2 py-3">
+                    <div className="flex items-center gap-2"><Badge tone={coverageTone(row.status)}>{coverageCopy.status[row.status]}</Badge><span className="font-medium text-ink">{row.brokerage}</span></div>
+                    <div className="mt-1 text-[11px] text-ink-3">{row.account}</div>
+                  </td>
+                  <td className="px-2 py-3 tabular-nums text-ink-2">{row.coveredThrough ? fmtDate(row.coveredThrough) : 'n/a'}</td>
+                  <td className="px-2 py-3 tabular-nums text-ink-2">{coverageCopy.days(row.lagDays)}{row.overdueDays ? <span className="ml-1 text-danger">(+{row.overdueDays})</span> : null}</td>
+                  <td className="max-w-[24rem] px-2 py-3"><div className="font-medium text-ink">{row.requiredArtifact}</div><div className="mt-1 text-[11px] text-ink-3">{row.format}</div><div className="mt-1 text-[11px] leading-relaxed text-ink-3">{row.action}</div>{row.lastFile ? <code className="mt-1 block truncate text-[10px] text-ink-3" title={row.lastFile}>last: {row.lastFile}</code> : null}</td>
+                  <td className="px-2 py-3 whitespace-nowrap text-ink-2">{coverageCopy.methodLabel[row.method]}</td>
+                  <td className="px-2 py-3"><code className="text-[11px] text-ink-3">{row.destination}</code><div className="mt-1 max-w-[15rem] text-[11px] leading-relaxed text-ink-3">{row.detail}</div></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {coverage.rows.length === 0 ? <EmptyState ok>{coverageCopy.none}</EmptyState> : null}
+        </div>
+      </Card>
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
         <MetricHeroCard

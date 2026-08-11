@@ -156,6 +156,35 @@ export type OperationalHealth = {
   }
 }
 
+export type AccountCoverageStatus = 'current' | 'due_soon' | 'action_needed' | 'missing'
+
+export type AccountCoverage = {
+  id: string
+  market: string
+  brokerage: string
+  account: string
+  coveredThrough: string | null
+  lagDays: number | null
+  maxLagDays: number
+  overdueDays: number | null
+  status: AccountCoverageStatus
+  method: 'inbox' | 'api' | 'mcp' | 'mixed'
+  requiredArtifact: string
+  format: string
+  destination: string
+  lastFile: string | null
+  action: string
+  detail: string
+}
+
+export type AccountCoverageSummary = {
+  rows: AccountCoverage[]
+  actionNeeded: number
+  dueSoon: number
+  current: number
+  generatedAt: string
+}
+
 export type RefreshStep = {
   name: string
   command: string
@@ -1771,6 +1800,176 @@ function valuationSuggestion(reason: string) {
   if (reason === 'price_snapshot_missing') return 'Run pnpm refresh or restore the local price snapshot file.'
   if (reason === 'ticker_missing_from_price_snapshot') return 'Check ticker normalization and refresh the relevant price snapshot.'
   return 'Review source valuation fields; tax-lot-only sources may need external price enrichment.'
+}
+
+function calendarAgeDays(value: string | null) {
+  if (!value) return null
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!match) return null
+  const then = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+  const now = new Date()
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  return Math.max(0, Math.floor((today - then) / 86400000))
+}
+
+function isoDate(value: string | null | undefined) {
+  if (!value) return null
+  const match = String(value).match(/^(\d{4}-\d{2}-\d{2})/)
+  return match?.[1] ?? null
+}
+
+function coverageStatus(lagDays: number | null, maxLagDays: number): AccountCoverageStatus {
+  if (lagDays == null) return 'missing'
+  if (lagDays > maxLagDays) return 'action_needed'
+  if (lagDays >= Math.max(1, maxLagDays - 4)) return 'due_soon'
+  return 'current'
+}
+
+function latestSourceFilename(sourceRows: any[], needles: string[]) {
+  const matches = sourceRows.filter((row) => needles.some((needle) => String(row.filename ?? '').toLowerCase().includes(needle)))
+  return matches.sort((a, b) => Number(b.mtime_ms ?? 0) - Number(a.mtime_ms ?? 0))[0]?.filename ?? null
+}
+
+/**
+ * Translate the ingest's source and validation evidence into an account-level
+ * checklist. File fingerprints answer “did the file change?”; this answers
+ * the operator's separate question: “how far through the account's activity
+ * have the numbers actually reached, and what should I obtain next?”
+ */
+export function getAccountCoverage(): AccountCoverageSummary {
+  const conn = db()
+  try {
+    const sourceRows = conn.prepare('select * from source_files order by name').all() as any[]
+    const holdingRows = conn
+      .prepare(`select market, coalesce(brokerage, 'Unknown') as brokerage, account, max(as_of_date) as covered_through
+                from holdings group by market, brokerage, account`)
+      .all() as { market: string; brokerage: string; account: string; covered_through: string | null }[]
+    const transactionRows = conn
+      .prepare(`select market, coalesce(brokerage, 'Unknown') as brokerage, account, max(date) as covered_through
+                from transactions group by market, brokerage, account`)
+      .all() as { market: string; brokerage: string; account: string; covered_through: string | null }[]
+    const checkRows = conn.prepare('select name, detail, status from validation_checks').all() as { name: string; detail: string; status: string }[]
+    const checks = new Map(checkRows.map((row) => [row.name, row]))
+    const coverageKey = (row: { market: string; brokerage: string; account: string }) =>
+      row.market === 'US' && row.brokerage !== 'Robinhood' ? `${row.market}|${row.brokerage}|${row.brokerage}` : `${row.market}|${row.brokerage}|${row.account}`
+    const holdingsByKey = new Map<string, (typeof holdingRows)[number]>()
+    const txByKey = new Map<string, (typeof transactionRows)[number]>()
+    const accountNames = new Map<string, Set<string>>()
+    for (const row of holdingRows) {
+      const key = coverageKey(row)
+      accountNames.set(key, (accountNames.get(key) ?? new Set()).add(row.account))
+      const previous = holdingsByKey.get(key)
+      if (!previous || String(row.covered_through ?? '') > String(previous.covered_through ?? '')) holdingsByKey.set(key, row)
+    }
+    for (const row of transactionRows) {
+      const key = coverageKey(row)
+      accountNames.set(key, (accountNames.get(key) ?? new Set()).add(row.account))
+      const previous = txByKey.get(key)
+      if (!previous || String(row.covered_through ?? '') > String(previous.covered_through ?? '')) txByKey.set(key, row)
+    }
+    const keys = new Set([...holdingRows, ...transactionRows].map(coverageKey))
+    const rows: AccountCoverage[] = []
+
+    for (const key of keys) {
+      const [market, brokerage, rawAccount] = key.split('|')
+      const holding = holdingsByKey.get(key)
+      const transaction = txByKey.get(key)
+      const account = [...(accountNames.get(key) ?? new Set())].join(' / ') || rawAccount || brokerage
+      let coveredThrough = isoDate(holding?.covered_through ?? transaction?.covered_through)
+      let maxLagDays = market === 'US' ? 14 : market === 'CRYPTO' ? 35 : 35
+      let method: AccountCoverage['method'] = 'inbox'
+      let requiredArtifact = '최근 거래내역서'
+      let format = 'PDF'
+      let destination = 'kr-statements/'
+      let action = '최근 조회기간이 오늘까지 포함된 자료를 다운로드해 inbox에 넣으세요.'
+      let detail = '문서가 선언한 조회기간의 마지막 날짜를 기준으로 계산합니다.'
+      const brokerLower = brokerage.toLowerCase()
+
+      if (market === 'US' && brokerLower === 'robinhood') {
+        method = 'mcp'
+        requiredArtifact = 'Robinhood MCP snapshot + tax lots'
+        format = 'JSON'
+        destination = 'data/robinhood-snapshot.json'
+        const snapshot = readJson(config.stockRobinhoodSnapshotPath)
+        coveredThrough = isoDate(snapshot?.fetchedAt) ?? isoDate(sourceRows.find((row) => row.name === 'robinhood_snapshot')?.mtime_ms ? new Date(Number(sourceRows.find((row) => row.name === 'robinhood_snapshot').mtime_ms)).toISOString() : null)
+        maxLagDays = 7
+        action = 'Robinhood MCP에서 계좌 snapshot과 lot을 다시 생성하세요. broker CSV를 inbox에 넣는 작업이 아닙니다.'
+        detail = checks.get('robinhood_snapshot_fresh')?.detail ?? 'MCP snapshot의 fetchedAt을 기준으로 계산합니다.'
+      } else if (market === 'US') {
+        requiredArtifact = `${brokerage} holdings CSV + transactions CSV`
+        format = 'CSV × 2'
+        destination = 'us-holdings/ + us-transactions/'
+        action = `${brokerage}의 holdings/positions와 최신 transactions CSV를 같은 기준일로 다운로드해 inbox에 넣으세요.`
+        detail = '두 CSV 중 더 오래된 기준일을 계좌 coverage로 사용합니다.'
+        const dates = [holding?.covered_through, transaction?.covered_through].filter(Boolean) as string[]
+        coveredThrough = dates.length ? dates.sort()[0] : null
+      } else if (market === 'CRYPTO' && brokerLower === 'bithumb') {
+        requiredArtifact = '빗썸 거래내역확인서 PDF + 기간별 거래내역 XLSX'
+        format = 'PDF + XLSX'
+        destination = 'crypto-bithumb/'
+        maxLagDays = 14
+        action = '같은 조회기간의 PDF와 XLSX를 모두 다운로드해 inbox에 넣으세요.'
+        detail = 'PDF가 거래 원장이고 XLSX는 입출금 사유 보강용입니다.'
+      } else if (market === 'CRYPTO') {
+        requiredArtifact = 'Robinhood Crypto monthly statement'
+        format = 'PDF'
+        destination = 'crypto-robinhood/'
+        action = '누락된 최신 월의 Crypto Statement PDF를 다운로드해 inbox에 넣으세요.'
+        detail = '월별 statement가 끊기지 않는지 기준일을 계산합니다.'
+      } else if (market === 'KR' && brokerLower.includes('toss')) {
+        method = 'mixed'
+        requiredArtifact = '토스증권 거래내역서 PDF (Open API 보완)'
+        maxLagDays = 35
+        action = 'Open API가 최신이면 조치하지 않아도 됩니다. statement cutoff가 뒤처지면 새 거래내역서를 다운로드하세요.'
+        detail = checks.get('toss_positions_fresh')?.detail ?? 'statement와 Open API snapshot을 함께 표시합니다.'
+      } else if (market === 'KR' && brokerLower.includes('삼성')) {
+        requiredArtifact = '삼성증권 주식보상 계좌거래내역서'
+        maxLagDays = 120
+        action = '주식보상 계좌의 최신 계좌거래내역서를 다운로드해 inbox에 넣으세요.'
+        detail = checks.get('samsung_statement_fresh')?.detail ?? detail
+      } else if (market === 'KR') {
+        requiredArtifact = `${brokerage} ${account} 거래내역증명서`
+        action = `${brokerage} ${account}의 최신 거래내역증명서를 다운로드해 inbox에 넣으세요.`
+      }
+
+      const lagDays = calendarAgeDays(coveredThrough)
+      const overdueDays = lagDays == null ? null : Math.max(0, lagDays - maxLagDays)
+      const status = coverageStatus(lagDays, maxLagDays)
+      const sourceNeedles = [brokerLower.replace(/증권|\s+/g, ''), account.toLowerCase().replace(/\s+/g, '')]
+      rows.push({
+        id: key,
+        market,
+        brokerage,
+        account,
+        coveredThrough,
+        lagDays,
+        maxLagDays,
+        overdueDays,
+        status,
+        method,
+        requiredArtifact,
+        format,
+        destination,
+        lastFile: latestSourceFilename(sourceRows, sourceNeedles),
+        action,
+        detail,
+      })
+    }
+
+    rows.sort((a, b) => {
+      const score = { action_needed: 0, missing: 1, due_soon: 2, current: 3 }
+      return score[a.status] - score[b.status] || (b.lagDays ?? 999) - (a.lagDays ?? 999) || a.brokerage.localeCompare(b.brokerage)
+    })
+    return {
+      rows,
+      actionNeeded: rows.filter((row) => row.status === 'action_needed' || row.status === 'missing').length,
+      dueSoon: rows.filter((row) => row.status === 'due_soon').length,
+      current: rows.filter((row) => row.status === 'current').length,
+      generatedAt: new Date().toISOString(),
+    }
+  } finally {
+    conn.close()
+  }
 }
 
 export function getDataOpsReview(): DataOpsReview {

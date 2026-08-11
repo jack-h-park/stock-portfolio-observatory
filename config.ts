@@ -16,6 +16,7 @@ export const config = {
   stockKrPricesPath: env('STOCK_KR_PRICES_PATH', repoPath('data/kr-prices.json')),
   stockUsPricesPath: env('STOCK_US_PRICES_PATH', repoPath('data/us-prices.json')),
   stockUsPdfEvidencePath: env('STOCK_US_PDF_EVIDENCE_PATH', repoPath('data/us-pdf-evidence.json')),
+  stockRobinhoodSnapshotPath: env('STOCK_ROBINHOOD_SNAPSHOT_PATH', repoPath('data/robinhood-snapshot.json')),
   stockCryptoActivityPath: env('STOCK_CRYPTO_ACTIVITY_PATH', repoPath('data/crypto-activity.json')),
   stockCryptoPricesPath: env('STOCK_CRYPTO_PRICES_PATH', repoPath('data/crypto-prices.json')),
   stockManualMappingsPath: env('STOCK_MANUAL_MAPPINGS_PATH', repoPath('data/manual-mappings.json')),
