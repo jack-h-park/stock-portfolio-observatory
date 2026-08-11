@@ -1927,12 +1927,17 @@ export function getAccountCoverage(): AccountCoverageSummary {
         format = 'PDF + XLSX'
         destination = 'crypto-bithumb/'
         maxLagDays = 14
+        // Crypto holdings are derived with a quote's as-of date, which can be
+        // today even when the statement activity stops earlier. The statement
+        // transaction cutoff is the authoritative coverage date here.
+        coveredThrough = isoDate(transaction?.covered_through)
         action = '같은 조회기간의 PDF와 XLSX를 모두 다운로드해 inbox에 넣으세요.'
         detail = 'PDF가 거래 원장이고 XLSX는 입출금 사유 보강용입니다.'
       } else if (market === 'CRYPTO') {
         requiredArtifact = 'Robinhood Crypto monthly statement'
         format = 'PDF'
         destination = 'crypto-robinhood/'
+        coveredThrough = isoDate(transaction?.covered_through)
         action = '누락된 최신 월의 Crypto Statement PDF를 다운로드해 inbox에 넣으세요.'
         detail = '월별 statement가 끊기지 않는지 기준일을 계산합니다.'
       } else if (market === 'KR' && (brokerLower.includes('toss') || brokerLower.includes('토스'))) {
