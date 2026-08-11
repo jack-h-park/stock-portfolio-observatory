@@ -364,7 +364,18 @@ function isIncomeType(type) {
   // in coin, so it simultaneously opens a tax lot and books income, and the two
   // are taxed on different bases. Collapsing it into an existing type would hide
   // that from the income views.
-  return ['DIVIDEND', 'INTEREST', 'STOCK_LENDING_INCOME', 'OTHER_INCOME', 'STAKING_REWARD'].includes(type)
+  //
+  // SHARE_REWARD is the equity side of the same shape: a share granted outright,
+  // paid in stock. Toss books two of them — `소수점이벤트입고` and
+  // `주식퀴즈이벤트입고` — and `extract-kr-statements.py` opens a lot AND emits
+  // income for each, so this list has to agree or the two halves count
+  // differently and `dividend_rows_match_transactions` fails the ingest.
+  //
+  // The type is assigned by a parser reading a broker's own word for the event.
+  // It is NOT inferred from an arrival nothing could price: that was #88, and it
+  // retyped inbound ACAT transfers as income — $30k of it — because "no source
+  // named a cost" is not evidence of what something is. Reverted in #103.
+  return ['DIVIDEND', 'INTEREST', 'STOCK_LENDING_INCOME', 'OTHER_INCOME', 'STAKING_REWARD', 'SHARE_REWARD'].includes(type)
 }
 
 function loadManualMappings() {
@@ -412,6 +423,10 @@ function defaultIncomeCategory(row) {
   if (type.includes('INTEREST') || name.includes('INTEREST PAYMENT')) return 'interest'
   if (type.includes('STOCK_LENDING') || name.includes('STOCK LENDING')) return 'stock_lending'
   if (type.includes('OTHER_INCOME')) return 'other'
+  // A granted share is ordinary income at its receipt-date value, not a payout
+  // on a position already held — 1099-MISC, not 1099-DIV. Stated rather than
+  // left to the fallback so it cannot drift into the dividend bucket.
+  if (type.includes('SHARE_REWARD')) return 'other'
   if (type.includes('DIVIDEND') || type.includes('배당') || type.includes('분배')) return 'dividend'
   return 'other'
 }
@@ -4111,6 +4126,7 @@ const unmappedTypes = transactionRows.filter(
       'CORPORATE_ACTION',
       'FEE',
       'STAKING_REWARD',
+      'SHARE_REWARD',
     ].includes(r.type)
 )
 const missingFxHoldings = holdingRows.filter((r) => r.currency !== r.base_currency && (r.fx_rate_to_base == null || r.base_cost == null))
