@@ -2619,6 +2619,8 @@ let usReplayAsOfSkew = []
 // for Toss, so it gets its own bucket here instead of counting against a check
 // whose whole point is to catch a REPLAY defect.
 let robinhoodReplayMismatches = []
+// The other direction, and it is a different failure — see where they are split.
+let robinhoodReplayMissingDisposals = []
 let usReplayReconcilableCount = 0
 // `${brokerage}|${ticker}` -> ascending [date, quantity held after that date's
 // rows]. Needed to divide a dividend by the shares that actually earned it.
@@ -3019,8 +3021,27 @@ function usHoldingDays(from, to) {
         continue
       }
       const entry = `${key.replace('|', ' ')}: replay ${usRound(replayed, 4)} vs holdings ${usRound(held, 4)}`
-      if (key.startsWith('Robinhood|') && robinhoodSnapshotLotCount > 0) robinhoodReplayMismatches.push(entry)
-      else usReplayMismatches.push(entry)
+      if (key.startsWith('Robinhood|') && robinhoodSnapshotLotCount > 0) {
+        // THE DIRECTION IS THE DIAGNOSIS, and the two directions are not the
+        // same failure wearing different signs.
+        //
+        // Replay BELOW holdings means shares are held that the replay never saw
+        // arrive: a purchase or a reinvestment sitting in an undownloaded CSV.
+        // The position is still right — the live snapshot supplies it, lot by
+        // lot with its cost — so nothing on the dashboard is wrong and the gap
+        // closes on the next download. That is the routine state of a live
+        // snapshot read against a file downloaded last week.
+        //
+        // Replay ABOVE holdings means the opposite: the replay still holds
+        // shares the broker says are gone. Something DISPOSED of them and the
+        // replay never saw it, so its proceeds, its gain and its tax year are
+        // all absent — and absent in the direction that under-reports, which is
+        // the failure this pipeline keeps rediscovering. Sharing one warning
+        // with the benign case is what made "the CSV is a few days old" and
+        // "a sale is missing from the books" sound identical.
+        if (replayed > held) robinhoodReplayMissingDisposals.push(entry)
+        else robinhoodReplayMismatches.push(entry)
+      } else usReplayMismatches.push(entry)
     }
   }
   usReplayReconcilableCount = new Set(
@@ -3028,7 +3049,9 @@ function usHoldingDays(from, to) {
   ).size
   console.error(
     `[us-realized] replayed ${usRealizedRows.length} realized lot(s) from ${rows.length} US transaction(s); ` +
-      `${usReplayMismatches.length} position(s) disagree with holdings, ${usReplayAsOfSkew.length} explained by post-snapshot trades, ${robinhoodReplayMismatches.length} more Robinhood-only (see robinhood_holdings_replay_provenance); ${usReplayNotes.length} note(s)`
+      `${usReplayMismatches.length} position(s) disagree with holdings, ${usReplayAsOfSkew.length} explained by post-snapshot trades, ` +
+      `${robinhoodReplayMismatches.length} more Robinhood-only awaiting a CSV (see robinhood_holdings_replay_provenance), ` +
+      `${robinhoodReplayMissingDisposals.length} missing a disposal (see robinhood_replay_missing_disposal); ${usReplayNotes.length} note(s)`
   )
   for (const note of usReplayNotes.slice(0, 20)) console.error(`[us-realized]   ${note}`)
   for (const note of usReplayLotCostLookups) console.error(`[us-realized]   ${note}`)
@@ -4891,6 +4914,10 @@ check(
 // are different vintages by design once a live snapshot backs the holdings,
 // and that gap is expected to widen as trades happen and narrow only when the
 // transaction CSVs are re-downloaded — never on a cadence the replay controls.
+//
+// ARRIVALS ONLY. A position the replay has not caught up to yet is the expected
+// state of this pairing and stays a warning; a position it has not caught up to
+// on the way DOWN is a missing disposal and answers to the check below.
 check(
   'robinhood_holdings_replay_provenance',
   robinhoodSnapshotLotCount === 0 || robinhoodReplayMismatches.length === 0,
@@ -4898,11 +4925,34 @@ check(
     ? 'no MCP snapshot backing Robinhood holdings — nothing to compare the replay against'
     : robinhoodReplayMismatches.length === 0
       ? `all Robinhood position(s) backed by the MCP snapshot match the transaction-replayed lots`
-      : `${robinhoodReplayMismatches.length} Robinhood position(s) disagree with the transaction-replayed lots ` +
-        `(expected once trades outrun the downloaded CSVs — download fresh ones to close it): ${robinhoodReplayMismatches
+      : `${robinhoodReplayMismatches.length} Robinhood position(s) hold shares the replay has not seen arrive ` +
+        `(a purchase or reinvestment in an undownloaded CSV; the snapshot still supplies the position and its ` +
+        `cost, so no figure is wrong — download fresh CSVs to close it): ${robinhoodReplayMismatches
           .slice(0, 6)
           .join('; ')}`,
   'warning'
+)
+
+// The other direction, and the reason it is not folded into the warning above:
+// the replay still holds shares the broker says are gone, so SOMETHING SOLD OR
+// TRANSFERRED THEM AND THE BOOKS DO NOT KNOW. Unlike an undownloaded purchase,
+// this one moves figures — the proceeds, the realized gain and the tax year it
+// falls in are all missing, and missing downward, which is the direction that
+// never announces itself.
+//
+// ERROR, so the refresh exits non-zero and says so. That is the difference the
+// split exists to make: a stale CSV should be quiet, a sale nobody recorded
+// should not. It clears the moment the CSV covering that disposal is downloaded.
+check(
+  'robinhood_replay_missing_disposal',
+  robinhoodSnapshotLotCount === 0 || robinhoodReplayMissingDisposals.length === 0,
+  robinhoodSnapshotLotCount === 0
+    ? 'no MCP snapshot backing Robinhood holdings — nothing to compare the replay against'
+    : robinhoodReplayMissingDisposals.length === 0
+      ? 'no Robinhood position holds more in the replay than the broker reports'
+      : `${robinhoodReplayMissingDisposals.length} Robinhood position(s) hold FEWER shares than the replay: a ` +
+        `disposal is missing from the transaction history, so its proceeds and realized gain are not on the books ` +
+        `(download the CSV covering it): ${robinhoodReplayMissingDisposals.slice(0, 6).join('; ')}`
 )
 
 // A disposal with no open lot behind it means the opening side is outside the
