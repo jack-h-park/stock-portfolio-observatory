@@ -7,6 +7,52 @@ loadLocalEnv()
 
 const historyPath = process.env.STOCK_REFRESH_RUNS_PATH || path.join(process.cwd(), 'data/refresh-runs.json')
 const maxRuns = Number(process.env.STOCK_REFRESH_RUNS_LIMIT || 30)
+// The launchd refresh and a manual/deploy-triggered refresh can otherwise run
+// together. Both rewrite generated snapshots and the database, so the later
+// ingest can record a hash for a file that the other process immediately
+// rewrites, leaving a false source-drift warning (and competing builds can
+// also remove .next while the server is starting). Use a recoverable directory
+// lock: a dead owner's stale lock is safe to reclaim, while a live owner makes
+// this run a no-op rather than corrupting the current refresh.
+const refreshLockPath = process.env.STOCK_REFRESH_LOCK_PATH || path.join(process.cwd(), '.refresh.lock')
+
+function acquireRefreshLock() {
+  try {
+    fs.mkdirSync(refreshLockPath)
+    fs.writeFileSync(path.join(refreshLockPath, 'pid'), `${process.pid}\n`)
+    process.on('exit', () => {
+      try {
+        fs.rmSync(refreshLockPath, { recursive: true, force: true })
+      } catch {
+        // Best effort; a later run can reclaim a dead owner's lock.
+      }
+    })
+    return true
+  } catch (error) {
+    if (error?.code !== 'EEXIST') throw error
+    let ownerPid = null
+    try {
+      ownerPid = Number(fs.readFileSync(path.join(refreshLockPath, 'pid'), 'utf8').trim())
+    } catch {
+      ownerPid = null
+    }
+    if (ownerPid && ownerPid !== process.pid) {
+      try {
+        process.kill(ownerPid, 0)
+        console.log(`[refresh] another refresh is already running (pid ${ownerPid}); skipping this run`)
+        return false
+      } catch {
+        fs.rmSync(refreshLockPath, { recursive: true, force: true })
+        return acquireRefreshLock()
+      }
+    }
+    console.log('[refresh] another refresh is already running; skipping this run')
+    return false
+  }
+}
+
+if (!acquireRefreshLock()) process.exit(0)
+
 // FX first: the ingest converts every native amount into the base currency with
 // it, so a stale rate misstates the whole portfolio no matter how fresh the
 // prices are.
