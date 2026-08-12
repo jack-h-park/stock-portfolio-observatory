@@ -343,6 +343,7 @@ function normalizeMerrillTransactionType(description, type = '') {
   // $0.00 income row. The prefix says what the row IS; the rest is a fund name.
   if (desc.startsWith('security transfer in')) return 'TRANSFER_IN'
   if (desc.startsWith('security transfer out')) return 'TRANSFER_OUT'
+  if (desc.startsWith('funds received')) return 'TRANSFER_IN'
   // Merrill's current export puts the broad bucket `Trades/Securities` in the
   // Type column for purchases, sales, reinvestments, and security transfers.
   // It is not specific enough to override the action encoded in Description.
@@ -352,7 +353,6 @@ function normalizeMerrillTransactionType(description, type = '') {
   if (desc.includes('interest')) return 'INTEREST'
   if (desc.includes('stock lending')) return 'STOCK_LENDING_INCOME'
   if (desc.includes('other income')) return 'OTHER_INCOME'
-  if (desc.startsWith('funds received')) return 'TRANSFER_IN'
   if (desc.startsWith('security transfer in')) return 'TRANSFER_IN'
   if (desc.startsWith('security transfer out')) return 'TRANSFER_OUT'
   if (desc.includes('purchase')) return 'BUY'
