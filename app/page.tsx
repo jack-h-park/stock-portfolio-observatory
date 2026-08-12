@@ -113,7 +113,7 @@ const COPY = {
     emphasis: 'Overview',
     subtitle: (ingestedAt: string, fx: string | null) =>
       `Read-only status loaded from local investment data at ${ingestedAt}.${fx ? ` Applied FX: ${fx}.` : ''}`,
-    needsReview: (count: number) => `Needs review ${count}`,
+    needsReview: (count: number) => `Operations review ${count}`,
     healthy: 'Healthy',
     freshnessTitle: 'Data Freshness',
     allAssets: 'All Assets Summary',
@@ -217,7 +217,7 @@ const COPY = {
     emphasis: '개요',
     subtitle: (ingestedAt: string, fx: string | null) =>
       `로컬 투자 자료를 ${ingestedAt}에 불러온 읽기 전용 현황입니다.${fx ? ` 적용 환율: ${fx}.` : ''}`,
-    needsReview: (count: number) => `확인 필요 ${count}건`,
+    needsReview: (count: number) => `운영 검토 대기 ${count}건`,
     healthy: '정상',
     freshnessTitle: '데이터 최신 상태',
     allAssets: '전체 자산 요약',
