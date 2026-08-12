@@ -474,14 +474,22 @@ export function readUsHoldingTickers(files) {
     }
 
     if (brokerage === 'Merrill') {
-      const headerIndex = rows.findIndex((r) => r.includes('Symbol'))
+      // Merrill renames these columns between exports — `Positions` for
+      // `Symbol`, `Total client investment` for `Total Client Investment` — so
+      // every spelling seen is matched, case-insensitively, and the same list
+      // lives in the ingest's own Merrill reader. THE TWO MUST AGREE: this
+      // reader feeds the price fetch, which runs first and fails the refresh
+      // before the ingest gets to disagree with it.
+      const columnMatching = (row, ...names) =>
+        row.findIndex((c) => names.some((n) => String(c ?? '').trim().toLowerCase() === n.toLowerCase()))
+      const headerIndex = rows.findIndex((r) => columnMatching(r, 'Symbol', 'Positions') >= 0)
       const header = headerIndex >= 0 ? rows[headerIndex] : []
       // The flat layout puts the symbol in its own first column and shares the
       // table with a `Balances` block; the tax-lot layout indents everything by
       // one and repeats the symbol only on the position rows.
-      if (headerIndex >= 0 && header.includes('Total Client Investment') && !header.includes('Cost Basis')) {
-        const symbolAt = header.indexOf('Symbol')
-        const quantityAt = header.indexOf('Quantity')
+      if (headerIndex >= 0 && columnMatching(header, 'Total Client Investment') >= 0 && columnMatching(header, 'Cost Basis') < 0) {
+        const symbolAt = columnMatching(header, 'Symbol', 'Positions')
+        const quantityAt = columnMatching(header, 'Quantity')
         for (const row of rows.slice(headerIndex + 1)) {
           const label = String(row[symbolAt] ?? '').trim()
           if (!label || MERRILL_NON_POSITION_ROWS.has(label)) continue

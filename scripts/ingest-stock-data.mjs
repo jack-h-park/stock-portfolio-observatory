@@ -1877,14 +1877,29 @@ for (const source of usHoldingFiles) {
     // lots at all and calls the basis something else — so reading either by
     // fixed offsets means one of them is silently misread. Column NAMES are read
     // instead, from whichever header the file actually has.
-    const headerIndex = rows.findIndex((r) => r.some((c) => text(c) === 'Symbol'))
+    //
+    // AND THE NAMES THEMSELVES MOVE. The 2026-08-11 export heads the same flat
+    // table with `Positions` instead of `Symbol`, spells the basis
+    // `Total client investment` rather than `Total Client Investment`, and
+    // splits the one `Unrealized Gain/Loss $ Chg % Chg` cell into `($)` and
+    // `(%)` columns. Nothing about the table changed — only what it calls
+    // itself. Matched case-insensitively against every spelling seen, because
+    // an unrecognised header here reads as "no positions at all": the file is
+    // still the newest, `pick: 'latest'` still selects it, and the account
+    // silently empties.
+    const columnMatching = (header, ...names) =>
+      header.findIndex((c) => names.some((n) => c.toLowerCase() === n.toLowerCase()))
+    const headerIndex = rows.findIndex((r) =>
+      r.some((c) => text(c) === 'Symbol' || text(c) === 'Positions')
+    )
     const header = headerIndex >= 0 ? rows[headerIndex].map((c) => text(c)) : []
-    const columnOf = (name) => header.indexOf(name)
-    const flatLayout = headerIndex >= 0 && columnOf('Total Client Investment') >= 0 && columnOf('Cost Basis') < 0
+    const columnOf = (name) => columnMatching(header, name)
+    const costAt = columnMatching(header, 'Total Client Investment')
+    const flatLayout = headerIndex >= 0 && costAt >= 0 && columnOf('Cost Basis') < 0
     merrillHoldingsLayout = { flat: flatLayout, file: path.basename(source.filename), asOf }
 
     if (flatLayout) {
-      const symbolAt = columnOf('Symbol')
+      const symbolAt = columnMatching(header, 'Symbol', 'Positions')
       const cell = (r, name) => (columnOf(name) >= 0 ? r[columnOf(name)] : '')
       for (const r of rows.slice(headerIndex + 1)) {
         const label = text(r[symbolAt])
@@ -1898,9 +1913,18 @@ for (const source of usHoldingFiles) {
         if (!symbol) continue
         const quantity = number(cell(r, 'Quantity'))
         if (quantity == null) continue
-        const cost = number(cell(r, 'Total Client Investment')) ?? 0
+        const cost = number(r[costAt]) ?? 0
         const value = number(cell(r, 'Value'))
-        const unrealized = number(text(cell(r, 'Unrealized Gain/Loss $ Chg % Chg')).split(' ')[0])
+        // One cell carrying "$62.24 +0.88%" in the older export, two columns in
+        // the newer one. Splitting on the space is right for the combined cell
+        // and harmless for the split one, which has nothing after the amount.
+        const unrealized = number(
+          text(
+            columnOf('Unrealized Gain/Loss $ Chg % Chg') >= 0
+              ? cell(r, 'Unrealized Gain/Loss $ Chg % Chg')
+              : cell(r, 'Unrealized gain/loss ($)')
+          ).split(' ')[0]
+        )
         holdingRows.push({
           market: 'US',
           currency: 'USD',

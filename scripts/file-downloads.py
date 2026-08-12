@@ -909,6 +909,8 @@ def detect_fidelity(doc):
 # (trailing space and all, which is Merrill's, not a typo here) and a
 # basis column under one of two names. Naming the basis column in the evidence
 # line is what says which layout arrived, since the destination name cannot.
+# Merrill respells its own headers between exports — `Total client investment`
+# for `Total Client Investment` — so these are compared case-insensitively.
 MERRILL_BASIS_COLUMNS = ('"Cost Basis"', '"Total Client Investment"')
 
 
@@ -1017,9 +1019,13 @@ def detect_merrill(doc):
     """
     if doc.suffix != ".csv" or not doc.lines:
         return None
-    if not doc.lines[0].startswith("Exported on:"):
+    # The 2026-08-11 export quotes this line where the older ones left it bare.
+    # Same sentence, same date, one character of CSV quoting between the file
+    # being recognised and being dropped on the floor as unidentified.
+    first = doc.lines[0].lstrip('"')
+    if not first.startswith("Exported on:"):
         return None
-    exported = parse_mdy(doc.lines[0])
+    exported = parse_mdy(first)
     if not exported:
         return Refusal(
             "Merrill export",
@@ -1029,8 +1035,10 @@ def detect_merrill(doc):
     evidence = [f"Exported on {iso(exported)}"]
     if '"Trade Date"' in head and '"Settlement Date"' in head:
         return Plan(DIR_US_TRANSACTIONS, f"merrill-transactions-{compact(exported)}.csv", evidence)
-    if '"Symbol ' in head:
-        basis = next((c for c in MERRILL_BASIS_COLUMNS if c in head), None)
+    # `Symbol` in the older layouts, `Positions` in the 2026-08 one. The table
+    # underneath is the same; only its heading was renamed.
+    if '"Symbol ' in head or '"Positions"' in head:
+        basis = next((c for c in MERRILL_BASIS_COLUMNS if c.lower() in head.lower()), None)
         if basis is None:
             return Refusal(
                 "Merrill holdings export",
