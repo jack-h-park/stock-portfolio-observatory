@@ -336,7 +336,6 @@ function normalizeUsTransactionType(value, action = '') {
 function normalizeMerrillTransactionType(description, type = '') {
   const explicit = text(type).toLowerCase()
   const desc = text(description).toLowerCase()
-  if (explicit) return normalizeUsTransactionType(explicit, description)
   // Structure before vocabulary. Merrill names the security inside the
   // description, so `Security Transfer In SCHWAB US DIVIDEND EQTY` matched the
   // `dividend` substring below and booked a 320-share ACAT receipt as a
@@ -344,6 +343,10 @@ function normalizeMerrillTransactionType(description, type = '') {
   // $0.00 income row. The prefix says what the row IS; the rest is a fund name.
   if (desc.startsWith('security transfer in')) return 'TRANSFER_IN'
   if (desc.startsWith('security transfer out')) return 'TRANSFER_OUT'
+  // Merrill's current export puts the broad bucket `Trades/Securities` in the
+  // Type column for purchases, sales, reinvestments, and security transfers.
+  // It is not specific enough to override the action encoded in Description.
+  if (explicit && explicit !== 'trades/securities') return normalizeUsTransactionType(explicit, description)
   if (desc.includes('reinvestment')) return 'REINVEST'
   if (desc.includes('dividend')) return 'DIVIDEND'
   if (desc.includes('interest')) return 'INTEREST'
