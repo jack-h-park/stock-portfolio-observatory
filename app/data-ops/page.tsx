@@ -46,6 +46,13 @@ function coverageLagLabel(row: AccountCoverage, language: string): string {
   return days(row.lagDays)
 }
 
+function coverageDownloadLabel(row: AccountCoverage, language: string): string {
+  if (!row.downloadFrom) return language === 'ko' ? '기존 기준일 없음 — 가능한 전체 기간' : 'No existing cutoff — download the full available period'
+  return language === 'ko'
+    ? `${fmtDate(row.downloadFrom)}부터 (기존 자료와 1일 overlap)`
+    : `From ${fmtDate(row.downloadFrom)} (1-day overlap)`
+}
+
 const COPY = {
   en: {
     eyebrow: 'System & Advanced',
@@ -209,7 +216,7 @@ export default async function DataOpsPage() {
   const coverageCopy = language === 'ko'
     ? {
         title: '계좌 데이터 업데이트',
-        info: '파일 무결성(Fresh)과 별도로, 각 계좌의 자료가 어느 날짜까지 반영되었는지 보여줍니다.',
+        info: '파일 무결성(Fresh)과 별도로, 각 계좌의 자료가 어느 날짜까지 반영되었는지와 다음 다운로드 시작일을 보여줍니다. 시작일은 누락 방지를 위해 기존 기준일보다 하루 빠릅니다.',
         action: '지금 필요한 계좌',
         due: '곧 필요한 계좌',
         current: '현재 기준 계좌',
@@ -227,7 +234,7 @@ export default async function DataOpsPage() {
       }
     : {
         title: 'Account data updates',
-        info: 'Separate from file integrity: this shows how far each account’s actual coverage has reached.',
+        info: 'Separate from file integrity: this shows the actual cutoff and the next download start date. The start date is one day before the cutoff to guarantee overlap.',
         action: 'Action needed',
         due: 'Due soon',
         current: 'Current',
@@ -282,7 +289,7 @@ export default async function DataOpsPage() {
                   </td>
                   <td className="px-2 py-3 tabular-nums text-ink-2">{coverageDateLabel(row, language)}</td>
                   <td className="px-2 py-3 tabular-nums text-ink-2">{coverageLagLabel(row, language)}{row.method !== 'mixed' && row.overdueDays ? <span className="ml-1 text-danger">(+{row.overdueDays})</span> : null}</td>
-                  <td className="max-w-[24rem] px-2 py-3"><div className="font-medium text-ink">{row.requiredArtifact}</div><div className="mt-1 text-[11px] text-ink-3">{row.format}</div><div className="mt-1 text-[11px] leading-relaxed text-ink-3">{row.action}</div>{row.lastFile ? <code className="mt-1 block truncate text-[10px] text-ink-3" title={row.lastFile}>last: {row.lastFile}</code> : null}</td>
+                  <td className="max-w-[24rem] px-2 py-3"><div className="font-medium text-ink">{row.requiredArtifact}</div><div className="mt-1 text-[11px] text-ink-3">{row.format}</div><div className="mt-1 text-[11px] font-medium leading-relaxed text-info">{language === 'ko' ? '추가 다운로드' : 'Download range'}: {coverageDownloadLabel(row, language)}</div><div className="mt-1 text-[11px] leading-relaxed text-ink-3">{row.action}</div>{row.lastFile ? <code className="mt-1 block truncate text-[10px] text-ink-3" title={row.lastFile}>last: {row.lastFile}</code> : null}</td>
                   <td className="px-2 py-3 whitespace-nowrap text-ink-2">{coverageCopy.methodLabel[row.method]}</td>
                   <td className="px-2 py-3"><code className="text-[11px] text-ink-3">{row.destination}</code><div className="mt-1 max-w-[15rem] text-[11px] leading-relaxed text-ink-3">{row.detail}</div></td>
                 </tr>

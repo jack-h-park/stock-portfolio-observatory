@@ -165,6 +165,7 @@ export type AccountCoverage = {
   brokerage: string
   account: string
   coveredThrough: string | null
+  downloadFrom: string | null
   lagDays: number | null
   apiCoveredThrough: string | null
   apiLagDays: number | null
@@ -1842,6 +1843,13 @@ function isoDate(value: string | null | undefined) {
   return match?.[1] ?? null
 }
 
+function subtractCalendarDays(value: string | null, days: number) {
+  if (!value) return null
+  const date = new Date(`${value}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() - days)
+  return date.toISOString().slice(0, 10)
+}
+
 function coverageStatus(lagDays: number | null, maxLagDays: number): AccountCoverageStatus {
   if (lagDays == null) return 'missing'
   if (lagDays > maxLagDays) return 'action_needed'
@@ -1985,6 +1993,9 @@ export function getAccountCoverage(): AccountCoverageSummary {
       }
 
       const lagDays = calendarAgeDays(coveredThrough)
+      // Ask for one day before the last covered date so the next export has a
+      // deliberate overlap and cannot hide an edge-of-window transaction.
+      const downloadFrom = subtractCalendarDays(coveredThrough, 1)
       const apiLagDays = calendarAgeDays(apiCoveredThrough)
       const statementLagDays = calendarAgeDays(statementCoveredThrough)
       const overdueDays = lagDays == null ? null : Math.max(0, lagDays - maxLagDays)
@@ -1996,6 +2007,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
         brokerage,
         account,
         coveredThrough,
+        downloadFrom,
         lagDays,
         apiCoveredThrough,
         apiLagDays,
