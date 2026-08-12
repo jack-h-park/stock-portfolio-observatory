@@ -2721,6 +2721,34 @@ const usOverlapOnlyInEarlier = []
     const kept = transactionRows.filter((r) => !dropped.has(r))
     transactionRows.length = 0
     for (const r of kept) transactionRows.push(r)
+
+    // AN INCOME ROW IS TWO ROWS. The US parsers push a dividend, an interest
+    // payment or a lending fee onto `transactionRows` AND onto `dividendRows`,
+    // and the two are asserted to agree in number by
+    // `dividend_rows_match_transactions`. Dropping the re-covered copy from one
+    // side and not the other fails that check with an off-by-N nobody would
+    // trace back to a seam — this landed as `1522 vs 1523` the first time.
+    //
+    // Matched per source, so an identical payment on the same day in another
+    // account or from another export is not the one removed.
+    const droppedIncome = new Map()
+    for (const r of dropped) {
+      if (!isIncomeType(r.type)) continue
+      const key = [r.source, r.date, text(r.ticker), usRound(number(r.native_amount) ?? 0, 4)].join(' ')
+      droppedIncome.set(key, (droppedIncome.get(key) ?? 0) + 1)
+    }
+    if (droppedIncome.size) {
+      const keptDividends = dividendRows.filter((d) => {
+        if (d.market !== 'US') return true
+        const key = [d.source, d.date, text(d.ticker), usRound(number(d.native_amount) ?? 0, 4)].join(' ')
+        const remaining = droppedIncome.get(key) ?? 0
+        if (remaining <= 0) return true
+        droppedIncome.set(key, remaining - 1)
+        return false
+      })
+      dividendRows.length = 0
+      for (const d of keptDividends) dividendRows.push(d)
+    }
   }
 }
 

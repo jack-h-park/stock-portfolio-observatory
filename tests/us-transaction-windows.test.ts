@@ -44,6 +44,16 @@ function chaseBuy(date: string, ticker: string, quantity: string, amount: string
   return cells.map((c) => `"${c}"`).join(',')
 }
 
+function chaseDividend(date: string, ticker: string, amount: string) {
+  const cells = [
+    date, date, date, 'Self-Directed', '...6000', 'Brokerage', 'Dividend',
+    `${ticker} CASH DIV ON 48 SHS REC 08/03/26 PAY ${date}`,
+    '46654Q203', ticker, 'Stock', 'USD', '0', '0', '',
+    '', '', '', '', amount, amount, amount, amount, '0', '', '', '0', 'Dividend', '', '0', '0',
+  ]
+  return cells.map((c) => `"${c}"`).join(',')
+}
+
 function ingest(files: Record<string, string[]>) {
   const dir = mkdtempSync(path.join(tmpdir(), 'us-windows-'))
   mkdirSync(path.join(dir, 'us-transactions'), { recursive: true })
@@ -188,4 +198,25 @@ test('a quiet stretch between two windows is not a fault', () => {
   })
 
   assert.equal(check('us_transaction_overlaps_resolved')?.status, 'pass')
+})
+
+test('a dividend on a re-covered day is dropped from BOTH tables it lives in', () => {
+  // An income row is two rows: the US parsers push it onto `transactions` and
+  // onto `dividends`, and `dividend_rows_match_transactions` asserts the two
+  // agree in number. Resolving the seam on one side only fails that check with
+  // an off-by-N that reads as a Korea problem — it shipped once as
+  // `1522 transaction dividends vs 1523 dividend rows`.
+  const { check } = ingest({
+    'chase-transactions-20260801-20260805.csv': [
+      chaseBuy('8/1/2026', 'JEPQ', '10', '-500.00'),
+      chaseDividend('8/5/2026', 'JEPQ', '31.20'),
+    ],
+    'chase-transactions-20260805-20260810.csv': [
+      chaseDividend('8/5/2026', 'JEPQ', '31.20'),
+      chaseBuy('8/10/2026', 'SCHD', '6', '-300.00'),
+    ],
+  })
+
+  assert.equal(check('us_transaction_overlaps_resolved')?.status, 'pass')
+  assert.equal(check('dividend_rows_match_transactions')?.status, 'pass')
 })
