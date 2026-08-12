@@ -2453,9 +2453,28 @@ for (const source of usTransactionFiles) {
     }
   }
   if (source.brokerage === 'Merrill') {
-    const rows = readCsvObjects(source.filename, (r) => r.map((c) => c.trim()).includes('Trade Date') && r.map((c) => c.trim()).includes('Symbol/ CUSIP'))
+    const rawRows = parseCsv(fs.readFileSync(source.filename, 'utf8'))
+    const headerIndex = rawRows.findIndex((r) => {
+      const cells = r.map((c) => c.trim())
+      return (
+        (cells.includes('Trade Date') && cells.includes('Symbol/ CUSIP')) ||
+        (cells.includes('Settlement date') && cells.includes('Symbol/CUSIP'))
+      )
+    })
+    const header = headerIndex >= 0 ? rawRows[headerIndex].map((h) => h.trim()) : []
+    const rows = headerIndex >= 0
+      ? rawRows.slice(headerIndex + 1)
+        .filter((r) => r.some((c) => c.trim().length > 0))
+        .map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] ?? ''])))
+      : []
+    const accountLine = rawRows.find((r) => r.some((cell) => text(cell).toLowerCase().startsWith('selected account')))
+    const accountFromMetadata = accountLine
+      ? accountLine.join(' ').split(':').slice(1).join(':').trim()
+      : ''
+    const dateColumn = header.includes('Trade Date') ? 'Trade Date' : 'Settlement date'
+    const symbolColumn = header.includes('Symbol/ CUSIP') ? 'Symbol/ CUSIP' : 'Symbol/CUSIP'
     for (const r of rows) {
-      if (!text(r['Trade Date']).match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) continue
+      if (!text(r[dateColumn]).match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) continue
       const type = normalizeMerrillTransactionType(r.Description, r.Type)
       const amount = number(r.Amount)
       const row = {
@@ -2465,11 +2484,11 @@ for (const source of usTransactionFiles) {
         brokerage: source.brokerage,
         account_type: 'Brokerage',
         source_system: path.basename(source.filename),
-        date: dateIso(r['Trade Date']),
-        account: `${source.brokerage} ${text(r.Account)}`.trim(),
+        date: dateIso(r[dateColumn]),
+        account: `${source.brokerage} ${text(r.Account || accountFromMetadata)}`.trim(),
         type,
         raw_type: text(r.Type) || text(r.Description).split(/\s+/).slice(0, 4).join(' '),
-        ticker: normalizeTicker(r['Symbol/ CUSIP']),
+        ticker: normalizeTicker(r[symbolColumn]),
         name: text(r.Description),
         quantity: number(r.Quantity),
         native_amount: amount,

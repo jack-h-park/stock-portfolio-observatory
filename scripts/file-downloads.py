@@ -1049,7 +1049,9 @@ def detect_merrill(doc):
         )
     head = csv_head(doc, 12)
     evidence = [f"Exported on {iso(exported)}"]
-    if '"Trade Date"' in head and '"Settlement Date"' in head:
+    if ('"Trade Date"' in head and '"Settlement Date"' in head) or (
+        '"Settlement date"' in head and '"Description"' in head and '"Symbol/CUSIP"' in head
+    ):
         return Plan(DIR_US_TRANSACTIONS, f"merrill-transactions-{compact(exported)}.csv", evidence)
     # `Symbol` in the older layouts, `Positions` in the 2026-08 one. The table
     # underneath is the same; only its heading was renamed.
