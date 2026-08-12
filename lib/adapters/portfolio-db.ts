@@ -235,6 +235,8 @@ export type SourceInventoryItem = {
   rowCount: number | null
   sha256: string | null
   detail: string
+  retention: 'active' | 'fallback' | 'archive' | 'derived' | 'review'
+  retentionReason: string
 }
 
 export type SourceInventory = {
@@ -1115,9 +1117,95 @@ function relativeToDataDir(dataDir: string, filePath: string) {
   return rel && !rel.startsWith('..') ? rel : filePath
 }
 
+function retentionFor(relativePath: string, status: SourceInventoryItem['status']) {
+  if (status === 'derived') {
+    return {
+      retention: 'derived' as const,
+      retentionReason: '재생성 가능한 캐시·파생 산출물이며 현재 ingest 원본이 아닙니다.',
+    }
+  }
+  if (relativePath.startsWith('briefing-archive/')) {
+    return {
+      retention: 'active' as const,
+      retentionReason: '일일 브리핑 화면과 외부 브리핑 파이프라인이 읽는 운영 archive입니다.',
+    }
+  }
+  if (relativePath.startsWith('briefing-archive.backup-')) {
+    return {
+      retention: 'archive' as const,
+      retentionReason: '브리핑 archive의 백업 스냅샷입니다. 현재 runtime은 읽지 않습니다.',
+    }
+  }
+  if (relativePath.startsWith('kr-statements-superseded/')) {
+    return {
+      retention: 'archive' as const,
+      retentionReason: '더 긴 기간의 증명서로 대체된 과거 원본입니다. 원본 provenance 보존용입니다.',
+    }
+  }
+  if (relativePath.startsWith('kr-statements/_partial-overlap/')) {
+    return {
+      retention: 'fallback' as const,
+      retentionReason: '기간이 겹치는 한국 증권사 원본입니다. 자동 추출은 보류하지만 겹침 검증에 필요합니다.',
+    }
+  }
+  if (relativePath.startsWith('kr-statements/')) {
+    return {
+      retention: 'active' as const,
+      retentionReason: '거래·배당·tax lot을 재생성하는 사람이 받은 증권사 원본 PDF입니다.',
+    }
+  }
+  if (
+    relativePath === 'us-holdings/merrill-holdings-20260715.csv' ||
+    relativePath === 'us-holdings/merrill-holdings-20260801.csv'
+  ) {
+    return {
+      retention: 'fallback' as const,
+      retentionReason: 'Cost Basis가 포함된 Merrill tax-lot fallback입니다. 최신 positions-only 파일을 보완합니다.',
+    }
+  }
+  if (
+    relativePath === 'us-transactions/chase-transactions-20260715-20260805.csv' ||
+    relativePath === 'us-transactions/fidelity-transactions-20260721-20260811.csv'
+  ) {
+    return {
+      retention: 'fallback' as const,
+      retentionReason: '현재 resolver가 아직 사용하지 않는 최신 기간 거래내역입니다. 최신 export 대조 전 보존합니다.',
+    }
+  }
+  if (relativePath.startsWith('us-holdings/') || relativePath.startsWith('us-transactions/')) {
+    return {
+      retention: 'archive' as const,
+      retentionReason: '현재 선택된 export 이전의 broker snapshot입니다. 과거 시점 검증용으로 보존합니다.',
+    }
+  }
+  if (relativePath === 'korea_stock_tax_lots_updated.xlsx') {
+    return {
+      retention: 'fallback' as const,
+      retentionReason: '수동 tax-lot workbook입니다. 자동 ingest 입력은 아니지만 provenance 확인 전 보존합니다.',
+    }
+  }
+  if (relativePath === '.codex_extracted_korea.json') {
+    return {
+      retention: 'archive' as const,
+      retentionReason: '구형 한국 추출 snapshot입니다. 현재 ingest에는 사용하지 않지만 과거 결과 대조용입니다.',
+    }
+  }
+  if (relativePath === 'README.md') {
+    return {
+      retention: 'archive' as const,
+      retentionReason: '데이터 디렉터리 운영 문서입니다.',
+    }
+  }
+  return {
+    retention: status === 'unused' ? 'review' as const : 'active' as const,
+    retentionReason: status === 'unused' ? '현재 사용 여부와 보존 정책을 추가 확인해야 합니다.' : '현재 ingest가 추적하는 원본입니다.',
+  }
+}
+
 function trackedInventoryItem(dataDir: string, source: any): SourceInventoryItem {
   const freshness = sourceFreshness(source)
   const status = freshness.status === 'fresh' || freshness.status === 'stale' ? 'used' : freshness.status
+  const retention = retentionFor(relativeToDataDir(dataDir, source.path), status)
   return {
     id: `tracked:${source.name}`,
     name: source.name,
@@ -1131,6 +1219,7 @@ function trackedInventoryItem(dataDir: string, source: any): SourceInventoryItem
     rowCount: Number(source.row_count ?? 0),
     sha256: source.sha256,
     detail: freshness.detail,
+    ...retention,
   }
 }
 
@@ -1144,6 +1233,7 @@ function untrackedInventoryItem(dataDir: string, filePath: string): SourceInvent
     relativePath.includes('/briefing-archive.backup-') ||
     relativePath.includes('.bak-') ||
     relativePath.endsWith('.sample.txt')
+  const retention = retentionFor(relativePath, derived ? 'derived' : 'unused')
   return {
     id: `untracked:${relativePath}`,
     name: path.basename(filePath),
@@ -1159,6 +1249,7 @@ function untrackedInventoryItem(dataDir: string, filePath: string): SourceInvent
     detail: derived
       ? 'Derived, cached, or generated artifact; not a canonical ingest source.'
       : 'Detected in STOCK_DATA_DIR but not recorded in the latest ingest source_files table.',
+    ...retention,
   }
 }
 

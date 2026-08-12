@@ -16,6 +16,14 @@ function statusTone(status: string): Tone {
   return 'danger'
 }
 
+function retentionTone(retention: string): Tone {
+  if (retention === 'active') return 'success'
+  if (retention === 'fallback') return 'info'
+  if (retention === 'derived') return 'neutral'
+  if (retention === 'archive') return 'neutral'
+  return 'warning'
+}
+
 function fmtBytes(value: number | null | undefined) {
   const n = Number(value ?? 0)
   if (n >= 1024 * 1024 * 1024) return `${fmtNumber(n / (1024 * 1024 * 1024), 1)} GB`
@@ -50,6 +58,8 @@ const COPY = {
     inventorySize: 'Inventory Size',
     inventorySizeHint: 'Total bytes across tracked sources',
     readOrder: 'Read order: review queue first, then coverage, then full file inventory.',
+    retentionGuide: 'Retention reason is the source role, not a delete instruction.',
+    retentionLabels: { active: 'Active source', fallback: 'Fallback', archive: 'Archive', derived: 'Derived', review: 'Review' },
     reviewQueue: 'Inventory review queue',
     noQueue: 'No unmapped, drifted, or missing source files',
     fullInventory: 'Full source inventory',
@@ -59,6 +69,7 @@ const COPY = {
       file: 'File',
       size: 'Size',
       detail: 'Detail',
+      retention: 'Retention',
       dataset: 'Dataset',
       path: 'Path',
       rows: 'Rows',
@@ -91,6 +102,8 @@ const COPY = {
     inventorySize: '인벤토리 크기',
     inventorySizeHint: '추적 중인 원본의 총 바이트',
     readOrder: '읽는 순서: 확인 대기열, 범위, 전체 파일 인벤토리 순으로 봅니다.',
+    retentionGuide: '보존 이유는 파일의 역할을 설명하며, 삭제 지시가 아닙니다.',
+    retentionLabels: { active: '운영 원본', fallback: '대체 원본', archive: '보관 원본', derived: '파생 산출물', review: '추가 확인' },
     reviewQueue: '인벤토리 확인 대기열',
     noQueue: '미매핑, 변경, 누락 원본 파일이 없습니다.',
     fullInventory: '전체 원본 인벤토리',
@@ -100,6 +113,7 @@ const COPY = {
       file: '파일',
       size: '크기',
       detail: '상세',
+      retention: '보존 이유',
       dataset: '데이터셋',
       path: '경로',
       rows: '행',
@@ -193,6 +207,9 @@ export default async function DataMapPage() {
       </div>
 
       <Card title={copy.reviewQueue} accent={actionItems.length > 0}>
+        <div className="border-b border-line-subtle bg-surface px-4 py-3 text-[11px] leading-relaxed text-ink-3">
+          {copy.retentionGuide}
+        </div>
         {actionItems.length === 0 ? (
           <EmptyState ok>{copy.noQueue}</EmptyState>
         ) : (
@@ -203,6 +220,7 @@ export default async function DataMapPage() {
               { key: 'category', label: copy.columns.category },
               { key: 'relativePath', label: copy.columns.file, render: (r) => <span className="block max-w-[34rem] truncate">{r.relativePath}</span> },
               { key: 'bytes', label: copy.columns.size, align: 'right', render: (r) => fmtBytes(r.bytes) },
+              { key: 'retention', label: copy.columns.retention, render: (r) => <div className="min-w-[14rem]"><Badge tone={retentionTone(r.retention)}>{copy.retentionLabels[r.retention as keyof typeof copy.retentionLabels]}</Badge><div className="mt-1 text-[11px] text-ink-3">{r.retentionReason}</div></div> },
               { key: 'detail', label: copy.columns.detail, render: (r) => <span className="text-[11px] text-ink-3">{r.detail}</span> },
             ]}
           />
@@ -221,6 +239,7 @@ export default async function DataMapPage() {
             { key: 'bytes', label: copy.columns.size, align: 'right', render: (r) => fmtBytes(r.bytes) },
             { key: 'mtimeMs', label: copy.columns.modified, render: (r) => (r.mtimeMs ? fmtDateTime(new Date(r.mtimeMs).toISOString()) : 'n/a') },
             { key: 'sha256', label: copy.columns.sha, render: (r) => (r.sha256 ? <code className="font-mono text-[11px]">{shortHash(r.sha256)}</code> : 'n/a') },
+            { key: 'retention', label: copy.columns.retention, render: (r) => <div className="min-w-[16rem]"><Badge tone={retentionTone(r.retention)}>{copy.retentionLabels[r.retention as keyof typeof copy.retentionLabels]}</Badge><div className="mt-1 text-[11px] leading-relaxed text-ink-3">{r.retentionReason}</div></div> },
           ]}
         />
       </Card>
