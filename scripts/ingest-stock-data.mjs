@@ -2582,6 +2582,130 @@ for (const source of usTransactionFiles) {
 }
 
 // ---------------------------------------------------------------------------
+// Seams between two US transaction exports
+// ---------------------------------------------------------------------------
+//
+// A DOWNLOAD ENDS AT AN INSTANT, NOT AT A CLOSING BELL. An export taken at
+// 15:29 holds that day up to 15:29, and the rows only carry dates, so nothing
+// in the file says the day is incomplete. Starting the next download the
+// following morning loses every fill after 15:29 — silently, permanently, and
+// with both files looking perfectly contiguous.
+//
+// So the next window has to START ON the day the last one ended. Re-covering
+// that day is the correct thing to do, not a mistake to be blocked, and an
+// earlier version of this check failed on it — punishing the only safe way to
+// download incrementally.
+//
+// The overlap itself was never the harm. Counting a trade twice is. So the
+// shared days are RESOLVED rather than refused: for a day both exports hold,
+// the rows of the one taken later are kept, because it was taken later and
+// therefore holds at least as much of that day. The earlier export's rows for
+// those days are dropped only where the later one already has them, matched as
+// a multiset so two genuine identical fills survive as two.
+//
+// What the earlier export has and the later one does not is KEPT — the result
+// is the union, which is the most complete reconstruction available — and
+// reported, because the two disagreeing about a day they both cover is worth a
+// look: a cancelled trade drops out of a re-download, and so does a whole
+// account if the export was filtered.
+const usOverlapDays = new Set()
+let usOverlapRowsDropped = 0
+const usOverlapOnlyInEarlier = []
+{
+  const spans = new Map()
+  for (const r of transactionRows) {
+    if (r.market !== 'US' || !r.date || !r.source) continue
+    const account = text(r.account) || text(r.brokerage)
+    const key = `${account}\t${r.source}`
+    let span = spans.get(key)
+    if (!span) {
+      span = { account, source: r.source, first: r.date, last: r.date, rows: [] }
+      spans.set(key, span)
+    }
+    if (r.date < span.first) span.first = r.date
+    if (r.date > span.last) span.last = r.date
+    span.rows.push(r)
+  }
+
+  // Enough of the row to tell two trades apart, and no more. Quantity and
+  // amount are what a re-download restates identically; `type` keeps a buy from
+  // cancelling out a sale of the same size.
+  // WHICH EXPORT WAS TAKEN LATER IS A PROPERTY OF THE WINDOW IT ASKED FOR, not
+  // of the rows that came back. A re-download whose only trade was cancelled
+  // has a full window and an empty span, and ordering those two by their rows
+  // would call the stale one the fresher.
+  const declared = new Map()
+  for (const f of usTransactionFiles) {
+    if (f.coverage?.end) declared.set(path.basename(f.filename), f.coverage)
+  }
+  const takenAt = (span) => declared.get(span.source)?.end ?? span.last
+  // The days a file ANSWERS FOR, which is the window it asked for widened by
+  // anything that actually came back outside it. A day inside this and absent
+  // from the rows is a day the export says had no trades — which is the whole
+  // reason a missing row can be reported at all.
+  const answersFor = (span) => {
+    const d = declared.get(span.source)
+    const first = d?.start && d.start < span.first ? d.start : span.first
+    const last = d?.end && d.end > span.last ? d.end : span.last
+    return { first, last }
+  }
+
+  const signature = (r) =>
+    [r.date, text(r.ticker), text(r.type), usRound(number(r.quantity) ?? 0, 6), usRound(number(r.native_amount) ?? 0, 4)].join(' ')
+
+  const byAccount = new Map()
+  for (const span of spans.values()) {
+    if (!byAccount.has(span.account)) byAccount.set(span.account, [])
+    byAccount.get(span.account).push(span)
+  }
+
+  const dropped = new Set()
+  for (const group of byAccount.values()) {
+    for (const earlier of group) {
+      for (const later of group) {
+        // "Later" is the export whose window ends later: it was taken after the
+        // other and covers the shared days at least as completely.
+        if (earlier === later || !(takenAt(later) > takenAt(earlier))) continue
+        const a = answersFor(earlier)
+        const b = answersFor(later)
+        const from = a.first > b.first ? a.first : b.first
+        const to = a.last < b.last ? a.last : b.last
+        if (from > to) continue
+
+        const held = new Map()
+        for (const r of later.rows) {
+          if (r.date < from || r.date > to) continue
+          const key = signature(r)
+          held.set(key, (held.get(key) ?? 0) + 1)
+        }
+        for (const r of earlier.rows) {
+          if (r.date < from || r.date > to || dropped.has(r)) continue
+          usOverlapDays.add(r.date)
+          const key = signature(r)
+          const remaining = held.get(key) ?? 0
+          if (remaining > 0) {
+            held.set(key, remaining - 1)
+            dropped.add(r)
+          } else {
+            usOverlapOnlyInEarlier.push(
+              `${earlier.account}: ${r.date} ${text(r.ticker) || '—'} ${text(r.type)} is in ${earlier.source} ` +
+                `but not in ${later.source}, which covers the same day`
+            )
+          }
+        }
+      }
+    }
+  }
+
+  if (dropped.size) {
+    usOverlapRowsDropped = dropped.size
+    const kept = transactionRows.filter((r) => !dropped.has(r))
+    transactionRows.length = 0
+    for (const r of kept) transactionRows.push(r)
+  }
+}
+
+// ---------------------------------------------------------------------------
 // US realized lots, replayed from the transactions
 // ---------------------------------------------------------------------------
 //
@@ -4914,6 +5038,32 @@ check(
       : `${robinhoodReplayMissingDisposals.length} Robinhood position(s) hold FEWER shares than the replay: a ` +
         `disposal is missing from the transaction history, so its proceeds and realized gain are not on the books ` +
         `(download the CSV covering it): ${robinhoodReplayMissingDisposals.slice(0, 6).join('; ')}`
+)
+
+// How the seams between overlapping exports came out. The resolution happens
+// where the rows are read; this is the report on it.
+//
+// A pass is not "nothing overlapped" — overlapping is the correct way to
+// download incrementally, since an export ends at the instant it was taken
+// rather than at a closing bell. A pass is "every day two exports both held was
+// read once".
+//
+// The failure is the two disagreeing: a row in the earlier export that the
+// later one does not have, on a day the later one covers. It is KEPT, so no
+// figure is missing — but a re-download dropping a trade means either it was
+// cancelled or the export was filtered, and neither should pass unremarked.
+// Warning, not error: the books are complete either way, and a cancelled trade
+// is a normal thing to find here.
+check(
+  'us_transaction_overlaps_resolved',
+  usOverlapOnlyInEarlier.length === 0,
+  usOverlapDays.size === 0
+    ? 'no US transaction export overlaps another'
+    : usOverlapOnlyInEarlier.length === 0
+      ? `${usOverlapDays.size} day(s) covered by two exports; ${usOverlapRowsDropped} re-covered row(s) read once`
+      : `${usOverlapOnlyInEarlier.length} row(s) an earlier export has and the later one does not, kept rather than ` +
+        `dropped: ${usOverlapOnlyInEarlier.slice(0, 4).join('; ')}`,
+  'warning'
 )
 
 // A disposal with no open lot behind it means the opening side is outside the

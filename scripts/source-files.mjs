@@ -121,6 +121,24 @@ const US_TRANSACTION_SPECS = [
     broker: 'chase', doctype: 'transactions', period: ASOF, ext: 'csv',
     pick: 'latest', since: '20250901',
   },
+  // The incremental shape, and the one new downloads take. A year-to-date export
+  // gets slower and larger every month, and re-downloading the whole year to
+  // pick up five August rows is the only way an ASOF file can be extended —
+  // `pick: 'latest'` means a SHORTER export with a newer date silently replaces
+  // a longer one, which is exactly what happened on 2026-08-11: a 12-row window
+  // export named `20260811` superseded 146 rows of year-to-date and took eight
+  // checks down with it.
+  //
+  // A window names what it covers, coexists with its neighbours, and is read
+  // alongside them. The risk it trades for is OVERLAP rather than staleness, so
+  // `us_transaction_periods_do_not_overlap` asserts on the dates the rows
+  // themselves carry — the same trade the crypto statements already make.
+  {
+    brokerage: 'Chase',
+    subdir: DIR_US_TRANSACTIONS,
+    broker: 'chase', doctype: 'transactions', period: RANGE, ext: 'csv',
+    pick: 'all', optional: true, since: '20250901',
+  },
   {
     brokerage: 'Fidelity',
     subdir: DIR_US_TRANSACTIONS,
@@ -132,6 +150,13 @@ const US_TRANSACTION_SPECS = [
     subdir: DIR_US_TRANSACTIONS,
     broker: 'fidelity', doctype: 'transactions', period: ASOF, ext: 'csv',
     pick: 'latest', since: '20251001',
+  },
+  // Same reasoning as Chase above.
+  {
+    brokerage: 'Fidelity',
+    subdir: DIR_US_TRANSACTIONS,
+    broker: 'fidelity', doctype: 'transactions', period: RANGE, ext: 'csv',
+    pick: 'all', optional: true, since: '20251001',
   },
   {
     brokerage: 'Merrill',
@@ -226,6 +251,13 @@ function today() {
 // What the period covers, as YYYYMMDD. Every shape yields a real window — a
 // `-partial` file still names the window it covers, the suffix only says more
 // will be appended to it later.
+// `periodBounds` as ISO dates, for callers comparing against row dates.
+function isoBounds(period) {
+  const { start, end } = periodBounds(period)
+  const iso = (v) => (v ? `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}` : null)
+  return { start: iso(start), end: iso(end) }
+}
+
 function periodBounds(period) {
   let m
   if ((m = /^(\d{8})-(\d{8})$/.exec(period))) return { start: m[1], end: m[2] }
@@ -306,6 +338,12 @@ function resolveSpec(dataDir, spec, now) {
     category: spec.category,
     account: typeof spec.account === 'function' ? spec.account(x.m) : spec.account,
     filename: x.filename,
+    // What the NAME declares this file covers, as ISO dates. The rows say what
+    // is in it; this says what it was asked for, and the two differ in exactly
+    // the case that matters — a re-download of a window whose only trade was
+    // cancelled has an empty span and a full window. Only the declared one can
+    // order two exports by when they were taken.
+    coverage: isoBounds(x.m.groups.period),
   })
   const label = `${spec.brokerage ?? spec.venue} · ${spec.subdir}/${spec.pattern.source}`
 
@@ -318,7 +356,12 @@ function resolveSpec(dataDir, spec, now) {
     if (gap) problems.push(`${spec.subdir}/${x.name}: ${gap}`)
   }
 
-  if (matches.length === 0) return { files: [], missing: label, problems }
+  // `optional` specs are shapes a source MAY arrive in, not ones it must. The
+  // window exports are the case: an account that has only ever been downloaded
+  // year-to-date has no window file and is not missing anything. Reporting one
+  // would put a permanent finding on `expected_us_source_files_present` that no
+  // download can clear, which is how a real missing source stops being noticed.
+  if (matches.length === 0) return { files: [], missing: spec.optional ? null : label, problems }
   if (spec.pick === 'all') return { files: matches.map(entry), missing: null, problems }
 
   const rankOf = (x) => `${x.m.groups.period}|${mtimeKey(x.filename)}`

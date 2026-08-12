@@ -119,7 +119,40 @@ test('a Fidelity transactions export is still read as transactions, not position
       '07/30/2026,DIVIDEND RECEIVED SCHD,SCHD,SCHWAB US DIVIDEND EQUITY ETF,Cash,,,,,,0.01,0.01,\r\n\r\n' +
       'Date downloaded 07/31/2026 05:22 pm\r\n',
   })
-  assert.match(stdout, /→ us-transactions\/fidelity-transactions-20260731\.csv/)
+  // The point of this one is the DIRECTORY: a transactions export must not be
+  // read as positions. The period is asserted just below, where it is the point.
+  assert.match(stdout, /→ us-transactions\/fidelity-transactions-/)
+})
+
+test('an export reaching into this year is named for the rows it has, not the day it was taken', () => {
+  // It used to be named for the download date, as an as-of — a claim to hold
+  // everything up to it. Nothing in the file supports that: a year-to-date
+  // export and a one-day window are the same shape. Naming the window it
+  // actually holds is what stops `pick: 'latest'` treating the short one as a
+  // replacement for the long one, which is how 146 rows of Chase year-to-date
+  // were dropped by a 12-row download on 2026-08-11.
+  const { stdout } = fileDownloads({
+    'Accounts_History.csv':
+      '﻿\r\n\r\nRun Date,Action,Symbol,Description,Type,Price ($),Quantity,Commission ($),Fees ($),Accrued Interest ($),Amount ($),Cash Balance ($),Settlement Date\r\n' +
+      '08/03/2026,YOU BOUGHT SCHD,SCHD,SCHWAB US DIVIDEND EQUITY ETF,Cash,33.00,3,,,,-99.00,0.01,\r\n' +
+      '07/30/2026,DIVIDEND RECEIVED SCHD,SCHD,SCHWAB US DIVIDEND EQUITY ETF,Cash,,,,,,0.01,0.01,\r\n\r\n' +
+      'Date downloaded 08/11/2026 05:22 pm\r\n',
+  })
+  assert.match(stdout, /→ us-transactions\/fidelity-transactions-20260730-20260803\.csv/)
+  assert.match(stdout, /rows 2026-07-30 … 2026-08-03/)
+})
+
+test('a year that has ended is still named as that year, and still coexists', () => {
+  // Unchanged, and it has to be: a complete year will never be extended, so it
+  // is an archive that sits beside the others rather than a window competing
+  // with them.
+  const { stdout } = fileDownloads({
+    'Accounts_History.csv':
+      '﻿\r\n\r\nRun Date,Action,Symbol,Description,Type,Price ($),Quantity,Commission ($),Fees ($),Accrued Interest ($),Amount ($),Cash Balance ($),Settlement Date\r\n' +
+      '11/03/2025,YOU BOUGHT SCHD,SCHD,SCHWAB US DIVIDEND EQUITY ETF,Cash,33.00,3,,,,-99.00,0.01,\r\n\r\n' +
+      'Date downloaded 08/11/2026 05:22 pm\r\n',
+  })
+  assert.match(stdout, /→ us-transactions\/fidelity-transactions-2025\.csv/)
 })
 
 /** Write `body` to a us-holdings file and read its tickers the way the price fetch does. */

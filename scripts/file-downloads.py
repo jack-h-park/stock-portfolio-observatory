@@ -203,20 +203,36 @@ def period_from_window(start, end, allow_asof=True):
 def period_from_rows(row_dates, downloaded):
     """The period for an export that names no window, only rows and a download date.
 
-    Chase and Fidelity let you pick "2025" or "year to date" and then say
-    nothing about which you picked. What survives in the file is the rows. If
-    every row falls in a year that has already ENDED, the export is that
-    complete year and archives coexist; if it reaches into the year the download
-    happened in, it is a year-to-date snapshot and only the newest may be read.
-    The observed row span is printed with the move so the reader can see what
-    this concluded from.
+    Chase and Fidelity let you pick "2025", "year to date" or any window at all,
+    and then say nothing about which you picked. What survives in the file is
+    the rows.
+
+    A year that has already ENDED is named as that year: the export is complete,
+    nothing will be added to it, and archives coexist.
+
+    ANYTHING REACHING INTO THE CURRENT YEAR IS NAMED BY THE ROWS IT ACTUALLY
+    HAS, as a window. It used to be named for the download date — an as-of,
+    which claims "everything up to here" and lets `pick: 'latest'` drop whatever
+    it supersedes. That claim is not in evidence: a year-to-date export and a
+    three-week window are the same file shape, and nothing in either says which
+    it is. On 2026-08-11 a 12-row window covering 07-15…08-05 was named
+    `chase-transactions-20260811.csv`, superseded 146 rows of year-to-date, and
+    took eight checks down with it — the loss surfaced only as unrelated-looking
+    failures somewhere else.
+
+    A window states only what was observed. It cannot supersede anything, so a
+    short download can no longer silently replace a long one; what it can do is
+    OVERLAP one, and `us_transaction_periods_do_not_overlap` fails on that using
+    the row dates rather than these names. The cost is that a year-to-date
+    re-download now sits beside the file it repeats instead of replacing it, and
+    has to be retired by hand — which that check names outright.
     """
     if not row_dates:
         return compact(downloaded)
     low, high = min(row_dates), max(row_dates)
     if high.year < downloaded.year:
         return str(low.year) if low.year == high.year else f"{low.year}-{high.year}"
-    return compact(downloaded)
+    return f"{compact(low)}-{compact(high)}"
 
 
 def parse_ymd(text, sep=r"[-/.]"):
