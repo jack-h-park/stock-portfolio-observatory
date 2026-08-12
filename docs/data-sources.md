@@ -90,10 +90,28 @@ support and waited; there is no cadence, no credential and no script behind them
 so a fallback that stayed quiet would be strictly worse than the staleness it
 replaced. `robinhood_snapshot_fresh` names which source answered and how old it
 is, and **fails outright on the PDF branch at any age** — the way out is to
-regenerate, not to wait. `robinhood_snapshot_lots_mapped` names any symbol the
-snapshot has a position for but no lots, which is the expected shape of a pull
-cut short by rate limits: `get_equity_tax_lots` is one call per symbol per
-account, about 67 in all.
+regenerate, not to wait. `robinhood_snapshot_lots_mapped` names any symbol whose
+lots do not account for the position the broker reports for it, which is the
+expected shape of a pull cut short: `get_equity_tax_lots` is one call per symbol
+per account, 68 in all.
+
+**A cut-short pull has two shapes, and the quiet one is why that check compares
+quantities rather than counting symbols.** A symbol the session never reached
+comes back with no lots, which is obvious. But the endpoint **pages at fifty**,
+returning a `next` URL whose `cursor` has to be passed back, so a symbol whose
+second page was missed comes back with fifty lots and reads as answered — on the
+2026-08-11 regeneration Long-term NVDA had 52. A symbol short a page understates
+cost basis, which inflates unrealised gain rather than erroring, so the only
+thing that can see it is the lots of a symbol failing to sum to its position.
+Treat any symbol returning exactly fifty lots as unpaged until you have checked
+for `next`.
+
+Two field quirks are the broker's, not corruption, and must survive into the
+snapshot rather than being normalised: `order_id` is absent on
+`internaltaxlottransfer` lots and on some older buys, and `cost_per_share` is
+absent on a same-day lot whose basis is still pending — the ingest falls back to
+`tax_cost_basis / quantity` for the unit cost, so an absent field is fine but a
+zero-filled one would be wrong.
 
 **Robinhood's trades stay on the CSVs, and that was measured rather than
 assumed.** `get_equity_orders` reaches back exactly as far as the CSVs' trades

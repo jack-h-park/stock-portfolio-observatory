@@ -2068,9 +2068,14 @@ const firstOf = (object, keys) => {
   }
   return null
 }
+// Lot quantities are compared in millionths so a sum of fifty floats cannot
+// drift into a false mismatch. The broker sends six decimals, so this is exact
+// for every value it has ever returned.
+const microUnits = (value) => Math.round(value * 1e6)
 const robinhoodUnmappedLots = []
 let robinhoodSnapshotLotCount = 0
 const robinhoodSymbolsWithoutLots = []
+const robinhoodShortSymbols = []
 // The MCP position carries no security name, only a ticker — the PDFs did, so
 // this is what keeps a name on a ticker the reports already covered instead of
 // falling back to blank the moment the snapshot takes over.
@@ -2105,8 +2110,16 @@ if (robinhoodSnapshot?.accounts?.length) {
     // session could not fetch is recorded in the snapshot and named here — the
     // one outcome that must never happen is a short answer that reads as a
     // complete one.
+    //
+    // A partial pull has two shapes, and only one of them is loud. A symbol the
+    // session never reached arrives with no lots at all. But the endpoint pages
+    // at fifty, so a symbol whose second page was missed arrives with *some* of
+    // its lots — enough to look answered. That is why the tally below exists:
+    // the lots of a symbol must add up to the position the broker reports for
+    // it, and a symbol that comes up short understates cost basis silently,
+    // which inflates unrealised gain rather than erroring.
     const lotGroups = account.lots ?? []
-    const symbolsWithLots = new Set()
+    const lotTallyBySymbol = new Map()
     for (const group of lotGroups) {
       const groupSymbol = text(firstOf(group, ['symbol', 'instrument_symbol', 'ticker']))
       for (const lot of group.lots ?? []) {
@@ -2119,7 +2132,10 @@ if (robinhoodSnapshot?.accounts?.length) {
           robinhoodUnmappedLots.push(`${label} ${groupSymbol || '?'} ${text(firstOf(lot, ['open_lot_id', 'id'])) || 'lot'}`)
           continue
         }
-        symbolsWithLots.add(symbol)
+        const tally = lotTallyBySymbol.get(symbol) ?? { micros: 0, lots: 0 }
+        tally.micros += microUnits(quantity)
+        tally.lots += 1
+        lotTallyBySymbol.set(symbol, tally)
         robinhoodSnapshotLotCount += 1
         const unitCost = number(firstOf(lot, ['cost_per_share', 'average_cost', 'unit_cost', 'price', 'native_unit_cost']))
         const resolvedUnitCost = unitCost ?? (quantity ? cost / quantity : null)
@@ -2151,7 +2167,25 @@ if (robinhoodSnapshot?.accounts?.length) {
     }
     for (const position of positions) {
       const symbol = normalizeTicker(text(firstOf(position, ['symbol', 'instrument_symbol', 'ticker'])))
-      if (symbol && !symbolsWithLots.has(symbol)) robinhoodSymbolsWithoutLots.push(`${label} ${symbol}`)
+      if (!symbol) continue
+      const tally = lotTallyBySymbol.get(symbol)
+      if (!tally) {
+        robinhoodSymbolsWithoutLots.push(`${label} ${symbol}`)
+        continue
+      }
+      const held = number(firstOf(position, ['quantity', 'open_quantity', 'units']))
+      if (held == null) continue
+      // One millionth of slack per lot, which is more rounding than six-decimal
+      // input can produce and still orders of magnitude below the smallest lot
+      // the broker has ever returned (0.000066 shares), so a genuinely missing
+      // lot cannot hide inside the tolerance.
+      const short = microUnits(held) - tally.micros
+      if (Math.abs(short) > tally.lots) {
+        robinhoodShortSymbols.push(
+          `${label} ${symbol}: ${tally.lots} lot(s) sum to ${(tally.micros / 1e6).toFixed(6)} ` +
+          `but the position is ${held.toFixed(6)}`
+        )
+      }
     }
     console.error(
       `[robinhood] ${label}${nickname ? ` (${nickname})` : ''}: ` +
@@ -4404,21 +4438,32 @@ if (robinhoodPositionRows.length === 0) {
 check('robinhood_snapshot_fresh', robinhoodFreshOk, robinhoodFreshDetail, 'warning')
 
 // A lot the snapshot carried but this ingest could not read is a position
-// quietly worth less, which is indistinguishable from a right answer. A symbol
-// with a position and no lots is the partial-pull case — `get_equity_tax_lots`
-// is one call per symbol and rate limits are expected — and it is named rather
-// than counted so the next regeneration knows what to go back for.
+// quietly worth less, which is indistinguishable from a right answer. The
+// partial pull it guards against comes in two shapes — `get_equity_tax_lots` is
+// one call per symbol and rate limits are expected, so a symbol can arrive with
+// no lots; and the endpoint pages at fifty, so a symbol can arrive with only its
+// first page. The second shape is the dangerous one because it looks answered,
+// and only the quantity tally can see it. All three are named rather than
+// counted so the next regeneration knows what to go back for.
+const robinhoodLotsOk =
+  robinhoodUnmappedLots.length === 0 &&
+  robinhoodSymbolsWithoutLots.length === 0 &&
+  robinhoodShortSymbols.length === 0
 check(
   'robinhood_snapshot_lots_mapped',
-  robinhoodUnmappedLots.length === 0 && robinhoodSymbolsWithoutLots.length === 0,
+  robinhoodLotsOk,
   robinhoodSnapshot == null
     ? 'no MCP snapshot — nothing to map (see robinhood_snapshot_fresh)'
-    : robinhoodUnmappedLots.length === 0 && robinhoodSymbolsWithoutLots.length === 0
-      ? `${robinhoodSnapshotLotCount} lot(s) mapped, every position has lots`
+    : robinhoodLotsOk
+      ? `${robinhoodSnapshotLotCount} lot(s) mapped, every position has lots that sum to it`
       : `${robinhoodUnmappedLots.length} lot(s) unreadable` +
         (robinhoodUnmappedLots.length ? ` (${robinhoodUnmappedLots.slice(0, 3).join(', ')})` : '') +
         `; ${robinhoodSymbolsWithoutLots.length} position(s) have no lots` +
-        (robinhoodSymbolsWithoutLots.length ? ` (${robinhoodSymbolsWithoutLots.slice(0, 5).join(', ')})` : ''),
+        (robinhoodSymbolsWithoutLots.length ? ` (${robinhoodSymbolsWithoutLots.slice(0, 5).join(', ')})` : '') +
+        `; ${robinhoodShortSymbols.length} position(s) have lots that do not sum to the position` +
+        (robinhoodShortSymbols.length
+          ? ` — a page of \`get_equity_tax_lots\` was likely missed (${robinhoodShortSymbols.slice(0, 5).join('; ')})`
+          : ''),
   'warning'
 )
 check(
