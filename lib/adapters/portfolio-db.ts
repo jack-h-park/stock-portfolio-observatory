@@ -2080,7 +2080,8 @@ export function getDataOpsReview(): DataOpsReview {
       .prepare(
         `select market, currency, brokerage, account, ticker, name, quantity, native_cost, base_cost
          from holdings
-         where native_market_value is null or base_market_value is null
+         where (native_market_value is null or base_market_value is null)
+           and not (market = 'KR' and length(trim(ticker)) != 6)
          order by coalesce(base_cost, total_cost_krw) desc
          limit 50`
       )
@@ -2317,6 +2318,7 @@ export function getReconciliationReview(): ReconciliationReview {
         `select market, currency, brokerage, ticker, name, native_cost, base_cost
          from holdings
          where native_market_value is null
+           and not (market = 'KR' and length(trim(ticker)) != 6)
          order by coalesce(base_cost, total_cost_krw) desc
          limit 30`
       )
