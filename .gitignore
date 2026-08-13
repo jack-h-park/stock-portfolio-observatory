@@ -44,6 +44,13 @@ data/kr-statements/
 data/toss-snapshot.json
 # Live broker snapshot: every open Robinhood lot, with cost basis. Never commit.
 data/robinhood-snapshot.json
+# And its dated rotations. Regenerating the snapshot leaves the previous one
+# beside it as `robinhood-snapshot.json.bak-20260811`, which matched nothing
+# here — so the file sat untracked in the working tree of the refresh host,
+# one `git add -A` away from committing every open lot and its cost basis.
+# A rotation holds exactly what the file it backs up holds, so it is ignored
+# for exactly the same reason.
+data/*.bak-*
 *.db
 *.sqlite
 *.sqlite3
