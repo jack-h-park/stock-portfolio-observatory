@@ -55,7 +55,7 @@ export const GLOSSARY_BY_LANG = {
     tickerless: {
       label: 'Tickerless Income',
       alias: 'Tickerless',
-      description: 'Dividend or interest income that has not yet been linked to a specific ticker.',
+      description: 'Income that is either not linked to a ticker yet or is naturally cash-based, such as interest and account credits.',
     },
     coverage: {
       label: 'Coverage',
@@ -152,7 +152,7 @@ export const GLOSSARY_BY_LANG = {
     tickerless: {
       label: '종목 미연결 수익',
       alias: 'Tickerless',
-      description: '배당이나 이자 수익이 특정 종목과 아직 연결되지 않은 데이터입니다.',
+      description: '이자·예탁금 이용료처럼 원래 특정 종목에 연결하지 않는 현금성 수익이거나, 아직 종목 연결이 필요한 수익입니다.',
     },
     coverage: {
       label: '포함 범위',

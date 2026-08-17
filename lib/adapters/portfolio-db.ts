@@ -2465,15 +2465,6 @@ export function getReconciliationReview(): ReconciliationReview {
         href: '/reconciliation',
       })
     }
-    if (incomeBreaks.length > 0) {
-      actionQueue.push({
-        priority: 'medium',
-        area: 'Ticker mapping',
-        count: incomeBreaks.reduce((sum, row) => sum + Number(row.row_count ?? 0), 0),
-        action: 'Map tickerless income groups through manual mapping rules.',
-        href: '/data-ops',
-      })
-    }
     if (valuationBreaks.length > 0) {
       actionQueue.push({
         priority: 'low',
@@ -2486,7 +2477,6 @@ export function getReconciliationReview(): ReconciliationReview {
 
     const issueCount =
       positionBreaks.length +
-      incomeBreaks.reduce((sum, row) => sum + Number(row.row_count ?? 0), 0) +
       valuationBreaks.length +
       operational.staleItems.length +
       validationIssues.count

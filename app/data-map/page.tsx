@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 function statusTone(status: string): Tone {
   if (status === 'used') return 'success'
   if (status === 'derived' || status === 'archive') return 'neutral'
-  if (status === 'unused') return 'warning'
+  if (status === 'unused') return 'info'
   if (status === 'drift') return 'warning'
   return 'danger'
 }
@@ -38,15 +38,15 @@ const COPY = {
     title: 'Data Map',
     emphasis: 'Map',
     subtitle: (dir: string, ingestedAt: string) => `Source inventory for ${dir}. Last ingest: ${ingestedAt}.`,
-    reviewItems: (count: string) => `${count} item(s) to review`,
-    allMapped: 'All sources mapped',
-    itemsToReview: 'Items to Review',
-    itemsToReviewInfo: 'Source files that are unused, drifted, or missing. This is the first signal for whether the data map needs attention.',
+    reviewItems: (count: string) => `${count} source issue(s)`,
+    allMapped: 'No source issues',
+    itemsToReview: 'Source Issues',
+    itemsToReviewInfo: 'Source files that are missing or changed. Unused files are shown as inventory information because they may be retained for provenance.',
     inventoryHeadline: 'Inventory headline',
-    issueHint: 'Unmapped, drifted, or missing sources',
-    cleanHint: 'All tracked sources are mapped',
-    unused: 'Unused',
-    unusedHint: 'Present but not used',
+    issueHint: 'Drifted or missing sources',
+    cleanHint: 'No missing or changed sources',
+    unused: 'Inactive inventory',
+    unusedHint: 'Present but not used by the latest ingest; may be retained',
     drift: 'Drift',
     driftHint: 'Changed versus expected',
     missing: 'Missing',
@@ -60,8 +60,8 @@ const COPY = {
     readOrder: 'Read order: review queue first, then coverage, then full file inventory.',
     retentionGuide: 'Retention reason is the source role, not a delete instruction.',
     retentionLabels: { active: 'Active source', fallback: 'Fallback', archive: 'Archive', derived: 'Derived', review: 'Review' },
-    reviewQueue: 'Inventory review queue',
-    noQueue: 'No unmapped, drifted, or missing source files',
+    reviewQueue: 'Source issue queue',
+    noQueue: 'No drifted or missing source files',
     fullInventory: 'Full source inventory',
     columns: {
       status: 'Status',
@@ -82,15 +82,15 @@ const COPY = {
     title: '데이터 원본',
     emphasis: '원본',
     subtitle: (dir: string, ingestedAt: string) => `${dir}의 원본 인벤토리입니다. 마지막 ingest: ${ingestedAt}.`,
-    reviewItems: (count: string) => `확인 필요 ${count}건`,
-    allMapped: '모든 원본 매핑 완료',
-    itemsToReview: '확인할 항목',
-    itemsToReviewInfo: '사용되지 않았거나, 변경되었거나, 누락된 원본 파일입니다. 데이터 맵 확인이 필요한지 보는 첫 신호입니다.',
+    reviewItems: (count: string) => `원본 이슈 ${count}건`,
+    allMapped: '원본 이슈 없음',
+    itemsToReview: '원본 이슈',
+    itemsToReviewInfo: '변경되었거나 누락된 원본 파일입니다. 미사용 파일은 provenance 보존을 위해 정보성 목록으로 표시합니다.',
     inventoryHeadline: '인벤토리 핵심 지표',
-    issueHint: '미매핑, 변경, 누락 원본',
-    cleanHint: '추적 중인 모든 원본이 매핑되어 있습니다.',
-    unused: '미사용',
-    unusedHint: '파일은 있지만 사용되지 않음',
+    issueHint: '변경 또는 누락된 원본',
+    cleanHint: '변경·누락된 원본이 없습니다.',
+    unused: '비활성 인벤토리',
+    unusedHint: '현재 ingest에는 쓰이지 않지만 보존될 수 있는 파일',
     drift: '변경',
     driftHint: '예상 상태와 달라짐',
     missing: '누락',
@@ -104,8 +104,8 @@ const COPY = {
     readOrder: '읽는 순서: 확인 대기열, 범위, 전체 파일 인벤토리 순으로 봅니다.',
     retentionGuide: '보존 이유는 파일의 역할을 설명하며, 삭제 지시가 아닙니다.',
     retentionLabels: { active: '운영 원본', fallback: '대체 원본', archive: '보관 원본', derived: '파생 산출물', review: '추가 확인' },
-    reviewQueue: '인벤토리 확인 대기열',
-    noQueue: '미매핑, 변경, 누락 원본 파일이 없습니다.',
+    reviewQueue: '원본 이슈 대기열',
+    noQueue: '변경되거나 누락된 원본 파일이 없습니다.',
     fullInventory: '전체 원본 인벤토리',
     columns: {
       status: '상태',
@@ -129,8 +129,8 @@ export default async function DataMapPage() {
   const glossary = getGlossary(language)
   const meta = getMeta()
   const inventory = getSourceInventory()
-  const actionItems = inventory.items.filter((item) => ['unused', 'drift', 'missing'].includes(item.status)).slice(0, 20)
-  const reviewCount = inventory.summary.missing + inventory.summary.drift + inventory.summary.unused
+  const actionItems = inventory.items.filter((item) => ['drift', 'missing'].includes(item.status)).slice(0, 20)
+  const reviewCount = inventory.summary.missing + inventory.summary.drift
   return (
     <>
       <PageHeader
@@ -139,8 +139,8 @@ export default async function DataMapPage() {
         emphasis={copy.emphasis}
         subtitle={copy.subtitle(inventory.dataDir, fmtDateTime(meta.ingested_at))}
         action={
-          inventory.summary.missing || inventory.summary.drift || inventory.summary.unused ? (
-            <Badge tone="warning">{copy.reviewItems(fmtNumber(inventory.summary.missing + inventory.summary.drift + inventory.summary.unused))}</Badge>
+          inventory.summary.missing || inventory.summary.drift ? (
+            <Badge tone="warning">{copy.reviewItems(fmtNumber(reviewCount))}</Badge>
           ) : (
             <Badge tone="success">{copy.allMapped}</Badge>
           )
@@ -160,7 +160,7 @@ export default async function DataMapPage() {
               label={copy.unused}
               value={fmtNumber(inventory.summary.unused)}
               hint={copy.unusedHint}
-              tone={inventory.summary.unused ? 'warning' : 'success'}
+              tone="info"
               valueClassName="text-[18px]"
             />
             <MetricField
