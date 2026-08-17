@@ -42,7 +42,6 @@ const COPY = {
         label: 'Detailed Records',
         collapsible: true,
         items: [
-          { href: '/reconciliation', label: 'Reconciliation' },
           { href: '/cost-basis', label: 'Cost Basis' },
           { href: '/dividends', label: 'Dividends' },
           { href: '/transactions', label: 'Transactions' },
@@ -50,12 +49,13 @@ const COPY = {
         ],
       },
       {
-        label: 'System & Advanced',
+        label: 'Operations & Data',
         collapsible: true,
         items: [
-          { href: '/data-ops', label: 'Operations' },
-          { href: '/data-map', label: 'Data Sources' },
-          { href: '/health', label: 'Data Health' },
+          { href: '/health', label: 'System Health' },
+          { href: '/data-ops', label: 'Action Center' },
+          { href: '/reconciliation', label: 'Reconciliation' },
+          { href: '/data-map', label: 'Source & Retention' },
         ],
       },
     ],
@@ -93,7 +93,6 @@ const COPY = {
         label: '상세 기록',
         collapsible: true,
         items: [
-          { href: '/reconciliation', label: '데이터 일치 확인' },
           { href: '/cost-basis', label: '취득원가' },
           { href: '/dividends', label: '배당 내역' },
           { href: '/transactions', label: '거래 내역' },
@@ -101,12 +100,13 @@ const COPY = {
         ],
       },
       {
-        label: '시스템 · 고급',
+        label: '운영 · 데이터',
         collapsible: true,
         items: [
-          { href: '/data-ops', label: '운영 작업' },
-          { href: '/data-map', label: '데이터 원본' },
-          { href: '/health', label: '데이터 상태' },
+          { href: '/health', label: '시스템 상태' },
+          { href: '/data-ops', label: '조치 센터' },
+          { href: '/reconciliation', label: '정합성 확인' },
+          { href: '/data-map', label: '원본 · 보존' },
         ],
       },
     ],
