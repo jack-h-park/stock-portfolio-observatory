@@ -3,12 +3,14 @@ import { Fragment } from 'react'
 import { createSavedTaxPlanAction } from '@/app/tax-planning/actions'
 import { DataTable } from '@/components/DataTable'
 import { Badge, Card, EmptyState, MetricField, marketTone, type Tone } from '@/components/ui'
+import type { createMoneyFormatter } from '@/lib/currency'
 import { fmtDateTime, fmtNumber, fmtQuantity } from '@/lib/format'
-import { useMoneyFormatter } from '@/components/LanguageProvider'
 import { positionHref } from '@/lib/position-url'
 import type { MonthlySaleMasterPlan, MonthlySalePlanSet, TaxPlanCandidate, MasterPlanStrategyKey } from '@/lib/tax-planning'
 import { savedTaxPlanProgress, type SavedTaxPlan } from '@/lib/tax-plan-store'
 import type { TaxPlanningCopy } from './copy'
+
+type MoneyFormatter = ReturnType<typeof createMoneyFormatter>
 
 function signedMoney(value: number, money: (value: number | null | undefined, currency?: string | null | undefined) => string) {
   return <span className={value >= 0 ? 'text-success' : 'text-danger'}>{money(value, 'KRW')}</span>
@@ -28,8 +30,7 @@ function PositionCell({ row }: { row: TaxPlanCandidate }) {
   )
 }
 
-export function CandidateTable({ rows, copy }: { rows: TaxPlanCandidate[]; copy: TaxPlanningCopy }) {
-  const money = useMoneyFormatter()
+export function CandidateTable({ rows, copy, money }: { rows: TaxPlanCandidate[]; copy: TaxPlanningCopy; money: MoneyFormatter }) {
   if (rows.length === 0) return <EmptyState>{copy.candidateTable.empty}</EmptyState>
   return (
     <DataTable
@@ -98,13 +99,14 @@ export function MasterPlanOverview({
   inputIssueCount,
   fullHoldingsValueKrw,
   copy,
+  money,
 }: {
   planSet: MonthlySalePlanSet
   inputIssueCount: number
   fullHoldingsValueKrw: number
   copy: TaxPlanningCopy
+  money: MoneyFormatter
 }) {
-  const money = useMoneyFormatter()
   const plan = planSet.selectedPlan
   const earliest = planSet.scenarios.find((item) => item.strategy === 'EARLIEST_LT')
   const wait = planSet.scenarios.find((item) => item.strategy === 'WAIT_US_ONLY')
@@ -208,12 +210,13 @@ export function MasterScenarioComparison({
   planSet,
   horizonYears,
   copy,
+  money,
 }: {
   planSet: MonthlySalePlanSet
   horizonYears: number
   copy: TaxPlanningCopy
+  money: MoneyFormatter
 }) {
-  const money = useMoneyFormatter()
   const baseline = planSet.scenarios.find((item) => item.strategy === 'EARLIEST_LT')
   const minTax = Math.min(...planSet.scenarios.map((item) => item.summary.estimatedTaxKrw))
   const maxTax = Math.max(...planSet.scenarios.map((item) => item.summary.estimatedTaxKrw), 1)
@@ -302,14 +305,15 @@ export function SavedPlansPanel({
   executionMonths,
   horizonYears,
   copy,
+  money,
 }: {
   plans: SavedTaxPlan[]
   selectedStrategy: MasterPlanStrategyKey
   executionMonths: number
   horizonYears: number
   copy: TaxPlanningCopy
+  money: MoneyFormatter
 }) {
-  const money = useMoneyFormatter()
   const visiblePlans = plans.filter((plan) => plan.status !== 'archived').slice(0, 5)
   return (
     <Card
@@ -394,8 +398,7 @@ export function SavedPlansPanel({
   )
 }
 
-export function MasterPlanAnnualTax({ plan, copy }: { plan: MonthlySaleMasterPlan; copy: TaxPlanningCopy }) {
-  const money = useMoneyFormatter()
+export function MasterPlanAnnualTax({ plan, copy, money }: { plan: MonthlySaleMasterPlan; copy: TaxPlanningCopy; money: MoneyFormatter }) {
   return (
     <Card
       title={copy.annualTax.title}

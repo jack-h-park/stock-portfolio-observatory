@@ -3,6 +3,8 @@ import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
 import { Badge, Card, EmptyState, InfoTooltip, marketTone } from '@/components/ui'
 import { getOperationalHealth, getOverview, getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
+import { createMoneyFormatter } from '@/lib/currency'
+import { getCurrencyPreferences } from '@/lib/currency-server'
 import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import {
@@ -75,6 +77,7 @@ export default async function TaxPlanningPage({
 }) {
   const params = await searchParams
   const language = await getLanguage()
+  const money = createMoneyFormatter(await getCurrencyPreferences())
   const copy = getTaxPlanningCopy(language)
   const taxPolicy = getTaxPolicyState()
   const activeScenario = scenario(params.scenario, taxPolicy.policy.activeScenario)
@@ -204,6 +207,7 @@ export default async function TaxPlanningPage({
         inputIssueCount={plan.summary.missingValuationCount + operational.staleItems.length}
         fullHoldingsValueKrw={opportunityCoverage.holdingsMarketValueKrw}
         copy={copy}
+        money={money}
       />
 
       <SavedPlansPanel
@@ -212,12 +216,14 @@ export default async function TaxPlanningPage({
         executionMonths={executionMonths}
         horizonYears={horizonYears}
         copy={copy}
+        money={money}
       />
 
       <MasterScenarioComparison
         planSet={masterPlanSet}
         horizonYears={horizonYears}
         copy={copy}
+        money={money}
       />
 
       <TaxPlanTimeline
@@ -228,7 +234,7 @@ export default async function TaxPlanningPage({
         language={language}
       />
 
-      <MasterPlanAnnualTax plan={masterPlanSet.selectedPlan} copy={copy} />
+      <MasterPlanAnnualTax plan={masterPlanSet.selectedPlan} copy={copy} money={money} />
 
       <details className="mb-5 rounded-md border border-line bg-card shadow-card">
         <summary className="cursor-pointer px-4 py-3 text-[13px] font-medium text-ink">
@@ -420,11 +426,11 @@ export default async function TaxPlanningPage({
       </div>
 
       <Card title={copy.page.recommendedSaleLotSequence} className="mb-5" accent>
-        <CandidateTable rows={plan.recommended} copy={copy} />
+        <CandidateTable rows={plan.recommended} copy={copy} money={money} />
       </Card>
 
       <Card title={copy.page.allOpenLotCandidates}>
-        <CandidateTable rows={plan.candidates.slice(0, 80)} copy={copy} />
+        <CandidateTable rows={plan.candidates.slice(0, 80)} copy={copy} money={money} />
       </Card>
     </>
   )
