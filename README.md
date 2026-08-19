@@ -73,6 +73,10 @@ cp data/kr-prices.example.json data/kr-prices.json
 cp data/us-prices.example.json data/us-prices.json
 cp data/refresh-runs.example.json data/refresh-runs.json
 
+# The override layer is gitignored, because an override names the payment it
+# corrects. Without it the ingest simply applies none.
+cp data/manual-mappings.example.json data/manual-mappings.json
+
 pnpm refresh
 pnpm dev
 ```
