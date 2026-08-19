@@ -153,10 +153,10 @@ const COLUMNS = [
 // these have priced this portfolio for a year — with two changes.
 //
 // KOSDAQ IS TRIED AFTER KRX. The old tab prefixed every ticker `KRX:` and had
-// no failures, because the three KOSDAQ names it now carries were not in it
-// (035900, 086520, 403850) and neither was the ₩498,120 government bond the
-// certificate parser turned up. Generated from the database, they arrive — and
-// `KRX:035900` does not resolve, so the row returned #N/A.
+// no failures, because the KOSDAQ names it now carries were not in it, and
+// neither was the government bond the certificate parser turned up. Generated
+// from the database, they arrive — and a `KRX:` prefix does not resolve for a
+// KOSDAQ code, so the row returned #N/A.
 //
 // AND THE FAILURE IS CONTAINED. `Current Price` had no error wrapper, so an
 // #N/A there flowed through `OR(...,G="")` into Unrealized G/L and from there

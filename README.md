@@ -317,9 +317,8 @@ source files.
 `.codex_sheet_payloads/*.tsv` — a spreadsheet dump taken by hand on 2026-07-15 —
 remains only for the accounts that have no parser yet, and certificate rows
 replace it per account rather than wholesale. See
-[docs/data-sources.md](docs/data-sources.md) for where each dataset comes from,
-what the Google Sheets are still for, and the conventions the certificates and
-the Toss API each get wrong.
+[docs/data-sources.md](docs/data-sources.md) for where each dataset comes from
+and the conventions the certificates and the Toss API each get wrong.
 
 Real source files and generated artifacts are private by default:
 
@@ -367,13 +366,12 @@ no environment and never a login shell.
 
 It carries two things, from two roots. Broker sources travel from the data
 directory; the files in the script's `CONFIG` list travel from the repo's
-`data/`, which is why `STOCK_PROD_REPO_DIR` exists. Today that is
-`tax-policy.json` alone — it holds a W-2 wage base and year-to-date realized
-figures, so it stays out of git and off any history, and the push forces `0600`
-on the far side rather than widening it to this machine's mode. The version it
-replaces is kept in `data/.push-backup/`. `manual-mappings.json` is the other
-half of that split: symbols and rules only, so it is tracked in git and arrives
-by `git pull` instead.
+`data/`, which is why `STOCK_PROD_REPO_DIR` exists. Those are `tax-policy.json`
+and `manual-mappings.json` — one holds a W-2 wage base and year-to-date realized
+figures, the other the dated payments each override was confirmed against — so
+both stay out of git and off any history, and the push forces `0600` on the far
+side rather than widening it to this machine's mode. The version each replaces
+is kept in `data/.push-backup/`.
 
 Downloading stays manual — Chase, Merrill and Fidelity all want a browser session
 with MFA. This automates the second step, not the first.
@@ -546,6 +544,8 @@ published site can never disagree about a date.
 ## Manual mapping policy
 
 `data/manual-mappings.json` is the read-only override layer for operational cleanup. The ingest applies mapping rules to normalized rows and records `income_category`, `mapping_status`, and `mapping_note` in the generated database. Source spreadsheets, CSVs, and PDFs are never modified.
+
+The file is gitignored, because an override names the payment it corrects. Start from `data/manual-mappings.example.json`, which carries the same shape and synthetic rows; with no file at all the ingest simply applies no overrides, and `/data-ops` reports what went unmapped. Point `STOCK_MANUAL_MAPPINGS_PATH` elsewhere to keep it outside the repo entirely.
 
 - `incomeRules` classify non-position cashflow such as interest, stock lending, and other income.
 - `dividendOverrides` can assign ticker/name/category for source rows that need explicit correction.

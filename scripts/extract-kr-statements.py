@@ -5,8 +5,8 @@ the Toss 거래내역서 and the 삼성증권 주식보상 거래내역확인서
 to live in `toss_statements.py` and `samsung_statements.py` and are imported. All
 three feed the same FIFO walk below, so a transfer OUT of one broker and the
 matching transfer IN to another are replayed in one timeline — which is what lets
-52 삼성전자 shares leave the RSU account and arrive at Toss without either side
-inventing a purchase or a sale.
+shares leave the RSU account and arrive at Toss without either side inventing a
+purchase or a sale.
 
 WHY THIS EXISTS: the Korea side of the portfolio was populated once, by hand, on
 2026-07-15 and never again — the extraction that produced
@@ -636,11 +636,11 @@ def build_lots(transactions, as_of_by_account):
     # A SPLIT RESTATES THE LOTS IT ALREADY HAS. It is booked as an out and one
     # or more ins, and replaying that literally closes every open lot and opens
     # new ones dated the split day — which loses the acquisition date, and with
-    # it the holding period. 애플's four post-split shares read as acquired
-    # 2020-08-31, 테슬라's fifteen as 2022-08-25 (its SECOND split, the first
-    # having already overwritten the original), SCHD's fifty-seven as
-    # 2024-10-11. Eight lots in all, and the dates are the whole basis of the
-    # long/short call: SCHD's came out at 383 days, eighteen above the line.
+    # it the holding period. Every split lot in the data reads as acquired on
+    # its own split day — including one whose SECOND split had already
+    # overwritten the date the first left behind. Those dates are the whole
+    # basis of the long/short call: one such lot came out at 383 days, eighteen
+    # above the line.
     #
     # So the pool is scaled instead — quantity times the factor, unit cost
     # divided by it — which is what the US replay already does for the same
@@ -650,7 +650,7 @@ def build_lots(transactions, as_of_by_account):
     # there is no second inbound row to mistake for an outbound.
     #
     # The factor comes from the group, not from a row, because the ins arrive
-    # several at a time: SCHD's 19 out against 6 + 12 + 9 + 30 in is one 3-for-1.
+    # several at a time: 19 out against 6 + 12 + 9 + 30 in is one 3-for-1.
     split_totals = {}
     for r in transactions:
         if r["Type"] != "STOCK_SPLIT":
@@ -684,9 +684,9 @@ def build_lots(transactions, as_of_by_account):
         # rebranding seen only across two brokers' exports); it runs in the
         # ingest, after these lots are already built, so it cannot do this job.
         #
-        # Found when the 2020-2021 certificate arrived: FB bought 2020-07-06 sat
-        # open at ₩316,052 while the 2025-10-29 sale of 4 META shares found only
-        # its 3 META lots — a position closed in reality, showing as held.
+        # Found when an older certificate arrived: a lot bought under `FB` sat
+        # open while a later sale booked as `META` matched only the META lots —
+        # a position closed in reality, showing as held.
         renamed = TICKER_CHANGE.match(nfc(r["Name"] or "").strip())
         if renamed and ticker:
             old_key = (r["Account"], ticker)

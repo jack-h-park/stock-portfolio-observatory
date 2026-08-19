@@ -28,10 +28,14 @@
 # cost. data/manual-mappings.json held a ticker rename on one machine and not
 # the other, and the difference surfaced three steps downstream as a realized-
 # gain replay that would not reconcile. Nothing said "these two files differ";
-# the pipeline just disagreed with itself. That file now lives in git, which
-# suits it — it is symbols and classification rules. tax-policy.json cannot go
-# the same way: it carries a W-2 wage base and year-to-date realized figures,
-# and a git history is forever. So it travels here instead.
+# the pipeline just disagreed with itself.
+#
+# Both config files travel this way, and for the same reason: a git history is
+# forever. tax-policy.json carries a W-2 wage base and year-to-date realized
+# figures. manual-mappings.json reads as symbols and classification rules, but
+# each override names a real payment — date, won amount, and the statement it
+# was confirmed against — which is a portfolio in a form a public repo would
+# keep permanently. It was tracked in git until this repo was opened up.
 #
 # Copying the generated database back over the one being served would replace
 # live data with whatever this machine last happened to build. So the directory
@@ -95,11 +99,12 @@ SOURCES=(
 # would overwrite what the refresh host just computed with whatever this machine
 # last built. Only files a person edits belong here.
 #
-# data/manual-mappings.json is deliberately absent — it is tracked in git and
-# arrives by `git pull`. Listing it in both places would mean two ways to change
-# one file, and the rsync would quietly win over the commit.
+# One entry per file a person edits and both machines read. Neither is in git,
+# so this is the only way either of them travels — which is also why there is
+# only ever one way to change one file.
 CONFIG=(
   tax-policy.json
+  manual-mappings.json
 )
 
 [ -d "$LOCAL_DIR" ] || { echo "ERROR: no data directory at $LOCAL_DIR" >&2; exit 1; }
@@ -155,10 +160,11 @@ rsync -a --human-readable --itemize-changes $DRY \
 #                 before". rsync writes it only when it actually transfers, so
 #                 an unchanged file leaves no backup and no churn.
 # Permissions ride along in -a rather than a --chmod flag: macOS ships openrsync,
-# which advertises --chmod and rejects every value for it. tax-policy.json carries
-# a W-2 wage base and realized figures, so it is 0600 on both machines — chmod it
-# here and -a carries that across, which is the honest fix anyway. A 0644 local
-# copy of this file was already too open before it ever left.
+# which advertises --chmod and rejects every value for it. Both config files
+# carry real financial detail — a W-2 wage base and realized figures in one, the
+# dated payments behind each override in the other — so both are 0600 on both
+# machines. chmod them here and -a carries that across, which is the honest fix
+# anyway. A 0644 local copy of either was already too open before it ever left.
 config=()
 for file in "${CONFIG[@]}"; do
   if [ -f "$REPO_DIR/data/$file" ]; then

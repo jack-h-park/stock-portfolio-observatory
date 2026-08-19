@@ -5,15 +5,15 @@ lots do not — they are still the hand-made 2026-07-15 spreadsheet dump, and
 `/health` reports the disagreement as `toss_holdings_lots_provenance`. The API's
 order history cannot close it on its own: 18 of its 46 symbols do not reconcile
 with its own holdings, mostly because the shares arrived by transfer and a
-transfer is not an order (삼성전자 is short exactly 130 = 78 from 미래에셋 +
-52 from 삼성증권).
+transfer is not an order (one holding's shortfall is exactly the sum of two
+inbound transfers).
 
 The statements can, and they carry something better than an average: a
 `타사대체입고` row arrives LOT BY LOT with the sending broker's acquisition cost
 already carried across, so no cross-referencing of the other brokerage is
-needed. Verified three ways — 포스코퓨처엠's inbound lots weight-average to
-204,637.50, which equals both the 미래에셋 이체출고 unit price and the
-잔고증명서's 매입단가 to the 전.
+needed. Verified three ways — one transferred position's inbound lots
+weight-average to exactly the 미래에셋 이체출고 unit price, and to the
+잔고증명서's 매입단가, to the 전.
 
 This module only reads PDFs and returns rows. `extract-kr-statements.py` owns
 the FIFO lot engine and the TSV schema, and runs both brokers through the same
@@ -117,7 +117,7 @@ TYPE_MAP = {
     "신주인수권증서입고": "CORPORATE_ACTION",
     # The other end of the same event, and only Toss's wording for it: 미래에셋
     # writes 신주인수권증서말소출고, Toss writes 신주인수권증서출고, and having only
-    # 미래에셋's spelling is why 15 units of 한화솔루션 51R sat open for weeks
+    # 미래에셋's spelling is why a zero-cost rights lot sat open for weeks
     # against a live account that had not carried them since July. The rights
     # were received 2026-06-29, the subscription closed 2026-07-22 unsubscribed,
     # and Toss recorded the lapse on page 20 of the 2026-08-01 statement — the

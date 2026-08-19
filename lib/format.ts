@@ -25,7 +25,8 @@ export function fmtNumber(value: number | null | undefined, digits = 0) {
  *
  * Share counts and coin balances are the same field but not the same number.
  * Every quantity here used to be formatted at a fixed 2–4 decimals, which is
- * right for 306 shares and destroys 0.00010778 BTC — it renders as "0", and a
+ * right for a whole-share equity position and destroys a small BTC balance —
+ * it renders as "0", and a
  * real position reads as an empty one. Below 1 unit the precision opens up to
  * where crypto actually lives; at or above 1 the caller's digits are kept, so
  * equity tables look exactly as they did.

@@ -1,15 +1,15 @@
 """Parse 삼성증권 주식보상계좌 거래내역확인서 PDFs into normalized transaction rows.
 
 WHY THIS EXISTS: this account is where RSUs vest, and nothing read it. It is a
-small account — currently no shares at all — which is exactly why it went
+small account — it can hold no shares at all — which is exactly why it went
 unnoticed for so long: a position of zero looks identical to an account nobody
-parses. What it does hold is history the portfolio never saw. ₩39,090 of
-삼성전자 dividends across three payments, ₩5,990 of tax withheld against them,
-and the vest-date cost of every share that later moved to Toss.
+parses. What it does hold is history the portfolio never saw: dividends across
+several payments, the tax withheld against them, and the vest-date cost of every
+share that later moved to Toss.
 
-That last part is the one that matters beyond this account. 52 삼성전자 shares
-left here for Toss in two transfers (30 on 2026-01-12, 22 on 2026-07-16), and
-`toss_statements.py` already names them: Toss's own holdings do not reconcile
+That last part is the one that matters beyond this account. Vested shares leave
+here for Toss as transfers, and `toss_statements.py` already names them: Toss's
+own holdings do not reconcile
 with its order history because the shares arrived by transfer, and a transfer is
 not an order. Toss records its side as 타사대체입고 with the cost carried across,
 so the lots were never wrong — but the account those shares came FROM was
@@ -165,8 +165,8 @@ def parse(path, source_name, password, report):
                     raw_type = line_at(cells[COL_NAME], 0)
                     # 통화코드 is 'KRW' on the rows that have a security leg and
                     # '0' on the ones that do not. Anything else would mean a
-                    # foreign holding in an account that has only ever held
-                    # 삼성전자 — reported rather than quietly booked as won.
+                    # foreign holding in an account that has only ever held a
+                    # domestic one — reported rather than quietly booked as won.
                     currency = line_at(cells[COL_CURRENCY], 0)
                     if currency not in ("", "0", "KRW"):
                         report(

@@ -291,8 +291,8 @@ function normalizeUsTransactionType(value, action = '') {
   // quantities and negative amounts a reinvestment has — while the two `REC`
   // rows are whole positions arriving with no amount and no price at all. The
   // delivering side names them: Fidelity booked `TRANSFER OF ASSETS ACAT
-  // DELIVER` for exactly -318 QQQI and -1 SCHD on 2026-07-21, the same day
-  // Chase received 318 and 1. Robinhood uses the code for the same shape from
+  // DELIVER` for exactly the negated quantities on the same day Chase received
+  // them. Robinhood uses the code for the same shape from
   // the other end — its one `REC` row is the sign-up share it handed over, also
   // shares arriving with no money against them.
   //
@@ -1276,7 +1276,7 @@ const taxLotRows = datasets.taxlots.rows.map((r) => {
 // read from the spreadsheet. A 거래내역증명서 has no position snapshot, but every
 // lot in it was derived from one, so the sum is the position — and it is the
 // position the broker's own history implies rather than the one somebody last
-// typed. It found a ₩498,120 government bond the sheet never listed.
+// typed. It found a government bond the sheet never listed.
 //
 // Long/short quantities come free here: the lots carry their own tax term, where
 // the sheet had them as a column nobody recomputed.
@@ -1295,10 +1295,9 @@ const taxLotRows = datasets.taxlots.rows.map((r) => {
 // can move. So Toss joins this path exactly when the API did not answer.
 //
 // Safe because the two agree today, which was checked rather than assumed: the
-// statement lots reproduce all 36 payload positions to the won (₩<KR_HOLDINGS_TOTAL> on
-// both sides). The one difference is an addition — 15 units of 한화솔루션 51R
-// (<WARRANT_CODE>), a 신주인수권증서 received 2026-06-29 at zero cost that the sheet
-// never listed — the same kind of find as the ₩498,120 bond above.
+// statement lots reproduce every payload position to the won. The one
+// difference is an addition — a 신주인수권증서 received at zero cost that the
+// sheet never listed — the same kind of find as the bond above.
 const lotDerivedHoldingAccounts = new Set(
   [...statementAccounts].filter((account) => account !== tossAccountLabel || tossHoldingCount === 0)
 )
@@ -1439,8 +1438,7 @@ const transactionRows = datasets.transactions.rows.map((r) => ({
 // now neither did anything else. Seven of the eight positions that failed
 // `toss_holdings_lots_provenance` were plain purchases sitting unread in
 // data/toss-snapshot.json, already fetched every hour by the refresh and thrown
-// away — 카카오 +50, 미래에셋증권 +20, NAVER +10 on 2026-07-29, each matching the
-// shortfall to the unit.
+// away — three plain buys on one day, each matching the shortfall to the unit.
 //
 // So the cutoff is the newest statement date, and the API supplies only what
 // comes after it. Self-healing by construction: download a newer 거래내역서 and
@@ -1457,8 +1455,7 @@ const transactionRows = datasets.transactions.rows.map((r) => ({
 // order either.** 토스증권 support confirmed on 2026-08-02 that
 // /api/v1/orders answers for 지정가 and 시장가 orders only — 시간외 단일가 and
 // 장후 시간외종가 fills are absent by design, not by fault. Three purchases were
-// missing from an otherwise exact 3,474-order history and that is why:
-// <KR_TICKER_A> on 2025-09-19 and 2025-10-29, <KR_TICKER_B> on 2026-03-06. They reconcile
+// missing from an otherwise exact order history and that is why. They reconcile
 // against the certificates, which carry every fill regardless of session.
 //
 // So this bridge is a best-effort gap-filler and never an authority. An
@@ -2840,9 +2837,9 @@ const usSplitFactors = new Map()
  *
  * Deliberately not the closing balance of the date itself. A dividend is paid on
  * what was held when it was declared, and the same day's rows routinely include
- * the disposal that ended the position — Merrill's last QQQI payment landed on
- * the day the residual 0.5725 shares were sold, and dividing by the closing
- * balance divided $0.38 by 0.0067 shares. */
+ * the disposal that ended the position — a final Merrill payment landed on the
+ * day the residual shares were sold, and dividing by the closing balance
+ * divided the payment by the dust left behind. */
 function usPositionAsOf(key, date) {
   const timeline = usPositionTimeline.get(key)
   if (!timeline?.length) return 0
@@ -2870,8 +2867,8 @@ function usHoldingDays(from, to) {
   // Merrill books a reinvestment as two rows: `Reinvestment Share(s)` carries
   // the quantity with a zero amount, `Reinvestment Program` carries the cost
   // with no quantity. Taking the share leg at face value opens the lot at zero
-  // cost, which later books the entire proceeds as gain — a QQQI sale came out
-  // at +$32.14 against a true +$1.36. Paired here rather than on the stored
+  // cost, which later books the entire proceeds as gain — one sale came out an
+  // order of magnitude above its true gain. Paired here rather than on the stored
   // transaction so the two legs still sum to what Merrill actually reported.
   const merrillReinvestCost = new Map()
   for (const r of rows) {
@@ -3635,9 +3632,9 @@ const us1099bCoverage = new Map() // `${brokerage}|${year}` -> source filename
     for (const dividend of dividends) {
       // A payment is divided by the shares that EARNED it, which is the whole
       // position on that date — not just the fraction that later happened to be
-      // sold. Apportioning across the sold lots alone put $144.68 of JEPQ
-      // dividends onto a 0.786-share lot, because 0.786 shares were all this
-      // list could see of a 293-share position.
+      // sold. Apportioning across the sold lots alone piled a whole position's
+      // dividends onto a fractional lot, because that fraction was all this
+      // list could see of the position.
       // Converted into the lots' share units before it is divided by. The
       // timeline is stated in the units in effect on the pay date; a lot is
       // stated in the units it ended in, so a payment made before a split would
@@ -3682,7 +3679,7 @@ let krDividendStats = null
 // ---------------------------------------------------------------------------
 //
 // This is the half the US block above could not reach, and it is the half the
-// 「주식 매도 & 손익」 sheet was still being kept by hand for: 22 of its `비고`
+// 「주식 매도 & 손익」 sheet was still being kept by hand for: many of its `비고`
 // entries are a `누적배당금` against a closed position, and every one of them went
 // through a Korean broker.
 //
@@ -3691,13 +3688,13 @@ let krDividendStats = null
 //
 // INCOME IS NOT ALL DIVIDENDS HERE. The US dividend rows arrive already typed;
 // Korea's carry the broker's own wording — `배당금외화입금`, but also `세금환급`,
-// `예탁금이용료입금`, `선환전차액입금`. 76 of the 1,011 rows are zero-amount tax
-// refunds. `defaultIncomeCategory` already knows the difference and already
+// `예탁금이용료입금`, `선환전차액입금`. A small share of the rows are zero-amount
+// tax refunds. `defaultIncomeCategory` already knows the difference and already
 // reads 배당/분배, so it decides rather than a second list drifting beside it.
 //
 // THE POSITION IS ONE POSITION, WHATEVER CURRENCY EACH TRADE WAS BOOKED IN. A
-// 미래에셋 종합 holding can carry lots in both — SCHD has four won-booked lots
-// and three dollar-booked ones, all sold the same day — because the currency
+// 미래에셋 종합 holding can carry lots in both — one holding has four won-booked
+// lots and three dollar-booked ones, all sold the same day — because the currency
 // follows how each order was placed, not what the security is. A dividend is
 // earned by the shares, so the denominator counts them all and the match is on
 // account and ticker alone.
@@ -3833,10 +3830,10 @@ let krDividendStats = null
         // realized lot to attach to by definition. Of the rest, one class is
         // expected and one is not.
         //
-        // KOREA PAYS LONG AFTER THE RECORD DATE — a quarter or more. 삼성전자's
-        // 미래에셋 종합 position closed on 2024-04-01 and its next two payments
-        // landed on 04-19 and 05-20, earned by shares that were held when the
-        // register closed and paid to an account that no longer had them. The
+        // KOREA PAYS LONG AFTER THE RECORD DATE — a quarter or more. One
+        // position closed in early April and its next two payments landed weeks
+        // later, earned by shares that were held when the register closed and
+        // paid to an account that no longer had them. The
         // certificates carry no record date, so there is nothing here to
         // attribute those against; counted, not warned about, and deliberately
         // not fixed with a guessed grace window that would misfile a payment
@@ -4051,15 +4048,14 @@ function check(name, ok, detail, severity = 'error') {
 // when they do not, the cost basis they were carrying is somewhere this
 // pipeline cannot see.
 //
-// Found by hand once already, expensively: 22 삼성전자 vested into the RSU
-// account on 2026-07-08 and left it on 2026-07-16, three days after the Toss
-// statement stops covering. The outbound leg was recorded, the inbound leg was
-// not, and nothing asked where the shares went — it surfaced as a live position
-// 22 units larger than its lots, and took a walk through four accounts to
-// explain.
+// Found by hand once already, expensively: a vest landed in the RSU account and
+// left it days later, just after the Toss statement stops covering. The outbound
+// leg was recorded, the inbound leg was not, and nothing asked where the shares
+// went — it surfaced as a live position larger than its lots, and took a walk
+// through four accounts to explain.
 //
 // Quantities are consumed rather than matched one to one, because a
-// 타사대체입고 arrives lot by lot: one outbound row for 57 shares becomes four
+// 타사대체입고 arrives lot by lot: one outbound row becomes several
 // inbound rows carrying each lot's own cost. Requiring equal rows would call
 // every real transfer a break, which is how a check earns its way to being
 // ignored.
@@ -4684,7 +4680,7 @@ for (const brokerage of uncoveredBrokerages) {
   }
   // Below a whole share is ACAT dust, not a position. A transfer moves whole
   // shares and leaves the fraction behind, so an emptied account keeps a
-  // remainder like 0.008 SCHD — worth pennies, and alarming about it forever
+  // remainder like 0.008 of a share — worth pennies, and alarming about it forever
   // is how the check stops being read. The threshold is in shares because these
   // are precisely the tickers we have no price for: a brokerage with no
   // holdings source contributes nothing to the price snapshot either.
