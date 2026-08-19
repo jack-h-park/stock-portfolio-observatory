@@ -165,9 +165,8 @@ def parse(path, source_name, password, report):
                     raw_type = line_at(cells[COL_NAME], 0)
                     # 통화코드 is 'KRW' on the rows that have a security leg and
                     # '0' on the ones that do not. Anything else would mean a
-                    # foreign holding in an account that has only ever held
-                    # a foreign-currency line — reported rather than quietly
-                    # booked as won.
+                    # foreign holding in an account that has only ever held a
+                    # domestic one — reported rather than quietly booked as won.
                     currency = line_at(cells[COL_CURRENCY], 0)
                     if currency not in ("", "0", "KRW"):
                         report(

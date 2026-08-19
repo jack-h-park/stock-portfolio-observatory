@@ -20,10 +20,14 @@ __pycache__/
 *.py[cod]
 
 # Generated or private portfolio data.
-# data/manual-mappings.json is deliberately NOT here: it is hand-written
-# configuration, not generated data, and it holds no positions or amounts.
-# Tracking it keeps dev and prod identical and makes an overwrite recoverable.
+# data/manual-mappings.json was tracked here until this repo went public. It is
+# hand-written configuration rather than generated data, but its overrides are
+# keyed to real payments — a date, a won amount and the statement they were
+# confirmed against — so a git history of it is a git history of a portfolio.
+# It travels the way tax-policy.json does instead: gitignored, 0600, carried to
+# the refresh host by push-sources.sh. Start from data/manual-mappings.example.json.
 private-data/
+data/manual-mappings.json
 data/fx-rates.json
 data/kr-prices.json
 data/us-prices.json
