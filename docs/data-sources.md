@@ -25,14 +25,14 @@ rebuilding the pipeline did.
 | US realized gains | **nothing** | — | **see gaps** |
 | KR/US prices, FX | Yahoo / Frankfurter | every refresh | market |
 
-**The RSU account holds nothing, and that is why it was missed.** 삼성증권's
-주식보상 account is where 삼성전자 RSUs vest, and its position is currently zero —
-every share vested has already moved on to Toss (30 on 2026-01-12, 22 on
-2026-07-16). An account with no position looks exactly like an account nobody
-parses, so for a long time nobody noticed which it was. What it holds instead is
-history: ₩39,159 of dividends and 예탁금이용료, ₩5,990 of tax withheld against
-them, and the vest-date cost of every share that later showed up at Toss as a
-`타사대체입고`. None of it reached the portfolio until the parser existed.
+**An RSU account can hold nothing, and that is why it was missed.** 삼성증권's
+주식보상 account is where RSUs vest, and its position can sit at zero — vested
+shares move on to another broker soon after. An account with no position looks
+exactly like an account nobody parses, so for a long time nobody noticed which it
+was. What it holds instead is history: dividends and 예탁금이용료, the tax
+withheld against them, and the vest-date cost of every share that later shows up
+at the receiving broker as a `타사대체입고`. None of it reached the portfolio
+until the parser existed.
 
 The next vest itself is still not something any check here can see coming — this
 is a hand-downloaded 거래내역확인서 like 미래에셋's, with no credential, no MCP and
@@ -50,8 +50,8 @@ every vest transfers out to Toss inside the same statement period.
 accounts appear in the statements. Swapping the files wholesale would delete the
 brokerages whose certificates are not on hand — which is a function of what has
 been downloaded, not of what has a parser. Toss used to be the standing example
-here at 36 of 47 Korean holdings; it has had a 거래내역서 parser since the row
-above, so the payload now holds only whatever the statements on disk have yet to
+here, covering most of the Korean holdings; it has had a 거래내역서 parser since
+the row above, so the payload now holds only whatever the statements on disk have yet to
 cover.
 
 **Reading the Toss API spec.** `developers.tossinvest.com/docs` renders in
@@ -79,11 +79,10 @@ answered and how old it is, and fails outright if the answer is the payload.
 
 **Robinhood positions have two sources too, and the second one has no refresh
 path at all.** The MCP is preferred because it answers live and enumerates more
-than any export did — verified against the 0956 report, its 2026-06-23 AMZN lot
-matches to the share (0.426675 units, $100.00 basis, `st`) and it additionally
-returns a 2026-07-23 lot the PDF predates, plus `open_lot_id`, `order_id`,
-`quantity_available` and `is_selectable`, which the PDF never had. Without a
-snapshot the lots fall back to `robinhood-holdings-{0956,1478,9965}-*.pdf`, which
+than any export did — checked lot by lot against a Gain/Loss report, it matches
+to the fractional share, returns lots the PDF predates, and adds `open_lot_id`,
+`order_id`, `quantity_available` and `is_selectable`, which the PDF never had.
+Without a snapshot the lots fall back to `robinhood-holdings-<acct>-*.pdf`, which
 are still parsed and still registered as evidence but are no longer the source.
 Those three PDFs exist because the account holder emailed Robinhood customer
 support and waited; there is no cadence, no credential and no script behind them,
@@ -93,14 +92,14 @@ is, and **fails outright on the PDF branch at any age** — the way out is to
 regenerate, not to wait. `robinhood_snapshot_lots_mapped` names any symbol whose
 lots do not account for the position the broker reports for it, which is the
 expected shape of a pull cut short: `get_equity_tax_lots` is one call per symbol
-per account, 68 in all.
+per account, and a session can stop partway through.
 
 **A cut-short pull has two shapes, and the quiet one is why that check compares
 quantities rather than counting symbols.** A symbol the session never reached
 comes back with no lots, which is obvious. But the endpoint **pages at fifty**,
 returning a `next` URL whose `cursor` has to be passed back, so a symbol whose
-second page was missed comes back with fifty lots and reads as answered — on the
-2026-08-11 regeneration Long-term NVDA had 52. A symbol short a page understates
+second page was missed comes back with fifty lots and reads as answered — one
+symbol here really did have 52. A symbol short a page understates
 cost basis, which inflates unrealised gain rather than erroring, so the only
 thing that can see it is the lots of a symbol failing to sum to its position.
 Treat any symbol returning exactly fifty lots as unpaged until you have checked
@@ -115,13 +114,13 @@ zero-filled one would be wrong.
 
 **Robinhood's trades stay on the CSVs, and that was measured rather than
 assumed.** `get_equity_orders` reaches back exactly as far as the CSVs' trades
-do — Mid-term `2024-09-06`, Long-term `2026-02-12`, Agentic `2026-06-23`, each
-identical to that account's first CSV Buy/Sell — and its 702 Mid-term executions
-match the 702 CSV rows on date, symbol, side and quantity with nothing left over
-on either side. So there is no back-history gap of the kind Toss has, and no
-trade the MCP could add. What it cannot supply is a whole class of row:
-dividends, stock lending income, interest, transfers and splits are 463 of the
-1,194, and no tool on this MCP returns them (`get_pnl_trade_history` gives
+do — in every account its earliest execution is that account's first CSV
+Buy/Sell — and account by account its executions match the CSV rows on date,
+symbol, side and quantity with nothing left over on either side. So there is no
+back-history gap of the kind Toss has, and no trade the MCP could add. What it
+cannot supply is a whole class of row: dividends, stock lending income, interest,
+transfers and splits are around 40% of the file, and no tool on this MCP returns
+them (`get_pnl_trade_history` gives
 realizing trades, `get_realized_pnl` gives bucketed totals). The CSV must be
 downloaded for those regardless, so ingesting orders on top would add a second
 source of the same trades — and its proceeds are gross of the regulatory fees
@@ -134,9 +133,9 @@ comparison did find are worth having, and both come out of the CSV:
   are two fills of one order stamped the same millisecond, where neither source
   has a real order to recover.
 - **`placed_agent`.** Robinhood appends the origin under the CUSIP
-  (`…\nDividend Reinvestment`), which `name` was stripping. The CSV's 82
-  `Dividend Reinvestment` / 31 `Recurring` / 589 unmarked rows match the MCP's
-  82 `drip` / 31 `recurring` / 589 `user` exactly.
+  (`…\nDividend Reinvestment`), which `name` was stripping. The CSV's
+  `Dividend Reinvestment` / `Recurring` / unmarked row counts match the MCP's
+  `drip` / `recurring` / `user` counts exactly.
 
 Unlike the Toss snapshot, nothing on a timer regenerates this one. The MCP is
 reachable from an agent session and not from a shell, so `pnpm refresh` cannot
@@ -316,49 +315,23 @@ Two things it will not do, both deliberate:
   set is already filed for that period it lands as a conflict rather than
   quietly replacing it.
 
-### The 미래에셋 종합 certificates, and how a rename is done safely
+### Renaming a file under `STOCK_DATA_DIR`
 
-All twelve 미래에셋 certificates were issued in one sitting on 2026-07-16 —
-발급번호 10841–10847 for the ISA account and 5705–5709 for the 종합 one — and
-two different naming rules came out of that one session. The ISA seven were
-named for what each covers (`2020` … `2025`, `20260716`). The 종합 five were all
-named `20260716`, the day they were *issued*, though `…-5707` holds
-2022/01/01~2023/12/31, `…-5708` holds 2024/01/01~2025/12/31, and the two
-잔고증명서 are balances as of 2025-09-11 and 2026-01-09.
-
-The likely reason is mechanical rather than considered: naming the ISA archives
-by the issue date would have collided seven files onto one name, so the coverage
-had to be read. The 종합 files carry a 발급번호 suffix, which kept them apart and
-let the wrong period survive. Same failure as `20060716` — invisible only
-because something unrelated happened to hold.
-
-They were renamed to their coverage on 2026-07-31:
-
-```
-mirae-general-transactions-20260716-5707 → mirae-general-transactions-2022-2023-5707
-mirae-general-transactions-20260716-5708 → mirae-general-transactions-2024-2025-5708
-mirae-general-balance-20260716-5705      → mirae-general-balance-20250911-5705
-mirae-general-balance-20260716-5706      → mirae-general-balance-20260109-5706
-```
-
-(`…-5709` covers 2026/01/01~2026/07/16, whose end is the issue date, so its name
-was already right.)
-
-**Renaming anything under `STOCK_DATA_DIR` is a two-machine operation, and
-getting that wrong is silent.** `push-sources.sh` has no `rsync --delete` on
-purpose, so a rename on the laptop *adds* the new name on the refresh host
-rather than replacing the old one — and `extract-kr-statements.py` globs
-`mirae-*.pdf` and keys rows by the `Source` filename, so one document under two
-names becomes two sets of rows. Transactions, lots and realized gains all
+A period read wrong at download time survives until someone reads the document,
+and fixing it means renaming a file the pipeline already keys on. **That is a
+two-machine operation, and getting it wrong is silent.** `push-sources.sh` has no
+`rsync --delete` on purpose, so a rename on the laptop *adds* the new name on the
+refresh host rather than replacing the old one — and `extract-kr-statements.py`
+globs `mirae-*.pdf` and keys rows by the `Source` filename, so one document under
+two names becomes two sets of rows. Transactions, lots and realized gains all
 double, nothing errors, and every check passes. The procedure that avoids it:
 
 1. `shasum -a 256` both sides first, to confirm the remote file is the same bytes.
 2. `mv` on **both** machines. Never delete-then-push — `mv` leaves no window
    where the data is absent and re-transfers nothing.
 3. Re-extract and diff the TSVs with the old and new names normalised to one
-   token. A rename must change only the `Source` column; anything else is a bug.
-   Here that diff was empty across all four TSVs, with 198 미래에셋 open lots and
-   215 realized rows totalling ₩<REALIZED_TOTAL> on both sides of it.
+   token. A rename must change only the `Source` column; anything else is a bug —
+   the open-lot and realized-row totals have to come out identical on both sides.
 4. `push-sources.sh --dry-run` should then show only `.d..t.... kr-statements/`,
    a directory mtime, and no file transfers.
 
@@ -366,110 +339,11 @@ Re-filing these through the inbox later is safe either way: the content hash is
 compared against the whole destination directory, so a document already there
 under any name is a skip, never a duplicate.
 
-Note that `source_file_dates_plausible` would not have caught the old names —
+Note that `source_file_dates_plausible` would not catch a wrong name here —
 `scripts/source-files.mjs` has no `kr-statements` specs, so the check covers the
-US and crypto directories only. A wrong period on a Korean statement is caught
-by nothing today, which is why the inbox reads the period out of the document
+US and crypto directories only. A wrong period on a Korean statement is caught by
+nothing today, which is why the inbox reads the period out of the document
 instead.
-
-## The Google Sheets
-
-Three sheets predate the pipeline. All nine tabs across the first two were
-surveyed column by column: every data column is machine-derived, and the
-`Source` / `Page` / `Source File` columns are the proof — the sheets record
-which PDF page each row came from. They describe themselves as copies.
-
-| Sheet | Role now |
-| --- | --- |
-| 국내 주식 보유 현황 및 수익률 | **one live tab.** `미실현수익 정리` is kept as a view; `배당금 내역`, `Tax Lots`, `Realized Lots` and `거래원장` were frozen on 2026-08-04 — see below. |
-| 미국 주식 보유 현황 및 수익률 | **view + annotations**, but still the input `reconcile-holdings.mjs` compares against the broker exports. Retiring it needs US realized gains in the database first. |
-| 주식 매도 & 손익 | **a journal, not a source.** Its figures were all ingested by 2026-08-04 and the money columns were cleared; what remains is `비고` — why a sale happened, and what the broker's own app said about it. See below. |
-
-What is genuinely not derivable from them is small and worth keeping:
-
-- `Tax Lot Summary` → `Note`, 13 rows of human judgement about why two sides
-  disagreed (`Resolved: 2025-09-22 Buy 1 share + 2026-07-02 SPL 3 shares = 4`).
-  The ticker-mapping ones (`BRKB → BRK.B`) are configuration, not annotation,
-  and belong in `data/manual-mappings.json`.
-- 주식 매도 & 손익 → `비고`, on 40 of its 65 rows. 22 of those record the
-  dividends a position paid while it was held (`누적배당금: $217.47` on IWM),
-  which is what made its return figures total return rather than price return.
-  The ingest now joins the two — 39 payments onto 23 of 32 realized lots — but
-  **only for `market = 'US'`**, and every one of these 22 sales went through a
-  Korean broker. Extending that attribution to the Korean side is what would
-  make them derivable.
-  The other 18 never will be: 14 quote a figure from 미래에셋's own app
-  (`MY종목분석:3년간+136,447원`), and the rest record intent — `Fidelity 이전 후
-  소수점 처분`, `환차손익 +23,287원`, `기준환율:1,436.10`. No statement carries
-  why a position was closed.
-
-### Freezing the Korean detail tabs (2026-08-04)
-
-Four of the Korean sheet's five tabs were archived rather than maintained. The
-sheet's numbers were a snapshot of what one hand-run extraction reached, and the
-parsers have since reached considerably further:
-
-| Tab | Sheet (2026-07-15) | Database (2026-08-04) |
-| --- | --- | --- |
-| 미실현수익 정리 | 47 | 48 |
-| Tax Lots | 563 | 573 |
-| 배당금 내역 | 151 | **916** |
-| Realized Lots | 49 | **2,986** |
-| 거래원장 | 777 | **11,232** |
-
-Dividends is the clearest case: the certificates fill a different column per
-currency, and reading only the KRW one booked every foreign trade at zero — the
-496 rows recovered from that included 247 dividends. The sheet's 151 predate the
-fix.
-
-Keeping a second copy would not be redundancy but an unchecked number: the
-validations (`toss_holdings_lots_provenance` and the rest) run against the
-database, so a sheet that disagrees has nothing to answer to. Archived rather
-than deleted — the tabs stay readable, and the decision is reversible.
-
-`미실현수익 정리` is kept because neither surface replaces it: the Observatory is
-tailnet-only and the briefing is a fixed 08:00 document, while the sheet is a
-table you can sort, filter and compute in, priced live by `GOOGLEFINANCE`. It is
-a candidate to become a generated view written from the database.
-
-### Shrinking 주식 매도 & 손익 to a journal (2026-08-04)
-
-Its `Sheet1` became `매매일지`, columns G through V — 매수단가 through
-손익(달러환산) — were cleared, and the whole tab was duplicated to
-`[보관] 전체 기록 (2026-08-04)` first. 날짜, 증권사, 주식, 계좌, 수량 and 비고
-stay. The sheet's own last row always said what it was for: `미래에셋(앱) ->
-주식매매일지`.
-
-**It was never the US realized record this file called it.** 59 of its 66 rows
-are Korean brokers — 미래에셋 36, 미래에셋(ISA) 14, 토스 9 — against 5 Robinhood
-and 1 Merrill. What made it look otherwise is that most of those Korean rows are
-US-listed securities bought through Korean accounts.
-
-Checking the figures took three passes, and the first two were wrong:
-
-- **By date, 59 of 65 rows looked missing.** They are not. Its dates are the
-  trade dates a person wrote down; the certificates report T+2 settlement, and
-  one whole block is dated 2025-10-26, a Sunday. The rule stated further down
-  this file — match on symbol, quantity and unit price, never on date — exists
-  for exactly this.
-- **By ticker, a quarter still looked missing.** Also wrong: Korean ETF names
-  (`TIGER`, `KODEX`, `RISE`) have no ticker to extract, and Toss's 소수점 매수
-  splits one line of this sheet across hundreds of lots — its 2025-10 alone
-  holds 2,211.
-- **The absence of `currency = 'USD'` on Toss rows is not the absence of the
-  trades.** `toss_statements.py` books both statement sections in KRW on
-  purpose, verified against MSFT's 2022-08-04 단가 of 363,074 = $277.7 ×
-  1,307.20. A dollar reading would make it a $363,074 share.
-
-What was genuinely missing was four sales whose purchases predated the 종합
-account's earliest certificate, and the 2018-2019 and 2020-2021 certificates
-closed all four — 태양, 파세코, ES큐브 (bought 2021-01-25 under its former name
-라이브플렉스) and SPDR S&P 500's full 10 shares.
-
-One hazard remains in the US sheet: its `미실현수익 정리` header carries
-`USD/KRW Rate | 1423.92` as a literal. That is the same shape as the FX rate
-this project left frozen at 1300 for 203 days while every won figure ran 13%
-light, and nothing watches it.
 
 ## What the certificates and the API each get wrong
 
@@ -480,18 +354,17 @@ against the data.
 장후 시간외종가 fills are absent from `/api/v1/orders` by design. Confirmed by
 토스증권 support on 2026-08-02, in answer to an inquiry raised by this pipeline.
 
-It was found the hard way: holdings and order history disagreed for two symbols
-— <KR_TICKER_A> by 60 shares, <KR_TICKER_B> by 10 — and the certificates showed three
-purchases the endpoint had no record of (<KR_TICKER_A> on 2025-09-19 and 2025-10-29,
-<KR_TICKER_B> on 2026-03-06). Collection was ruled out first, which is what made the
-inquiry answerable: `status=OPEN` returned 0, and the 3,474 CLOSED orders broke
-down as FILLED 3,440 / REJECTED 21 / CANCELED 13, so nothing was lost to
-pagination or to an unfinished order.
+It was found the hard way: holdings and order history disagreed for two symbols,
+and the certificates showed three purchases the endpoint had no record of.
+Collection was ruled out first, which is what made the inquiry answerable:
+`status=OPEN` returned 0, and every CLOSED order was accounted for as FILLED,
+REJECTED or CANCELED, so nothing was lost to pagination or to an unfinished
+order.
 
 The other half of that inquiry closed a hypothesis: `execution.filledQuantity`
 returns the real filled quantity regardless of order status, so a partial fill
-on a CANCELED or REJECTED order is reported normally. That four years produced
-no partial fills is a fact about the trading, not about the API.
+on a CANCELED or REJECTED order is reported normally. That these accounts produced
+no partial fills at all is a fact about the trading, not about the API.
 
 **The published spec does not say any of this**, which is why it cost an
 inquiry. Checked against the canonical document rather than the rendered site
@@ -533,30 +406,30 @@ Consequences, and they are structural rather than temporary:
 `filledAt` (identical, `settlementDate` null); the certificates report T+2. Match
 by symbol, quantity and unit price, never by date.
 
-**The statement aggregates, the API enumerates.** One statement line at 89,900
-covers four API orders of 10, 10, 15 and 100. A one-to-one row match produces
+**The statement aggregates, the API enumerates.** One statement line can cover
+four API orders of 10, 10, 15 and 100 shares. A one-to-one row match produces
 false discrepancies; reconcile on net quantity per symbol.
 
 **Transfers carry their cost across, lot by lot.** Toss `타사대체입고` arrives as
-one row per original lot with the acquisition price already on it — 포스코퓨처엠's
-six inbound lots weight-average to 204,637.50, which equals both the 미래에셋
-이체출고 unit price and the 잔고증명서's 매입단가 to the won. No cross-referencing
+one row per original lot with the acquisition price already on it — for one
+transferred position the six inbound lots weight-average to exactly the sending
+broker's 이체출고 unit price, and to the 잔고증명서's 매입단가, to the won. No cross-referencing
 of the sending broker is needed. A transfer is **not** a disposal and must not
 produce a realized gain.
 
 **Certificates use a different column per currency.** A KRW trade fills 거래금액
 and leaves 외화거래금액 empty; a USD trade does the reverse and names the currency
-in 통화코드. Reading only the KRW column books every foreign trade at zero — 496
-rows, including 247 dividends worth $1,180.96, were lost that way. Only trades
+in 통화코드. Reading only the KRW column books every foreign trade at zero — hundreds of
+rows, most of them dividends, were lost that way. Only trades
 carry 환율; dividends do not, so their won figure is left **empty rather than
 zero** for the ingest to convert from the historical FX table.
 
 **Quantity × unit price is not the cost.** A Korean bond quotes 단가 per 10,000
-of face value: a 700,000-face purchase at 7,116 cost ₩498,120, not ₩4.98 billion.
+of face value: a 700,000-face purchase at 7,116 costs ₩498,120, not ₩4.98 billion.
 Prefer the booked 거래금액 wherever the certificate fills it in.
 
 **A split needs no arithmetic.** The certificate has already restated per-lot
-unit costs across the inbound rows (SCHD: 19 @ 82.31017 out, 57 in over four
+unit costs across the inbound rows (19 units @ 82.31017 out, 57 in over four
 lots still summing to 1,563.90). Redistributing it independently emptied the
 position instead.
 
@@ -565,10 +438,10 @@ redeemed by 채권만기상환출고. Skipping them left a US Treasury in the ac
 year past maturity, which no statement contradicts; only a balance certificate
 would.
 
-**A lot held exactly 365 days is short-term.** "More than a year" is the rule and
-three ISA lots sit precisely on the boundary. Seventeen more sit within ten days
-of it, so the as-of date below is not a rounding detail — it decides tax term for
-a fifth of the lots in any given fortnight.
+**A lot held exactly 365 days is short-term.** "More than a year" is the rule, and lots
+land precisely on the boundary — with many more within days of it. The as-of date
+below is therefore not a rounding detail: it decides tax term for a meaningful
+share of the lots in any given fortnight.
 
 **Each account is as-of its own statement's coverage end, not its last trade and
 not the newest date any broker happens to have.** The three are different dates
@@ -576,27 +449,26 @@ and the difference moves holding periods:
 
 | Account | last trade | statement covers to | as-of used |
 | --- | --- | --- | --- |
-| 미래에셋(ISA) | 2026-07-10 | 2026-07-16 | **2026-07-16** |
-| 미래에셋(종합) | 2026-07-15 | 2026-07-16 | **2026-07-16** |
-| 삼성증권(주식보상) | 2026-07-16 | 2026-07-16 | **2026-07-16** |
-| 토스증권 | 2026-07-13 | 2026-07-15 | **2026-07-15** |
+| A — quiet for days before its statement | earlier | later | **its coverage end** |
+| B — traded right up to its statement | same day | same day | **its coverage end** |
+| C — a broker whose statement ran a day later | — | one day later | **its own, never C's for A and B** |
 
 Dating an account by its **last trade** would take six days of holding period
 away from 미래에셋 ISA for having been quiet — "nothing happened for six days" is
-something the certificate positively tells us, not a gap in it. Seven ISA lots
-fall back across the one-year line if you do.
+something the certificate positively tells us, not a gap in it. Lots sitting near the
+boundary fall back across the one-year line if you do.
 
 Dating every account by the **newest date any statement carries** is what the
 code did until 삼성증권 arrived, and adding one broker whose 거래내역확인서 ran a
-single day later reclassified three unrelated 미래에셋 lots from short-term to
-long-term. A broker should not be able to age another broker's lots.
+single day later reclassified unrelated lots at a different broker from
+short-term to long-term. A broker should not be able to age another broker's lots.
 
 The period is read from **inside** each document, in the three shapes the three
 brokers print it, never from the filename — the same reason
 `crypto_statement_periods_contiguous` reads declared periods, after a statement
 named 2025년1-7월 turned out to hold 2026-01-01~2026-07-31. One statement settles
-it outright: `samsung-rsu-transactions-<ACCOUNT_LAST5>.pdf` carries no period in its name
-at all. A coverage end that lands *before* a transaction in the same account is
+it outright: `samsung-rsu-transactions-<계좌 last 5>.pdf` carries no period in its
+name at all. A coverage end that lands *before* a transaction in the same account is
 refused and reported rather than used, since a misread period moves holding
 periods silently. `STOCK_KR_AS_OF` still pins every account to one date for
 reproducing a past run.
@@ -613,8 +485,8 @@ reproducing a past run.
 | US sheet still an input to reconcile | — | blocked on US realized |
 | `Note` mapping rules not migrated | — | open |
 | **Toss orders are fetched every 6h and never read.** `fetch-toss.mjs` pages `/api/v1/orders`, filters to `FILLED`, and writes them into `data/toss-snapshot.json`; the ingest reads only `holdings.items` from that file. So the trades between the newest 거래내역서 and now are already on disk, unused — which is the whole of the drift `toss_holdings_lots_provenance` reports | `toss_holdings_lots_provenance` | **P2** — open. See the note below before implementing |
-| **`toss_holdings_lots_provenance` does not say how old the statement is**, so a count of disagreements reads as a defect rather than as expected drift. On 2026-08-01 it reported 7 of 38, and all seven were a 19-day gap between the 2026-07-13 statement and the live snapshot | itself | **P2** — message only, no logic change |
-| **A zero-cost rights certificate looks like a position that vanished.** `신주인수권증서` has expiry as its normal end of life, so `<WARRANT_CODE>` (한화솔루션 51R, 15 units, ₩0) is reported as an open lot with no live position — a warning that returns every time rights are issued, which is how a check stops being read | `toss_holdings_lots_provenance` | **P2** — open |
+| **`toss_holdings_lots_provenance` does not say how old the statement is**, so a count of disagreements reads as a defect rather than as expected drift. One run reported 7 of 38, and all seven were the multi-week gap between the newest statement and the live snapshot | itself | **P2** — message only, no logic change |
+| **A zero-cost rights certificate looks like a position that vanished.** `신주인수권증서` has expiry as its normal end of life, so a zero-cost rights lot is reported as an open lot with no live position — a warning that returns every time rights are issued, which is how a check stops being read | `toss_holdings_lots_provenance` | **P2** — open |
 
 **Before wiring Toss orders in, read the Robinhood row above.** The same
 question was asked there in 2026-08 and the answer was to leave the CSVs
@@ -623,8 +495,8 @@ while dividends, transfers and corporate actions had no order endpoint at all,
 so ingesting orders would have added a second source of the same trades for very
 little. Toss is not identical — its orders come from a cron rather than an agent
 session, so they genuinely can be fresher than any statement — but the second
-half applies unchanged. The 2026-07-13 statement carries `타사대체입고`
-(a transfer in from 미래에셋) and `신주인수권증서입고` (a rights issue) beside
+half applies unchanged. A single statement can carry `타사대체입고`
+(a transfer in from another broker) and `신주인수권증서입고` (a rights issue) beside
 its `구매` rows, and an orders endpoint returns none of those. So orders can
 close the *trade* gap and the 거래내역서 stays the only source of everything
 else — which also means the merge needs a per-account floor and a rule for which

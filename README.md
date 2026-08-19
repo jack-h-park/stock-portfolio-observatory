@@ -317,9 +317,8 @@ source files.
 `.codex_sheet_payloads/*.tsv` — a spreadsheet dump taken by hand on 2026-07-15 —
 remains only for the accounts that have no parser yet, and certificate rows
 replace it per account rather than wholesale. See
-[docs/data-sources.md](docs/data-sources.md) for where each dataset comes from,
-what the Google Sheets are still for, and the conventions the certificates and
-the Toss API each get wrong.
+[docs/data-sources.md](docs/data-sources.md) for where each dataset comes from
+and the conventions the certificates and the Toss API each get wrong.
 
 Real source files and generated artifacts are private by default:
 
