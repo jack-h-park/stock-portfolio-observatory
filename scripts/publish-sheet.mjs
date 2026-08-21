@@ -38,13 +38,24 @@
 //
 // Dry-run by default. Nothing is written without --apply.
 //
+// WHAT THE SHEET KEEPS, AND WHAT IT NO LONGER DUPLICATES. Only the columns the
+// Observatory cannot serve: a sortable table of positions, priced live. The lot
+// breakdown that used to sit on the right — long, short and unknown term
+// quantities and a lot count — is gone from both markets. It duplicated
+// `tax_lots`, which `/positions/<market>/<ticker>` and `/reconciliation` already
+// present, and on the US sheet it was doing worse than duplicating: those four
+// columns were SUMIFS against a `Tax Lot Summary` tab frozen at 2026-07-15, so
+// generating the positions beside them would have put this morning's quantities
+// next to a five-week-old lot split. Dropping them removes the cross-tab
+// dependency entirely and leaves one generated tab per sheet.
+//
 // usage:
-//   node scripts/publish-kr-sheet.mjs [--apply] [--tab '<name>']
+//   node scripts/publish-sheet.mjs --market KR|US [--apply] [--tab '<name>']
 //
 // env:
 //   STOCK_SHEETS_SA_KEY  service-account JSON (default ~/.config/stock-portfolio-briefing/gcp-sheets-sa.json)
-//   STOCK_KR_SHEET_ID    spreadsheet id
-//   STOCK_KR_SHEET_TAB   target tab (default '미실현수익 정리 (자동)')
+//   STOCK_KR_SHEET_ID / STOCK_US_SHEET_ID    spreadsheet id per market
+//   STOCK_KR_SHEET_TAB / STOCK_US_SHEET_TAB  target tab
 //   STOCK_DB_PATH        SQLite database
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
@@ -55,7 +66,6 @@ import Database from 'better-sqlite3'
 
 const KEY_PATH = process.env.STOCK_SHEETS_SA_KEY
   || join(homedir(), '.config', 'stock-portfolio-briefing', 'gcp-sheets-sa.json')
-const SHEET_ID = process.env.STOCK_KR_SHEET_ID || '<KR_SHEET_ID>'
 const DB_PATH = process.env.STOCK_DB_PATH
   || join(homedir(), 'workspace', 'data', 'stock-management', 'outputs',
     'stock-portfolio-observatory', 'stock-portfolio-observatory.db')
@@ -67,9 +77,45 @@ const arg = (name, def) => {
   return i >= 0 && i + 1 < argv.length ? argv[i + 1] : def
 }
 const APPLY = has('--apply')
-const TAB = arg('--tab', process.env.STOCK_KR_SHEET_TAB || '미실현수익 정리 (자동)')
 
-const die = (msg) => { console.error(`[kr-sheet] ${msg}`); process.exit(2) }
+// What differs between the two sheets, and nothing else does.
+//
+// The quote lambda is the real difference. A Korean code carries no exchange, so
+// GOOGLEFINANCE needs one prefixed and KOSDAQ has to be tried after KRX — see
+// the note on FORMULAS below. A US ticker is its own symbol and needs neither.
+//
+// `hasName` is the other: `005930` does not say 삼성전자 and needs the column,
+// while `RKLB` names its own company and the US broker strings are long enough
+// to push the table sideways for nothing.
+const MARKETS = {
+  KR: {
+    label: 'kr-sheet',
+    sheetId: process.env.STOCK_KR_SHEET_ID || '<KR_SHEET_ID>',
+    tab: process.env.STOCK_KR_SHEET_TAB || '미실현수익 정리 (자동)',
+    hasName: true,
+    totalLabel: '합계',
+    receipt: 'kr-sheet-publish.json',
+    quote: (cell, attr) => `IFERROR(GOOGLEFINANCE("KRX:"&${cell}, "${attr}"),`
+      + `GOOGLEFINANCE("KOSDAQ:"&${cell}, "${attr}"))`,
+  },
+  US: {
+    label: 'us-sheet',
+    sheetId: process.env.STOCK_US_SHEET_ID || '<US_SHEET_ID>',
+    tab: process.env.STOCK_US_SHEET_TAB || '미실현수익 정리 (자동)',
+    hasName: false,
+    totalLabel: 'Total',
+    receipt: 'us-sheet-publish.json',
+    quote: (cell, attr) => `GOOGLEFINANCE(${cell}, "${attr}")`,
+  },
+}
+
+const MARKET = (arg('--market', 'KR') || '').toUpperCase()
+const CONFIG = MARKETS[MARKET]
+const LABEL = CONFIG?.label ?? 'sheet'
+const die = (msg) => { console.error(`[${LABEL}] ${msg}`); process.exit(2) }
+if (!CONFIG) die(`unknown --market ${MARKET || '(none)'} — expected KR or US`)
+const SHEET_ID = CONFIG.sheetId
+const TAB = arg('--tab', CONFIG.tab)
 
 // ---------------------------------------------------------------------------
 // Sheets REST, without the googleapis dependency
@@ -142,42 +188,73 @@ async function api(token, path, init = {}) {
 // `Current Price` — beside the number they exist to be compared against, since
 // a comparison two screens apart is not one.
 
+// The layout, declared once and lettered by position.
+//
+// Column letters used to be hard-coded (`E`, `G`, `I`…), which was fine while one
+// market existed and wrong the moment a second one dropped the `Name` column:
+// every formula would have addressed the cell one to its left. Each column now
+// names the ones it reads, and `col()` resolves the letter.
 const COLUMNS = [
-  'Account', 'Ticker', 'Name', 'Quantity', 'Average Unit Cost', 'Total Cost',
-  'Current Price', 'DB Price', 'Δ', 'PE', 'EPS',
-  'Unrealized G/L Amt.', 'Unrealized Gain/Loss (%)',
-  'Long-Term Qty', 'Short-Term Qty', 'Lot Count',
+  { header: 'Account', value: (h) => h.account },
+  { header: 'Ticker', value: (h) => String(h.ticker) },
+  ...(CONFIG.hasName ? [{ header: 'Name', value: (h) => h.name }] : []),
+  { header: 'Quantity', value: (h) => h.quantity },
+  { header: 'Average Unit Cost', formula: (r, c) => `=IFERROR(${c('Total Cost')}${r}/${c('Quantity')}${r},"")` },
+  { header: 'Total Cost', value: (h) => h.native_cost },
+  // KOSDAQ IS TRIED AFTER KRX on the Korean side. The hand-kept tab prefixed
+  // every ticker `KRX:` and had no failures, because the KOSDAQ names it now
+  // carries were not in it, and neither was the government bond the certificate
+  // parser turned up. Generated from the database they arrive, and a `KRX:`
+  // prefix does not resolve for a KOSDAQ code.
+  //
+  // AND THE FAILURE IS CONTAINED. `Current Price` once had no error wrapper, so
+  // an #N/A flowed through into Unrealized G/L and from there into SUM, and the
+  // portfolio's total gain read #N/A on account of one ticker. A quantity this
+  // app cannot price should leave a blank cell, not erase the figure beside it.
+  // A bond has no market symbol and never will, which is why the blank has to be
+  // survivable.
+  { header: 'Current Price', formula: (r, c) => `=IF(${c('Ticker')}${r}="","",IFERROR(${CONFIG.quote(`$${c('Ticker')}${r}`, 'price')},""))` },
+  { header: 'DB Price', value: (h) => h.native_price ?? '' },
+  // Δ IS A FORMULA ON PURPOSE. `Current Price` is live and `DB Price` is the last
+  // ingest, so the two legitimately disagree — and how much they disagree is the
+  // only visible sign that a refresh has stopped. Computed here it would freeze
+  // at write time and report nothing.
+  {
+    header: 'Δ',
+    formula: (r, c) => `=IF(OR(${c('Current Price')}${r}="",${c('DB Price')}${r}="",${c('DB Price')}${r}=0),"",`
+      + `IFERROR(TEXT(${c('Current Price')}${r}/${c('DB Price')}${r}-1,"0.00%"),""))`,
+  },
+  { header: 'PE', formula: (r, c) => `=IFERROR(TEXT(${CONFIG.quote(`$${c('Ticker')}${r}`, 'pe')},"0.00"),"")` },
+  { header: 'EPS', formula: (r, c) => `=IFERROR(${CONFIG.quote(`$${c('Ticker')}${r}`, 'eps')},"")` },
+  {
+    header: 'Unrealized G/L Amt.',
+    formula: (r, c) => `=IF(OR(${c('Quantity')}${r}="",${c('Total Cost')}${r}="",${c('Current Price')}${r}=""),"",`
+      + `IFERROR(${c('Current Price')}${r}*${c('Quantity')}${r}-${c('Total Cost')}${r},""))`,
+  },
+  {
+    header: 'Unrealized Gain/Loss (%)',
+    formula: (r, c) => `=IFERROR(TEXT(${c('Unrealized G/L Amt.')}${r}/${c('Total Cost')}${r},"0.00%"),"")`,
+  },
 ]
 
-// Formula columns, keyed by their letter. Taken from the hand-maintained tab —
-// these have priced this portfolio for a year — with two changes.
-//
-// KOSDAQ IS TRIED AFTER KRX. The old tab prefixed every ticker `KRX:` and had
-// no failures, because the KOSDAQ names it now carries were not in it, and
-// neither was the government bond the certificate parser turned up. Generated
-// from the database, they arrive — and a `KRX:` prefix does not resolve for a
-// KOSDAQ code, so the row returned #N/A.
-//
-// AND THE FAILURE IS CONTAINED. `Current Price` had no error wrapper, so an
-// #N/A there flowed through `OR(...,G="")` into Unrealized G/L and from there
-// into SUM, and the portfolio's total unrealized gain read #N/A on account of
-// one ticker. A quantity this app cannot price should leave a blank cell, not
-// erase the figure beside it. KR103502GA34 never will resolve — a bond has no
-// market symbol — which is exactly why the blank has to be survivable.
-const px = (r, attr) => `IFERROR(GOOGLEFINANCE("KRX:"&$B${r}, "${attr}"),`
-  + `GOOGLEFINANCE("KOSDAQ:"&$B${r}, "${attr}"))`
-
-const FORMULAS = {
-  E: (r) => `=IFERROR(F${r}/D${r},"")`,
-  G: (r) => `=IF($B${r}="","",IFERROR(${px(r, 'price')},""))`,
-  I: (r) => `=IF(OR(G${r}="",H${r}="",H${r}=0),"",IFERROR(TEXT(G${r}/H${r}-1,"0.00%"),""))`,
-  J: (r) => `=IFERROR(TEXT(${px(r, 'pe')},"0.00"),"")`,
-  K: (r) => `=IFERROR(${px(r, 'eps')},"")`,
-  L: (r) => `=IF(OR(D${r}="",F${r}="",G${r}=""),"",IFERROR(G${r}*D${r}-F${r},""))`,
-  M: (r) => `=IFERROR(TEXT(L${r}/F${r},"0.00%"),"")`,
+const letter = (i) => {
+  let n = i + 1
+  let out = ''
+  while (n > 0) {
+    out = String.fromCharCode(65 + ((n - 1) % 26)) + out
+    n = Math.floor((n - 1) / 26)
+  }
+  return out
 }
-
-const LAST_COL = 'S' // P is Lot Count; R/S carry the provenance block
+const LETTER_BY_HEADER = new Map(COLUMNS.map((c, i) => [c.header, letter(i)]))
+const col = (header) => {
+  const l = LETTER_BY_HEADER.get(header)
+  if (!l) die(`layout error: no column named ${header}`)
+  return l
+}
+// Provenance sits one blank column past the table.
+const PROV = letter(COLUMNS.length + 1)
+const LAST_COL = letter(COLUMNS.length + 2)
 
 // ---------------------------------------------------------------------------
 
@@ -189,69 +266,69 @@ function readHoldings() {
     die(`cannot open the database at ${DB_PATH} (${e.message})`)
   }
   const rows = db.prepare(`
-    select account, ticker, name, quantity, native_cost, native_price,
-           long_term_qty, short_term_qty, lot_count, as_of_date
+    select account, ticker, name, quantity, native_cost, native_price, as_of_date
       from holdings
-     where market = 'KR' and quantity > 0
+     where market = ? and quantity > 0
      order by account, ticker
-  `).all()
+  `).all(MARKET)
   db.close()
-  if (!rows.length) die('the database holds no Korean positions — refusing to publish an empty table')
+  if (!rows.length) die(`the database holds no ${MARKET} positions — refusing to publish an empty table`)
   return rows
 }
 
 function build(rows) {
-  // Value cells go up RAW so a KRX ticker keeps its leading zeros: USER_ENTERED
-  // would read 000660 as the number 660 and the GOOGLEFINANCE lookups built on
-  // $B would all resolve to nothing.
+  // Value cells go up RAW so a KRX code keeps its leading zeros: USER_ENTERED
+  // reads 000660 as the number 660, and every quote built on that cell then
+  // resolves to nothing.
   const raw = []
   const entered = []
   const first = 2
 
-  raw.push({ range: `'${TAB}'!A1:${LAST_COL}1`, values: [[...COLUMNS, '', 'DB As Of', '']] })
+  raw.push({
+    range: `'${TAB}'!A1:${LAST_COL}1`,
+    values: [[...COLUMNS.map((c) => c.header), '', 'DB As Of', '']],
+  })
 
   rows.forEach((h, i) => {
     const r = first + i
-    raw.push({
-      range: `'${TAB}'!A${r}:D${r}`,
-      values: [[h.account, String(h.ticker), h.name, h.quantity]],
+    COLUMNS.forEach((c, idx) => {
+      const range = `'${TAB}'!${letter(idx)}${r}`
+      if (c.value) raw.push({ range, values: [[c.value(h)]] })
+      else entered.push({ range, values: [[c.formula(r, col)]] })
     })
-    raw.push({ range: `'${TAB}'!F${r}`, values: [[h.native_cost]] })
-    raw.push({ range: `'${TAB}'!H${r}`, values: [[h.native_price ?? '']] })
-    raw.push({
-      range: `'${TAB}'!N${r}:P${r}`,
-      values: [[h.long_term_qty ?? '', h.short_term_qty ?? '', h.lot_count ?? '']],
-    })
-    for (const [col, make] of Object.entries(FORMULAS)) {
-      entered.push({ range: `'${TAB}'!${col}${r}`, values: [[make(r)]] })
-    }
   })
 
   // Total row. Summed by the sheet, not here, so it cannot disagree with the
   // rows above it after a manual filter or an edit.
   const total = first + rows.length
   const last = first + rows.length - 1
-  raw.push({ range: `'${TAB}'!A${total}`, values: [['합계']] })
-  entered.push({ range: `'${TAB}'!F${total}`, values: [[`=SUM(F${first}:F${last})`]] })
-  entered.push({ range: `'${TAB}'!L${total}`, values: [[`=SUM(L${first}:L${last})`]] })
-  entered.push({ range: `'${TAB}'!M${total}`, values: [[`=IFERROR(TEXT(L${total}/F${total},"0.00%"),"")`]] })
+  const cost = col('Total Cost')
+  const gl = col('Unrealized G/L Amt.')
+  const pct = col('Unrealized Gain/Loss (%)')
+  raw.push({ range: `'${TAB}'!A${total}`, values: [[CONFIG.totalLabel]] })
+  entered.push({ range: `'${TAB}'!${cost}${total}`, values: [[`=SUM(${cost}${first}:${cost}${last})`]] })
+  entered.push({ range: `'${TAB}'!${gl}${total}`, values: [[`=SUM(${gl}${first}:${gl}${last})`]] })
+  entered.push({
+    range: `'${TAB}'!${pct}${total}`,
+    values: [[`=IFERROR(TEXT(${gl}${total}/${cost}${total},"0.00%"),"")`]],
+  })
 
   // Provenance, off to the side. `DB As Of` is the ingest date the quantities
   // and DB Price came from; without it, Δ says two numbers differ but not which
   // one is the stale one.
+  //
   // The NEWEST as-of across the accounts, not the first row's. The rows are
-  // ordered by cost, so "first" meant whichever account happened to hold the
-  // largest position — and the staleness check downstream compares this against
-  // the same maximum, so a row-order accident would show as a permanent day of
-  // lag that no republish could clear.
+  // ordered by account, so "first" meant whichever account sorted first — and
+  // the staleness check downstream compares this against the same maximum, so a
+  // row-order accident would show as a permanent day of lag no republish clears.
   const asOf = rows.map((h) => h.as_of_date).filter(Boolean).sort().pop() ?? 'unknown'
   raw.push({
-    range: `'${TAB}'!R1:S4`,
+    range: `'${TAB}'!${PROV}1:${LAST_COL}4`,
     values: [
       ['DB As Of', asOf],
       ['Generated', new Date().toISOString().replace('T', ' ').slice(0, 19) + 'Z'],
-      ['Source', 'stock-portfolio-observatory · scripts/publish-kr-sheet.mjs'],
-      ['Note', '이 탭은 자동 생성됩니다. 손으로 고친 값은 다음 실행에 사라집니다.'],
+      ['Source', `stock-portfolio-observatory · scripts/publish-sheet.mjs --market ${MARKET}`],
+      ['Note', 'Generated. Anything edited here is overwritten on the next run.'],
     ],
   })
 
@@ -272,16 +349,16 @@ const target = tabs.find((p) => p.title === TAB)
 const rows = readHoldings()
 const { raw, entered, rowCount, asOf } = build(rows)
 
-console.error(`[kr-sheet] ${meta.properties.title}`)
-console.error(`[kr-sheet] identity  ${email}`)
-console.error(`[kr-sheet] tab       ${TAB}${target ? '' : '  (없음 — 생성 예정)'}`)
-console.error(`[kr-sheet] rows      ${rowCount} positions + 합계, DB as-of ${asOf}`)
-console.error(`[kr-sheet] writes    ${raw.length} raw range(s), ${entered.length} formula cell(s)`)
+console.error(`[${LABEL}] ${meta.properties.title}`)
+console.error(`[${LABEL}] identity  ${email}`)
+console.error(`[${LABEL}] tab       ${TAB}${target ? '' : '  (없음 — 생성 예정)'}`)
+console.error(`[${LABEL}] rows      ${rowCount} positions + 합계, DB as-of ${asOf}`)
+console.error(`[${LABEL}] writes    ${raw.length} raw range(s), ${entered.length} formula cell(s)`)
 
 if (!APPLY) {
-  console.error('[kr-sheet] dry-run — nothing written. Re-run with --apply.')
+  console.error(`[${LABEL}] dry-run — nothing written. Re-run with --apply.`)
   const sample = rows[0]
-  console.error(`[kr-sheet] sample    ${sample.account} ${sample.ticker} ${sample.name} `
+  console.error(`[${LABEL}] sample    ${sample.account} ${sample.ticker} ${sample.name} `
     + `qty=${sample.quantity} cost=${sample.native_cost} dbPrice=${sample.native_price}`)
   process.exit(0)
 }
@@ -293,7 +370,7 @@ if (!target) {
       requests: [{ addSheet: { properties: { title: TAB, gridProperties: { rowCount: 1000, columnCount: 26 } } } }],
     }),
   })
-  console.error(`[kr-sheet] created tab '${TAB}'`)
+  console.error(`[${LABEL}] created tab '${TAB}'`)
 }
 
 // Clear before writing: a shorter portfolio than last run would otherwise leave
@@ -308,7 +385,7 @@ for (const [data, valueInputOption] of [[raw, 'RAW'], [entered, 'USER_ENTERED']]
   })
 }
 
-console.error(`[kr-sheet] wrote ${rowCount} positions + 합계`)
+console.error(`[${LABEL}] wrote ${rowCount} positions + 합계`)
 
 // A receipt, so something other than a person can tell how old the sheet is.
 //
@@ -327,7 +404,7 @@ console.error(`[kr-sheet] wrote ${rowCount} positions + 합계`)
 // so a tab someone deleted or edited by hand still looks published. The failure
 // being guarded is "nobody ran the publisher", and for that the receipt is exact.
 const receiptPath = process.env.STOCK_KR_SHEET_RECEIPT_PATH
-  || new URL('../data/kr-sheet-publish.json', import.meta.url).pathname
+  || new URL(`../data/${CONFIG.receipt}`, import.meta.url).pathname
 try {
   mkdirSync(new URL('.', `file://${receiptPath}`).pathname, { recursive: true })
   writeFileSync(receiptPath, `${JSON.stringify({
@@ -337,7 +414,7 @@ try {
     tab: TAB,
     rows: rowCount,
   }, null, 2)}\n`)
-  console.error(`[kr-sheet] receipt ${receiptPath}`)
+  console.error(`[${LABEL}] receipt ${receiptPath}`)
 } catch (e) {
   // The tab is already written by now. A failed receipt must not read as a
   // failed publish — it costs the staleness check, not the sheet.
@@ -349,14 +426,22 @@ try {
 // from the total — a quiet understatement unless it is named here. GOOGLEFINANCE
 // evaluates asynchronously, so give it a moment before reading back.
 await new Promise((r) => setTimeout(r, 4000))
+// Read back only the two columns this needs, addressed by name rather than by
+// the B..G the Korean layout happened to have.
+const tickerCol = col('Ticker')
+const priceCol = col('Current Price')
 const back = await api(token,
-  `/values/${encodeURIComponent(`'${TAB}'!B2:G${rowCount + 1}`)}?valueRenderOption=UNFORMATTED_VALUE`)
+  `/values/${encodeURIComponent(`'${TAB}'!${tickerCol}2:${priceCol}${rowCount + 1}`)}?valueRenderOption=UNFORMATTED_VALUE`)
+const priceOffset = priceCol.charCodeAt(0) - tickerCol.charCodeAt(0)
 const unpriced = (back.values ?? [])
-  .filter((r) => r[5] === '' || r[5] == null || String(r[5]).includes('N/A'))
-  .map((r) => `${r[0]} ${r[1]}`)
+  .filter((r) => {
+    const v = r[priceOffset]
+    return v === '' || v == null || String(v).includes('N/A')
+  })
+  .map((r) => r[0])
 if (unpriced.length) {
-  console.error(`[kr-sheet] ${unpriced.length} position(s) unpriced — their gain is missing from 합계:`)
-  for (const u of unpriced) console.error(`[kr-sheet]   ${u}`)
+  console.error(`[${LABEL}] ${unpriced.length} position(s) unpriced — their gain is missing from the total:`)
+  for (const u of unpriced) console.error(`[${LABEL}]   ${u}`)
 } else {
-  console.error('[kr-sheet] every position priced')
+  console.error(`[${LABEL}] every position priced`)
 }

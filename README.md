@@ -200,10 +200,11 @@ split did not bump the version: no field changed shape or meaning, and a reader
 keying on `status !== "success"` simply stops distrusting data it should never
 have distrusted.
 
-## The Korean holdings sheet
+## The holdings sheets
 
-`pnpm publish:kr-sheet` writes the 국내 시트's `미실현수익 정리 (자동)` tab from the
-database. It is the second thing this app publishes rather than reads, and the
+`pnpm publish:kr-sheet` and `pnpm publish:us-sheet` each write a
+`미실현수익 정리 (자동)` tab from the database — one script,
+`scripts/publish-sheet.mjs --market KR|US`. It is the second thing this app publishes rather than reads, and the
 narrower one: a single tab, on demand, dry-run unless `--apply`.
 
 The sheet stays because it is the only surface that is a **table**. This app is
@@ -211,6 +212,17 @@ tailnet-only and the daily briefing is a fixed 08:00 document; neither sorts,
 filters, or takes a column of arithmetic beside it. What ended was maintaining it
 by hand — the other four Korean tabs were archived on 2026-08-04 once the parsers
 overtook the one hand-run extraction behind them.
+
+**Only what the Observatory cannot serve.** The tabs carry positions, cost, a
+live price and the gain that follows from it — and nothing else. The lot
+breakdown that used to sit on the right of both sheets (long, short and unknown
+term quantities, and a lot count) is gone: it duplicated `tax_lots`, which
+`/positions/<market>/<ticker>` and `/reconciliation` already present. On the US
+sheet those four columns were SUMIFS against a `Tax Lot Summary` tab frozen at
+2026-07-15, so generating positions beside them would have put this morning's
+quantities next to a five-week-old lot split. Dropping them leaves one generated
+tab per sheet and no cross-tab dependency. The detail tabs — dividends, 1099-B
+lots, tax-lot summary — are archived, as Korea's were.
 
 **The sheet keeps its formulas**, which is the design rather than a concession.
 GOOGLEFINANCE prices the position live, which no snapshot here can do, and PE/EPS
@@ -242,10 +254,10 @@ Not wired into `pnpm refresh`: it needs `STOCK_SHEETS_SA_KEY` on the host and
 Editor on the spreadsheet, and a scheduled writer should be a deliberate step
 rather than a side effect of an ingest.
 
-**So `kr_sheet_publish_fresh` watches whether anyone ran it.** The publisher
-leaves a receipt at `data/kr-sheet-publish.json` naming the database as-of it
-wrote from, and the ingest compares that against the as-of the database holds
-now, warning past `STOCK_KR_SHEET_MAX_LAG_DAYS` (7).
+**So `kr_sheet_publish_fresh` and `us_sheet_publish_fresh` watch whether anyone ran them.** The publisher
+leaves a receipt per market at `data/{kr,us}-sheet-publish.json` naming the
+database as-of it wrote from, and the ingest compares that against the as-of the database holds
+now, warning past `STOCK_SHEET_MAX_LAG_DAYS` (7).
 
 That check exists because the cost of publishing by hand came due: between
 2026-08-04 and 08-20 the tab sat unpublished through the pre-2022 certificates,

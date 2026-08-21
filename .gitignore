@@ -68,3 +68,4 @@ public/brand/avatar-jack-square.png
 # Agent tooling scratch — .claude/worktrees holds full repo checkouts
 .claude/
 data/kr-sheet-publish.json
+data/us-sheet-publish.json
