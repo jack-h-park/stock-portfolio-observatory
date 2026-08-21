@@ -4508,6 +4508,55 @@ check(
       'in case a vest or a dividend landed since then',
   'warning'
 )
+// The generated Korean tab is published by hand, and this is what notices when
+// nobody has. `publish-kr-sheet.mjs` leaves a receipt naming the database as-of
+// it wrote from; this compares that against the as-of the database holds now.
+//
+// The receipt is read rather than the sheet on purpose: checking the tab itself
+// would put a Google credential and a network call inside the ingest, for a
+// check. What that costs is precision about the tab's CURRENT contents — one
+// edited or deleted by hand still reads as published. The failure this guards is
+// nobody running the publisher, and for that the receipt is exact.
+//
+// Days rather than exact equality, because the database moves every six hours
+// and the publisher is a person: demanding they match would fire on the first
+// refresh after every publish, and a check that is always red is one nobody
+// reads. Seven days is the span the last lapse ran to sixteen — long enough that
+// a busy week does not trip it, short enough that a stale tab is caught before
+// anyone quotes it.
+const krSheetReceiptPath = process.env.STOCK_KR_SHEET_RECEIPT_PATH
+  || path.join(process.cwd(), 'data', 'kr-sheet-publish.json')
+const krSheetReceipt = fs.existsSync(krSheetReceiptPath)
+  ? (() => { try { return JSON.parse(fs.readFileSync(krSheetReceiptPath, 'utf8')) } catch { return null } })()
+  : null
+// The same maximum the publisher records, taken from the same rows it reads, so
+// the lag is zero right after a publish rather than off by whichever statement
+// happens to run a day later than the rest.
+const krCurrentAsOf = holdingRows
+  .filter((r) => r.market === 'KR')
+  .map((r) => r.as_of_date)
+  .filter(Boolean)
+  .sort()
+  .pop() || null
+const krSheetLagDays =
+  krSheetReceipt?.dbAsOf && krCurrentAsOf
+    ? (Date.parse(`${krCurrentAsOf}T00:00:00Z`) - Date.parse(`${krSheetReceipt.dbAsOf}T00:00:00Z`)) / 86_400_000
+    : null
+const krSheetMaxLagDays = Number(process.env.STOCK_KR_SHEET_MAX_LAG_DAYS || 7)
+check(
+  'kr_sheet_publish_fresh',
+  krSheetReceipt == null || krSheetLagDays == null || krSheetLagDays <= krSheetMaxLagDays,
+  krSheetReceipt == null
+    ? `no generated Korean tab published from this workspace (${krSheetReceiptPath} absent) — nothing to go stale`
+    : krSheetLagDays == null
+      ? `published from ${krSheetReceipt.dbAsOf ?? 'an unrecorded as-of'}; no current Korean as-of to compare against`
+      : krSheetLagDays <= krSheetMaxLagDays
+        ? `'${krSheetReceipt.tab}' published from ${krSheetReceipt.dbAsOf}, ${krSheetLagDays.toFixed(0)}d behind the database`
+        : `'${krSheetReceipt.tab}' still shows ${krSheetReceipt.dbAsOf} while the database is at ${krCurrentAsOf} ` +
+          `(${krSheetLagDays.toFixed(0)}d behind, ${krSheetReceipt.rows} row(s) as published) — run \`pnpm publish:kr-sheet --apply\``,
+  'warning'
+)
+
 check('reconcilable_holdings_vs_taxlots_quantity', quantityMismatches.length === 0, `${quantityMismatches.length} mismatch(es)`)
 check('reconcilable_holdings_vs_taxlots_cost_basis', costMismatches.length === 0, `${costMismatches.length} mismatch(es)`)
 check(

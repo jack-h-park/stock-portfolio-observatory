@@ -47,7 +47,7 @@
 //   STOCK_KR_SHEET_TAB   target tab (default '미실현수익 정리 (자동)')
 //   STOCK_DB_PATH        SQLite database
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { createSign } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -239,7 +239,12 @@ function build(rows) {
   // Provenance, off to the side. `DB As Of` is the ingest date the quantities
   // and DB Price came from; without it, Δ says two numbers differ but not which
   // one is the stale one.
-  const asOf = rows.find((h) => h.as_of_date)?.as_of_date ?? 'unknown'
+  // The NEWEST as-of across the accounts, not the first row's. The rows are
+  // ordered by cost, so "first" meant whichever account happened to hold the
+  // largest position — and the staleness check downstream compares this against
+  // the same maximum, so a row-order accident would show as a permanent day of
+  // lag that no republish could clear.
+  const asOf = rows.map((h) => h.as_of_date).filter(Boolean).sort().pop() ?? 'unknown'
   raw.push({
     range: `'${TAB}'!R1:S4`,
     values: [
@@ -304,6 +309,40 @@ for (const [data, valueInputOption] of [[raw, 'RAW'], [entered, 'USER_ENTERED']]
 }
 
 console.error(`[kr-sheet] wrote ${rowCount} positions + 합계`)
+
+// A receipt, so something other than a person can tell how old the sheet is.
+//
+// This tab is published by hand on purpose — a scheduled writer would make a
+// network write to a shared document a side effect of an ingest. The cost of
+// that choice is the one this file pays off: between 2026-08-04 and 08-20 the
+// tab sat unpublished through the pre-2022 certificates, the split
+// acquisition-date fix and the Korean dividend join, showing 48 positions where
+// the database had 50 and a 76.42% return where it was 90.18%. It said
+// `DB As Of 2026-07-31` the whole time, which is honest and useless: a date only
+// reads as stale next to the one it should have been.
+//
+// So the ingest compares them, and it reads this file rather than the sheet —
+// no credential and no network call is added to the ingest for a check. The
+// limit that buys: this records what was PUBLISHED, not what the tab holds now,
+// so a tab someone deleted or edited by hand still looks published. The failure
+// being guarded is "nobody ran the publisher", and for that the receipt is exact.
+const receiptPath = process.env.STOCK_KR_SHEET_RECEIPT_PATH
+  || new URL('../data/kr-sheet-publish.json', import.meta.url).pathname
+try {
+  mkdirSync(new URL('.', `file://${receiptPath}`).pathname, { recursive: true })
+  writeFileSync(receiptPath, `${JSON.stringify({
+    publishedAt: new Date().toISOString(),
+    dbAsOf: asOf,
+    sheetId: SHEET_ID,
+    tab: TAB,
+    rows: rowCount,
+  }, null, 2)}\n`)
+  console.error(`[kr-sheet] receipt ${receiptPath}`)
+} catch (e) {
+  // The tab is already written by now. A failed receipt must not read as a
+  // failed publish — it costs the staleness check, not the sheet.
+  console.error(`WARNING: published the tab but could not write the receipt (${e.message})`)
+}
 
 // Report what the sheet could not price. A blank `Current Price` is a position
 // whose row is otherwise complete and whose Unrealized G/L is therefore absent

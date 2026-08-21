@@ -242,6 +242,25 @@ Not wired into `pnpm refresh`: it needs `STOCK_SHEETS_SA_KEY` on the host and
 Editor on the spreadsheet, and a scheduled writer should be a deliberate step
 rather than a side effect of an ingest.
 
+**So `kr_sheet_publish_fresh` watches whether anyone ran it.** The publisher
+leaves a receipt at `data/kr-sheet-publish.json` naming the database as-of it
+wrote from, and the ingest compares that against the as-of the database holds
+now, warning past `STOCK_KR_SHEET_MAX_LAG_DAYS` (7).
+
+That check exists because the cost of publishing by hand came due: between
+2026-08-04 and 08-20 the tab sat unpublished through the pre-2022 certificates,
+the split acquisition-date fix and the Korean dividend join — showing 48
+positions where the database had 50, and a 76.42% return where it was 90.18%. It
+said `DB As Of 2026-07-31` the whole time, which is honest and useless. **A date
+only reads as stale next to the one it should have been**, and nothing was
+holding the two together.
+
+It reads the receipt rather than the sheet, so no Google credential and no
+network call enter the ingest for a check. The limit that buys: the receipt
+records what was *published*, not what the tab holds now, so a tab edited or
+deleted by hand still reads as published. The failure being guarded is nobody
+running the publisher, and for that the receipt is exact.
+
 ## macOS launchd deployment
 
 ### One machine is production. The other is not.
