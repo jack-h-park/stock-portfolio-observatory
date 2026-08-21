@@ -473,6 +473,27 @@ refused and reported rather than used, since a misread period moves holding
 periods silently. `STOCK_KR_AS_OF` still pins every account to one date for
 reproducing a past run.
 
+**Merrill groups its reinvestments into one dateless lot.** Its tax-lot export
+files JEPI, JEPQ, SCHD and SPHD each with a `Grouped Reinvestments` row carrying
+a quantity and no acquisition date — 2.5084, 9.3261, 2.5305 and 0.5636 shares.
+Every other row on that export has a date. A lot with no acquisition date has no
+holding period, so it cannot be classified long or short; the term reads
+`Unknown` rather than being guessed at, which is why those four positions show a
+term split no trade produced.
+
+**Chase's tax-lot CSV omits the day it was cut.** A VOO order filled on
+2026-07-15 was absent from the 2026-07-15 export, so its lot count came up three
+shares short of the position while the position itself was right. Same-day fills
+settle after the file is generated. Not a defect to chase — it means a tax-lot
+export dated today describes yesterday, and reconciling lots against a position
+on the export date will show a gap that closes itself tomorrow.
+
+Both were recorded by hand on the US sheet's `Tax Lot Summary` tab, in a `Note`
+column that also carried a `BRKB → BRK.B` mapping (now in
+`data/manual-mappings.json`) and four observations comparing a tax-lot source
+against that sheet's own quantities — which expired with the sheet. These two are
+facts about the brokers' exports and outlive it.
+
 ## Known gaps
 
 | Gap | Surfaced by | Status |
