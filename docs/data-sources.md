@@ -498,6 +498,7 @@ facts about the brokers' exports and outlive it.
 
 | Gap | Surfaced by | Status |
 | --- | --- | --- |
+| **Fidelity's tax lots exist in no file.** Its 2026-07-15 lot structure — SCHD 1.008 across 3 lots, QQQI 318 across 17 — was read off a screenshot and typed onto the US sheet's `Tax Lot Summary` tab, which is now `[보관]`. Nothing current depends on it: the account is empty, its QQQI having gone to Chase by ACAT on 2026-07-21. But a rebuild of any date before that cannot reproduce those lots, and no export exists to re-read | — | **archived tab only**; delete that tab and the record is gone |
 | Toss positions age with the newest 거래내역서, not with the market | `toss_positions_fresh` | credential-free floor; closes on an Open API snapshot |
 | No cron can regenerate the Robinhood snapshot — only an agent session with the MCP | `robinhood_snapshot_fresh` | open by design; the check is the mitigation |
 | No path exists to fetch a new 삼성증권 거래내역확인서 automatically — a vest can only be discovered by re-downloading | `samsung_statement_fresh` | open by design; the check is the mitigation |
