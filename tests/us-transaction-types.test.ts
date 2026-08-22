@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
-import { cpSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import Database from 'better-sqlite3'
+import { runIngest } from './ingest-harness'
 import { writeSheetPayloads } from './sheet-payloads'
 
 // Two broker codes that were being read as something they are not.
@@ -31,8 +31,6 @@ import { writeSheetPayloads } from './sheet-payloads'
 // down: dispatch the arrival branch on the type instead and a received position
 // silently starts its clock on the transfer date, turning a long-term gain into
 // a short-term one.
-
-const REPO_ROOT = path.resolve(import.meta.dirname, '..')
 
 const CHASE_HEADER =
   'Trade Date,Post Date,Settlement Date,Account Name,Account Number,Account Type,Type,Description,' +
@@ -74,22 +72,8 @@ function ingest(files: Record<string, string>) {
     writeFileSync(path.join(dir, 'us-transactions', name), body, 'utf8')
   }
   writeSheetPayloads(dir)
-  const repoData = mkdtempSync(path.join(tmpdir(), 'us-types-data-'))
-  cpSync(path.join(REPO_ROOT, 'data'), repoData, { recursive: true })
 
-  const dbPath = path.join(dir, 'out.db')
-  execFileSync(process.execPath, ['scripts/ingest-stock-data.mjs'], {
-    cwd: REPO_ROOT,
-    stdio: 'pipe',
-    env: {
-      ...process.env,
-      STOCK_DATA_DIR: dir,
-      STOCK_DB_PATH: dbPath,
-      STOCK_ROBINHOOD_SNAPSHOT_PATH: path.join(repoData, 'no-snapshot.json'),
-      STOCK_KR_STATEMENTS_DIR: path.join(dir, 'no-kr'),
-      STOCK_US_PDF_EVIDENCE_PATH: path.join(dir, 'no-evidence.json'),
-    },
-  })
+  const dbPath = runIngest(dir)
 
   const db = new Database(dbPath, { readonly: true })
   return {

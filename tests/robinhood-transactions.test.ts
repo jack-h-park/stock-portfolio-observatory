@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
-import { cpSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import Database from 'better-sqlite3'
+import { runIngest } from './ingest-harness'
 import { writeSheetPayloads } from './sheet-payloads'
 
 // Two things the Robinhood transaction CSV was carrying that the ingest was not
@@ -14,8 +14,6 @@ import { writeSheetPayloads } from './sheet-payloads'
 // broker's own order history, which for Mid-term matches these CSVs on all 702
 // Buy/Sell rows. That comparison is what says the reversal below reconstructs a
 // real sequence rather than merely a different one.
-
-const REPO_ROOT = path.resolve(import.meta.dirname, '..')
 
 const CSV_HEADER =
   '"Activity Date","Process Date","Settle Date","Instrument","Description","Trans Code","Quantity","Price","Amount"'
@@ -31,22 +29,8 @@ function ingest(csvBody: string) {
   mkdirSync(path.join(dir, 'us-transactions'), { recursive: true })
   writeFileSync(path.join(dir, 'us-transactions', 'robinhood-transactions-midterm-20260731.csv'), csvBody, 'utf8')
   writeSheetPayloads(dir)
-  const repoData = mkdtempSync(path.join(tmpdir(), 'rh-data-'))
-  cpSync(path.join(REPO_ROOT, 'data'), repoData, { recursive: true })
 
-  const dbPath = path.join(dir, 'out.db')
-  execFileSync(process.execPath, ['scripts/ingest-stock-data.mjs'], {
-    cwd: REPO_ROOT,
-    stdio: 'pipe',
-    env: {
-      ...process.env,
-      STOCK_DATA_DIR: dir,
-      STOCK_DB_PATH: dbPath,
-      STOCK_ROBINHOOD_SNAPSHOT_PATH: path.join(repoData, 'no-snapshot.json'),
-      STOCK_KR_STATEMENTS_DIR: path.join(dir, 'no-kr'),
-      STOCK_US_PDF_EVIDENCE_PATH: path.join(dir, 'no-evidence.json'),
-    },
-  })
+  const dbPath = runIngest(dir)
 
   const db = new Database(dbPath, { readonly: true })
   return {

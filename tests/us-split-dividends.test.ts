@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
-import { cpSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import Database from 'better-sqlite3'
+import { runIngest } from './ingest-harness'
 import { writeSheetPayloads } from './sheet-payloads'
 
 // The same defect #93 fixed on the Korea side, on the US one. The replay
@@ -20,8 +20,6 @@ import { writeSheetPayloads } from './sheet-payloads'
 // a split would otherwise book a payment several times over with every check
 // still green. The comment this replaces called the error "small and bounded",
 // which it is not — it is the whole factor.
-
-const REPO_ROOT = path.resolve(import.meta.dirname, '..')
 
 const ROBINHOOD_HEADER =
   '"Activity Date","Process Date","Settle Date","Instrument","Description","Trans Code","Quantity","Price","Amount"'
@@ -44,22 +42,8 @@ function ingest(rows: string[]) {
     'utf8'
   )
   writeSheetPayloads(dir)
-  const repoData = mkdtempSync(path.join(tmpdir(), 'us-split-data-'))
-  cpSync(path.join(REPO_ROOT, 'data'), repoData, { recursive: true })
 
-  const dbPath = path.join(dir, 'out.db')
-  execFileSync(process.execPath, ['scripts/ingest-stock-data.mjs'], {
-    cwd: REPO_ROOT,
-    stdio: 'pipe',
-    env: {
-      ...process.env,
-      STOCK_DATA_DIR: dir,
-      STOCK_DB_PATH: dbPath,
-      STOCK_ROBINHOOD_SNAPSHOT_PATH: path.join(repoData, 'no-snapshot.json'),
-      STOCK_KR_STATEMENTS_DIR: path.join(dir, 'no-kr'),
-      STOCK_US_PDF_EVIDENCE_PATH: path.join(dir, 'no-evidence.json'),
-    },
-  })
+  const dbPath = runIngest(dir)
 
   const db = new Database(dbPath, { readonly: true })
   return db

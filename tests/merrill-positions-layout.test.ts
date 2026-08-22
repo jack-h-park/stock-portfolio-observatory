@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
-import { cpSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import Database from 'better-sqlite3'
+import { runIngest } from './ingest-harness'
 import { writeSheetPayloads } from './sheet-payloads'
 import { readUsHoldingTickers } from '../scripts/source-files.mjs'
 
@@ -24,8 +24,6 @@ import { readUsHoldingTickers } from '../scripts/source-files.mjs'
 // holdings from it, and `readUsHoldingTickers` feeds the price fetch, which runs
 // FIRST and fails the whole refresh before the ingest can disagree with it.
 // That divergence is what took the pipeline down on 2026-08-11.
-
-const REPO_ROOT = path.resolve(import.meta.dirname, '..')
 
 // The real export's shape, trimmed to three positions and its cash sweep.
 const MERRILL_2026_08 = [
@@ -72,26 +70,8 @@ test('the ingest builds positions from it, with the basis under its new spelling
   const dir = mkdtempSync(path.join(tmpdir(), 'merrill-ingest-'))
   writeExport(dir)
   writeSheetPayloads(dir)
-  const repoData = mkdtempSync(path.join(tmpdir(), 'merrill-ingest-data-'))
-  cpSync(path.join(REPO_ROOT, 'data'), repoData, { recursive: true })
 
-  const dbPath = path.join(dir, 'out.db')
-  try {
-    execFileSync(process.execPath, ['scripts/ingest-stock-data.mjs'], {
-      cwd: REPO_ROOT,
-      stdio: 'pipe',
-      env: {
-        ...process.env,
-        STOCK_DATA_DIR: dir,
-        STOCK_DB_PATH: dbPath,
-        STOCK_ROBINHOOD_SNAPSHOT_PATH: path.join(repoData, 'no-snapshot.json'),
-        STOCK_KR_STATEMENTS_DIR: path.join(dir, 'no-kr'),
-        STOCK_US_PDF_EVIDENCE_PATH: path.join(dir, 'no-evidence.json'),
-      },
-    })
-  } catch (err) {
-    if (!(err as { status?: number }).status) throw err
-  }
+  const dbPath = runIngest(dir, { allowFailure: true })
 
   const db = new Database(dbPath, { readonly: true })
   const rows = db

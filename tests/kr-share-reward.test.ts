@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
-import { cpSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import Database from 'better-sqlite3'
+import { runIngest } from './ingest-harness'
 import { writeSheetPayloads } from './sheet-payloads'
 
 // Toss hands out shares for a 소수점 promotion and a stock quiz. They were typed
@@ -19,8 +19,6 @@ import { writeSheetPayloads } from './sheet-payloads'
 // decides what `isIncomeType()` counts, and then ASSERTS THE TWO AGREE. A type
 // added to one side and not the other fails the build — that check is the whole
 // reason this test reads the contract from the TSV side rather than mocking it.
-
-const REPO_ROOT = path.resolve(import.meta.dirname, '..')
 
 const TRANSACTION_COLUMNS = [
   'Date', 'Account', 'Type', 'Raw Type', 'Ticker', 'Name', 'Quantity',
@@ -55,29 +53,10 @@ function ingest(transactions: Record<string, string | number>[], dividends: Reco
   writeFileSync(path.join(kr, 'transactions.tsv'), tsv(TRANSACTION_COLUMNS, transactions), 'utf8')
   writeFileSync(path.join(kr, 'dividends.tsv'), tsv(DIVIDEND_COLUMNS, dividends), 'utf8')
 
-  const repoData = mkdtempSync(path.join(tmpdir(), 'kr-reward-data-'))
-  cpSync(path.join(REPO_ROOT, 'data'), repoData, { recursive: true })
-
   // A failing check exits non-zero, and two of the tests below deliberately
   // provoke one. The database is written either way — that is the point of the
   // checks table — so the exit status is recorded rather than thrown on.
-  const dbPath = path.join(dir, 'out.db')
-  try {
-    execFileSync(process.execPath, ['scripts/ingest-stock-data.mjs'], {
-    cwd: REPO_ROOT,
-    stdio: 'pipe',
-    env: {
-      ...process.env,
-      STOCK_DATA_DIR: dir,
-      STOCK_DB_PATH: dbPath,
-      STOCK_KR_STATEMENTS_DIR: kr,
-      STOCK_ROBINHOOD_SNAPSHOT_PATH: path.join(repoData, 'no-snapshot.json'),
-      STOCK_US_PDF_EVIDENCE_PATH: path.join(dir, 'no-evidence.json'),
-    },
-    })
-  } catch (err) {
-    if (!(err as { status?: number }).status) throw err
-  }
+  const dbPath = runIngest(dir, { env: { STOCK_KR_STATEMENTS_DIR: kr }, allowFailure: true })
 
   const db = new Database(dbPath, { readonly: true })
   return {
@@ -162,25 +141,7 @@ function ingestWithFindings(findings: Record<string, unknown>[]) {
     JSON.stringify({ generatedAt: '2026-08-05T00:00:00Z', findings, lockedStatements: [] }),
     'utf8'
   )
-  const repoData = mkdtempSync(path.join(tmpdir(), 'kr-findings-data-'))
-  cpSync(path.join(REPO_ROOT, 'data'), repoData, { recursive: true })
-  const dbPath = path.join(dir, 'out.db')
-  try {
-    execFileSync(process.execPath, ['scripts/ingest-stock-data.mjs'], {
-      cwd: REPO_ROOT,
-      stdio: 'pipe',
-      env: {
-        ...process.env,
-        STOCK_DATA_DIR: dir,
-        STOCK_DB_PATH: dbPath,
-        STOCK_KR_STATEMENTS_DIR: kr,
-        STOCK_ROBINHOOD_SNAPSHOT_PATH: path.join(repoData, 'no-snapshot.json'),
-        STOCK_US_PDF_EVIDENCE_PATH: path.join(dir, 'no-evidence.json'),
-      },
-    })
-  } catch (err) {
-    if (!(err as { status?: number }).status) throw err
-  }
+  const dbPath = runIngest(dir, { env: { STOCK_KR_STATEMENTS_DIR: kr }, allowFailure: true })
   const db = new Database(dbPath, { readonly: true })
   return db.prepare('select status, detail from validation_checks where name = ?').get('kr_statement_parse_notes') as
     | { status: string; detail: string }

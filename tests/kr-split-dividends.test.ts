@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
-import { cpSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import Database from 'better-sqlite3'
+import { runIngest } from './ingest-harness'
 import { writeSheetPayloads } from './sheet-payloads'
 
 // Apple's 2020-08-31 4-for-1, as 미래에셋 books it: an 액면분할출고 for the shares
@@ -21,8 +21,6 @@ import { writeSheetPayloads } from './sheet-payloads'
 // the split, is still in pre-split ones. Dividing ₩1,012 by 1 held share and
 // paying it onto a 4-share lot books ₩4,048 — a payment the account never
 // received. Both halves are asserted here, because either alone is wrong.
-
-const REPO_ROOT = path.resolve(import.meta.dirname, '..')
 
 const TRANSACTION_COLUMNS = [
   'Date', 'Account', 'Type', 'Raw Type', 'Ticker', 'Name', 'Quantity',
@@ -94,28 +92,9 @@ function ingest(realized: Record<string, string | number>[]) {
   writeFileSync(path.join(kr, 'dividends.tsv'), tsv(DIVIDEND_COLUMNS, [DIVIDEND]), 'utf8')
   writeFileSync(path.join(kr, 'realized.tsv'), tsv(REALIZED_COLUMNS, realized), 'utf8')
 
-  const repoData = mkdtempSync(path.join(tmpdir(), 'kr-split-data-'))
-  cpSync(path.join(REPO_ROOT, 'data'), repoData, { recursive: true })
-
-  const dbPath = path.join(dir, 'out.db')
-  try {
-    execFileSync(process.execPath, ['scripts/ingest-stock-data.mjs'], {
-      cwd: REPO_ROOT,
-      stdio: 'pipe',
-      env: {
-        ...process.env,
-        STOCK_DATA_DIR: dir,
-        STOCK_DB_PATH: dbPath,
-        STOCK_KR_STATEMENTS_DIR: kr,
-        STOCK_ROBINHOOD_SNAPSHOT_PATH: path.join(repoData, 'no-snapshot.json'),
-        STOCK_US_PDF_EVIDENCE_PATH: path.join(dir, 'no-evidence.json'),
-      },
-    })
-  } catch (err) {
-    // A failing check exits non-zero and still writes the database, which is
-    // the state one of these tests is asserting on.
-    if (!(err as { status?: number }).status) throw err
-  }
+  // A failing check exits non-zero and still writes the database, which is
+  // the state one of these tests is asserting on.
+  const dbPath = runIngest(dir, { env: { STOCK_KR_STATEMENTS_DIR: kr }, allowFailure: true })
 
   const db = new Database(dbPath, { readonly: true })
   return {

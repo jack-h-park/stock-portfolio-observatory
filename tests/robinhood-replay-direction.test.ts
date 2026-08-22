@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
-import { cpSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import Database from 'better-sqlite3'
+import { runIngest } from './ingest-harness'
 import { writeSheetPayloads } from './sheet-payloads'
 
 // Robinhood's holdings come from a LIVE MCP snapshot; its lots come from a
@@ -25,8 +25,6 @@ import { writeSheetPayloads } from './sheet-payloads'
 //
 // The real case that prompted this: SPCX read replay 1 vs holdings 6 after a
 // purchase on 2026-08-11 that the 2026-07-31 CSV could not contain.
-
-const REPO_ROOT = path.resolve(import.meta.dirname, '..')
 
 const ROBINHOOD_HEADER =
   '"Activity Date","Process Date","Settle Date","Instrument","Description","Trans Code","Quantity","Price","Amount"'
@@ -69,30 +67,12 @@ function ingest(held: number, boughtInCsv: number) {
     'utf8'
   )
   writeSheetPayloads(dir)
-  const repoData = mkdtempSync(path.join(tmpdir(), 'rh-direction-data-'))
-  cpSync(path.join(REPO_ROOT, 'data'), repoData, { recursive: true })
   const snapshotPath = path.join(dir, 'robinhood-snapshot.json')
   writeFileSync(snapshotPath, JSON.stringify(snapshot(held)), 'utf8')
 
-  const dbPath = path.join(dir, 'out.db')
-  try {
-    execFileSync(process.execPath, ['scripts/ingest-stock-data.mjs'], {
-      cwd: REPO_ROOT,
-      stdio: 'pipe',
-      env: {
-        ...process.env,
-        STOCK_DATA_DIR: dir,
-        STOCK_DB_PATH: dbPath,
-        STOCK_ROBINHOOD_SNAPSHOT_PATH: snapshotPath,
-        STOCK_KR_STATEMENTS_DIR: path.join(dir, 'no-kr'),
-        STOCK_US_PDF_EVIDENCE_PATH: path.join(dir, 'no-evidence.json'),
-      },
-    })
-  } catch (err) {
-    // An ERROR-severity check exits non-zero and still writes the database —
-    // which is the state the disposal test below is asserting on.
-    if (!(err as { status?: number }).status) throw err
-  }
+  // An ERROR-severity check exits non-zero and still writes the database —
+  // which is the state the disposal test below is asserting on.
+  const dbPath = runIngest(dir, { env: { STOCK_ROBINHOOD_SNAPSHOT_PATH: snapshotPath }, allowFailure: true })
 
   const db = new Database(dbPath, { readonly: true })
   return (name: string) =>
