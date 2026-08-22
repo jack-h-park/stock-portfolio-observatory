@@ -69,23 +69,6 @@
   --font-sans: var(--font-geist-sans, ui-sans-serif, system-ui, -apple-system, sans-serif);
   --font-mono: var(--font-geist-mono, ui-monospace, "SFMono-Regular", monospace);
 
-  /* ── --ai-* bridge ─────────────────────────────────────────────
-     Re-maps the existing --ai-* tokens to J-P values so that
-     existing components (ai-card, ai-button, ai-table, etc.)
-     automatically adopt J-P values without any JSX changes.
-     ─────────────────────────────────────────────────────────── */
-  --ai-accent:          var(--brand-blue);
-  --ai-accent-strong:   color-mix(in srgb, var(--brand-blue) 90%, transparent);
-  --ai-accent-soft:     color-mix(in srgb, var(--brand-blue) 25%, transparent);
-  --ai-accent-bg:       color-mix(in srgb, var(--brand-blue) 15%, transparent);
-  --ai-success:         var(--accent-success);
-  --ai-warning:         var(--accent-warning);
-  --ai-error:           var(--accent-danger);
-  --ai-radius-sm:       var(--radius-sm);
-  --ai-radius-md:       var(--radius-md);
-  --ai-radius-lg:       var(--radius-lg);
-  --ai-shadow-soft:     var(--shadow-popover);
-  --ai-shadow-elevated: var(--shadow-elevated);
 }
 
 /* ── Dark mode ──────────────────────────────────────────────────── */
@@ -124,16 +107,8 @@ body.dark-mode [data-theme="jp"] {
 }
 
 /* Card: compact border and shallow shadow */
-[data-theme="jp"] .ai-card {
-  border-width: 0.5px;
-  box-shadow: var(--shadow-card);
-}
 
 /* Buttons: weight 500 per §4.2 */
-[data-theme="jp"] .ai-button {
-  font-weight: 500;
-  font-family: var(--font-sans);
-}
 
 /* ── Gradient signature (§3.2) ──────────────────────────────────────
    Full gradient: once per surface — logo, page header stripe, primary CTA.
@@ -151,21 +126,6 @@ body.dark-mode [data-theme="jp"] {
 
 
 /* Page header card — gradient top stripe */
-[data-theme="jp"] .ai-page-header-card {
-  position: relative;
-  overflow: visible;
-}
-[data-theme="jp"] .ai-page-header-card::before {
-  content: "";
-  position: absolute;
-  top: -1px;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: var(--gradient-full);
-  border-radius: var(--radius-lg, 14px) var(--radius-lg, 14px) 0 0;
-  pointer-events: none;
-}
 
 /* Page header — short gradient brand tick above the title.
    Replaces the unused .ai-page-header-card stripe; PageHeader is a bare
@@ -216,48 +176,12 @@ body.dark-mode [data-theme="jp"] {
 }
 
 /* Gradient primary button — one per surface for the primary CTA */
-[data-theme="jp"] .ai-button-gradient {
-  background: var(--gradient-full);
-  color: #ffffff;
-  border-color: transparent;
-  box-shadow: none;
-}
-[data-theme="jp"] .ai-button-gradient:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-[data-theme="jp"] .ai-button-gradient:active:not(:disabled) {
-  filter: brightness(0.96);
-}
 
 /* ── Label / overline ───────────────────────────────────────────── */
-[data-theme="jp"] .ai-label-overline {
-  font-family: var(--font-sans);
-  letter-spacing: 0.10em;
-  font-weight: 500;
-}
-[data-theme="jp"] .ai-label-emphasis {
-  font-family: var(--font-sans);
-  font-weight: 500;
-}
 
 /* ── Stat display ───────────────────────────────────────────────── */
-[data-theme="jp"] .ai-stat__value {
-  font-family: var(--font-mono);
-  font-size: var(--t-h1);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-[data-theme="jp"] .ai-stat__label {
-  font-family: var(--font-mono);
-  letter-spacing: 0.10em;
-}
 
 /* ── Table header ───────────────────────────────────────────────── */
-[data-theme="jp"] .ai-table__header {
-  font-family: var(--font-sans);
-  letter-spacing: 0.10em;
-  font-size: var(--t-eyebrow);
-}
 
 /* ── Semantic type scale ────────────────────────────────────────────
    Use these classes instead of Tailwind font-size/weight combinations
@@ -343,7 +267,3 @@ body.dark-mode [data-theme="jp"] {
 }
 
 /* Inline code */
-[data-theme="jp"] .ai-inline-code {
-  font-family: var(--font-mono);
-  color: var(--brand-purple);
-}

@@ -106,52 +106,6 @@ export function Badge({ children, tone = 'neutral' }: { children: ReactNode; ton
   )
 }
 
-export function StatCard({
-  label,
-  value,
-  hint,
-  info,
-  tone = 'neutral',
-  accent,
-}: {
-  label: string
-  value: ReactNode
-  hint?: ReactNode
-  info?: ReactNode
-  tone?: Tone
-  /** Brand gradient accent bar across the top edge. Reserve for the single
-   *  headline metric in a KPI row (gradient guideline §3.2). */
-  accent?: boolean
-}) {
-  return (
-    <div className="stat-card relative min-w-0 rounded-md border border-line bg-card px-4 py-3 shadow-card">
-      {accent && (
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 h-[3px]"
-          style={{ backgroundImage: 'var(--gradient-full)', borderRadius: 'var(--radius-md) var(--radius-md) 0 0' }}
-        />
-      )}
-      <div className="flex items-center text-[12px] font-medium uppercase tracking-[0.08em] text-ink-3">
-        {label}
-        {info ? <InfoTooltip>{info}</InfoTooltip> : null}
-      </div>
-      <div
-        className={clsx('stat-card-value mt-1 max-w-full font-medium leading-tight tabular-nums', {
-          'text-ink': tone === 'neutral',
-          'text-info': tone === 'info',
-          'text-success': tone === 'success',
-          'text-warning': tone === 'warning',
-          'text-danger': tone === 'danger',
-        })}
-      >
-        {value}
-      </div>
-      {hint && <div className="mt-1 text-[12px] text-ink-3">{hint}</div>}
-    </div>
-  )
-}
-
 export function MetricField({
   label,
   value,
@@ -339,27 +293,10 @@ export function Button({
   )
 }
 
-// — RelativeTime ——————————————————————————————————————————————————————————
-// "3h ago" with the absolute timestamp on hover. The relTime + title={fmtDate}
-// pairing was repeated on every page that shows a timestamp.
-export function RelativeTime({
-  iso,
-  className,
-}: {
-  iso: string | null | undefined
-  className?: string
-}) {
-  return (
-    <span title={fmtDate(iso)} className={className}>
-      {relTime(iso)}
-    </span>
-  )
-}
-
 // — Table ————————————————————————————————————————————————————————————————
 // A thin shell over the raw <table>/<thead>/<tbody> markup that every data page
-// re-typed by hand. Header cells can be plain <Th> or the sortable <SortableTh>
-// from TableControls (both render a <th> sized to sit inside <Thead>'s row).
+// re-typed by hand. Sorting lives in the pages that need it; DataTable grows a
+// sortable header in P2.
 const CELL_ALIGN = { left: '', right: 'text-right', center: 'text-center' } as const
 
 export function Table({
@@ -426,32 +363,6 @@ export function Td({
   className?: string
 }) {
   return <td className={clsx('py-2 pr-3', CELL_ALIGN[align], className)}>{children}</td>
-}
-
-// — CodeBlock ——————————————————————————————————————————————————————————————
-// Monospace scrollable content panel — the <pre> block duplicated in the sensing
-// inbox, pipeline gate-0 expander, and publisher drift detail.
-export function CodeBlock({
-  children,
-  maxHeight = '20rem',
-  className,
-}: {
-  children: ReactNode
-  /** CSS max-height before the panel scrolls (default 20rem ≈ max-h-80). */
-  maxHeight?: string
-  className?: string
-}) {
-  return (
-    <pre
-      style={{ maxHeight }}
-      className={clsx(
-        'overflow-y-auto whitespace-pre-wrap break-words rounded border border-line bg-card px-3 py-2 font-mono text-[11px] leading-relaxed text-ink',
-        className
-      )}
-    >
-      {children}
-    </pre>
-  )
 }
 
 // — MetaRow / MetaItem ————————————————————————————————————————————————————

@@ -153,50 +153,6 @@ export function TrendBarChart({
   )
 }
 
-const PIE_COLORS = ['var(--accent-success)', 'var(--accent-info)', 'var(--brand-purple)', 'var(--brand-cyan)']
-
-export function AllocationPieChart({
-  data,
-  height = 190,
-}: {
-  data: { name: string; value: number; label: string }[]
-  height?: number
-}) {
-  const total = data.reduce((sum, item) => sum + item.value, 0)
-  return (
-    <ResponsiveContainer width="100%" height={height}>
-      <PieChart>
-        <Pie
-          data={data}
-          dataKey="value"
-          nameKey="name"
-          innerRadius="58%"
-          outerRadius="84%"
-          paddingAngle={2}
-          stroke="var(--bg-card)"
-          strokeWidth={3}
-        >
-          {data.map((_, i) => (
-            <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-          ))}
-        </Pie>
-        <Tooltip
-          contentStyle={{
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-default)',
-            borderRadius: 6,
-            fontSize: 12,
-          }}
-          formatter={(value: number, name: string, props: { payload?: { label?: string } }) => {
-            const pct = total > 0 ? (value / total) * 100 : 0
-            return [props.payload?.label ?? value.toLocaleString(), `${name} · ${pct.toFixed(1)}%`]
-          }}
-        />
-      </PieChart>
-    </ResponsiveContainer>
-  )
-}
-
 export function PortfolioTrendChart({
   data,
   dataKey,

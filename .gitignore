@@ -69,3 +69,9 @@ public/brand/avatar-jack-square.png
 .claude/
 data/kr-sheet-publish.json
 data/us-sheet-publish.json
+
+# Screenshot captures for the GUI-refactor regression check. Regenerated on
+# demand from a seeded sample database (scripts/snap-ui.mjs); never committed,
+# because a capture taken against the private database would put every holding
+# into an image file.
+tests/__screenshots__/
