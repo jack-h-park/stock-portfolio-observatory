@@ -10,6 +10,13 @@
   <array>
     <string>__PNPM__</string>
     <string>start</string>
+    <!-- Loopback only. The dashboards are reached through the iMac's HTTPS
+         gateway (pm/stock.jackpark.me), so binding every interface would leave
+         an unauthenticated plaintext copy open on the LAN and the tailnet.
+         `next start` reads the host from this flag alone — it has no HOSTNAME
+         env fallback — and pnpm forwards it as-is, with no `--` separator. -->
+    <string>-H</string>
+    <string>127.0.0.1</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
