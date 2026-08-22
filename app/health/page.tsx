@@ -1,7 +1,7 @@
 import { PageHeader } from '@/components/PageHeader'
 import { FreshnessRows } from '@/components/Freshness'
-import { Badge, Card, EmptyState, type Tone } from '@/components/ui'
-import { getAccountCoverage, getEvidenceReports, getMeta, getOperationalHealth, getOverview, getRefreshRuns, getSourceFiles, getValidationChecks } from '@/lib/adapters/portfolio-db'
+import { Badge, Card, EmptyState, marketTone, type Tone } from '@/components/ui'
+import { getAccountCoverage, getEvidenceReports, getMeta, getOperationalHealth, getOverview, getReconciliationReview, getRefreshRuns, getSourceFiles, getValidationChecks, type ReconciliationReview } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtDuration, fmtNumber, shortHash } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { getUiCopy } from '@/lib/ui-copy'
@@ -40,6 +40,42 @@ function displayRunStatus(status: string, labels: Record<string, string>) {
   return labels[status] ?? status
 }
 
+/**
+ * The adapter caps the break list at this many rows, so once the list is
+ * full a per-brokerage count is a floor, not a total.
+ */
+const POSITION_BREAK_CAP = 100
+
+type ReconciliationRow = {
+  key: string
+  market: string
+  brokerage: string
+  tone: Tone
+  label: string
+}
+
+/**
+ * One row per brokerage the reconciliation run covers, carrying the same
+ * break state /reconciliation shows — not a literal.
+ *
+ * A brokerage whose holdings have no tax lots behind them cannot be
+ * reconciled at all, and says so instead of passing by default.
+ */
+function reconciliationRows(review: ReconciliationReview): ReconciliationRow[] {
+  const capped = review.positionBreaks.length >= POSITION_BREAK_CAP
+  return review.coverage
+    .filter((c) => c.holding_positions > 0 || c.lot_positions > 0)
+    .map((c) => {
+      const breaks = review.positionBreaks.filter((b) => b.market === c.market && b.brokerage === c.brokerage)
+      const key = `${c.market}:${c.brokerage}`
+      if (c.lot_positions === 0) return { key, market: c.market, brokerage: c.brokerage, tone: 'warning', label: 'No lot detail' }
+      if (breaks.length === 0) return { key, market: c.market, brokerage: c.brokerage, tone: 'success', label: 'Matched' }
+      const tone: Tone = breaks.some((b) => b.status === 'quantity_break') ? 'danger' : 'warning'
+      const count = `${fmtNumber(breaks.length)}${capped ? '+' : ''}`
+      return { key, market: c.market, brokerage: c.brokerage, tone, label: `${count} ${breaks.length === 1 && !capped ? 'break' : 'breaks'}` }
+    })
+}
+
 export default async function HealthPage() {
   const language = await getLanguage()
   const uiCopy = getUiCopy(language)
@@ -53,6 +89,8 @@ export default async function HealthPage() {
   const operational = getOperationalHealth()
   const accountCoverage = getAccountCoverage()
   const refreshRuns = getRefreshRuns()
+  const reconciliation = reconciliationRows(getReconciliationReview())
+  const reconciliationBreaks = reconciliation.filter((row) => row.tone !== 'success').length
   const latestRefresh = refreshRuns[0]
   const failed = checks.filter((c) => c.status !== 'pass')
   const errors = failed.filter((c) => c.severity === 'error')
@@ -105,24 +143,32 @@ export default async function HealthPage() {
           <FreshnessRows items={operational.snapshots} language={language} />
         </Card>
 
-        <Card title="Reconciliation Coverage" info="Shows which holding summaries and tax-lot records are checked against each other.">
-          <ul className="space-y-2 text-[13px] text-ink-2">
-            <li className="flex items-center justify-between gap-3">
-              <span>Korea holdings ↔ tax lots</span>
-              <Badge tone="success">Matched</Badge>
-            </li>
-            <li className="flex items-center justify-between gap-3">
-              <span>Chase holdings ↔ tax lots</span>
-              <Badge tone="success">Matched</Badge>
-            </li>
-            <li className="flex items-center justify-between gap-3">
-              <span>Merrill holdings</span>
-              <Badge tone="warning">Summary-based</Badge>
-            </li>
-            <li className="text-[11px] leading-relaxed text-ink-3">
-              Merrill exports do not include reinvestment lot detail, so holdings use summary exports while detailed lots are preserved for review.
-            </li>
-          </ul>
+        <Card
+          title="Reconciliation Coverage"
+          info="Whether each brokerage's holding summary agrees with its tax-lot records in the latest ingest. Breaks are counted per position; the Reconciliation page lists them."
+          accent={reconciliationBreaks > 0}
+          action={<Link href="/reconciliation" className="text-[12px] font-medium text-info hover:underline">Open reconciliation</Link>}
+        >
+          {reconciliation.length === 0 ? (
+            <EmptyState>No holdings or tax lots to reconcile</EmptyState>
+          ) : (
+            <ul className="space-y-2 text-[13px] text-ink-2">
+              {reconciliation.map((row) => (
+                <li key={row.key} className="flex items-center justify-between gap-3">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <Badge tone={marketTone(row.market)}>{row.market}</Badge>
+                    <span className="truncate">{row.brokerage} holdings ↔ tax lots</span>
+                  </span>
+                  <Badge tone={row.tone}>{row.label}</Badge>
+                </li>
+              ))}
+              <li className="text-[11px] leading-relaxed text-ink-3">
+                Merrill exports positions under two layouts, and only one carries tax-lot detail. When the flat layout was the last download, its lots
+                drop out of the ingest and the row above reads “No lot detail” until the tax-lot view is exported again. Its reinvestments also arrive
+                as one dateless grouped lot per position, so the match is by quantity and cost, not by acquisition date.
+              </li>
+            </ul>
+          )}
         </Card>
       </div>
 
