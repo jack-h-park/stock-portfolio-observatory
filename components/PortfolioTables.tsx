@@ -717,7 +717,7 @@ export function LotsTable({ rows }: { rows: any[] }) {
       {selectedLots.length > 0 && (
         <div className="rounded-md border border-line-subtle bg-card px-3 py-2 text-[12px]">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={selectedLots[0].marketTone(market)}>{selectedLots[0].market}</Badge>
+            <Badge tone={marketTone(selectedLots[0].market)}>{selectedLots[0].market}</Badge>
             <span className="font-medium text-ink">{selectedLots[0].name}</span>
             <span className="font-mono text-[11px] text-ink-3">{selectedLots[0].ticker}</span>
             <span className="text-[11px] text-ink-3">{selectedLots.length} lot(s) selected</span>

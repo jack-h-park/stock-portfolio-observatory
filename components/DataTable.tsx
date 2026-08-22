@@ -1,7 +1,7 @@
 import { clsx } from 'clsx'
 import type { ReactNode } from 'react'
 import { EmptyState, InfoTooltip, Table } from '@/components/ui'
-import { COMMON_LABELS } from '@/lib/ui-copy'
+import { CommonLabel } from '@/components/LanguageProvider'
 
 export type DataTableColumn<Row = any> = {
   key: string
@@ -25,16 +25,16 @@ export function DataTable({
   columns,
   rows,
   caption,
-  emptyMessage = COMMON_LABELS.noRows,
+  emptyMessage,
   getRowKey,
 }: {
   columns: DataTableColumn[]
   rows: any[]
   caption?: string
-  emptyMessage?: string
+  emptyMessage?: ReactNode
   getRowKey?: (row: any, index: number) => string | number
 }) {
-  if (rows.length === 0) return <EmptyState>{emptyMessage}</EmptyState>
+  if (rows.length === 0) return <EmptyState>{emptyMessage ?? <CommonLabel label="noRows" />}</EmptyState>
 
   return (
     <Table scroll minWidth="48rem" className="border-separate border-spacing-0 text-[12px]">

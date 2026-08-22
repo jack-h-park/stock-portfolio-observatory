@@ -48,11 +48,22 @@ export function fmtDateTime(value: string | null | undefined) {
   return d.toLocaleString('en-US', { hour12: false })
 }
 
+/**
+ * A calendar date, without a time.
+ *
+ * This used to be a byte-for-byte copy of fmtDateTime, so every caller that
+ * wanted a date got a timestamp too — an account's download cutoff read
+ * "6/17/2026, 17:00:00", as if the hour were part of the boundary. The output
+ * is the ISO calendar date built from local parts (not toISOString(), which
+ * would shift the day across the timezone offset), which also matches how the
+ * rest of the dashboard prints market dates.
+ */
 export function fmtDate(value: string | null | undefined) {
   if (!value) return 'n/a'
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return value
-  return d.toLocaleString('en-US', { hour12: false })
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 export function relTime(value: string | null | undefined) {

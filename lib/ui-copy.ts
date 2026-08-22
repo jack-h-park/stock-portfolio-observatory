@@ -98,9 +98,3 @@ export const UI_COPY_BY_LANG = {
 export function getUiCopy(language: Language = 'en') {
   return UI_COPY_BY_LANG[language]
 }
-
-export const COMMON_LABELS = UI_COPY_BY_LANG.en.common
-export const FRESHNESS_LABELS = UI_COPY_BY_LANG.en.freshness.labels
-export const FRESHNESS_DESCRIPTIONS = UI_COPY_BY_LANG.en.freshness.descriptions
-export const PRIORITY_LABELS: Record<string, string> = UI_COPY_BY_LANG.en.priority
-export const RUN_STATUS_LABELS: Record<string, string> = UI_COPY_BY_LANG.en.runStatus

@@ -77,7 +77,7 @@ export function AutoRefresh({ seconds = 30 }: { seconds?: number }) {
     <span className="inline-flex items-center gap-1.5 text-[11px] tabular-nums text-ink-3">
       <span
         aria-hidden
-        className={clsx('h-1.5 w-1.5 rounded-full', isPending ? 'animate-pulse bg-info' : 'bg-success/70')}
+        className={clsx('h-1.5 w-1.5 rounded-full', isPending ? 'bg-info motion-safe:animate-pulse' : 'bg-success/70')}
       />
       {isPending
         ? copy.refreshing

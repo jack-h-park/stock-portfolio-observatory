@@ -5,7 +5,7 @@ import { TrendBarChart } from '@/components/charts'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
 import { getIncomeReview } from '@/lib/adapters/portfolio-db'
 import { fmtNumber } from '@/lib/format'
-import { createMoneyFormatter } from '@/lib/currency'
+import { convertMoney, createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
@@ -56,7 +56,9 @@ const COPY = {
     monthlyIncomeTrend: 'Monthly income trend',
     yearlyNativeTotals: 'Yearly native totals',
     chartAxis: 'KRW thousand',
+    chartAxisUsd: 'USD',
     chartNote: 'Values are KRW thousands after applying the configured FX snapshot.',
+    chartNoteUsd: 'Values are USD after applying the configured FX snapshot.',
     topIncomePositions: 'Top income positions',
     tickerlessIncomeRows: 'Tickerless income rows',
     allIncomeMapped: 'All income rows are ticker-mapped',
@@ -115,7 +117,9 @@ const COPY = {
     monthlyIncomeTrend: '월별 수익 추이',
     yearlyNativeTotals: '연도별 현지 통화 합계',
     chartAxis: '천 원',
+    chartAxisUsd: '달러',
     chartNote: '설정된 환율 스냅샷을 적용한 천 원 단위 값입니다.',
+    chartNoteUsd: '설정된 환율 스냅샷을 적용한 달러 값입니다.',
     topIncomePositions: '수익 상위 종목',
     tickerlessIncomeRows: '종목 미연결 수익 행',
     allIncomeMapped: '모든 수익 행이 종목에 연결되어 있습니다.',
@@ -140,7 +144,16 @@ const COPY = {
 
 export default async function IncomePage() {
   const language = await getLanguage()
-  const money = createMoneyFormatter(await getCurrencyPreferences())
+  const currencyPreferences = await getCurrencyPreferences()
+  const money = createMoneyFormatter(currencyPreferences)
+  // The chart plots the KRW base figure, so it has to convert on the same terms as
+  // every money value on the page — otherwise the axis stays ₩ while the cards read $.
+  const displayBaseValue = (value: number | null | undefined) =>
+    convertMoney(Number(value ?? 0), 'KRW', currencyPreferences.displayCurrency, currencyPreferences.usdKrwRate).value
+  const usd = currencyPreferences.displayCurrency === 'USD'
+  const chartDivisor = usd ? 1 : 1000
+  const chartPrefix = usd ? '$' : '₩'
+  const chartSuffix = usd ? '' : 'K'
   const copy = COPY[language]
   const glossary = getGlossary(language)
   const income = getIncomeReview()
@@ -270,16 +283,16 @@ export default async function IncomePage() {
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card title={copy.monthlyIncomeTrend}>
           <TrendBarChart
-            data={income.byMonth.map((row) => ({ month: row.month.slice(2), income: Math.round(row.base_income / 1000) }))}
+            data={income.byMonth.map((row) => ({ month: row.month.slice(2), income: Math.round(displayBaseValue(row.base_income) / chartDivisor) }))}
             xKey="month"
             yKey="income"
             height={300}
             color="var(--accent-success)"
-            yAxisPrefix="₩"
-            yAxisSuffix="K"
-            yAxisLabel={copy.chartAxis}
+            yAxisPrefix={chartPrefix}
+            yAxisSuffix={chartSuffix}
+            yAxisLabel={usd ? copy.chartAxisUsd : copy.chartAxis}
           />
-          <p className="mt-2 text-[11px] text-ink-3">{copy.chartNote}</p>
+          <p className="mt-2 text-[11px] text-ink-3">{usd ? copy.chartNoteUsd : copy.chartNote}</p>
         </Card>
 
         <Card title={copy.yearlyNativeTotals}>
