@@ -89,6 +89,20 @@ const steps = [
   { name: 'fetch:historical-prices', args: ['fetch:historical-prices'] },
   { name: 'ingest', args: ['ingest'] },
   { name: 'backfill:history', args: ['backfill:history'] },
+  // Last, and after the database is as fresh as this run gets it: these rewrite
+  // the two generated sheet tabs from `holdings`, so anything upstream (a late
+  // certificate, a corrected price) should already be in the database before
+  // the sheet is asked to reflect it.
+  //
+  // `optional`, on the same reasoning as fetch:toss above — the Google Sheets
+  // API is a dependency outside this machine, and a quota error or an expired
+  // service-account key is not evidence the portfolio data is wrong. The sheet
+  // simply serves its last published rows until the next successful run, and
+  // `kr_sheet_publish_fresh` / `us_sheet_publish_fresh` in the ingest's own
+  // validation checks are what notice and report the growing lag — a failure
+  // here must not mask itself by also failing the run that would surface that.
+  { name: 'publish:kr-sheet', args: ['publish:kr-sheet', '--apply'], optional: true },
+  { name: 'publish:us-sheet', args: ['publish:us-sheet', '--apply'], optional: true },
 ]
 
 const optionalSteps = new Set(steps.filter((step) => step.optional).map((step) => step.name))
