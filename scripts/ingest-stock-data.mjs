@@ -2887,8 +2887,15 @@ function usHoldingDays(from, to) {
   // of their own. A delivery has to be walked before the receipt that claims it
   // (an ACAT settles on one day at both ends), while a same-day buy still has to
   // precede its own sale.
+  //
+  // A move between two accounts at the same broker sits between the two: it
+  // carries no cost of its own, but it takes its lots from an account rather
+  // than from the in-transit pool, so it does not need a delivery walked first
+  // — and a sale in the receiving account on the transfer date has to find the
+  // shares that arrived that morning.
   const rank = (r) => {
     const costless = costOf(r) <= 0 && Math.abs(number(r.native_unit_price) ?? 0) <= 0
+    if (r.type === 'INTERNAL_TRANSFER') return 0.5
     if (r.type === 'SELL' || r.type === 'TRANSFER_OUT') return 1
     if (costless) return 2
     return 0
@@ -2897,15 +2904,111 @@ function usHoldingDays(from, to) {
     (a, b) => String(a.date).localeCompare(String(b.date)) || rank(a) - rank(b)
   )
 
-  const openLots = new Map()   // `${brokerage}|${ticker}` -> [lot]
+  // LOTS ARE MATCHED WITHIN AN ACCOUNT, not pooled across the brokerage.
+  //
+  // They were pooled, on the reasoning that a move between two accounts at one
+  // broker changes nothing. It changes the only two things a lot carries. The
+  // 2026-08-13 AMZN sale in `Robinhood Agentic` — an account funded by an
+  // internal transfer on 2026-06-08, whose only AMZN purchases were in June and
+  // July 2026 — came out with acquired_date 2025-07-16, 393 holding days and a
+  // LONG-TERM gain, because the pool handed it a `Robinhood Mid-term` lot. And
+  // having eaten it, Mid-term's own later sales would have been short of it.
+  //
+  // A sale can only consume what its own account bought. The brokerage stays
+  // the outer level of the key because in-transit lots and reconciliation both
+  // work there, and because a lot really can move between accounts — that is
+  // now walked explicitly rather than being true by accident.
+  const openLots = new Map()   // `${brokerage}|${account}|${ticker}` -> [lot]
+  // `${brokerage}|${ticker}` -> the account-level lot keys that compose it.
+  // The POSITION is still reported per brokerage: holdings name accounts by
+  // number ("1478") where transactions name them by strategy ("Mid-term"), so
+  // the two sides can only be reconciled at the broker. Both levels are kept
+  // rather than one replacing the other.
+  const lotKeysByPosition = new Map()
   const inTransit = new Map()  // ticker -> [lot] delivered out, awaiting a receive
   const lotsFor = (key) => {
     if (!openLots.has(key)) openLots.set(key, [])
     return openLots.get(key)
   }
+  const register = (posKey, key) => {
+    if (!lotKeysByPosition.has(posKey)) lotKeysByPosition.set(posKey, new Set())
+    lotKeysByPosition.get(posKey).add(key)
+  }
+  const positionQty = (posKey) => {
+    let total = 0
+    for (const key of lotKeysByPosition.get(posKey) ?? []) {
+      total += (openLots.get(key) ?? []).reduce((sum, lot) => sum + lot.qty, 0)
+    }
+    return total
+  }
   const transitFor = (ticker) => {
     if (!inTransit.has(ticker)) inTransit.set(ticker, [])
     return inTransit.get(ticker)
+  }
+
+  // Where an internal transfer's shares came FROM. Robinhood books the move as
+  // a pair of rows sharing a date and a ticker: the receiving leg carries the
+  // quantity, the delivering leg carries the quantity column empty. So the
+  // empty leg names the source account, and it is indexed here because the
+  // walk reaches the receiving leg with no way to look sideways at its twin.
+  const internalTransferSources = new Map()
+  for (const r of rows) {
+    if (r.type !== 'INTERNAL_TRANSFER') continue
+    const ticker = text(r.ticker)
+    if (!ticker) continue
+    if (Math.abs(number(r.quantity) ?? 0) > 1e-9) continue
+    const pairKey = `${r.brokerage}|${r.date}|${ticker}`
+    if (!internalTransferSources.has(pairKey)) internalTransferSources.set(pairKey, [])
+    internalTransferSources.get(pairKey).push(r.account)
+  }
+
+  /** Move lots between two accounts at one brokerage, FIFO and intact.
+   *
+   * Not a disposal and not an acquisition: the shares keep their cost and their
+   * acquisition date, which is what decides the tax term when they are finally
+   * sold. Booking them as an arrival would restart the holding period on the
+   * transfer date and open the lot at whatever the row said, which is nothing. */
+  const moveInternally = (r, ticker, qty, destKey, posKey) => {
+    const paired = (internalTransferSources.get(`${r.brokerage}|${r.date}|${ticker}`) ?? [])
+      .filter((account) => account !== r.account)
+    // Failing a paired leg, any sibling account at the same broker holding the
+    // ticker. The shares came from somewhere inside the brokerage, and a
+    // sibling's lot carries the right cost and the right date; guessing the
+    // account wrong is a smaller error than opening at zero.
+    const sourceKeys = paired.length
+      ? paired.map((account) => `${r.brokerage}|${account}|${ticker}`)
+      : [...(lotKeysByPosition.get(posKey) ?? [])].filter((key) => key !== destKey)
+    let remaining = qty
+    for (const sourceKey of sourceKeys) {
+      const held = openLots.get(sourceKey)
+      while (remaining > 1e-9 && held?.length) {
+        const lot = held[0]
+        const take = Math.min(lot.qty, remaining)
+        lotsFor(destKey).push({ ...lot, qty: take, account: r.account })
+        lot.qty -= take
+        remaining -= take
+        if (lot.qty <= 1e-9) held.shift()
+      }
+      if (remaining <= 1e-9) break
+    }
+    // The receiving leg prints its quantity ROUNDED — Robinhood to four places
+    // — so it routinely asks for a hair more than the source lots hold: four
+    // printed decimals against the six that moved. Shares existing only in the
+    // rounding are not shares, and opening them would let an internal transfer
+    // change the brokerage's position, which is the one thing it cannot do.
+    // Below the printed precision, and only once the source has actually been
+    // drained, the shortfall is dropped. At or above it something real is
+    // missing, and it is named rather than absorbed.
+    const drained = remaining < qty - 1e-12
+    if (remaining > 1e-6 && !(drained && remaining < 5e-4)) {
+      lotsFor(destKey).push({
+        acquired: r.date, qty: remaining, unit: 0, name: text(r.name), account: r.account,
+      })
+      usReplayNotes.push(
+        `${r.date} ${r.brokerage} ${ticker}: ${usRound(remaining, 6)} of ${usRound(qty, 6)} unit(s) arrived by ` +
+          `internal transfer with no lot in any sibling account (${r.type}/${text(r.raw_type)}) — opened at zero cost`
+      )
+    }
   }
 
   // A split or a share exchange restates the share count without any money
@@ -2915,24 +3018,33 @@ function usHoldingDays(from, to) {
   // blank-quantity leg for the old security and a quantity leg for the new one,
   // and that quantity IS the result (Lucid's 1-for-10 reverse split turned 71
   // shares into 7.1). Both reduce to "restate to a target quantity".
-  const restate = (key, target, label, date, ticker, brokerage) => {
+  const restate = (key, posKey, target, label, date, ticker, brokerage) => {
     const held = lotsFor(key)
     const current = held.reduce((sum, lot) => sum + lot.qty, 0)
     if (current <= 1e-9 || target <= 1e-9) {
       usReplayNotes.push(`${date} ${brokerage} ${ticker}: ${label} with no position to restate`)
       return
     }
+    const before = positionQty(posKey)
     const factor = target / current
     for (const lot of held) {
       lot.qty *= factor
       lot.unit /= factor
     }
-    if (!usSplitFactors.has(key)) usSplitFactors.set(key, [])
-    usSplitFactors.get(key).push({ date, factor })
+    // The factor RECORDED is the one the position moved by, not the one the
+    // account did, because the dividend attribution divides a brokerage-wide
+    // share count by it. A broker books the split against the account that
+    // holds the shares; where a sibling account holds the same ticker the two
+    // factors are different numbers, and only this one converts across it.
+    const after = positionQty(posKey)
+    if (before > 1e-9 && after > 1e-9) {
+      if (!usSplitFactors.has(posKey)) usSplitFactors.set(posKey, [])
+      usSplitFactors.get(posKey).push({ date, factor: after / before })
+    }
   }
 
   const snapshot = (key, date) => {
-    const total = (openLots.get(key) ?? []).reduce((sum, lot) => sum + lot.qty, 0)
+    const total = positionQty(key)
     if (!usPositionTimeline.has(key)) usPositionTimeline.set(key, [])
     const timeline = usPositionTimeline.get(key)
     const last = timeline[timeline.length - 1]
@@ -2943,24 +3055,36 @@ function usHoldingDays(from, to) {
   for (const r of ordered) {
     const ticker = text(r.ticker)
     if (!ticker || US_CASH_EQUIVALENT_TICKERS.has(ticker)) continue
-    const key = `${r.brokerage}|${ticker}`
+    // The account holds the lots; the brokerage holds the position.
+    const posKey = `${r.brokerage}|${ticker}`
+    const key = `${r.brokerage}|${r.account}|${ticker}`
+    register(posKey, key)
     const qty = Math.abs(number(r.quantity) ?? 0)
     const amount = costOf(r)
     const unitPrice = Math.abs(number(r.native_unit_price) ?? 0)
 
     if (r.type === 'STOCK_SPLIT') {
-      restate(key, lotsFor(key).reduce((s, l) => s + l.qty, 0) + qty, 'split', r.date, ticker, r.brokerage)
-      snapshot(key, r.date)
+      restate(key, posKey, lotsFor(key).reduce((s, l) => s + l.qty, 0) + qty, 'split', r.date, ticker, r.brokerage)
+      snapshot(posKey, r.date)
       continue
     }
     if (r.type === 'CORPORATE_ACTION') {
-      if (qty > 0) restate(key, qty, text(r.raw_type) || 'corporate action', r.date, ticker, r.brokerage)
-      snapshot(key, r.date)
+      if (qty > 0) restate(key, posKey, qty, text(r.raw_type) || 'corporate action', r.date, ticker, r.brokerage)
+      snapshot(posKey, r.date)
       continue
     }
-    // Lots are pooled per brokerage, so a move between two accounts at the same
-    // broker changes nothing and needs no handling of its own.
-    if (r.type === 'INTERNAL_TRANSFER' || qty <= 0) continue
+    // A move between two accounts at one broker used to need no handling: the
+    // pool it moved inside was the unit of matching. Now that the account is,
+    // the lots have to actually make the trip. The delivering leg carries no
+    // quantity and does nothing here — the receiving leg pulls from it.
+    if (r.type === 'INTERNAL_TRANSFER') {
+      if (qty > 0) {
+        moveInternally(r, ticker, qty, key, posKey)
+        snapshot(posKey, r.date)
+      }
+      continue
+    }
+    if (qty <= 0) continue
 
     if (r.type === 'BUY' || r.type === 'REINVEST' || r.type === 'TRANSFER_IN') {
       if (amount <= 0 && unitPrice <= 0) {
@@ -3012,7 +3136,7 @@ function usHoldingDays(from, to) {
           acquired: r.date, qty, unit: cost / qty, name: text(r.name), account: r.account,
         })
       }
-      snapshot(key, r.date)
+      snapshot(posKey, r.date)
       continue
     }
 
@@ -3071,7 +3195,7 @@ function usHoldingDays(from, to) {
             `matching open lot (${r.type}/${text(r.raw_type)})`
         )
       }
-      snapshot(key, r.date)
+      snapshot(posKey, r.date)
     }
   }
 
@@ -3090,10 +3214,13 @@ function usHoldingDays(from, to) {
   // anything; that gap is already reported by `us_brokerage_positions_ingested`
   // and would otherwise be counted again here as one mismatch per position.
   const reconcilableBrokerages = new Set([...usHoldingQty.keys()].map((k) => k.split('|')[0]))
+  // Summed back up to the brokerage, since that is the level holdings can be
+  // compared at — the lots below it are per account, the export above it is
+  // per account number, and the two namings never meet.
   const usReplayQty = new Map()
-  for (const [key, lots] of openLots) {
-    const total = lots.reduce((sum, lot) => sum + lot.qty, 0)
-    if (total > 1e-9) usReplayQty.set(key, total)
+  for (const posKey of lotKeysByPosition.keys()) {
+    const total = positionQty(posKey)
+    if (total > 1e-9) usReplayQty.set(posKey, total)
   }
   // A holdings export is a photograph, and the transactions run past it. Chase
   // stamped its 2026-07-31 tax-lot file as of 07-30 and a 5-share AAPL buy
@@ -5170,6 +5297,58 @@ check(
     ? `${usRealizedRows.length} US realized lot(s) replayed, every disposal matched to an opening lot`
     : `${usUnmatchedDisposals.length} disposal(s) with no opening lot: ${usUnmatchedDisposals.slice(0, 3).join('; ')}`
 )
+
+// An account cannot sell a lot it acquired before it existed.
+//
+// That is the invariant the pooled-per-brokerage matching broke, and it is one
+// line of arithmetic to state: the 2026-08-13 AMZN sale in `Robinhood Agentic`
+// reported an acquisition on 2025-07-16, ten months before the account's first
+// transaction. Nothing else caught it — the position reconciled, the disposal
+// matched a lot, the totals were right at the brokerage level, and the only
+// wrong figures were the basis, the holding period and the tax term.
+//
+// A ticker that ARRIVED in the account carries a legitimately older date: an
+// ACAT receive or a move from a sibling account brings its acquisition date
+// with it, which is the entire point of not booking those as purchases. So
+// those tickers are excluded per account rather than the check being softened
+// — what remains is a lot the account can only have got from somewhere it
+// never traded with.
+{
+  const accountFirstTransaction = new Map()
+  const transferredIn = new Set()
+  for (const r of transactionRows) {
+    if (r.market !== 'US' || !r.date) continue
+    const account = `${r.brokerage}|${r.account}`
+    const seen = accountFirstTransaction.get(account)
+    if (!seen || r.date < seen) accountFirstTransaction.set(account, r.date)
+    if (r.type === 'TRANSFER_IN' || r.type === 'INTERNAL_TRANSFER') {
+      const ticker = text(r.ticker)
+      if (ticker) transferredIn.add(`${account}|${ticker}`)
+    }
+  }
+  const impossible = usRealizedRows.filter((lot) => {
+    if (!lot.acquired_date) return false
+    const account = `${lot.brokerage}|${lot.account}`
+    const first = accountFirstTransaction.get(account)
+    if (!first || lot.acquired_date >= first) return false
+    return !transferredIn.has(`${account}|${lot.ticker}`)
+  })
+  check(
+    'us_realized_lots_predate_no_account',
+    impossible.length === 0,
+    impossible.length === 0
+      ? `every replayed US lot was acquired after its account's first transaction`
+      : `${impossible.length} realized lot(s) acquired before the selling account existed: ` +
+        impossible
+          .slice(0, 5)
+          .map(
+            (lot) =>
+              `${lot.account} ${lot.ticker} sold ${lot.sold_date} claims ${lot.acquired_date}, ` +
+              `but the account's first transaction is ${accountFirstTransaction.get(`${lot.brokerage}|${lot.account}`)}`
+          )
+          .join('; ')
+  )
+}
 
 // Shares that arrived carrying no cost — neither on the row nor from a
 // delivering broker — sit at zero cost until the gap is closed. Harmless while
