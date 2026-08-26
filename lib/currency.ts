@@ -18,14 +18,26 @@ export const DISPLAY_CURRENCY_LABELS: Record<DisplayCurrency, string> = {
   USD: '달러',
 }
 
+/**
+ * The minus sign goes before the symbol, not after it.
+ *
+ * These used to interpolate the signed number straight after the symbol, so a
+ * loss rendered as "₩-15,730,402" — the sign buried a character deep, where it
+ * is easy to miss on a dense table row. Formatting the magnitude and placing
+ * the sign in front is both conventional and easier to scan, and it lets
+ * <Signed> prefix a "+" the same way for the other direction.
+ */
 export function formatKrw(value: number | null | undefined) {
   const n = Number(value ?? 0)
-  return `₩${Math.round(n).toLocaleString('ko-KR')}`
+  const rounded = Math.round(n)
+  return `${rounded < 0 ? '-' : ''}₩${Math.abs(rounded).toLocaleString('ko-KR')}`
 }
 
 export function formatUsd(value: number | null | undefined) {
   const n = Number(value ?? 0)
-  return `$${n.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`
+  const body = Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2 })
+  // -0.004 rounds to 0.00; printing "-$0.00" would claim a loss that is not there.
+  return `${n < 0 && Number(body.replace(/,/g, '')) !== 0 ? '-' : ''}$${body}`
 }
 
 export function convertMoney(value: number, fromCurrency: string, displayCurrency: DisplayCurrency, usdKrwRate: number | null) {

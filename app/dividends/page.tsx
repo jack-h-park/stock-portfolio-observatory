@@ -2,14 +2,11 @@ import { PageHeader } from '@/components/PageHeader'
 import { Button, Card } from '@/components/ui'
 import { TrendBarChart } from '@/components/charts'
 import { getDividendByYear } from '@/lib/adapters/portfolio-db'
-import { fmtNumber } from '@/lib/format'
+import { dividendChartAmount, fmtNumber } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 
 export const dynamic = 'force-dynamic'
-
-const dividendChartAmount = (currency: string, amount: number) =>
-  currency === 'KRW' ? Number((amount / 1000).toFixed(1)) : Number(amount.toFixed(2))
 
 export default async function DividendsPage() {
   const money = createMoneyFormatter(await getCurrencyPreferences())

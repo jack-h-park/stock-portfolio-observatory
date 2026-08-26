@@ -1,5 +1,5 @@
-import { Badge, Card, EmptyState, InfoTooltip, MetricField, marketTone } from '@/components/ui'
-import { fmtKrw, fmtNumber } from '@/lib/format'
+import { Badge, Card, EmptyState, InfoTooltip, MetricField, Signed, marketTone } from '@/components/ui'
+import { fmtKrw, fmtNumber, fmtPct } from '@/lib/format'
 import {
   buildTaxPlan,
   summarizeTaxCandidates,
@@ -8,7 +8,7 @@ import {
 } from '@/lib/tax-planning'
 import { scenarioFromTaxYearProfile, type FilingScenario, type TaxPolicy, type TaxYearProfile } from '@/lib/tax-policy'
 import type { TaxPlanningCopy } from './copy'
-import { marketAmount, pct, sameKrw, signedKrw } from './view-utils'
+import { marketAmount, sameKrw } from './view-utils'
 
 type OpportunityRow = {
   year: number
@@ -309,7 +309,7 @@ export function DecisionSummary({
           <MetricField
             label={hasPlanningTarget ? copy.opportunity.estimatedTax : copy.opportunity.lossHarvest}
             value={hasPlanningTarget ? fmtKrw(bestScenario?.summary.taxKrw ?? 0) : fmtKrw(opportunities.lossHarvestKrw)}
-            hint={hasPlanningTarget ? pct(bestScenario?.summary.effectiveTaxRatePct) : opportunities.bestLoss ? `${opportunities.bestLoss.year} ${opportunities.bestLoss.market}` : copy.opportunity.modeledLossInventory}
+            hint={hasPlanningTarget ? fmtPct(bestScenario?.summary.effectiveTaxRatePct) : opportunities.bestLoss ? `${opportunities.bestLoss.year} ${opportunities.bestLoss.market}` : copy.opportunity.modeledLossInventory}
             tone={!hasPlanningTarget ? 'info' : (bestScenario?.summary.taxKrw ?? 0) > 0 ? 'warning' : 'success'}
             valueClassName="text-[18px]"
           />
@@ -509,7 +509,7 @@ function OpportunityTable({
                   <td className="py-3 pr-4 font-mono text-ink">{row.yearLabel}</td>
                   <td className="py-3 pr-4"><Badge tone={marketTone(row.market)}>{row.market}</Badge></td>
                   <td className="py-3 pr-4"><Badge tone="neutral">{row.filingScenario}</Badge></td>
-                  <td className="py-3 pr-4 text-right tabular-nums">{signedKrw(row.netGainKrw)}</td>
+                  <td className="py-3 pr-4 text-right tabular-nums"><Signed value={row.netGainKrw} format={fmtKrw} /></td>
                   <td className="py-3 pr-4 text-right tabular-nums text-danger">{row.lossHarvestKrw > 0 ? fmtKrw(row.lossHarvestKrw) : '₩0'}</td>
                   <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(row.usTaxIfAllSoldKrw)}</td>
                   <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(row.krTaxIfAllSoldKrw)}</td>

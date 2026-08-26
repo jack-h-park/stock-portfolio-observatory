@@ -2,9 +2,9 @@ import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { FreshnessRows } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, MetricHeroCard, Signed, marketTone } from '@/components/ui'
 import { getOperationalHealth, getPortfolioReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
-import { fmtNumber, fmtQuantity } from '@/lib/format'
+import { fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
@@ -12,19 +12,6 @@ import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
 
 export const dynamic = 'force-dynamic'
-
-function pct(value: number | null | undefined) {
-  return value == null ? 'n/a' : `${fmtNumber(value, 2)}%`
-}
-
-function signedMoney(
-  value: number | null | undefined,
-  currency: string,
-  money: (value: number | null | undefined, currency?: string | null | undefined) => string
-) {
-  const numeric = Number(value ?? 0)
-  return <span className={numeric >= 0 ? 'text-success' : 'text-danger'}>{value == null ? 'n/a' : money(value, currency)}</span>
-}
 
 function PositionLink({ row }: { row: ReviewPosition }) {
   return (
@@ -162,13 +149,13 @@ function PositionTable({
           key: 'base_unrealized_gl',
           label: mode === 'term' ? copy.columns.shortPct : copy.columns.baseGl,
           align: 'right',
-          render: (r) => (mode === 'term' ? pct(r.short_term_ratio) : signedMoney(r.base_unrealized_gl, 'KRW', money)),
+          render: (r) => (mode === 'term' ? fmtPct(r.short_term_ratio) : <Signed value={r.base_unrealized_gl} format={(m) => money(m, 'KRW')} />),
         },
         {
           key: 'base_unrealized_gl_pct',
           label: mode === 'missing' ? copy.columns.lots : copy.columns.glPct,
           align: 'right',
-          render: (r) => (mode === 'missing' ? fmtNumber(r.lot_count) : pct(r.base_unrealized_gl_pct)),
+          render: (r) => (mode === 'missing' ? fmtNumber(r.lot_count) : fmtPct(r.base_unrealized_gl_pct)),
         },
       ]}
     />
@@ -209,13 +196,13 @@ export default async function ReviewPage() {
               label={copy.unrealizedGl}
               value={money(review.totals.base_unrealized_gl)}
               info={glossary.unrealizedGl.description}
-              hint={pct(totalReturnPct)}
+              hint={fmtPct(totalReturnPct)}
               tone={review.totals.base_unrealized_gl >= 0 ? 'success' : 'danger'}
               valueClassName="text-[18px]"
             />
             <MetricField
               label={copy.top5Concentration}
-              value={pct(review.concentration.top5Share)}
+              value={fmtPct(review.concentration.top5Share)}
               info={glossary.concentration.description}
               hint={copy.concentrationHint}
               tone={review.concentration.top5Share >= 50 ? 'warning' : 'neutral'}
@@ -266,7 +253,7 @@ export default async function ReviewPage() {
                   <div className="font-medium tabular-nums text-ink">{money(row.base_market_value)}</div>
                   <div className="text-[11px] text-ink-3">{copy.positionCount(fmtNumber(row.position_count))}</div>
                 </div>
-                <div className="text-right">{signedMoney(row.base_unrealized_gl, 'KRW', money)}</div>
+                <div className="text-right"><Signed value={row.base_unrealized_gl} format={(m) => money(m, 'KRW')} /></div>
               </li>
             ))}
           </ul>
@@ -276,15 +263,15 @@ export default async function ReviewPage() {
           <div className="grid gap-3 text-[12px]">
             <div className="flex items-center justify-between">
               <span className="text-ink-3">Top 1</span>
-              <span className="font-medium tabular-nums text-ink">{pct(review.concentration.top1Share)}</span>
+              <span className="font-medium tabular-nums text-ink">{fmtPct(review.concentration.top1Share)}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-ink-3">Top 5</span>
-              <span className="font-medium tabular-nums text-ink">{pct(review.concentration.top5Share)}</span>
+              <span className="font-medium tabular-nums text-ink">{fmtPct(review.concentration.top5Share)}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-ink-3">Top 10</span>
-              <span className="font-medium tabular-nums text-ink">{pct(review.concentration.top10Share)}</span>
+              <span className="font-medium tabular-nums text-ink">{fmtPct(review.concentration.top10Share)}</span>
             </div>
             <div className="h-2 overflow-hidden rounded-pill bg-surface">
               <div className="h-full rounded-pill bg-info" style={{ width: `${Math.min(review.concentration.top5Share, 100)}%` }} />

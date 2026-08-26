@@ -1,12 +1,13 @@
 import { PortfolioMultiTrendChart } from '@/components/charts'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, MetricField, MetricHeroCard } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, MetricHeroCard, Signed } from '@/components/ui'
 import { getCryptoPremium } from '@/lib/adapters/portfolio-db'
-import { fmtDateTime, fmtNumber, fmtQuantity } from '@/lib/format'
+import { fmtDateTime, fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { GLOSSARY } from '@/lib/glossary'
+import { signTone } from '@/lib/tone'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,26 +17,6 @@ const SERIES_COLORS = ['var(--brand-blue)', 'var(--brand-purple)', 'var(--accent
 
 /** Above this, the premium is worth acting on rather than just noting. */
 const NOTABLE_PREMIUM_PCT = 2
-
-function signedPct(value: number | null | undefined) {
-  if (value == null) return <span className="text-ink-3">n/a</span>
-  return (
-    <span className={value >= 0 ? 'text-success' : 'text-danger'}>
-      {value >= 0 ? '+' : ''}
-      {fmtNumber(value, 2)}%
-    </span>
-  )
-}
-
-function signedMoney(value: number | null | undefined, money: (value: number | null | undefined, currency?: string | null | undefined) => string) {
-  if (value == null) return <span className="text-ink-3">n/a</span>
-  return (
-    <span className={value >= 0 ? 'text-success' : 'text-danger'}>
-      {value >= 0 ? '+' : '-'}
-      {money(Math.abs(value), 'KRW')}
-    </span>
-  )
-}
 
 export default async function CryptoPremiumPage() {
   const money = createMoneyFormatter(await getCurrencyPreferences())
@@ -97,7 +78,7 @@ export default async function CryptoPremiumPage() {
                   label="Value From Premium"
                   value={money(premium.exposure.premiumValueKrw)}
                   hint="What parity would remove"
-                  tone={premium.exposure.premiumValueKrw >= 0 ? 'success' : 'danger'}
+                  tone={signTone(premium.exposure.premiumValueKrw)}
                   valueClassName="text-[18px]"
                 />
                 <MetricField
@@ -152,7 +133,7 @@ export default async function CryptoPremiumPage() {
                   { key: 'krwPrice', label: 'Bithumb (KRW)', align: 'right', render: (r) => money(r.krwPrice) },
                   { key: 'usdPrice', label: 'Global (USD)', align: 'right', render: (r) => money(r.usdPrice, 'USD') },
                   { key: 'impliedKrw', label: 'Implied KRW', align: 'right', render: (r) => money(r.impliedKrw) },
-                  { key: 'premiumPct', label: 'Premium', align: 'right', render: (r) => signedPct(r.premiumPct) },
+                  { key: 'premiumPct', label: 'Premium', align: 'right', render: (r) => <Signed value={r.premiumPct} format={(m) => fmtPct(m)} /> },
                   {
                     key: 'heldQuantity',
                     label: 'Held',
@@ -163,7 +144,7 @@ export default async function CryptoPremiumPage() {
                     key: 'premiumValueKrw',
                     label: 'Value From Premium',
                     align: 'right',
-                    render: (r) => (r.heldQuantity > 0 ? signedMoney(r.premiumValueKrw, money) : '—'),
+                    render: (r) => (r.heldQuantity > 0 ? <Signed value={r.premiumValueKrw} format={(m) => money(m, 'KRW')} /> : '—'),
                   },
                 ]}
               />
