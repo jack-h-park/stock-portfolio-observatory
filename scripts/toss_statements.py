@@ -315,7 +315,7 @@ def parse_security(cell, raw_type=""):
     # because Toss symbols are not all numeric (`0047R0`) — a digits-only test
     # would leave `A0047R0` with its prefix and file the ETF under a symbol the
     # holdings API has never heard of. A 12-character ISIN cannot collide, and
-    # the 9-character warrant codes (`<WARRANT_CODE>`) are left alone.
+    # the 9-character warrant codes (e.g. `J01234567`) are left alone.
     if len(code) == 7 and code.startswith("A"):
         code = code[1:]
     return name, code

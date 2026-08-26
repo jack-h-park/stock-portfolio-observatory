@@ -18,15 +18,15 @@
   "source": "robinhood_mcp",
   "accounts": [
     {
-      "accountNumber": "<AGENTIC_ACCOUNT>",
+      "accountNumber": "000000000",
       "nickname": "Agentic",
-      "account": "Robinhood 0956",
+      "account": "Robinhood 0000",
       "positions": [
         {
           "symbol": "AMZN",
           "name": "AMAZON COM INC",
-          "quantity": "0.851675",
-          "average_buy_price": "228.19"
+          "quantity": "0.500000",
+          "average_buy_price": "200.00"
         }
       ],
       "lots": [

@@ -255,7 +255,8 @@ def open_pdf(path):
 # 2026-01-01~2026-07-31, which is why `crypto_statement_periods_contiguous`
 # already asserts on declared periods instead of names. The same argument
 # settles it here, and one statement makes it unavoidable —
-# `samsung-rsu-transactions-<ACCOUNT_LAST5>.pdf` carries no period in its name at all.
+# `samsung-rsu-transactions-<account last 5>.pdf` carries no period in its
+# name at all.
 COVERAGE_RE = re.compile(
     r"(\d{4})\s*[./-]\s*(\d{1,2})\s*[./-]\s*(\d{1,2})\s*~\s*(\d{4})\s*[./-]\s*(\d{1,2})\s*[./-]\s*(\d{1,2})"
     r"|(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일\s*~\s*(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일"
