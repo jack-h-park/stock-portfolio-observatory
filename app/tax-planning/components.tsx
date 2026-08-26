@@ -2,19 +2,16 @@ import Link from 'next/link'
 import { Fragment } from 'react'
 import { createSavedTaxPlanAction } from '@/app/tax-planning/actions'
 import { DataTable } from '@/components/DataTable'
-import { Badge, Card, EmptyState, MetricField, marketTone, type Tone } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, Signed, marketTone, type Tone } from '@/components/ui'
 import type { createMoneyFormatter } from '@/lib/currency'
-import { fmtDateTime, fmtNumber, fmtQuantity } from '@/lib/format'
+import { fmtDateShort, fmtDateTime, fmtDurationDays, fmtNumber, fmtQuantity } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
 import type { MonthlySaleMasterPlan, MonthlySalePlanSet, TaxPlanCandidate, MasterPlanStrategyKey } from '@/lib/tax-planning'
 import { savedTaxPlanProgress, type SavedTaxPlan } from '@/lib/tax-plan-store'
+import { bucketTone, signClass } from '@/lib/tone'
 import type { TaxPlanningCopy } from './copy'
 
 type MoneyFormatter = ReturnType<typeof createMoneyFormatter>
-
-function signedMoney(value: number, money: (value: number | null | undefined, currency?: string | null | undefined) => string) {
-  return <span className={value >= 0 ? 'text-success' : 'text-danger'}>{money(value, 'KRW')}</span>
-}
 
 function PositionCell({ row }: { row: TaxPlanCandidate }) {
   return (
@@ -39,31 +36,15 @@ export function CandidateTable({ rows, copy, money }: { rows: TaxPlanCandidate[]
         { key: 'ticker', label: copy.candidateTable.position, render: (r) => <PositionCell row={r} /> },
         { key: 'account', label: copy.candidateTable.account, render: (r) => <span className="max-w-[12rem] truncate">{r.brokerage} · {r.account}</span> },
         { key: 'acquired_date', label: copy.candidateTable.acquired },
-        { key: 'holdingBucket', label: copy.candidateTable.term, render: (r) => <Badge tone={r.holdingBucket === 'long' ? 'success' : 'warning'}>{r.holdingBucket}</Badge> },
+        { key: 'holdingBucket', label: copy.candidateTable.term, render: (r) => <Badge tone={bucketTone(r.holdingBucket)}>{r.holdingBucket}</Badge> },
         { key: 'open_quantity', label: copy.candidateTable.quantity, align: 'right', render: (r) => fmtQuantity(r.open_quantity, 4) },
         { key: 'proceedsNative', label: copy.candidateTable.proceeds, align: 'right', render: (r) => (r.proceedsNative == null ? copy.candidateTable.notAvailable : money(r.proceedsNative, r.currency)) },
-        { key: 'gainKrw', label: copy.candidateTable.baseGainLoss, align: 'right', render: (r) => signedMoney(r.gainKrw, money) },
+        { key: 'gainKrw', label: copy.candidateTable.baseGainLoss, align: 'right', render: (r) => <Signed value={r.gainKrw} format={(m) => money(m, 'KRW')} /> },
         { key: 'estimatedTaxKrw', label: copy.candidateTable.grossLotTax, align: 'right', render: (r) => money(r.estimatedTaxKrw) },
         { key: 'estimatedAfterTaxKrw', label: copy.candidateTable.afterTax, align: 'right', render: (r) => (r.estimatedAfterTaxKrw == null ? copy.candidateTable.notAvailable : money(r.estimatedAfterTaxKrw)) },
       ]}
     />
   )
-}
-
-function dateLabel(value: string | null | undefined) {
-  if (!value) return 'n/a'
-  return new Intl.DateTimeFormat('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  }).format(new Date(`${value.slice(0, 10)}T00:00:00Z`))
-}
-
-function durationLabel(days: number) {
-  const rounded = Math.round(days)
-  if (rounded < 31) return `${fmtNumber(rounded)} days`
-  return `${fmtNumber(rounded / 30.4375, 1)} months`
 }
 
 function PlanMetric({
@@ -129,8 +110,8 @@ export function MasterPlanOverview({
         <div>
           <div className="text-[10px] font-medium uppercase text-ink-3">{copy.overview.executionWindow}</div>
           <h2 className="mt-1 text-[22px] font-medium leading-tight text-ink">
-            {dateLabel(plan.summary.startDate)} <span className="text-ink-3">{copy.overview.to}</span>{' '}
-            {dateLabel(plan.summary.endDate)}
+            {fmtDateShort(plan.summary.startDate)} <span className="text-ink-3">{copy.overview.to}</span>{' '}
+            {fmtDateShort(plan.summary.endDate)}
           </h2>
           <p className="mt-2 max-w-[58rem] text-[13px] leading-relaxed text-ink-2">{plan.description}</p>
         </div>
@@ -181,7 +162,7 @@ export function MasterPlanOverview({
           <div className="text-[10px] font-medium uppercase text-ink-3">{copy.overview.lotsStillWaiting}</div>
           <div className="mt-1 text-[12px] leading-relaxed text-ink-2">
             <span className="font-medium tabular-nums text-ink">
-              {copy.overview.waitingLots(fmtNumber(planSet.timing.waitingLotCount), money(planSet.timing.waitingProceedsKrw), planSet.timing.nextLongTermDate ? dateLabel(planSet.timing.nextLongTermDate) : null)}
+              {copy.overview.waitingLots(fmtNumber(planSet.timing.waitingLotCount), money(planSet.timing.waitingProceedsKrw), planSet.timing.nextLongTermDate ? fmtDateShort(planSet.timing.nextLongTermDate) : null)}
             </span>
           </div>
         </div>
@@ -196,8 +177,8 @@ export function MasterPlanOverview({
         <div className="border-l-2 border-[color:var(--accent-warning)] px-3 py-1">
           <div className="text-[10px] font-medium uppercase text-ink-3">{copy.overview.waitingUntil2028}</div>
           <div className="mt-1 text-[12px] leading-relaxed text-ink-2">
-            <span className={`font-medium tabular-nums ${waitSavings >= 0 ? 'text-success' : 'text-danger'}`}>
-              {copy.overview.waitUntil2028(waitSavings >= 0 ? copy.overview.saving : copy.overview.extraTax, money(Math.abs(waitSavings)), durationLabel(Math.max(waitDays, 0)), money(earliestKrTopUp), money(waitKrTopUp))}
+            <span className={`font-medium tabular-nums ${signClass(waitSavings)}`}>
+              {copy.overview.waitUntil2028(waitSavings >= 0 ? copy.overview.saving : copy.overview.extraTax, money(Math.abs(waitSavings)), fmtDurationDays(Math.max(waitDays, 0)), money(earliestKrTopUp), money(waitKrTopUp))}
             </span>
           </div>
         </div>
@@ -274,7 +255,7 @@ export function MasterScenarioComparison({
                     style={{ width: `${taxWidth}%` }}
                   />
                 </div>
-                <div className={`mt-1 text-right text-[10px] tabular-nums ${delta <= 0 ? 'text-success' : 'text-danger'}`}>
+                <div className={`mt-1 text-right text-[10px] tabular-nums ${signClass(-delta)}`}>
                   {delta === 0 ? copy.comparison.earliestBaseline : delta < 0 ? copy.comparison.less(money(Math.abs(delta))) : copy.comparison.more(money(delta))}
                 </div>
               </div>
@@ -282,12 +263,12 @@ export function MasterScenarioComparison({
               <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
                 <dt className="text-ink-3">{copy.comparison.execution}</dt>
                 <dd className="text-right text-ink">
-                  {dateLabel(scenarioRow.summary.startDate)} {copy.comparison.to} {dateLabel(scenarioRow.summary.endDate)}
+                  {fmtDateShort(scenarioRow.summary.startDate)} {copy.comparison.to} {fmtDateShort(scenarioRow.summary.endDate)}
                 </dd>
                 <dt className="text-ink-3">{copy.comparison.longTermSales}</dt>
                 <dd className="text-right tabular-nums text-ink">{fmtNumber(scenarioRow.summary.longTermSalePct, 1)}%</dd>
                 <dt className="text-ink-3">{copy.comparison.averageWait}</dt>
-                <dd className="text-right tabular-nums text-ink">{durationLabel(scenarioRow.summary.averageWaitDays)}</dd>
+                <dd className="text-right tabular-nums text-ink">{fmtDurationDays(scenarioRow.summary.averageWaitDays)}</dd>
                 <dt className="text-ink-3">{copy.comparison.krTopUp}</dt>
                 <dd className="text-right tabular-nums text-ink">{money(scenarioRow.summary.incrementalKrTaxAfterCreditKrw)}</dd>
               </dl>
@@ -420,7 +401,7 @@ export function MasterPlanAnnualTax({ plan, copy, money }: { plan: MonthlySaleMa
             </div>
             <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-y border-line-subtle py-2 text-[11px]">
               <div><span className="text-ink-3">{copy.annualTax.sales}</span><div className="mt-0.5 tabular-nums text-ink">{money(year.proceedsKrw)}</div></div>
-              <div className="text-right"><span className="text-ink-3">{copy.annualTax.netGainLoss}</span><div className="mt-0.5 tabular-nums">{signedMoney(year.gainKrw, money)}</div></div>
+              <div className="text-right"><span className="text-ink-3">{copy.annualTax.netGainLoss}</span><div className="mt-0.5 tabular-nums"><Signed value={year.gainKrw} format={(m) => money(m, 'KRW')} /></div></div>
               <div><span className="text-ink-3">{copy.annualTax.usGross}</span><div className="mt-0.5 tabular-nums text-ink">{money(year.usGrossTaxKrw ?? 0)}</div></div>
               <div className="text-right"><span className="text-ink-3">{copy.annualTax.krGross}</span><div className="mt-0.5 tabular-nums text-ink">{money(year.krGrossTaxKrw ?? 0)}</div></div>
               <div><span className="text-ink-3">{copy.annualTax.creditUsed}</span><div className="mt-0.5 tabular-nums text-success">-{money(year.estimatedCrossBorderTaxCreditKrw)}</div></div>
@@ -462,7 +443,7 @@ export function MasterPlanAnnualTax({ plan, copy, money }: { plan: MonthlySaleMa
                   <td className="pt-3 pr-4 font-mono text-ink">{year.year}</td>
                   <td className="pt-3 pr-4"><Badge tone="info">{year.filingScenario}</Badge></td>
                   <td className="pt-3 pr-4 text-right tabular-nums text-ink">{money(year.proceedsKrw)}</td>
-                  <td className="pt-3 pr-4 text-right tabular-nums">{signedMoney(year.gainKrw, money)}</td>
+                  <td className="pt-3 pr-4 text-right tabular-nums"><Signed value={year.gainKrw} format={(m) => money(m, 'KRW')} /></td>
                   <td className="pt-3 pr-4 text-right tabular-nums text-ink">{money(year.usGrossTaxKrw ?? 0)}</td>
                   <td className="pt-3 pr-4 text-right tabular-nums text-ink">{money(year.krGrossTaxKrw ?? 0)}</td>
                   <td className="pt-3 pr-4 text-right tabular-nums text-success">-{money(year.estimatedCrossBorderTaxCreditKrw)}</td>

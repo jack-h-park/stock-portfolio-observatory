@@ -5,22 +5,15 @@ import { FreshnessInline } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard } from '@/components/ui'
 import { getOperationalHealth, getPositionDetail, type FreshnessItem } from '@/lib/adapters/portfolio-db'
-import { fmtDateTime, fmtNumber, fmtQuantity, shortHash } from '@/lib/format'
+import { fmtDateTime, fmtNumber, fmtPct, fmtQuantity, shortHash } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { buildTaxPlan } from '@/lib/tax-planning'
 import { getTaxPolicyState } from '@/lib/tax-policy'
 import { GLOSSARY } from '@/lib/glossary'
+import { bucketTone, signTone } from '@/lib/tone'
 
 export const dynamic = 'force-dynamic'
-
-function pct(value: number | null | undefined) {
-  return `${fmtNumber(value, 2)}%`
-}
-
-function glTone(value: number | null | undefined) {
-  return Number(value ?? 0) >= 0 ? 'success' : 'danger'
-}
 
 type MoneyFormatter = ReturnType<typeof createMoneyFormatter>
 
@@ -243,16 +236,16 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               label="Unrealized G/L"
               value={moneyOrNa(money, detail.totals.native_unrealized_gl, detail.currency)}
               info={GLOSSARY.unrealizedGl.description}
-              hint={nativeUnrealizedPct == null ? 'No value' : pct(nativeUnrealizedPct)}
-              tone={glTone(detail.totals.native_unrealized_gl)}
+              hint={nativeUnrealizedPct == null ? 'No value' : fmtPct(nativeUnrealizedPct)}
+              tone={signTone(detail.totals.native_unrealized_gl)}
               valueClassName="text-[18px]"
             />
             <MetricField
               label="Base Unrealized G/L"
               value={moneyOrNa(money, detail.totals.base_unrealized_gl, 'KRW')}
               info={`${GLOSSARY.unrealizedGl.description} ${GLOSSARY.baseAmount.description}`}
-              hint={baseUnrealizedPct == null ? GLOSSARY.baseAmount.description : `${pct(baseUnrealizedPct)} · ${GLOSSARY.baseAmount.description}`}
-              tone={glTone(detail.totals.base_unrealized_gl)}
+              hint={baseUnrealizedPct == null ? GLOSSARY.baseAmount.description : `${fmtPct(baseUnrealizedPct)} · ${GLOSSARY.baseAmount.description}`}
+              tone={signTone(detail.totals.base_unrealized_gl)}
               valueClassName="text-[18px]"
             />
           </div>
@@ -432,7 +425,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
                 { key: 'brokerage', label: 'Broker' },
                 { key: 'account', label: 'Account' },
                 { key: 'acquired_date', label: 'Acquired' },
-                { key: 'holdingBucket', label: 'Term', render: (r) => <Badge tone={r.holdingBucket === 'long' ? 'success' : 'warning'}>{r.holdingBucket}</Badge> },
+                { key: 'holdingBucket', label: 'Term', render: (r) => <Badge tone={bucketTone(r.holdingBucket)}>{r.holdingBucket}</Badge> },
                 { key: 'open_quantity', label: 'Qty', align: 'right', render: (r) => fmtQuantity(r.open_quantity, 4) },
                 { key: 'proceedsNative', label: 'Proceeds', align: 'right', render: (r) => (r.proceedsNative == null ? 'n/a' : money(r.proceedsNative, r.currency)) },
                 {

@@ -4,7 +4,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { TrendBarChart } from '@/components/charts'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
 import { getIncomeReview } from '@/lib/adapters/portfolio-db'
-import { fmtNumber } from '@/lib/format'
+import { fmtNumber, fmtPct } from '@/lib/format'
 import { convertMoney, createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
@@ -12,10 +12,6 @@ import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
 
 export const dynamic = 'force-dynamic'
-
-function pct(value: number | null | undefined) {
-  return value == null ? 'n/a' : `${fmtNumber(value, 2)}%`
-}
 
 const COPY = {
   en: {
@@ -188,14 +184,14 @@ export default async function IncomePage() {
             />
             <MetricField
               label={copy.yieldOnMarket}
-              value={pct(income.totals.yield_on_market)}
+              value={fmtPct(income.totals.yield_on_market)}
               info={glossary.yieldOnMarket.description}
               hint={copy.yieldOnMarketHint}
               valueClassName="text-[18px]"
             />
             <MetricField
               label={copy.yieldOnCost}
-              value={pct(income.totals.yield_on_cost)}
+              value={fmtPct(income.totals.yield_on_cost)}
               info={glossary.yieldOnCost.description}
               hint={copy.yieldOnCostHint}
               valueClassName="text-[18px]"
@@ -333,8 +329,8 @@ export default async function IncomePage() {
               { key: 'native_income', label: copy.columns.nativeIncome, align: 'right', render: (r) => money(r.native_income, r.currency) },
               { key: 'base_income', label: copy.columns.baseIncome, align: 'right', render: (r) => money(r.base_income) },
               { key: 'market_value', label: copy.columns.marketValue, align: 'right', render: (r) => (r.market_value == null ? 'n/a' : money(r.market_value)) },
-              { key: 'trailing_yield', label: copy.columns.yield, align: 'right', render: (r) => pct(r.trailing_yield) },
-              { key: 'yield_on_cost', label: copy.columns.yieldOnCost, align: 'right', render: (r) => pct(r.yield_on_cost) },
+              { key: 'trailing_yield', label: copy.columns.yield, align: 'right', render: (r) => fmtPct(r.trailing_yield) },
+              { key: 'yield_on_cost', label: copy.columns.yieldOnCost, align: 'right', render: (r) => fmtPct(r.yield_on_cost) },
             ]}
           />
         </Card>

@@ -1,7 +1,6 @@
 import { clsx } from 'clsx'
 import Link from 'next/link'
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
-import { fmtDate, relTime } from '@/lib/format'
 import { HelpPopover } from '@/components/HelpPopover'
 
 // InfoTooltip — a small "i" affordance that reveals an explanation on hover or
@@ -79,19 +78,9 @@ const TONE_STYLES = {
 
 export type Tone = keyof typeof TONE_STYLES
 
-/**
- * Badge tone for a market code.
- *
- * Call sites used to spell this as `market === 'US' ? 'info' : 'success'`, in 27
- * places. That reads as "US or Korea", so the moment a third market existed it
- * was drawn in Korea's colour — the same green, on every table, with only the
- * three-letter label to tell them apart.
- */
-export function marketTone(market: string): Tone {
-  if (market === 'US') return 'info'
-  if (market === 'KR') return 'success'
-  return 'warning'
-}
+// marketTone now lives in lib/tone.ts with the rest of the meaning→tone rules.
+// Re-exported here because eleven files import it from this module.
+export { marketTone } from '@/lib/tone'
 
 export function Badge({ children, tone = 'neutral' }: { children: ReactNode; tone?: Tone }) {
   return (
@@ -200,6 +189,44 @@ export function EmptyState({
       </div>
       {hint && <div className="mt-1 text-[11px] text-ink-3/80">{hint}</div>}
     </div>
+  )
+}
+
+/**
+ * A gain or a loss, with the direction said out loud.
+ *
+ * Replaces four page-local components and nine inline
+ * `value >= 0 ? 'text-success' : 'text-danger'` ternaries, which between them
+ * disagreed about whether a positive value carries a "+" and whether null
+ * renders as a dash or as nothing at all.
+ *
+ * The sign is not decoration. Colour was the only thing separating +0.4% from
+ * −0.4% in these tables, which fails anyone who cannot separate the two reds
+ * and greens — so `format` is given the magnitude and the sign is always
+ * printed in front of it.
+ */
+export function Signed({
+  value,
+  format,
+  nullText = 'n/a',
+  className,
+}: {
+  value: number | null | undefined
+  /** Renders the magnitude. Receives a non-negative number. */
+  format: (magnitude: number) => string
+  nullText?: ReactNode
+  className?: string
+}) {
+  if (value == null) return <span className={clsx('text-ink-3', className)}>{nullText}</span>
+  const n = Number(value)
+  const body = format(Math.abs(n))
+  // A value that rounds away to zero is not a loss, so it gets no minus.
+  const negative = n < 0 && /[1-9]/.test(body)
+  return (
+    <span className={clsx(negative ? 'text-danger' : 'text-success', 'tabular-nums', className)}>
+      {negative ? '-' : '+'}
+      {body}
+    </span>
   )
 }
 

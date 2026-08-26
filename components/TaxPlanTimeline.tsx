@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { updateSavedInstructionExecutionAction } from '@/app/tax-planning/actions'
 import { getTaxPlanningCopy } from '@/app/tax-planning/copy'
-import { Badge, Button, Card, EmptyState, marketTone } from '@/components/ui'
+import { Badge, Button, Card, EmptyState, Signed, marketTone } from '@/components/ui'
 import { fmtNumber } from '@/lib/format'
 import { useMoneyFormatter } from '@/components/LanguageProvider'
 import type { Language } from '@/lib/i18n'
@@ -15,6 +15,7 @@ import type {
   MonthlySaleMasterPlan,
 } from '@/lib/tax-planning'
 import type { SavedInstructionExecution, SavedInstructionStatus } from '@/lib/tax-plan-store'
+import { bucketTone } from '@/lib/tone'
 
 const PAGE_SIZE = 50
 
@@ -37,14 +38,6 @@ function compactKrw(value: number, language: Language) {
   }).format(value)
 }
 
-function signedMoney(value: number, money: (value: number | null | undefined, currency?: string | null | undefined) => string) {
-  return (
-    <span className={value >= 0 ? 'text-success' : 'text-danger'}>
-      {value > 0 ? '+' : ''}
-      {money(value, 'KRW')}
-    </span>
-  )
-}
 
 function profileLabel(value: string | undefined, copy: ReturnType<typeof getTaxPlanningCopy>['timeline']) {
   if (value === 'US_AND_KR') return 'US + KR'
@@ -190,12 +183,12 @@ function MonthDetailCard({
         </div>
         <div className="text-right">
           <div className="text-ink-3">{copy.estimatedGainLoss}</div>
-          <div className="mt-0.5 tabular-nums">{signedMoney(row.gainKrw, money)}</div>
+          <div className="mt-0.5 tabular-nums"><Signed value={row.gainKrw} format={(m) => money(m, 'KRW')} /></div>
         </div>
       </div>
 
       <div className="mt-2 flex items-start gap-2 text-[11px] leading-relaxed text-ink-3">
-        <Badge tone={row.holdingBucket === 'long' ? 'success' : 'warning'}>{row.holdingBucket}</Badge>
+        <Badge tone={bucketTone(row.holdingBucket)}>{row.holdingBucket}</Badge>
         <span>{row.reason}</span>
       </div>
       {row.washSaleRisk && (
@@ -483,7 +476,7 @@ export function TaxPlanTimeline({
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex flex-col items-start gap-1">
-                          <Badge tone={row.holdingBucket === 'long' ? 'success' : 'warning'}>
+                          <Badge tone={bucketTone(row.holdingBucket)}>
                             {row.holdingBucket}
                           </Badge>
                           <Badge tone={row.role === 'loss' ? 'danger' : row.role === 'gain' ? 'info' : 'neutral'}>
@@ -492,7 +485,7 @@ export function TaxPlanTimeline({
                         </div>
                       </td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-ink">{money(row.proceedsKrw, 'KRW')}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">{signedMoney(row.gainKrw, money)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums"><Signed value={row.gainKrw} format={(m) => money(m, 'KRW')} /></td>
                       {savedPlanId && (
                         <td className="px-3 py-2.5">
                           <div className="mb-1.5">

@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, MetricField, MetricHeroCard, Table, Thead, Th, Tbody, Tr, Td, MetaRow, MetaItem, type Tone } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, MetricHeroCard, Signed, Table, Thead, Th, Tbody, Tr, Td, MetaRow, MetaItem, type Tone } from '@/components/ui'
 import {
   getArchiveStatus,
   getBriefing,
@@ -11,9 +11,10 @@ import {
   type BriefingSessionMove,
 } from '@/lib/adapters/briefing-archive'
 import { activityBadge, activityWording, moverNote } from '@/lib/briefing-copy'
-import { fmtNumber, fmtQuantity } from '@/lib/format'
+import { fmtPct, fmtQuantity } from '@/lib/format'
 import { GLOSSARY } from '@/lib/glossary'
 import { positionHref } from '@/lib/position-url'
+import { signTone } from '@/lib/tone'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,14 +30,6 @@ function amount(value: number, market: BriefingMarket, digits = 0) {
 
 function priceOf(value: number, market: BriefingMarket) {
   return amount(value, market, market.priceDigits)
-}
-
-function pct(value: number) {
-  return `${value >= 0 ? '+' : ''}${fmtNumber(value, 2)}%`
-}
-
-function Signed({ value, format }: { value: number; format: (v: number) => string }) {
-  return <span className={value >= 0 ? 'text-success' : 'text-danger'}>{format(value)}</span>
 }
 
 /** Korean codes are opaque alone, so the sheet's company name rides along. */
@@ -79,7 +72,7 @@ function MoverList({ movers, notes, market }: { movers: BriefingPosition[]; note
           <div className="w-24 shrink-0">
             <TickerLink ticker={m.ticker} name={m.name} market={market} />
             <div className="mt-0.5 text-[11px] font-medium tabular-nums">
-              <Signed value={m.pct} format={pct} />
+              <Signed value={m.pct} format={(m) => fmtPct(m)} />
             </div>
           </div>
           <p className="min-w-0 text-[12px] leading-relaxed text-ink-2">{notes[m.ticker]?.why ?? 'No note in this briefing.'}</p>
@@ -99,7 +92,7 @@ function SessionMoverList({ movers, notes, direction, market }: { movers: Briefi
           <div className="w-24 shrink-0">
             <TickerLink ticker={m.ticker} name={m.name} market={market} />
             <div className="mt-0.5 text-[11px] font-medium tabular-nums">
-              <Signed value={m.pctChange} format={pct} />
+              <Signed value={m.pctChange} format={(m) => fmtPct(m)} />
             </div>
             <div className="text-[10px] tabular-nums text-ink-3">{amount(m.valueChange, market)}</div>
           </div>
@@ -303,9 +296,9 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                 <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
                   <MetricField
                     label="Session Return"
-                    value={session ? pct(session.totals!.plPct) : '—'}
+                    value={session ? fmtPct(session.totals!.plPct, { signed: true }) : '—'}
                     hint={session ? `on ${amount(session.totals!.priorMarketValue, m)} prior value` : 'not available'}
-                    tone={session ? (session.totals!.plPct >= 0 ? 'success' : 'danger') : 'neutral'}
+                    tone={session ? signTone(session.totals!.plPct) : 'neutral'}
                     valueClassName="text-[18px]"
                   />
                   <MetricField
@@ -318,8 +311,8 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                     label="Unrealized P/L"
                     value={amount(totals.gl, m)}
                     info={GLOSSARY.unrealizedGl.description}
-                    hint={`${pct(totals.pct)} vs ${amount(totals.cost, m)} cost`}
-                    tone={totals.gl >= 0 ? 'success' : 'danger'}
+                    hint={`${fmtPct(totals.pct, { signed: true })} vs ${amount(totals.cost, m)} cost`}
+                    tone={signTone(totals.gl)}
                     valueClassName="text-[18px]"
                   />
                 </div>
@@ -419,7 +412,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                         <Signed value={p.gl} format={(v) => amount(v, m)} />
                       </Td>
                       <Td align="right" className="tabular-nums">
-                        <Signed value={p.pct} format={pct} />
+                        <Signed value={p.pct} format={(m) => fmtPct(m)} />
                       </Td>
                       <Td align="right" className="tabular-nums">
                         {fmtQuantity(p.quantity, 2)}

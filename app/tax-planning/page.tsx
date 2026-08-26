@@ -1,11 +1,11 @@
 import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
-import { Badge, Card, EmptyState, InfoTooltip, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, InfoTooltip, Signed, marketTone } from '@/components/ui'
 import { getOperationalHealth, getOverview, getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
-import { fmtKrw, fmtMoney, fmtNumber } from '@/lib/format'
+import { fmtKrw, fmtMoney, fmtNumber, fmtPct } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import {
   buildMonthlySalePlanSet,
@@ -28,7 +28,7 @@ import {
 import { CandidateTable, MasterPlanAnnualTax, MasterPlanOverview, MasterScenarioComparison, SavedPlansPanel } from './components'
 import { getTaxPlanningCopy } from './copy'
 import { DecisionSummary, PlanningMap, buildOpportunityRows, opportunitySummary, type OpportunityCoverage } from './opportunity-analysis'
-import { pct, sameKrw, signedKrw } from './view-utils'
+import { sameKrw } from './view-utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -315,13 +315,13 @@ export default async function TaxPlanningPage({
             <div className="flex items-center justify-between gap-3"><span>{copy.page.scenario}</span><Badge tone="info">{plan.assumptions.scenario}</Badge></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.filingState}</span><span className="text-ink">{assumptionString(taxPolicy.policy, 'US', 'filingStatus', 'n/a')} / {assumptionString(taxPolicy.policy, 'US', 'stateCode', 'n/a')}</span></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.w2WageBase}</span><span className="tabular-nums text-ink">{assumptionNumber(taxPolicy.policy, 'US', 'wageBaseYear', 0)} · {fmtMoney(assumptionNumber(taxPolicy.policy, 'US', 'wageBaseUsd', 0), 'USD')}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>{copy.page.annualIncomeGrowth}</span><span className="tabular-nums text-ink">{pct(assumptionNumber(taxPolicy.policy, 'US', 'annualIncomeGrowthPct', 0))}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.annualIncomeGrowth}</span><span className="tabular-nums text-ink">{fmtPct(assumptionNumber(taxPolicy.policy, 'US', 'annualIncomeGrowthPct', 0))}</span></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.federalMethod}</span><Badge tone="success">{copy.page.federalMethodValue}</Badge></div>
-            <div className="flex items-center justify-between gap-3"><span>{copy.page.fallbackShortLong}</span><span className="tabular-nums text-ink">{pct(plan.assumptions.usShortRatePct)} / {pct(plan.assumptions.usLongRatePct)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>{copy.page.fallbackStateNiit}</span><span className="tabular-nums text-ink">{pct(plan.assumptions.usStateRatePct)} / {pct(plan.assumptions.usNiitRatePct)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.fallbackShortLong}</span><span className="tabular-nums text-ink">{fmtPct(plan.assumptions.usShortRatePct)} / {fmtPct(plan.assumptions.usLongRatePct)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.fallbackStateNiit}</span><span className="tabular-nums text-ink">{fmtPct(plan.assumptions.usStateRatePct)} / {fmtPct(plan.assumptions.usNiitRatePct)}</span></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.ytdCarryovers}</span><span className="tabular-nums text-ink">$0 / $0</span></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.krStockDeduction}</span><span className="tabular-nums text-ink">{fmtKrw(plan.assumptions.krBasicDeductionKrw)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>{copy.page.krForeignStockRate}</span><span className="tabular-nums text-ink">{pct(plan.assumptions.krForeignStockRatePct)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.krForeignStockRate}</span><span className="tabular-nums text-ink">{fmtPct(plan.assumptions.krForeignStockRatePct)}</span></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.creditModel}</span><span className="text-right text-ink">{plan.assumptions.krForeignTaxCreditMode}</span></div>
           </div>
         </Card>
@@ -362,7 +362,7 @@ export default async function TaxPlanningPage({
                       <div className="mt-1 max-w-[24rem] text-[11px] text-ink-3">{scenarioRow.description}</div>
                     </td>
                     <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(scenarioRow.summary.proceedsKrw)}</td>
-                    <td className="py-3 pr-4 text-right tabular-nums">{signedKrw(scenarioRow.summary.gainKrw)}</td>
+                    <td className="py-3 pr-4 text-right tabular-nums"><Signed value={scenarioRow.summary.gainKrw} format={fmtKrw} /></td>
                     <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(scenarioRow.summary.taxKrw)}</td>
                     <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(scenarioRow.summary.afterTaxKrw)}</td>
                     <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(scenarioRow.summary.peakYearTaxKrw)}</td>
@@ -449,7 +449,7 @@ function ScenarioTimeline({ scenario, copy }: { scenario: MultiYearTaxScenario; 
               </div>
               <div className="text-right text-[12px] tabular-nums text-ink">
                 {fmtKrw(year.taxKrw)}
-                <div className="text-[10px] text-ink-3">{pct(year.effectiveTaxRatePct)}</div>
+                <div className="text-[10px] text-ink-3">{fmtPct(year.effectiveTaxRatePct)}</div>
               </div>
             </div>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">

@@ -2,7 +2,7 @@ import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, type Tone } from '@/components/ui'
 import { getMeta, getSourceInventory } from '@/lib/adapters/portfolio-db'
-import { fmtDateTime, fmtNumber, shortHash } from '@/lib/format'
+import { fmtBytes, fmtDateTime, fmtNumber, shortHash } from '@/lib/format'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
 
@@ -22,14 +22,6 @@ function retentionTone(retention: string): Tone {
   if (retention === 'derived') return 'neutral'
   if (retention === 'archive') return 'neutral'
   return 'warning'
-}
-
-function fmtBytes(value: number | null | undefined) {
-  const n = Number(value ?? 0)
-  if (n >= 1024 * 1024 * 1024) return `${fmtNumber(n / (1024 * 1024 * 1024), 1)} GB`
-  if (n >= 1024 * 1024) return `${fmtNumber(n / (1024 * 1024), 1)} MB`
-  if (n >= 1024) return `${fmtNumber(n / 1024, 1)} KB`
-  return `${fmtNumber(n)} B`
 }
 
 const COPY = {

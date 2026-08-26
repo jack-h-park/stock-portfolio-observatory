@@ -4,7 +4,7 @@ import { getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
 import { Badge, Card } from '@/components/ui'
-import { fmtDateTime, fmtKrw, fmtNumber } from '@/lib/format'
+import { fmtDateShort, fmtDateTime, fmtKrw, fmtNumber } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { buildMonthlySalePlanSet } from '@/lib/tax-planning'
 import { getSavedTaxPlan, savedTaxPlanProgress, type SavedTaxPlanStatus } from '@/lib/tax-plan-store'
@@ -20,16 +20,6 @@ const STATUS_TONE: Record<SavedTaxPlanStatus, 'neutral' | 'info' | 'success' | '
   active: 'warning',
   completed: 'success',
   archived: 'neutral',
-}
-
-function dateLabel(value: string | null | undefined, language: 'en' | 'ko') {
-  if (!value) return 'n/a'
-  return new Intl.DateTimeFormat(language === 'ko' ? 'ko-KR' : 'en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  }).format(new Date(`${value.slice(0, 10)}T00:00:00Z`))
 }
 
 function deltaLabel(value: number, noChange: string, formatter: (amount: number) => string = fmtKrw) {
@@ -66,7 +56,7 @@ export default async function SavedTaxPlanPage({ params }: { params: Promise<{ i
       <PageHeader
         eyebrow={copy.eyebrow}
         title={saved.name}
-        subtitle={copy.subtitle(dateLabel(saved.asOfDate, language), saved.revision)}
+        subtitle={copy.subtitle(fmtDateShort(saved.asOfDate, language), saved.revision)}
         action={
           <Link href="/tax-planning" className="text-[12px] font-medium text-info hover:underline">
             {copy.backToPlanner}

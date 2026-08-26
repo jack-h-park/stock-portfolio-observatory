@@ -16,12 +16,13 @@ import {
 } from '@/lib/adapters/portfolio-db'
 import type { PortfolioSnapshot } from '@/lib/adapters/portfolio-db'
 import { config } from '@/config'
-import { fmtDateTime, fmtNumber } from '@/lib/format'
+import { dividendChartAmount, fmtDateTime, fmtNumber } from '@/lib/format'
 import { convertMoney, createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
+import { signClass, signTone } from '@/lib/tone'
 
 export const dynamic = 'force-dynamic'
 
@@ -48,9 +49,6 @@ const positionAxisLabel = (market: string, name: string, ticker: string) => {
   if (market === 'KR') return shortAxisLabel(name || ticker)
   return shortAxisLabel(ticker || name)
 }
-const dividendChartAmount = (currency: string, amount: number) =>
-  currency === 'KRW' ? Number((amount / 1000).toFixed(1)) : Number(amount.toFixed(2))
-
 const TREND_METRICS = [
   { key: 'market_value', label: 'Market value', color: 'var(--brand-blue)' },
   { key: 'cost_basis', label: 'Cost basis', color: 'var(--brand-purple)' },
@@ -511,14 +509,14 @@ export default async function OverviewPage({
               label={copy.totalGain}
               value={money(overview.totals.global_base_unrealized_gl, 'KRW')}
               info={glossary.unrealizedGl.description}
-              tone={overview.totals.global_base_unrealized_gl >= 0 ? 'success' : 'danger'}
+              tone={signTone(overview.totals.global_base_unrealized_gl)}
               valueClassName="text-[18px]"
             />
             <MetricField
               label={copy.returnOnPricedCost}
               value={`${fmtNumber(globalUnrealizedPct, 2)}%`}
               info={`${glossary.unrealizedGl.description} This percentage is measured against priced cost basis.`}
-              tone={globalUnrealizedPct >= 0 ? 'success' : 'danger'}
+              tone={signTone(globalUnrealizedPct)}
               valueClassName="text-[18px]"
             />
           </div>
@@ -595,13 +593,13 @@ export default async function OverviewPage({
                   label={copy.gain}
                   value={money(market.gain, 'KRW')}
                   info={glossary.unrealizedGl.description}
-                  tone={market.gain >= 0 ? 'success' : 'danger'}
+                  tone={signTone(market.gain)}
                   labelClassName="normal-case tracking-normal"
                 />
                 <MetricField
                   label={copy.return}
                   value={`${fmtNumber(market.returnPct, 2)}%`}
-                  tone={market.returnPct >= 0 ? 'success' : 'danger'}
+                  tone={signTone(market.returnPct)}
                   labelClassName="normal-case tracking-normal"
                 />
               </div>
@@ -728,7 +726,7 @@ export default async function OverviewPage({
               </>
             )}
           </div>
-          {selectedView === 'single' && <div className={`text-right text-[12px] tabular-nums ${trendChange >= 0 ? 'text-success' : 'text-danger'}`}>{valuedTrendData.length > 1 ? <>{trendChangeLabel}<div className="text-[10px] font-normal text-ink-3">{copy.since(firstTrendPoint.date)}</div></> : copy.needTwoSnapshots}</div>}
+          {selectedView === 'single' && <div className={`text-right text-[12px] tabular-nums ${signClass(trendChange)}`}>{valuedTrendData.length > 1 ? <>{trendChangeLabel}<div className="text-[10px] font-normal text-ink-3">{copy.since(firstTrendPoint.date)}</div></> : copy.needTwoSnapshots}</div>}
         </div>
         <div className="mb-3 flex flex-wrap items-center gap-1">
           <Link

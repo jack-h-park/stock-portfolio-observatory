@@ -11,14 +11,9 @@ import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
 import { getUiCopy } from '@/lib/ui-copy'
+import { priorityTone } from '@/lib/tone'
 
 export const dynamic = 'force-dynamic'
-
-function priorityTone(priority: string): Tone {
-  if (priority === 'high') return 'danger'
-  if (priority === 'medium') return 'warning'
-  return 'info'
-}
 
 function coverageTone(status: AccountCoverage['status']): Tone {
   if (status === 'action_needed' || status === 'missing') return 'danger'
