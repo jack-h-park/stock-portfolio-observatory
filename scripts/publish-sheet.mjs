@@ -90,7 +90,7 @@ const APPLY = has('--apply')
 const MARKETS = {
   KR: {
     label: 'kr-sheet',
-    sheetId: process.env.STOCK_KR_SHEET_ID || '<KR_SHEET_ID>',
+    sheetId: process.env.STOCK_KR_SHEET_ID,
     tab: process.env.STOCK_KR_SHEET_TAB || '미실현수익 정리 (자동)',
     hasName: true,
     totalLabel: '합계',
@@ -100,7 +100,7 @@ const MARKETS = {
   },
   US: {
     label: 'us-sheet',
-    sheetId: process.env.STOCK_US_SHEET_ID || '<US_SHEET_ID>',
+    sheetId: process.env.STOCK_US_SHEET_ID,
     tab: process.env.STOCK_US_SHEET_TAB || '미실현수익 정리 (자동)',
     hasName: false,
     totalLabel: 'Total',
@@ -115,6 +115,10 @@ const LABEL = CONFIG?.label ?? 'sheet'
 const die = (msg) => { console.error(`[${LABEL}] ${msg}`); process.exit(2) }
 if (!CONFIG) die(`unknown --market ${MARKET || '(none)'} — expected KR or US`)
 const SHEET_ID = CONFIG.sheetId
+// No default: a spreadsheet id names one person's private document, so it is
+// configuration rather than something this repo can ship. Publishing into the
+// wrong sheet is also the kind of mistake a fallback makes quietly.
+if (!SHEET_ID) die(`set STOCK_${MARKET}_SHEET_ID before publishing to the ${MARKET} sheet`)
 const TAB = arg('--tab', CONFIG.tab)
 
 // ---------------------------------------------------------------------------
