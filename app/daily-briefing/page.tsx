@@ -36,10 +36,10 @@ function priceOf(value: number, market: BriefingMarket) {
 function TickerLink({ ticker, name, market }: { ticker: string; name?: string | null; market: BriefingMarket }) {
   return (
     <>
-      <Link href={positionHref(market.id, ticker)} className="font-mono text-[12px] font-medium text-info hover:underline">
+      <Link href={positionHref(market.id, ticker)} className="font-mono text-caption font-medium text-info hover:underline">
         {ticker}
       </Link>
-      {name && <div className="mt-0.5 text-[10px] leading-tight text-ink-3">{name}</div>}
+      {name && <div className="mt-0.5 text-micro leading-tight text-ink-3">{name}</div>}
     </>
   )
 }
@@ -71,11 +71,11 @@ function MoverList({ movers, notes, market }: { movers: BriefingPosition[]; note
         <li key={m.ticker} className="flex gap-3 py-2.5 first:pt-0 last:pb-0">
           <div className="w-24 shrink-0">
             <TickerLink ticker={m.ticker} name={m.name} market={market} />
-            <div className="mt-0.5 text-[11px] font-medium tabular-nums">
+            <div className="mt-0.5 text-label font-medium tabular-nums">
               <Signed value={m.pct} format={(m) => fmtPct(m)} />
             </div>
           </div>
-          <p className="min-w-0 text-[12px] leading-relaxed text-ink-2">{notes[m.ticker]?.why ?? 'No note in this briefing.'}</p>
+          <p className="min-w-0 text-caption leading-relaxed text-ink-2">{notes[m.ticker]?.why ?? 'No note in this briefing.'}</p>
         </li>
       ))}
     </ul>
@@ -91,16 +91,16 @@ function SessionMoverList({ movers, notes, direction, market }: { movers: Briefi
         <li key={m.ticker} className="flex gap-3 py-2.5 first:pt-0 last:pb-0">
           <div className="w-24 shrink-0">
             <TickerLink ticker={m.ticker} name={m.name} market={market} />
-            <div className="mt-0.5 text-[11px] font-medium tabular-nums">
+            <div className="mt-0.5 text-label font-medium tabular-nums">
               <Signed value={m.pctChange} format={(m) => fmtPct(m)} />
             </div>
-            <div className="text-[10px] tabular-nums text-ink-3">{amount(m.valueChange, market)}</div>
+            <div className="text-micro tabular-nums text-ink-3">{amount(m.valueChange, market)}</div>
           </div>
           <div className="min-w-0">
-            <p className="text-[12px] leading-relaxed text-ink-2">
+            <p className="text-caption leading-relaxed text-ink-2">
               {moverNote(m, notes)}
             </p>
-            <div className="mt-0.5 text-[10px] tabular-nums text-ink-3">
+            <div className="mt-0.5 text-micro tabular-nums text-ink-3">
               {priceOf(m.priceFrom, market)} → {priceOf(m.priceTo, market)}
             </div>
           </div>
@@ -123,8 +123,8 @@ const TRADE_TONE: Record<string, Tone> = { bought: 'success', opened: 'success',
 function Band({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div className="mb-3 mt-7 flex flex-wrap items-baseline gap-2.5 first:mt-0">
-      <h2 className="text-[15px] font-medium tracking-tight text-ink">{title}</h2>
-      <span className="text-[11px] text-ink-3">{subtitle}</span>
+      <h2 className="text-body-lg font-medium tracking-tight text-ink">{title}</h2>
+      <span className="text-label text-ink-3">{subtitle}</span>
     </div>
   )
 }
@@ -134,8 +134,8 @@ function DatePicker({ dates, selected }: { dates: string[]; selected: string }) 
   // dates are newest-first, so "newer" is the lower index.
   const newer = i > 0 ? dates[i - 1] : null
   const older = i >= 0 && i < dates.length - 1 ? dates[i + 1] : null
-  const link = 'rounded-sm border border-line bg-card px-2 py-1 text-[12px] text-ink-2 transition-colors hover:border-ink-3 hover:text-ink'
-  const disabled = 'rounded-sm border border-line-subtle bg-surface px-2 py-1 text-[12px] text-ink-3/60'
+  const link = 'rounded-sm border border-line bg-card px-2 py-1 text-caption text-ink-2 transition-colors hover:border-ink-3 hover:text-ink'
+  const disabled = 'rounded-sm border border-line-subtle bg-surface px-2 py-1 text-caption text-ink-3/60'
 
   return (
     // A plain GET form: the page stays a server component and the picker works
@@ -153,7 +153,7 @@ function DatePicker({ dates, selected }: { dates: string[]; selected: string }) 
       <select
         name="date"
         defaultValue={selected}
-        className="rounded-sm border border-line bg-card px-2 py-1 text-[12px] text-ink focus:border-info focus:outline-none"
+        className="rounded-sm border border-line bg-card px-2 py-1 text-caption text-ink focus:border-info focus:outline-none"
         aria-label="Briefing date"
       >
         {dates.map((d, idx) => (
@@ -165,7 +165,7 @@ function DatePicker({ dates, selected }: { dates: string[]; selected: string }) 
       </select>
       <button
         type="submit"
-        className="rounded-sm border border-line bg-card px-2.5 py-1 text-[12px] font-medium text-ink transition-colors hover:border-ink-3 hover:bg-surface"
+        className="rounded-sm border border-line bg-card px-2.5 py-1 text-caption font-medium text-ink transition-colors hover:border-ink-3 hover:bg-surface"
       >
         View
       </button>
@@ -178,7 +178,7 @@ function DatePicker({ dates, selected }: { dates: string[]; selected: string }) 
           →
         </span>
       )}
-      <span className="text-[11px] text-ink-3">
+      <span className="text-label text-ink-3">
         {dates.length} briefing{dates.length === 1 ? '' : 's'} · {dates[dates.length - 1]} → {dates[0]}
       </span>
     </form>
@@ -237,7 +237,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
               href={publicBriefingUrl(doc.date, isLatest)}
               target="_blank"
               rel="noreferrer"
-              className="text-[12px] text-info hover:underline"
+              className="text-caption text-info hover:underline"
             >
               Open published page ↗
             </a>
@@ -299,13 +299,13 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                     value={session ? fmtPct(session.totals!.plPct, { signed: true }) : '—'}
                     hint={session ? `on ${amount(session.totals!.priorMarketValue, m)} prior value` : 'not available'}
                     tone={session ? signTone(session.totals!.plPct) : 'neutral'}
-                    valueClassName="text-[18px]"
+                    valueClassName="text-title"
                   />
                   <MetricField
                     label="Portfolio Value"
                     value={amount(totals.marketValue, m)}
                     hint={`${totals.positions} positions`}
-                    valueClassName="text-[18px]"
+                    valueClassName="text-title"
                   />
                   <MetricField
                     label="Unrealized P/L"
@@ -313,7 +313,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                     info={GLOSSARY.unrealizedGl.description}
                     hint={`${fmtPct(totals.pct, { signed: true })} vs ${amount(totals.cost, m)} cost`}
                     tone={signTone(totals.gl)}
-                    valueClassName="text-[18px]"
+                    valueClassName="text-title"
                   />
                 </div>
               </MetricHeroCard>
@@ -325,7 +325,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                       label="Market"
                       value={m.label}
                       hint={`${m.currency} reporting currency`}
-                      valueClassName="text-[28px]"
+                      valueClassName="text-metric"
                     />
                     <div className="h-px bg-line-subtle" />
                     <MetricField
@@ -333,10 +333,10 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                       value={amount(totals.cost, m)}
                       info={GLOSSARY.costBasis.description}
                       hint="Standing versus purchase cost"
-                      valueClassName="text-[18px]"
+                      valueClassName="text-title"
                     />
                   </div>
-                  <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+                  <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
                     Session figures answer today; portfolio value and unrealized P/L answer current standing.
                   </div>
                 </div>
@@ -358,7 +358,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
               <Card title={`Activity since ${session.previousDate}`} className="mb-5">
                 <ul className="divide-y divide-[color:var(--border-subtle)]">
                   {session.activity.map((a) => (
-                    <li key={`${a.ticker}-${a.kind}`} className="flex flex-wrap items-center gap-2 py-2 text-[12px] first:pt-0 last:pb-0">
+                    <li key={`${a.ticker}-${a.kind}`} className="flex flex-wrap items-center gap-2 py-2 text-caption first:pt-0 last:pb-0">
                       <span className="w-20 shrink-0">
                         <TickerLink ticker={a.ticker} market={m} />
                       </span>
@@ -367,7 +367,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                     </li>
                   ))}
                 </ul>
-                <p className="mt-3 text-[11px] leading-relaxed text-ink-3">
+                <p className="mt-3 text-label leading-relaxed text-ink-3">
                   Detected from share-count changes between snapshots — no trade feed is involved. Excluded from Session
                   P/L, which measures price movement on the shares already held.
                 </p>
@@ -417,7 +417,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                       <Td align="right" className="tabular-nums">
                         {fmtQuantity(p.quantity, 2)}
                       </Td>
-                      <Td className="text-[11px] text-ink-3">{p.accounts.join(', ')}</Td>
+                      <Td className="text-label text-ink-3">{p.accounts.join(', ')}</Td>
                     </Tr>
                   ))}
                 </Tbody>
@@ -430,7 +430,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
       <Card title="Market context" className="mb-5">
         {/* Pipeline-generated HTML (<b> emphasis only), from our own cron — not user input. */}
         <div
-          className="briefing-macro text-[13px] leading-relaxed text-ink-2"
+          className="briefing-macro text-body leading-relaxed text-ink-2"
           dangerouslySetInnerHTML={{ __html: doc.narrative.macro }}
         />
       </Card>
@@ -444,15 +444,15 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                 <li key={i} className="rounded-sm border border-line bg-surface px-3 py-2.5">
                   <div className="mb-1 flex flex-wrap items-center gap-2">
                     <Badge tone={PRIORITY_TONE[priority]}>{PRIORITY_LABEL[priority]}</Badge>
-                    <span className="text-[12px] font-medium text-ink">{a.head}</span>
-                    <span className="text-[11px] uppercase tracking-[0.06em] text-ink-3">{a.kind}</span>
+                    <span className="text-caption font-medium text-ink">{a.head}</span>
+                    <span className="text-label uppercase tracking-[0.06em] text-ink-3">{a.kind}</span>
                   </div>
-                  <p className="text-[12px] leading-relaxed text-ink-2">{a.body}</p>
+                  <p className="text-caption leading-relaxed text-ink-2">{a.body}</p>
                 </li>
               )
             })}
           </ul>
-          <p className="mt-3 text-[11px] leading-relaxed text-ink-3">
+          <p className="mt-3 text-label leading-relaxed text-ink-3">
             Ordered by how soon each item deserves attention: <b>Act now</b> means a dated catalyst makes deciding today
             materially better than waiting (at most one per briefing), <b>This week</b> a decision due before a near-term
             event, <b>FYI</b> context with no action implied. Generated commentary, informational only — not investment
@@ -467,7 +467,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
         <MetaItem label="Markets">{markets.map((m) => m.id).join(', ') || 'none'}</MetaItem>
         <MetaItem label="Archive">{archive.dir}</MetaItem>
       </MetaRow>
-      <p className="mt-2 text-[11px] leading-relaxed text-ink-3">
+      <p className="mt-2 text-label leading-relaxed text-ink-3">
         Read-only view of the briefing archive written by the daily briefing cron. The same documents are published to
         briefing.jackpark.me, so both surfaces always show the same numbers for a date. Figures are the snapshot taken on
         the briefing date and do not update, and each market is reported in its own currency — they are never summed.

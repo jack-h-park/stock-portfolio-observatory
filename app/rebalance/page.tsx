@@ -17,11 +17,11 @@ function PositionLink({ row }: { row: ReviewPosition }) {
     <div className="min-w-[14rem]">
       <div className="flex items-center gap-2">
         <Badge tone={marketTone(row.market)}>{row.market}</Badge>
-        <Link href={positionHref(row.market, row.ticker)} className="font-mono text-[12px] font-medium text-info hover:underline">
+        <Link href={positionHref(row.market, row.ticker)} className="font-mono text-caption font-medium text-info hover:underline">
           {row.ticker}
         </Link>
       </div>
-      <div className="mt-1 max-w-[20rem] truncate text-[12px] font-medium text-ink">{row.name}</div>
+      <div className="mt-1 max-w-[20rem] truncate text-caption font-medium text-ink">{row.name}</div>
     </div>
   )
 }
@@ -192,21 +192,21 @@ export default async function RebalancePage() {
               label={copy.baseMarketValue}
               value={money(rebalance.totals.base_market_value)}
               hint={copy.baseMarketValueHint}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
             <MetricField
               label={copy.reduceCandidates}
               value={fmtNumber(rebalance.reduceCandidates.length)}
               hint={copy.reduceCandidatesHint}
               tone={rebalance.reduceCandidates.length ? 'warning' : 'success'}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
             <MetricField
               label={copy.watchBeforeAction}
               value={fmtNumber(rebalance.watchCandidates.length + freshnessIssues)}
               hint={copy.watchBeforeActionHint}
               tone={rebalance.watchCandidates.length + freshnessIssues ? 'warning' : 'success'}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
           </div>
         </MetricHeroCard>
@@ -219,7 +219,7 @@ export default async function RebalancePage() {
                 value={fmtNumber(rebalance.taxSensitive.length)}
                 hint={copy.taxSensitiveHint}
                 tone={rebalance.taxSensitive.length ? 'warning' : 'success'}
-                valueClassName="text-[28px]"
+                valueClassName="text-metric"
               />
               <div className="h-px bg-line-subtle" />
               <MetricField
@@ -228,10 +228,10 @@ export default async function RebalancePage() {
                 info={glossary.freshness.description}
                 hint={copy.freshnessIssuesHint}
                 tone={freshnessIssues ? 'warning' : 'success'}
-                valueClassName="text-[18px]"
+                valueClassName="text-title"
               />
             </div>
-            <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
               {copy.decisionOrder}
             </div>
           </div>
@@ -258,11 +258,11 @@ export default async function RebalancePage() {
           ) : (
             <ul className="divide-y divide-line-subtle">
               {rebalance.addContext.map((row) => (
-                <li key={row.market} className="flex items-center gap-3 py-2 text-[12px]">
+                <li key={row.market} className="flex items-center gap-3 py-2 text-caption">
                   <Badge tone={marketTone(row.market)}>{row.market}</Badge>
                   <div className="min-w-0 flex-1">
                     <div className="font-medium tabular-nums text-ink">{money(row.gapValue)} {copy.underTarget}</div>
-                    <div className="text-[11px] text-ink-3">{fmtPct(row.gapPct)} {copy.gap} · {copy.existingPositions(fmtNumber(row.candidateCount))}</div>
+                    <div className="text-label text-ink-3">{fmtPct(row.gapPct)} {copy.gap} · {copy.existingPositions(fmtNumber(row.candidateCount))}</div>
                   </div>
                 </li>
               ))}
@@ -277,16 +277,16 @@ export default async function RebalancePage() {
             <>
               <ul className="divide-y divide-line-subtle">
                 {rebalance.untargetedMarkets.map((row) => (
-                  <li key={row.market} className="flex items-center gap-3 py-2 text-[12px]">
+                  <li key={row.market} className="flex items-center gap-3 py-2 text-caption">
                     <Badge tone={marketTone(row.market)}>{row.market}</Badge>
                     <div className="min-w-0 flex-1">
                       <div className="font-medium tabular-nums text-ink">{money(row.currentValue)}</div>
-                      <div className="text-[11px] text-ink-3">{copy.ofPortfolioNoTarget(fmtPct(row.currentPctOfPortfolio))}</div>
+                      <div className="text-label text-ink-3">{copy.ofPortfolioNoTarget(fmtPct(row.currentPctOfPortfolio))}</div>
                     </div>
                   </li>
                 ))}
               </ul>
-              <p className="mt-2 text-[11px] text-ink-3">
+              <p className="mt-2 text-label text-ink-3">
                 {copy.outsidePolicyNote(rebalance.policy.marketTargets.map((row) => row.market).join('/'))}
               </p>
             </>
@@ -294,7 +294,7 @@ export default async function RebalancePage() {
         </Card>
 
         <Card title={copy.executionGuardrails}>
-          <div className="space-y-2 text-[12px] text-ink-2">
+          <div className="space-y-2 text-caption text-ink-2">
             <div className="flex items-center justify-between gap-3">
               <span>{copy.marketGapTolerance}</span>
               <Badge tone="neutral">2%</Badge>
@@ -307,7 +307,7 @@ export default async function RebalancePage() {
               <span>{copy.shortTermWarning}</span>
               <Badge tone="warning">50%+</Badge>
             </div>
-            <div className="text-[11px] leading-relaxed text-ink-3">
+            <div className="text-label leading-relaxed text-ink-3">
               {copy.guardrailNote}
             </div>
           </div>
@@ -357,9 +357,9 @@ export default async function RebalancePage() {
         ) : (
           <div className="space-y-4">
             {freshnessIssues > 0 && (
-              <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] text-ink-2">
+              <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption text-ink-2">
                 <div className="font-medium text-warning">{copy.staleInputs(freshnessIssues)}</div>
-                <Link href="/health" className="mt-1 inline-block text-[11px] font-medium text-info hover:underline">
+                <Link href="/health" className="mt-1 inline-block text-label font-medium text-info hover:underline">
                   {copy.openHealth}
                 </Link>
               </div>

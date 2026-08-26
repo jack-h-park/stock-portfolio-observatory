@@ -54,7 +54,7 @@ export function Card({
       {(title || action) && (
         <header className="flex items-center justify-between border-b border-line-subtle px-4 py-2.5">
           <div className="flex items-center">
-            <h2 className="text-[14px] font-medium tracking-tight text-ink">{title}</h2>
+            <h2 className="text-body-lg font-medium tracking-tight text-ink">{title}</h2>
             {info ? <InfoTooltip>{info}</InfoTooltip> : null}
           </div>
           {action}
@@ -86,7 +86,7 @@ export function Badge({ children, tone = 'neutral' }: { children: ReactNode; ton
   return (
     <span
       className={clsx(
-        'inline-flex items-center gap-1 whitespace-nowrap rounded-pill border px-2 py-0.5 text-[11px] font-medium',
+        'inline-flex items-center gap-1 whitespace-nowrap rounded-pill border px-2 py-0.5 text-label font-medium',
         TONE_STYLES[tone]
       )}
     >
@@ -114,7 +114,7 @@ export function MetricField({
 }) {
   return (
     <div className="min-w-0">
-      <div className={clsx('flex items-center text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3', labelClassName)}>
+      <div className={clsx('flex items-center text-label font-medium uppercase tracking-[0.08em] text-ink-3', labelClassName)}>
         {label}
         {info ? <InfoTooltip>{info}</InfoTooltip> : null}
       </div>
@@ -133,7 +133,7 @@ export function MetricField({
       >
         {value}
       </div>
-      {hint ? <div className="mt-1 text-[12px] text-ink-3">{hint}</div> : null}
+      {hint ? <div className="mt-1 text-caption text-ink-3">{hint}</div> : null}
     </div>
   )
 }
@@ -159,9 +159,9 @@ export function MetricHeroCard({
     <Card title={title} info={info} accent className={className}>
       <div className="flex min-h-[16rem] flex-col justify-between gap-6">
         <div>
-          <div className="text-[11px] font-medium uppercase tracking-[0.1em] text-ink-3">{eyebrow}</div>
-          <div className="mt-2 text-[42px] font-medium leading-none tracking-normal text-ink sm:text-[52px]">{value}</div>
-          {hint ? <div className="mt-2 text-[13px] text-ink-3">{hint}</div> : null}
+          <div className="text-label font-medium uppercase tracking-[0.1em] text-ink-3">{eyebrow}</div>
+          <div className="mt-2 text-hero font-medium leading-none tracking-normal text-ink sm:text-display">{value}</div>
+          {hint ? <div className="mt-2 text-body text-ink-3">{hint}</div> : null}
         </div>
         {children}
       </div>
@@ -182,12 +182,12 @@ export function EmptyState({
   ok?: boolean
 }) {
   return (
-    <div className="py-6 text-center text-[13px] text-ink-3">
+    <div className="py-6 text-center text-body text-ink-3">
       <div>
         {children}
         {ok && ' ✓'}
       </div>
-      {hint && <div className="mt-1 text-[11px] text-ink-3/80">{hint}</div>}
+      {hint && <div className="mt-1 text-label text-ink-3/80">{hint}</div>}
     </div>
   )
 }
@@ -232,7 +232,7 @@ export function Signed({
 
 export function Eyebrow({ children }: { children: ReactNode }) {
   return (
-    <div className="text-[11px] font-medium uppercase tracking-[0.1em] text-ink-3">{children}</div>
+    <div className="text-label font-medium uppercase tracking-[0.1em] text-ink-3">{children}</div>
   )
 }
 
@@ -247,8 +247,8 @@ export function Eyebrow({ children }: { children: ReactNode }) {
 type ButtonVariant = 'solid' | 'outline' | 'ghost' | 'link'
 
 const BTN_SIZE: Record<'sm' | 'md', string> = {
-  sm: 'px-2.5 py-1 text-[11px]',
-  md: 'px-4 py-2 text-[13px]',
+  sm: 'px-2.5 py-1 text-label',
+  md: 'px-4 py-2 text-body',
 }
 
 // Link-variant text color. Defaults (neutral) to the info blue, the app's
@@ -330,9 +330,15 @@ export function Table({
   children,
   minWidth,
   scroll,
+  size = 'body',
   className,
 }: {
   children: ReactNode
+  /** Text size for the whole table. A caller must not put a `text-*` size in
+   *  `className`: both would land on the same element and which one won came
+   *  down to the order Tailwind happened to emit them in. DataTable asked for
+   *  `text-[12px]` that way and got 13px for its trouble, on all 35 tables. */
+  size?: 'body' | 'caption'
   /** Min width before the table scrolls horizontally. Defaults to the standard
    *  "48rem" when `scroll` is set — override only when the column set truly
    *  needs more room (keep table breakpoints consistent across pages). */
@@ -343,7 +349,7 @@ export function Table({
 }) {
   const mw = minWidth ?? (scroll ? '48rem' : undefined)
   const table = (
-    <table className={clsx('w-full text-[13px]', className)} style={mw ? { minWidth: mw } : undefined}>
+    <table className={clsx('w-full', size === 'caption' ? 'text-caption' : 'text-body', className)} style={mw ? { minWidth: mw } : undefined}>
       {children}
     </table>
   )
@@ -353,7 +359,7 @@ export function Table({
 export function Thead({ children }: { children: ReactNode }) {
   return (
     <thead>
-      <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.06em] text-ink-3">
+      <tr className="border-b border-line text-left text-label uppercase tracking-[0.06em] text-ink-3">
         {children}
       </tr>
     </thead>
@@ -396,7 +402,7 @@ export function Td({
 // A wrapping row of "label value" pairs — the metadata strips in run detail,
 // the sensing expander, and the gate-0 expander all rebuilt this by hand.
 export function MetaRow({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={clsx('flex flex-wrap items-baseline gap-x-6 gap-y-1 text-[11px]', className)}>{children}</div>
+  return <div className={clsx('flex flex-wrap items-baseline gap-x-6 gap-y-1 text-label', className)}>{children}</div>
 }
 
 export function MetaItem({ label, children }: { label: ReactNode; children: ReactNode }) {
@@ -415,7 +421,7 @@ export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputEleme
   return (
     <input
       className={clsx(
-        'rounded-sm border border-line bg-card px-2 py-1 text-[13px] text-ink outline-none placeholder:text-ink-3 focus:border-ink-3',
+        'rounded-sm border border-line bg-card px-2 py-1 text-body text-ink outline-none placeholder:text-ink-3 focus:border-ink-3',
         className
       )}
       {...rest}

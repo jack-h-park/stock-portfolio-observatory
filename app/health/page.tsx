@@ -107,34 +107,34 @@ export default async function HealthPage() {
       />
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
-        <Card title="Account coverage" info="How far each brokerage account's source data reaches. This is separate from file integrity." accent={accountCoverage.actionNeeded > 0} className="xl:col-span-3" action={<Link href="/data-ops#account-coverage" className="text-[12px] font-medium text-info hover:underline">Open updates</Link>}>
-          <div className="grid grid-cols-3 gap-3 text-[12px]">
-            <div><div className="text-[12px] text-ink-3">Action needed</div><div className="font-medium tabular-nums text-danger">{fmtNumber(accountCoverage.actionNeeded)}</div></div>
-            <div><div className="text-[12px] text-ink-3">Due soon</div><div className="font-medium tabular-nums text-warning">{fmtNumber(accountCoverage.dueSoon)}</div></div>
-            <div><div className="text-[12px] text-ink-3">Current</div><div className="font-medium tabular-nums text-success">{fmtNumber(accountCoverage.current)}</div></div>
+        <Card title="Account coverage" info="How far each brokerage account's source data reaches. This is separate from file integrity." accent={accountCoverage.actionNeeded > 0} className="xl:col-span-3" action={<Link href="/data-ops#account-coverage" className="text-caption font-medium text-info hover:underline">Open updates</Link>}>
+          <div className="grid grid-cols-3 gap-3 text-caption">
+            <div><div className="text-caption text-ink-3">Action needed</div><div className="font-medium tabular-nums text-danger">{fmtNumber(accountCoverage.actionNeeded)}</div></div>
+            <div><div className="text-caption text-ink-3">Due soon</div><div className="font-medium tabular-nums text-warning">{fmtNumber(accountCoverage.dueSoon)}</div></div>
+            <div><div className="text-caption text-ink-3">Current</div><div className="font-medium tabular-nums text-success">{fmtNumber(accountCoverage.current)}</div></div>
           </div>
-          <div className="mt-3 text-[11px] leading-relaxed text-ink-3">The account table names the exact document, account, cutoff date, and destination path. “Fresh” below continues to mean file integrity.</div>
+          <div className="mt-3 text-label leading-relaxed text-ink-3">The account table names the exact document, account, cutoff date, and destination path. “Fresh” below continues to mean file integrity.</div>
         </Card>
         <Card title="Operational Status" info="Shows whether prices, FX rates, and source files are collected normally and agree with each other." accent={issueCount > 0}>
-          <div className="grid grid-cols-2 gap-3 text-[12px]">
+          <div className="grid grid-cols-2 gap-3 text-caption">
             <div>
-              <div className="text-[12px] text-ink-3">{freshnessLabels.fresh}</div>
+              <div className="text-caption text-ink-3">{freshnessLabels.fresh}</div>
               <div className="font-medium tabular-nums text-success">{fmtNumber(operational.summary.fresh)}</div>
             </div>
             <div>
-              <div className="text-[12px] text-ink-3">{freshnessLabels.stale}</div>
+              <div className="text-caption text-ink-3">{freshnessLabels.stale}</div>
               <div className="font-medium tabular-nums text-warning">{fmtNumber(operational.summary.stale)}</div>
             </div>
             <div>
-              <div className="text-[12px] text-ink-3">{freshnessLabels.drift}</div>
+              <div className="text-caption text-ink-3">{freshnessLabels.drift}</div>
               <div className="font-medium tabular-nums text-warning">{fmtNumber(operational.summary.drift)}</div>
             </div>
             <div>
-              <div className="text-[12px] text-ink-3">{freshnessLabels.missing}</div>
+              <div className="text-caption text-ink-3">{freshnessLabels.missing}</div>
               <div className="font-medium tabular-nums text-danger">{fmtNumber(operational.summary.missing)}</div>
             </div>
           </div>
-          <div className="mt-3 text-[11px] leading-relaxed text-ink-3">
+          <div className="mt-3 text-label leading-relaxed text-ink-3">
             Korean and US stock prices are marked stale after 36 hours, crypto after 8 hours, and FX after 7 days. Source files are marked changed when their size or modified time differs from ingestion.
           </div>
         </Card>
@@ -147,12 +147,12 @@ export default async function HealthPage() {
           title="Reconciliation Coverage"
           info="Whether each brokerage's holding summary agrees with its tax-lot records in the latest ingest. Breaks are counted per position; the Reconciliation page lists them."
           accent={reconciliationBreaks > 0}
-          action={<Link href="/reconciliation" className="text-[12px] font-medium text-info hover:underline">Open reconciliation</Link>}
+          action={<Link href="/reconciliation" className="text-caption font-medium text-info hover:underline">Open reconciliation</Link>}
         >
           {reconciliation.length === 0 ? (
             <EmptyState>No holdings or tax lots to reconcile</EmptyState>
           ) : (
-            <ul className="space-y-2 text-[13px] text-ink-2">
+            <ul className="space-y-2 text-body text-ink-2">
               {reconciliation.map((row) => (
                 <li key={row.key} className="flex items-center justify-between gap-3">
                   <span className="flex min-w-0 items-center gap-2">
@@ -162,7 +162,7 @@ export default async function HealthPage() {
                   <Badge tone={row.tone}>{row.label}</Badge>
                 </li>
               ))}
-              <li className="text-[11px] leading-relaxed text-ink-3">
+              <li className="text-label leading-relaxed text-ink-3">
                 Merrill exports positions under two layouts, and only one carries tax-lot detail. When the flat layout was the last download, its lots
                 drop out of the ingest and the row above reads “No lot detail” until the tax-lot view is exported again. Its reinvestments also arrive
                 as one dateless grouped lot per position, so the match is by quantity and cost, not by acquisition date.
@@ -189,29 +189,29 @@ export default async function HealthPage() {
           </EmptyState>
         ) : (
           <div className="space-y-4">
-            <div className="grid gap-3 text-[12px] sm:grid-cols-4">
+            <div className="grid gap-3 text-caption sm:grid-cols-4">
               <div>
-                <div className="text-[12px] text-ink-3">Latest start</div>
+                <div className="text-caption text-ink-3">Latest start</div>
                 <div className="font-medium tabular-nums text-ink">{fmtDateTime(latestRefresh.startedAt)}</div>
               </div>
               <div>
-                <div className="text-[12px] text-ink-3">Duration</div>
+                <div className="text-caption text-ink-3">Duration</div>
                 <div className="font-medium tabular-nums text-ink">{fmtDuration(latestRefresh.durationMs)}</div>
               </div>
               <div>
-                <div className="text-[12px] text-ink-3">Completed steps</div>
+                <div className="text-caption text-ink-3">Completed steps</div>
                 <div className="font-medium tabular-nums text-ink">
                   {fmtNumber(latestRefresh.steps.filter((step) => step.status === 'success').length)} / {fmtNumber(latestRefresh.steps.length)}
                 </div>
               </div>
               <div>
-                <div className="text-[12px] text-ink-3">Total runs</div>
+                <div className="text-caption text-ink-3">Total runs</div>
                 <div className="font-medium tabular-nums text-ink">{fmtNumber(refreshRuns.length)}</div>
               </div>
             </div>
 
             {latestRefresh.degradedSteps.length > 0 ? (
-              <div className="rounded-md border border-[color:var(--accent-warning)]/30 bg-[color:var(--accent-warning)]/5 px-3 py-2 text-[11px] leading-relaxed text-ink-2">
+              <div className="rounded-md border border-[color:var(--accent-warning)]/30 bg-[color:var(--accent-warning)]/5 px-3 py-2 text-label leading-relaxed text-ink-2">
                 <span className="font-medium text-ink">Degraded, not failed.</span>{' '}
                 {latestRefresh.degradedSteps.join(', ')} failed but {latestRefresh.degradedSteps.length > 1 ? 'are' : 'is'} marked
                 optional, so the run continued and every figure is complete. The source behind{' '}
@@ -224,11 +224,11 @@ export default async function HealthPage() {
               {latestRefresh.steps.map((step) => (
                 <li key={`${latestRefresh.id}:${step.name}`} className="flex flex-col gap-1 py-2.5 lg:flex-row lg:items-center lg:gap-3">
                   <Badge tone={statusTone(step.status)}>{displayRunStatus(step.status, runStatusLabels)}</Badge>
-                  <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{step.name}</span>
-                  <span className="text-[12px] tabular-nums text-ink-3">{fmtDuration(step.durationMs)}</span>
-                  <code className="font-mono text-[11px] text-ink-3">{step.command}</code>
+                  <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">{step.name}</span>
+                  <span className="text-caption tabular-nums text-ink-3">{fmtDuration(step.durationMs)}</span>
+                  <code className="font-mono text-label text-ink-3">{step.command}</code>
                   {step.exitCode != null ? (
-                    <span className="text-[12px] tabular-nums text-ink-3">exit {step.exitCode}</span>
+                    <span className="text-caption tabular-nums text-ink-3">exit {step.exitCode}</span>
                   ) : null}
                 </li>
               ))}
@@ -236,8 +236,8 @@ export default async function HealthPage() {
 
             {latestRefresh.steps.some((step) => step.status === 'failed' && step.stderrTail) ? (
               <div className="rounded-md border border-line-subtle bg-surface p-3">
-                <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">Latest error tail</div>
-                <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-danger">
+                <div className="mb-2 text-label font-medium uppercase tracking-[0.08em] text-ink-3">Latest error tail</div>
+                <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-label leading-relaxed text-danger">
                   {latestRefresh.steps.find((step) => step.status === 'failed' && step.stderrTail)?.stderrTail}
                 </pre>
               </div>
@@ -249,7 +249,7 @@ export default async function HealthPage() {
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card title="FX snapshot">
           {fx ? (
-            <div className="space-y-2 text-[13px] text-ink-2">
+            <div className="space-y-2 text-body text-ink-2">
               <div className="flex items-center justify-between gap-3">
                 <span>USD/KRW</span>
                 <span className="font-medium tabular-nums text-ink">{fmtNumber(fx.rate, 2)}</span>
@@ -258,7 +258,7 @@ export default async function HealthPage() {
                 <span>As of</span>
                 <span className="tabular-nums text-ink-3">{fx.as_of_date}</span>
               </div>
-              <div className="text-[11px] leading-relaxed text-ink-3">{fx.source}</div>
+              <div className="text-label leading-relaxed text-ink-3">{fx.source}</div>
             </div>
           ) : (
             <EmptyState>No FX rate configured</EmptyState>
@@ -267,15 +267,15 @@ export default async function HealthPage() {
 
         <Card title="Source freshness">
           <div className="space-y-2">
-            <div className="flex items-center justify-between text-[13px]">
+            <div className="flex items-center justify-between text-body">
               <span className="text-ink-2">Tracked files</span>
               <span className="font-medium tabular-nums text-ink">{fmtNumber(sources.length)}</span>
             </div>
-            <div className="flex items-center justify-between text-[13px]">
+            <div className="flex items-center justify-between text-body">
               <span className="text-ink-2">Rows observed</span>
               <span className="font-medium tabular-nums text-ink">{fmtNumber(sources.reduce((sum: number, s: any) => sum + Number(s.row_count || 0), 0))}</span>
             </div>
-            <div className="text-[11px] leading-relaxed text-ink-3">
+            <div className="text-label leading-relaxed text-ink-3">
               Source file size, mtime, row count, and SHA-256 fingerprints are captured on every ingest, including KR/US price snapshots when present.
             </div>
           </div>
@@ -300,8 +300,8 @@ export default async function HealthPage() {
                 <Badge tone={check.status === 'pass' ? 'success' : check.severity === 'warning' ? 'warning' : 'danger'}>
                   {check.status}
                 </Badge>
-                <span className="min-w-0 flex-1 text-[13px] font-medium text-ink">{check.name}</span>
-                <span className="text-[12px] text-ink-3">{check.detail}</span>
+                <span className="min-w-0 flex-1 text-body font-medium text-ink">{check.name}</span>
+                <span className="text-caption text-ink-3">{check.detail}</span>
               </li>
             ))}
           </ul>
@@ -324,11 +324,11 @@ export default async function HealthPage() {
                   <Badge tone={report.category === 'us_gain_loss_pdf' ? 'info' : 'success'}>
                     {report.category === 'us_gain_loss_pdf' ? 'Gain/Loss' : '1099'}
                   </Badge>
-                  <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{report.filename}</span>
-                  <span className="text-[12px] tabular-nums text-ink-3">{fmtNumber(report.pages ?? 0)} pages</span>
-                  <span className="text-[12px] tabular-nums text-ink-3">{fmtNumber(report.row_count ?? 0)} rows</span>
+                  <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">{report.filename}</span>
+                  <span className="text-caption tabular-nums text-ink-3">{fmtNumber(report.pages ?? 0)} pages</span>
+                  <span className="text-caption tabular-nums text-ink-3">{fmtNumber(report.row_count ?? 0)} rows</span>
                   {metrics.tax_cost_usd != null ? (
-                    <span className="text-[12px] tabular-nums text-ink-3">${fmtNumber(metrics.tax_cost_usd, 2)} tax cost</span>
+                    <span className="text-caption tabular-nums text-ink-3">${fmtNumber(metrics.tax_cost_usd, 2)} tax cost</span>
                   ) : null}
                 </li>
               )
@@ -341,10 +341,10 @@ export default async function HealthPage() {
         <ul className="divide-y divide-line-subtle">
           {sources.map((source: any) => (
             <li key={source.name} className="flex flex-col gap-1 py-2.5 lg:flex-row lg:items-center lg:gap-3">
-              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{source.name}</span>
-              <span className="text-[12px] tabular-nums text-ink-3">{fmtNumber(source.row_count)} rows</span>
-              <span className="text-[12px] tabular-nums text-ink-3">{fmtDateTime(new Date(source.mtime_ms).toISOString())}</span>
-              <code className="font-mono text-[11px] text-ink-3">{shortHash(source.sha256)}</code>
+              <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">{source.name}</span>
+              <span className="text-caption tabular-nums text-ink-3">{fmtNumber(source.row_count)} rows</span>
+              <span className="text-caption tabular-nums text-ink-3">{fmtDateTime(new Date(source.mtime_ms).toISOString())}</span>
+              <code className="font-mono text-label text-ink-3">{shortHash(source.sha256)}</code>
             </li>
           ))}
         </ul>

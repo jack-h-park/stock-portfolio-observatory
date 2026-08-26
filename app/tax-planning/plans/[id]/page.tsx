@@ -58,7 +58,7 @@ export default async function SavedTaxPlanPage({ params }: { params: Promise<{ i
         title={saved.name}
         subtitle={copy.subtitle(fmtDateShort(saved.asOfDate, language), saved.revision)}
         action={
-          <Link href="/tax-planning" className="text-[12px] font-medium text-info hover:underline">
+          <Link href="/tax-planning" className="text-caption font-medium text-info hover:underline">
             {copy.backToPlanner}
           </Link>
         }
@@ -81,15 +81,15 @@ export default async function SavedTaxPlanPage({ params }: { params: Promise<{ i
                 [copy.complete, `${fmtNumber(progress.completionPct, 1)}%`],
               ].map(([label, value]) => (
                 <div key={label} className="bg-card px-3 py-3">
-                  <div className="text-[10px] font-medium uppercase text-ink-3">{label}</div>
-                  <div className="mt-1 text-[18px] font-medium tabular-nums text-ink">{value}</div>
+                  <div className="text-micro font-medium uppercase text-ink-3">{label}</div>
+                  <div className="mt-1 text-title font-medium tabular-nums text-ink">{value}</div>
                 </div>
               ))}
             </div>
             <div className="mt-4 h-2 overflow-hidden rounded-pill bg-line-subtle">
               <div className="h-full bg-success" style={{ width: `${progress.completionPct}%` }} />
             </div>
-            <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-ink-3">
+            <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-label text-ink-3">
               <span><strong className="font-medium text-ink">{progress.executed}</strong> {copy.executed}</span>
               <span><strong className="font-medium text-ink">{progress.reviewed}</strong> {copy.reviewed}</span>
               <span><strong className="font-medium text-ink">{progress.planned}</strong> {copy.planned}</span>
@@ -100,14 +100,14 @@ export default async function SavedTaxPlanPage({ params }: { params: Promise<{ i
 
           <form action={updateSavedTaxPlanStatusAction} className="rounded-md border border-line-subtle bg-surface p-3">
             <input type="hidden" name="planId" value={saved.id} />
-            <label className="block text-[10px] font-medium uppercase text-ink-3" htmlFor="plan-status">
+            <label className="block text-micro font-medium uppercase text-ink-3" htmlFor="plan-status">
               {copy.planStatus}
             </label>
             <select
               id="plan-status"
               name="status"
               defaultValue={saved.status}
-              className="mt-1.5 w-full rounded-md border border-line bg-card px-3 py-2 text-[12px] text-ink outline-none focus:border-info"
+              className="mt-1.5 w-full rounded-md border border-line bg-card px-3 py-2 text-caption text-ink outline-none focus:border-info"
             >
               <option value="draft">{copy.statusLabels.draft}</option>
               <option value="reviewed">{copy.statusLabels.reviewed}</option>
@@ -115,10 +115,10 @@ export default async function SavedTaxPlanPage({ params }: { params: Promise<{ i
               <option value="completed">{copy.statusLabels.completed}</option>
               <option value="archived">{copy.statusLabels.archived}</option>
             </select>
-            <button type="submit" className="mt-2 w-full rounded-md border border-ink bg-ink px-3 py-2 text-[12px] font-medium text-card">
+            <button type="submit" className="mt-2 w-full rounded-md border border-ink bg-ink px-3 py-2 text-caption font-medium text-card">
               {copy.updateStatus}
             </button>
-            <div className="mt-3 border-t border-line-subtle pt-2 text-[10px] leading-relaxed text-ink-3">
+            <div className="mt-3 border-t border-line-subtle pt-2 text-micro leading-relaxed text-ink-3">
               {copy.created} {fmtDateTime(saved.createdAt)}<br />
               {copy.updated} {fmtDateTime(saved.updatedAt)}
             </div>
@@ -140,14 +140,14 @@ export default async function SavedTaxPlanPage({ params }: { params: Promise<{ i
             [copy.instructions, deltaLabel(drift.instructionCount, copy.noChange, (value) => fmtNumber(value)), -Math.abs(drift.instructionCount)],
           ].map(([label, value, toneValue]) => (
             <div key={String(label)} className="bg-card px-3 py-3">
-              <div className="text-[10px] font-medium uppercase text-ink-3">{label}</div>
-              <div className={`mt-1 text-[18px] font-medium tabular-nums ${Number(toneValue) > 0 ? 'text-success' : Number(toneValue) < 0 ? 'text-warning' : 'text-ink'}`}>
+              <div className="text-micro font-medium uppercase text-ink-3">{label}</div>
+              <div className={`mt-1 text-title font-medium tabular-nums ${Number(toneValue) > 0 ? 'text-success' : Number(toneValue) < 0 ? 'text-warning' : 'text-ink'}`}>
                 {value}
               </div>
             </div>
           ))}
         </div>
-        <div className="mt-3 flex flex-col gap-2 text-[11px] leading-relaxed text-ink-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-3 flex flex-col gap-2 text-label leading-relaxed text-ink-3 sm:flex-row sm:items-center sm:justify-between">
           <span>
             {copy.driftSummary(saved.asOfDate, livePlanSet.asOfDate, saved.policyVersion, policyState.policy.version)}
           </span>
@@ -171,7 +171,7 @@ export default async function SavedTaxPlanPage({ params }: { params: Promise<{ i
       />
 
       <Card title={copy.snapshotProvenance} className="mb-5">
-        <dl className="grid gap-x-8 gap-y-3 text-[12px] sm:grid-cols-2 lg:grid-cols-4">
+        <dl className="grid gap-x-8 gap-y-3 text-caption sm:grid-cols-2 lg:grid-cols-4">
           <div><dt className="text-ink-3">{copy.strategy}</dt><dd className="mt-1 text-ink">{saved.plan.label}</dd></div>
           <div><dt className="text-ink-3">{copy.executionWindow}</dt><dd className="mt-1 tabular-nums text-ink">{saved.executionMonths} {copy.months}</dd></div>
           <div><dt className="text-ink-3">{copy.taxHorizon}</dt><dd className="mt-1 tabular-nums text-ink">{saved.horizonYears} {copy.years}</dd></div>

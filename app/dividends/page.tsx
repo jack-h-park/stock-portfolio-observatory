@@ -37,12 +37,12 @@ export default async function DividendsPage() {
             allowDecimals
             yAxisLabel="KRW thousand / USD"
           />
-          <p className="mt-2 text-[11px] text-ink-3">KR bars are KRW thousands; US bars are native USD.</p>
+          <p className="mt-2 text-label text-ink-3">KR bars are KRW thousands; US bars are native USD.</p>
         </Card>
         <Card title="Yearly totals">
           <ul className="divide-y divide-line-subtle">
             {rows.map((r) => (
-              <li key={r.year} className="flex items-center justify-between py-2 text-[13px]">
+              <li key={r.year} className="flex items-center justify-between py-2 text-body">
                 <span className="font-medium text-ink">{r.currency} {r.year}</span>
                 <span className="text-ink-3">{fmtNumber(r.count)} rows</span>
                 <span className="font-medium tabular-nums text-ink">{money(r.amount, r.currency)}</span>

@@ -64,7 +64,7 @@ export function HelpPopover({
         aria-expanded={open}
         aria-describedby={open ? tooltipId : undefined}
         onClick={() => setOpen((current) => !current)}
-        className="relative ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-line text-[11px] font-semibold leading-none text-ink-2 transition-colors after:absolute after:-inset-[10px] after:content-[''] hover:border-info hover:text-info focus:outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-offset-2"
+        className="relative ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-line text-label font-semibold leading-none text-ink-2 transition-colors after:absolute after:-inset-[10px] after:content-[''] hover:border-info hover:text-info focus:outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-offset-2"
       >
         i
       </button>
@@ -73,7 +73,7 @@ export function HelpPopover({
         role="tooltip"
         aria-hidden={!open}
         className={clsx(
-          'absolute top-full z-50 mt-1.5 w-72 rounded-md border border-line bg-card p-3 text-left text-[12px] font-normal normal-case leading-relaxed tracking-normal text-ink-2 shadow-elevated transition-opacity duration-100',
+          'absolute top-full z-50 mt-1.5 w-72 rounded-md border border-line bg-card p-3 text-left text-caption font-normal normal-case leading-relaxed tracking-normal text-ink-2 shadow-elevated transition-opacity duration-100',
           open ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0 group-hover:opacity-100',
           align === 'center' && 'left-1/2 -translate-x-1/2',
           align === 'left' && 'left-0',
@@ -81,7 +81,7 @@ export function HelpPopover({
         )}
       >
         {children}
-        <span className="mt-2 block text-[11px] text-ink-3">{copy.closeHelp}</span>
+        <span className="mt-2 block text-label text-ink-3">{copy.closeHelp}</span>
       </span>
     </span>
   )

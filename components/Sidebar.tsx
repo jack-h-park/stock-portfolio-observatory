@@ -156,9 +156,9 @@ export function Sidebar({ language, displayCurrency }: { language: Language; dis
           </svg>
         </button>
         <div className="flex min-w-0 items-baseline gap-1.5">
-          <span className="text-[10px] font-medium uppercase tracking-[0.1em] text-ink-3">Stock</span>
+          <span className="text-micro font-medium uppercase tracking-[0.1em] text-ink-3">Stock</span>
           <span
-            className="bg-clip-text text-[15px] font-semibold leading-tight tracking-tight text-transparent"
+            className="bg-clip-text text-body-lg font-semibold leading-tight tracking-tight text-transparent"
             style={{ backgroundImage: 'var(--gradient-full)' }}
           >
             Portfolio Observatory
@@ -189,19 +189,19 @@ export function Sidebar({ language, displayCurrency }: { language: Language; dis
         </button>
 
         <div className="flex items-center gap-2.5 px-1">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line-subtle bg-surface text-[12px] font-semibold text-ink">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line-subtle bg-surface text-caption font-semibold text-ink">
             SO
           </div>
           <div className="min-w-0">
-            <div className="truncate text-[13px] font-medium leading-tight text-ink">Stock Portfolio</div>
-            <div className="mt-0.5 text-[10px] font-medium tracking-[0.08em] text-ink-3">{copy.tagline}</div>
+            <div className="truncate text-body font-medium leading-tight text-ink">Stock Portfolio</div>
+            <div className="mt-0.5 text-micro font-medium tracking-[0.08em] text-ink-3">{copy.tagline}</div>
           </div>
         </div>
 
         <div className="mt-3 px-1">
-          <div className="text-[9px] font-medium uppercase tracking-[0.1em] text-ink-3">Stock</div>
+          <div className="text-micro font-medium uppercase tracking-[0.1em] text-ink-3">Stock</div>
           <div
-            className="bg-clip-text text-[19px] font-semibold leading-tight tracking-tight text-transparent"
+            className="bg-clip-text text-title font-semibold leading-tight tracking-tight text-transparent"
             style={{ backgroundImage: 'var(--gradient-full)' }}
           >
             Portfolio Observatory
@@ -212,11 +212,11 @@ export function Sidebar({ language, displayCurrency }: { language: Language; dis
 
         <div className="mt-4 grid gap-2 px-1">
           <div>
-            <div className="mb-1.5 px-0.5 text-[10px] font-medium text-ink-3">{copy.language}</div>
+            <div className="mb-1.5 px-0.5 text-micro font-medium text-ink-3">{copy.language}</div>
             <LanguageSwitcher language={language} />
           </div>
           <div>
-            <div className="mb-1.5 px-0.5 text-[10px] font-medium text-ink-3">{copy.currency}</div>
+            <div className="mb-1.5 px-0.5 text-micro font-medium text-ink-3">{copy.currency}</div>
             <CurrencySwitcher displayCurrency={displayCurrency} />
           </div>
         </div>
@@ -232,7 +232,7 @@ export function Sidebar({ language, displayCurrency }: { language: Language; dis
                       href={item.href}
                       aria-current={isActive(item.href) ? 'page' : undefined}
                       className={clsx(
-                        'relative block min-h-10 rounded-sm py-2 pl-3 pr-2 text-[13px] transition-colors lg:min-h-0 lg:py-1.5',
+                        'relative block min-h-10 rounded-sm py-2 pl-3 pr-2 text-body transition-colors lg:min-h-0 lg:py-1.5',
                         isActive(item.href)
                           ? 'bg-surface font-medium'
                           : 'text-ink-2 hover:bg-surface hover:text-ink'
@@ -254,7 +254,7 @@ export function Sidebar({ language, displayCurrency }: { language: Language; dis
             if ('collapsible' in section && section.collapsible) {
               return (
                 <details key={`${section.label}:${pathname}`} open={sectionActive} className="group">
-                  <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between rounded-sm px-2 text-[11px] font-medium text-ink-2 hover:bg-surface focus:outline-none focus-visible:ring-2 focus-visible:ring-info">
+                  <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between rounded-sm px-2 text-label font-medium text-ink-2 hover:bg-surface focus:outline-none focus-visible:ring-2 focus-visible:ring-info">
                     {section.label}
                     <span aria-hidden className="transition-transform group-open:rotate-90">›</span>
                   </summary>
@@ -264,14 +264,14 @@ export function Sidebar({ language, displayCurrency }: { language: Language; dis
             }
             return (
               <div key={section.label}>
-                <div className="px-2 text-[11px] font-medium text-ink-3">{section.label}</div>
+                <div className="px-2 text-label font-medium text-ink-3">{section.label}</div>
                 {items}
               </div>
             )
           })}
         </nav>
 
-        <div className="mt-auto px-2 pt-6 text-[10px] leading-relaxed text-ink-3">
+        <div className="mt-auto px-2 pt-6 text-micro leading-relaxed text-ink-3">
           <div className="text-ink-2">{copy.readOnly}</div>
           <div className="mt-1.5">{copy.source}</div>
         </div>

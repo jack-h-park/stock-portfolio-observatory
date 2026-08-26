@@ -18,11 +18,11 @@ function PositionLink({ row }: { row: ReviewPosition }) {
     <div className="min-w-[14rem]">
       <div className="flex items-center gap-2">
         <Badge tone={marketTone(row.market)}>{row.market}</Badge>
-        <Link href={positionHref(row.market, row.ticker)} className="font-mono text-[12px] font-medium text-info hover:underline">
+        <Link href={positionHref(row.market, row.ticker)} className="font-mono text-caption font-medium text-info hover:underline">
           {row.ticker}
         </Link>
       </div>
-      <div className="mt-1 max-w-[20rem] truncate text-[12px] font-medium text-ink">{row.name}</div>
+      <div className="mt-1 max-w-[20rem] truncate text-caption font-medium text-ink">{row.name}</div>
     </div>
   )
 }
@@ -198,7 +198,7 @@ export default async function ReviewPage() {
               info={glossary.unrealizedGl.description}
               hint={fmtPct(totalReturnPct)}
               tone={review.totals.base_unrealized_gl >= 0 ? 'success' : 'danger'}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
             <MetricField
               label={copy.top5Concentration}
@@ -206,7 +206,7 @@ export default async function ReviewPage() {
               info={glossary.concentration.description}
               hint={copy.concentrationHint}
               tone={review.concentration.top5Share >= 50 ? 'warning' : 'neutral'}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
             <MetricField
               label={copy.freshnessIssuesLabel}
@@ -214,7 +214,7 @@ export default async function ReviewPage() {
               info={glossary.freshness.description}
               hint={copy.inputsNeedingReview}
               tone={issueCount > 0 ? 'warning' : 'success'}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
           </div>
         </MetricHeroCard>
@@ -226,17 +226,17 @@ export default async function ReviewPage() {
                 label={copy.positions}
                 value={fmtNumber(review.totals.position_count)}
                 hint={copy.accounts(fmtNumber(review.totals.account_count))}
-                valueClassName="text-[28px]"
+                valueClassName="text-metric"
               />
               <div className="h-px bg-line-subtle" />
               <MetricField
                 label={copy.positiveNegative}
                 value={`${fmtNumber(review.totals.positive_positions)} / ${fmtNumber(review.totals.negative_positions)}`}
                 hint={copy.positionsByResult}
-                valueClassName="text-[18px]"
+                valueClassName="text-title"
               />
             </div>
-            <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
               {copy.readOrder}
             </div>
           </div>
@@ -247,11 +247,11 @@ export default async function ReviewPage() {
         <Card title={copy.marketSummary}>
           <ul className="divide-y divide-line-subtle">
             {review.byMarket.map((row) => (
-              <li key={row.market} className="grid grid-cols-[4rem_1fr_auto] items-center gap-3 py-2 text-[12px]">
+              <li key={row.market} className="grid grid-cols-[4rem_1fr_auto] items-center gap-3 py-2 text-caption">
                 <Badge tone={marketTone(row.market)}>{row.market}</Badge>
                 <div className="min-w-0">
                   <div className="font-medium tabular-nums text-ink">{money(row.base_market_value)}</div>
-                  <div className="text-[11px] text-ink-3">{copy.positionCount(fmtNumber(row.position_count))}</div>
+                  <div className="text-label text-ink-3">{copy.positionCount(fmtNumber(row.position_count))}</div>
                 </div>
                 <div className="text-right"><Signed value={row.base_unrealized_gl} format={(m) => money(m, 'KRW')} /></div>
               </li>
@@ -260,7 +260,7 @@ export default async function ReviewPage() {
         </Card>
 
         <Card title={copy.concentration}>
-          <div className="grid gap-3 text-[12px]">
+          <div className="grid gap-3 text-caption">
             <div className="flex items-center justify-between">
               <span className="text-ink-3">Top 1</span>
               <span className="font-medium tabular-nums text-ink">{fmtPct(review.concentration.top1Share)}</span>

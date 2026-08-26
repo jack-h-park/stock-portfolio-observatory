@@ -72,20 +72,20 @@ export default async function CryptoPremiumPage() {
                   label="Premium-Bearing Value"
                   value={money(premium.exposure.heldValueKrw)}
                   hint="KRW-venue positions marked at their own book"
-                  valueClassName="text-[18px]"
+                  valueClassName="text-title"
                 />
                 <MetricField
                   label="Value From Premium"
                   value={money(premium.exposure.premiumValueKrw)}
                   hint="What parity would remove"
                   tone={signTone(premium.exposure.premiumValueKrw)}
-                  valueClassName="text-[18px]"
+                  valueClassName="text-title"
                 />
                 <MetricField
                   label="Coins Compared"
                   value={fmtNumber(premium.spot.length)}
                   hint={`${premium.symbols.length} with history`}
-                  valueClassName="text-[18px]"
+                  valueClassName="text-title"
                 />
               </div>
             </MetricHeroCard>
@@ -97,7 +97,7 @@ export default async function CryptoPremiumPage() {
                     label="Threshold"
                     value={`±${NOTABLE_PREMIUM_PCT}%`}
                     hint="Notable premium threshold"
-                    valueClassName="text-[28px]"
+                    valueClassName="text-metric"
                   />
                   <div className="h-px bg-line-subtle" />
                   <MetricField
@@ -105,10 +105,10 @@ export default async function CryptoPremiumPage() {
                     value={coverageStart && coverageEnd ? `${coverageStart} → ${coverageEnd}` : 'n/a'}
                     info={GLOSSARY.coverage.description}
                     hint="Available premium history"
-                    valueClassName="text-[18px]"
+                    valueClassName="text-title"
                   />
                 </div>
-                <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+                <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
                   Portfolio totals use each venue price; this page isolates the hidden venue premium risk.
                 </div>
               </div>
@@ -125,7 +125,7 @@ export default async function CryptoPremiumPage() {
                     label: 'Coin',
                     render: (r) => (
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-[12px] font-medium text-ink">{r.symbol}</span>
+                        <span className="font-mono text-caption font-medium text-ink">{r.symbol}</span>
                         {r.heldQuantity > 0 ? null : <Badge tone="neutral">not held in KRW</Badge>}
                       </div>
                     ),
@@ -148,14 +148,14 @@ export default async function CryptoPremiumPage() {
                   },
                 ]}
               />
-              <p className="mt-2 text-[11px] text-ink-3">
+              <p className="mt-2 text-label text-ink-3">
                 Implied KRW is the dollar price at the FX snapshot above. A coin quoted on only one of the two books cannot
                 be compared and is absent rather than shown at zero.
               </p>
             </Card>
 
             <Card title="What this measures">
-              <div className="space-y-3 text-[12px] leading-relaxed text-ink-2">
+              <div className="space-y-3 text-caption leading-relaxed text-ink-2">
                 <p>
                   Each venue&apos;s holding is valued at that venue&apos;s own order book, so the premium never distorts the
                   portfolio total. The cost of that choice is that the exposure becomes invisible everywhere else — this page

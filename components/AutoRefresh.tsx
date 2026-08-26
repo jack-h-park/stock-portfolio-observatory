@@ -67,14 +67,14 @@ export function AutoRefresh({ seconds = 30 }: { seconds?: number }) {
 
   if (!online) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-[11px] tabular-nums text-warning">
+      <span className="inline-flex items-center gap-1.5 text-label tabular-nums text-warning">
         <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-warning" />
         {copy.offline}{clock ? ` · ${copy.lastChecked} ${clock}` : ''}
       </span>
     )
   }
   return (
-    <span className="inline-flex items-center gap-1.5 text-[11px] tabular-nums text-ink-3">
+    <span className="inline-flex items-center gap-1.5 text-label tabular-nums text-ink-3">
       <span
         aria-hidden
         className={clsx('h-1.5 w-1.5 rounded-full', isPending ? 'bg-info motion-safe:animate-pulse' : 'bg-success/70')}

@@ -28,7 +28,7 @@ export function PageHeader({
           {head}
           {showEmph && <span className="t-emph-gradient">{emphasis}</span>}
         </h1>
-        {subtitle && <p className="mt-1 max-w-4xl text-[13px] leading-relaxed text-ink-2">{subtitle}</p>}
+        {subtitle && <p className="mt-1 max-w-4xl text-body leading-relaxed text-ink-2">{subtitle}</p>}
       </div>
       <div className="flex shrink-0 items-center gap-3">
         {action}

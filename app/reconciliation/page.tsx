@@ -182,7 +182,7 @@ export default async function ReconciliationPage() {
               label={copy.positions}
               value={fmtNumber(review.totals.position_count)}
               hint={copy.markets(fmtNumber(review.totals.market_count))}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
             <MetricField
               label={copy.tickerlessIncome}
@@ -190,7 +190,7 @@ export default async function ReconciliationPage() {
               info={glossary.tickerless.description}
               hint={copy.tickerlessHint}
               tone={review.totals.tickerless_income_count ? 'warning' : 'success'}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
             <MetricField
               label={copy.sourceIssues}
@@ -198,7 +198,7 @@ export default async function ReconciliationPage() {
               info={glossary.inputIssues.description}
               hint={copy.sourceIssuesHint}
               tone={sourceIssueCount ? 'danger' : 'success'}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
           </div>
         </MetricHeroCard>
@@ -210,17 +210,17 @@ export default async function ReconciliationPage() {
                 label={copy.brokerages}
                 value={fmtNumber(review.totals.brokerage_count)}
                 hint={copy.marketsCovered(fmtNumber(review.totals.market_count))}
-                valueClassName="text-[28px]"
+                valueClassName="text-metric"
               />
               <div className="h-px bg-line-subtle" />
               <MetricField
                 label={copy.lotPositions}
                 value={fmtNumber(review.totals.lot_position_count)}
                 hint={copy.lotPositionsHint}
-                valueClassName="text-[18px]"
+                valueClassName="text-title"
               />
             </div>
-            <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
               {copy.readOrder}
             </div>
           </div>
@@ -237,12 +237,12 @@ export default async function ReconciliationPage() {
               { key: 'priority', label: copy.columns.priority, render: (r) => <Badge tone={priorityTone(r.priority)}>{priorityLabels[r.priority as keyof typeof priorityLabels] ?? r.priority}</Badge> },
               { key: 'area', label: copy.columns.area },
               { key: 'count', label: copy.columns.count, align: 'right', render: (r) => fmtNumber(r.count) },
-              { key: 'action', label: copy.columns.action, render: (r) => <span className="text-[12px] text-ink-2">{r.action}</span> },
+              { key: 'action', label: copy.columns.action, render: (r) => <span className="text-caption text-ink-2">{r.action}</span> },
               {
                 key: 'href',
                 label: copy.columns.open,
                 render: (r) => (
-                  <Link href={r.href} className="text-[12px] font-medium text-info hover:underline">
+                  <Link href={r.href} className="text-caption font-medium text-info hover:underline">
                     {copy.view}
                   </Link>
                 ),
@@ -283,7 +283,7 @@ export default async function ReconciliationPage() {
                 key: 'ticker',
                 label: copy.columns.position,
                 render: (r) => (
-                  <Link href={positionHref(r.market, r.ticker)} className="font-mono text-[12px] font-medium text-info hover:underline">
+                  <Link href={positionHref(r.market, r.ticker)} className="font-mono text-caption font-medium text-info hover:underline">
                     {r.name} ({r.ticker})
                   </Link>
                 ),
@@ -327,7 +327,7 @@ export default async function ReconciliationPage() {
                   key: 'ticker',
                   label: copy.columns.position,
                   render: (r) => (
-                    <Link href={positionHref(r.market, r.ticker)} className="font-mono text-[12px] font-medium text-info hover:underline">
+                    <Link href={positionHref(r.market, r.ticker)} className="font-mono text-caption font-medium text-info hover:underline">
                       {r.name} ({r.ticker})
                     </Link>
                   ),

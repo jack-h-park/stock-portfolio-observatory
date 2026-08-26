@@ -53,12 +53,12 @@ function ReconciliationStrip({
 }) {
   const ok = Math.abs(diff) < (unit === 'quantity' ? 0.0001 : 1)
   return (
-    <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px]">
+    <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption">
       <div className="flex items-center justify-between gap-3">
         <span className="font-medium text-ink">{label}</span>
         <Badge tone={ok ? 'success' : 'warning'}>{ok ? 'Matched' : 'Needs review'}</Badge>
       </div>
-      <div className="mt-2 grid gap-2 text-[11px] sm:grid-cols-3">
+      <div className="mt-2 grid gap-2 text-label sm:grid-cols-3">
         <div>
           <div className="text-ink-3">Holdings</div>
           <div className="font-medium tabular-nums text-ink">{unit === 'KRW' ? money(left, 'KRW') : fmtNumber(left, 4)}</div>
@@ -176,14 +176,14 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
         title={detail.name}
         emphasis={detail.ticker}
         subtitle={`${fmtNumber(detail.totals.account_count)} accounts · ${fmtNumber(detail.lotTotals.lot_count)} open tax lots · ${fmtNumber(detail.transactions.length)} transactions`}
-        action={<Link href="/holdings" className="text-[12px] font-medium text-info hover:underline">Back to holdings</Link>}
+        action={<Link href="/holdings" className="text-caption font-medium text-info hover:underline">Back to holdings</Link>}
       />
 
       <Card title="Valuation Data Freshness" info={GLOSSARY.freshness.description} className="mb-5">
         <div className="grid gap-2 lg:grid-cols-2">
           {freshnessItems.map((item) => (
             <div key={item.key} className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-              <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">{item.label}</div>
+              <div className="mb-1 text-label font-medium uppercase tracking-[0.08em] text-ink-3">{item.label}</div>
               <FreshnessInline item={item} />
             </div>
           ))}
@@ -194,22 +194,22 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
         <div className="grid gap-3 lg:grid-cols-3">
           <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
             <div className="mb-1 flex items-center justify-between gap-3">
-              <span className="text-[12px] font-medium text-ink">Reconciliation status</span>
+              <span className="text-caption font-medium text-ink">Reconciliation status</span>
               <Badge tone={hasReconIssue ? 'warning' : 'success'}>{hasReconIssue ? 'Needs review' : 'Matched'}</Badge>
             </div>
-            <div className="text-[11px] leading-relaxed text-ink-3">
+            <div className="text-label leading-relaxed text-ink-3">
               Quantity difference {fmtQuantity(quantityDiff, 4)} · base cost difference {money(baseCostDiff, 'KRW')}
             </div>
           </div>
           <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-            <div className="mb-1 text-[12px] font-medium text-ink">Evidence links</div>
-            <div className="text-[11px] leading-relaxed text-ink-3">
+            <div className="mb-1 text-caption font-medium text-ink">Evidence links</div>
+            <div className="text-label leading-relaxed text-ink-3">
               {fmtNumber(detail.sources.filter((source) => source.file).length)} source files linked · {fmtNumber(detail.sources.filter((source) => !source.file).length)} unresolved references
             </div>
           </div>
           <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-            <div className="mb-1 text-[12px] font-medium text-ink">Activity coverage</div>
-            <div className="text-[11px] leading-relaxed text-ink-3">
+            <div className="mb-1 text-caption font-medium text-ink">Activity coverage</div>
+            <div className="text-label leading-relaxed text-ink-3">
               {fmtNumber(detail.transactions.length)} transactions · {fmtNumber(detail.dividends.length)} dividends · {fmtNumber(detail.lots.length)} open tax lots
             </div>
           </div>
@@ -230,7 +230,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               value={money(detail.totals.native_cost, detail.currency)}
               info={GLOSSARY.costBasis.description}
               hint={GLOSSARY.costBasis.description}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
             <MetricField
               label="Unrealized G/L"
@@ -238,7 +238,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               info={GLOSSARY.unrealizedGl.description}
               hint={nativeUnrealizedPct == null ? 'No value' : fmtPct(nativeUnrealizedPct)}
               tone={signTone(detail.totals.native_unrealized_gl)}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
             <MetricField
               label="Base Unrealized G/L"
@@ -246,7 +246,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               info={`${GLOSSARY.unrealizedGl.description} ${GLOSSARY.baseAmount.description}`}
               hint={baseUnrealizedPct == null ? GLOSSARY.baseAmount.description : `${fmtPct(baseUnrealizedPct)} · ${GLOSSARY.baseAmount.description}`}
               tone={signTone(detail.totals.base_unrealized_gl)}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
           </div>
         </MetricHeroCard>
@@ -258,7 +258,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
                 label="Quantity"
                 value={fmtQuantity(detail.totals.quantity, 4)}
                 hint={`${fmtNumber(detail.holdings.length)} account holding row(s)`}
-                valueClassName="text-[28px]"
+                valueClassName="text-metric"
               />
               <div className="h-px bg-line-subtle" />
               <MetricField
@@ -266,10 +266,10 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
                 value={money(detail.dividendTotals.native_amount, detail.currency)}
                 hint={`${fmtNumber(detail.dividendTotals.count)} rows`}
                 tone="success"
-                valueClassName="text-[18px]"
+                valueClassName="text-title"
               />
             </div>
-            <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
               Read order: value first, then cost and gain/loss, then reconciliation and lot details.
             </div>
           </div>
@@ -285,7 +285,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
         </Card>
 
         <Card title="Holding-Period Mix" info="Splits quantity into long-term and short-term buckets for tax review.">
-          <div className="grid gap-3 text-[12px]">
+          <div className="grid gap-3 text-caption">
             <div className="flex items-center justify-between">
               <span className="text-ink-3">Long-term quantity</span>
               <span className="font-medium tabular-nums text-ink">{fmtNumber(detail.totals.long_term_qty, 4)}</span>
@@ -307,7 +307,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
           ) : (
             <ul className="divide-y divide-line-subtle">
               {detail.transactionSummary.map((row) => (
-                <li key={row.type} className="flex items-center justify-between gap-3 py-2 text-[12px]">
+                <li key={row.type} className="flex items-center justify-between gap-3 py-2 text-caption">
                   <Badge tone={row.type === 'DIVIDEND' ? 'success' : row.type === 'SELL' ? 'warning' : 'info'}>{row.type}</Badge>
                   <span className="text-ink-3">{fmtNumber(row.count)} rows</span>
                   <span className="font-medium tabular-nums text-ink">{row.amount == null ? 'n/a' : money(row.amount, detail.currency)}</span>
@@ -365,7 +365,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
         ) : (
           <ul className="divide-y divide-line-subtle">
             {timeline.map((event) => (
-              <li key={event.id} className="grid gap-2 py-2.5 text-[12px] lg:grid-cols-[7rem_6rem_1fr_8rem_8rem] lg:items-center">
+              <li key={event.id} className="grid gap-2 py-2.5 text-caption lg:grid-cols-[7rem_6rem_1fr_8rem_8rem] lg:items-center">
                 <span className="tabular-nums text-ink-3">{event.date}</span>
                 <Badge tone={eventTone(event.kind)}>{event.kind}</Badge>
                 <span className="min-w-0 truncate text-ink">
@@ -401,7 +401,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               { key: 'usages', label: 'Usage', render: (r) => r.usages.join(', ') },
               { key: 'row_count', label: 'Rows', align: 'right', render: (r) => (r.file ? fmtNumber(r.file.row_count) : 'n/a') },
               { key: 'mtime_ms', label: 'Modified', render: (r) => (r.file ? fmtDateTime(new Date(r.file.mtime_ms).toISOString()) : 'n/a') },
-              { key: 'sha256', label: 'SHA', render: (r) => (r.file ? <code className="font-mono text-[11px]">{shortHash(r.file.sha256)}</code> : 'n/a') },
+              { key: 'sha256', label: 'SHA', render: (r) => (r.file ? <code className="font-mono text-label">{shortHash(r.file.sha256)}</code> : 'n/a') },
             ]}
           />
         </Card>
@@ -411,7 +411,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
         <Card
           title="Tax realization preview"
           action={
-            <Link href={`/tax-planning?scenario=${taxPlan.assumptions.scenario}&objective=minimize-tax`} className="text-[12px] font-medium text-info hover:underline">
+            <Link href={`/tax-planning?scenario=${taxPlan.assumptions.scenario}&objective=minimize-tax`} className="text-caption font-medium text-info hover:underline">
               Open planner
             </Link>
           }

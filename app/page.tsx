@@ -161,7 +161,7 @@ const COPY = {
     share: 'Share',
     appEyebrow: 'Stock Portfolio Observatory',
     dbMissingTitle: 'Portfolio DB not found',
-    dbMissingHint: (path: string) => <>Run <code className="font-mono text-[12px]">pnpm ingest</code> to generate <code className="font-mono text-[12px]">{path}</code>.</>,
+    dbMissingHint: (path: string) => <>Run <code className="font-mono text-caption">pnpm ingest</code> to generate <code className="font-mono text-caption">{path}</code>.</>,
     snapshotTrend: (scope: string) => `${scope} snapshot trend`,
     combinedTrendSummary: (scope: string) => `${scope} · Market value, cost basis, and unrealized G/L · KRW millions`,
     trendUnit: (metric: string, unit: string) => `${metric} · ${unit}`,
@@ -265,7 +265,7 @@ const COPY = {
     share: '비중',
     appEyebrow: 'Stock Portfolio Observatory',
     dbMissingTitle: '포트폴리오 DB를 찾을 수 없습니다',
-    dbMissingHint: (path: string) => <><code className="font-mono text-[12px]">pnpm ingest</code>를 실행해 <code className="font-mono text-[12px]">{path}</code>를 생성하세요.</>,
+    dbMissingHint: (path: string) => <><code className="font-mono text-caption">pnpm ingest</code>를 실행해 <code className="font-mono text-caption">{path}</code>를 생성하세요.</>,
     snapshotTrend: (scope: string) => `${scope} 스냅샷 추이`,
     combinedTrendSummary: (scope: string) => `${scope} · 평가금액, 취득원가, 평가손익 · 백만 원 단위`,
     trendUnit: (metric: string, unit: string) => `${metric} · ${unit}`,
@@ -336,7 +336,7 @@ export default async function OverviewPage({
       <>
         <PageHeader eyebrow={copy.appEyebrow} title={copy.title} emphasis={copy.emphasis} />
         <Card title={copy.dbMissingTitle}>
-          <p className="text-[13px] text-ink-2">
+          <p className="text-body text-ink-2">
             {copy.dbMissingHint(config.stockDbPath)}
           </p>
         </Card>
@@ -504,20 +504,20 @@ export default async function OverviewPage({
           hint={copy.valueHint}
         >
           <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
-            <MetricField label={copy.totalCost} value={money(globalBase, 'KRW')} info={glossary.costBasis.description} valueClassName="text-[18px]" />
+            <MetricField label={copy.totalCost} value={money(globalBase, 'KRW')} info={glossary.costBasis.description} valueClassName="text-title" />
             <MetricField
               label={copy.totalGain}
               value={money(overview.totals.global_base_unrealized_gl, 'KRW')}
               info={glossary.unrealizedGl.description}
               tone={signTone(overview.totals.global_base_unrealized_gl)}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
             <MetricField
               label={copy.returnOnPricedCost}
               value={`${fmtNumber(globalUnrealizedPct, 2)}%`}
               info={`${glossary.unrealizedGl.description} This percentage is measured against priced cost basis.`}
               tone={signTone(globalUnrealizedPct)}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
           </div>
         </MetricHeroCard>
@@ -529,7 +529,7 @@ export default async function OverviewPage({
                 label={copy.holdings}
                 value={fmtNumber(overview.totals.holding_count)}
                 hint={`${copy.totalQuantity} ${fmtNumber(overview.totals.share_count, 2)}`}
-                valueClassName="text-[28px]"
+                valueClassName="text-metric"
               />
               <div className="h-px bg-line-subtle" />
               <MetricField
@@ -537,10 +537,10 @@ export default async function OverviewPage({
                 value={money(overview.dividends.krw_amount, 'KRW')}
                 hint={`${money(overview.dividends.usd_amount, 'USD')} · ${copy.count(fmtNumber(overview.dividends.count))}`}
                 tone="success"
-                valueClassName="text-[18px]"
+                valueClassName="text-title"
               />
             </div>
-            <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
               {copy.fxNote(fxLabel)}
             </div>
           </div>
@@ -550,10 +550,10 @@ export default async function OverviewPage({
       <Card title={copy.marketBreakdown} info={copy.marketBreakdownInfo} className="mb-5">
         <div className="mb-5">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-            <div className="text-[12px] font-medium text-ink-2">{copy.marketAllocation}</div>
+            <div className="text-caption font-medium text-ink-2">{copy.marketAllocation}</div>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               {marketBreakdown.map((market) => (
-                <div key={market.key} className="flex items-center gap-1.5 text-[12px] text-ink-3">
+                <div key={market.key} className="flex items-center gap-1.5 text-caption text-ink-3">
                   <span className="h-2 w-2 rounded-pill" style={{ backgroundImage: market.barStyle }} />
                   <span>{market.label}</span>
                   <span className="font-medium tabular-nums text-ink">{market.share}%</span>
@@ -582,11 +582,11 @@ export default async function OverviewPage({
               <div className="mb-2 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <Badge tone={market.tone}>{market.key}</Badge>
-                  <span className="text-[13px] font-medium text-ink">{market.label}</span>
+                  <span className="text-body font-medium text-ink">{market.label}</span>
                 </div>
-                <span className="text-[12px] tabular-nums text-ink-3">{copy.share} {market.share}%</span>
+                <span className="text-caption tabular-nums text-ink-3">{copy.share} {market.share}%</span>
               </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-caption">
                 <MetricField label={copy.marketValue} value={money(market.marketValue, 'KRW')} labelClassName="normal-case tracking-normal" />
                 <MetricField label={copy.costBasis} value={money(market.cost, 'KRW')} info={glossary.costBasis.description} labelClassName="normal-case tracking-normal" />
                 <MetricField
@@ -612,7 +612,7 @@ export default async function OverviewPage({
         <div className="grid gap-2 lg:grid-cols-3">
           {operational.snapshots.map((item) => (
             <div key={item.key} className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-              <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">{item.label}</div>
+              <div className="mb-1 text-label font-medium uppercase tracking-[0.08em] text-ink-3">{item.label}</div>
               <FreshnessInline item={item} language={language} />
             </div>
           ))}
@@ -622,15 +622,15 @@ export default async function OverviewPage({
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card title={copy.concentration} info={copy.concentrationInfo}>
           <div className="flex h-full min-h-[190px] flex-col justify-center">
-            <div className="text-[44px] font-medium leading-none tabular-nums text-ink">{topFiveShare}%</div>
-            <div className="mt-1 text-[12px] text-ink-3">{copy.concentrationHint}</div>
+            <div className="text-hero font-medium leading-none tabular-nums text-ink">{topFiveShare}%</div>
+            <div className="mt-1 text-caption text-ink-3">{copy.concentrationHint}</div>
             <div className="mt-5 space-y-2">
               {largestPositions.map((p) => (
-                <div key={p.id} className="flex items-center justify-between gap-3 text-[12px]">
+                <div key={p.id} className="flex items-center justify-between gap-3 text-caption">
                   <div className="flex min-w-0 items-center gap-2">
                     <Badge tone={marketTone(p.market)}>{p.market}</Badge>
                     <span className="min-w-0 truncate text-ink">{p.name}</span>
-                    <span className="shrink-0 font-mono text-[11px] text-ink-3">{p.ticker}</span>
+                    <span className="shrink-0 font-mono text-label text-ink-3">{p.ticker}</span>
                   </div>
                   <span className="shrink-0 tabular-nums text-ink-3">{money(p.base_cost ?? 0, 'KRW')}</span>
                 </div>
@@ -641,14 +641,14 @@ export default async function OverviewPage({
 
         <Card title={copy.termMix} info={copy.termMixInfo}>
           <div className="flex h-full min-h-[190px] flex-col justify-center">
-            <div className="text-[44px] font-medium leading-none tabular-nums text-ink">{termCoveragePct}%</div>
-            <div className="mt-1 text-[12px] text-ink-3">{copy.termCoverage} · {copy.shortTermExposure} {shortTermExposurePct}%</div>
+            <div className="text-hero font-medium leading-none tabular-nums text-ink">{termCoveragePct}%</div>
+            <div className="mt-1 text-caption text-ink-3">{copy.termCoverage} · {copy.shortTermExposure} {shortTermExposurePct}%</div>
             <div className="mt-5 flex h-2 overflow-hidden rounded-pill bg-surface">
               <div className="h-full bg-success" style={{ width: `${termSegmentWidth(termLongValue)}%` }} />
               <div className="h-full bg-warning" style={{ width: `${termSegmentWidth(termShortValue)}%` }} />
               <div className="h-full bg-line" style={{ width: `${termSegmentWidth(termUnclassifiedValue)}%` }} />
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-3 text-[12px]">
+            <div className="mt-3 grid grid-cols-3 gap-3 text-caption">
               <div>
                 <div className="text-ink-3">{copy.longTerm}</div>
                 <div className="font-medium tabular-nums text-ink">{money(termLongValue, 'KRW')}</div>
@@ -662,7 +662,7 @@ export default async function OverviewPage({
                 <div className="font-medium tabular-nums text-ink">{money(termUnclassifiedValue, 'KRW')}</div>
               </div>
             </div>
-            <div className="mt-4 grid gap-2 text-[12px]">
+            <div className="mt-4 grid gap-2 text-caption">
               {termShortByMarket.map((row) => (
                 <div key={row.market} className="flex items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2">
@@ -687,7 +687,7 @@ export default async function OverviewPage({
                 key={range.key}
                 href={`/?trend=${range.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}`}
                 scroll={false}
-                className={`rounded-sm border px-2 py-1 text-[11px] font-medium ${selectedRange.key === range.key ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
+                className={`rounded-sm border px-2 py-1 text-label font-medium ${selectedRange.key === range.key ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
               >
                 {range.label}
               </Link>
@@ -699,14 +699,14 @@ export default async function OverviewPage({
           <div>
             {selectedView === 'combined' ? (
               <>
-                <div className="text-[12px] text-ink-3">{copy.combinedTrendSummary(selectedScopeLabel)}</div>
+                <div className="text-caption text-ink-3">{copy.combinedTrendSummary(selectedScopeLabel)}</div>
                 <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
                   {combinedMetrics.map((metric) => {
                     const latest = combinedTrendData[combinedTrendData.length - 1]?.[metric.key]
                     return (
                       <div key={metric.key}>
-                        <div className="flex items-center gap-1.5 text-[11px] text-ink-3"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: metric.color }} />{copy.metricLabels[metric.key]}</div>
-                        <div className="mt-0.5 text-[18px] font-medium tabular-nums text-ink">{typeof latest === 'number' ? money(latest * 1_000_000, currencyPreferences.displayCurrency) : '—'}</div>
+                        <div className="flex items-center gap-1.5 text-label text-ink-3"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: metric.color }} />{copy.metricLabels[metric.key]}</div>
+                        <div className="mt-0.5 text-title font-medium tabular-nums text-ink">{typeof latest === 'number' ? money(latest * 1_000_000, currencyPreferences.displayCurrency) : '—'}</div>
                       </div>
                     )
                   })}
@@ -714,30 +714,30 @@ export default async function OverviewPage({
               </>
             ) : (
               <>
-                <div className="text-[12px] text-ink-3">
+                <div className="text-caption text-ink-3">
                   {copy.trendUnit(`${selectedScopeLabel} · ${selectedMetricLabel}`, selectedMetric.key === 'return_pct' ? copy.percentagePoints : displayMillionsLabel)}
                   {latestTrendCoverage != null && latestTrendCoverage < 1 ? ` · ${copy.costPriced(fmtNumber(latestTrendCoverage * 100, 2))}` : ''}
                   {latestPositionCoverage != null && latestPositionCoverage < 1 ? ` · ${copy.positionsPriced(fmtNumber(latestPositionCoverage * 100, 1))}` : ''}
                 </div>
-                <div className="mt-1 text-[22px] font-medium tabular-nums text-ink">{valuedTrendData.length ? trendValueLabel(latestTrendValue) : copy.noCoveredHistory}</div>
+                <div className="mt-1 text-title font-medium tabular-nums text-ink">{valuedTrendData.length ? trendValueLabel(latestTrendValue) : copy.noCoveredHistory}</div>
                 {latestTrendCoverage != null && latestTrendCoverage >= MIN_TREND_COST_COVERAGE && latestTrendCoverage < HEALTHY_TREND_COST_COVERAGE && (
-                  <div className="mt-1 text-[11px] text-warning">{copy.partialValuation}</div>
+                  <div className="mt-1 text-label text-warning">{copy.partialValuation}</div>
                 )}
               </>
             )}
           </div>
-          {selectedView === 'single' && <div className={`text-right text-[12px] tabular-nums ${signClass(trendChange)}`}>{valuedTrendData.length > 1 ? <>{trendChangeLabel}<div className="text-[10px] font-normal text-ink-3">{copy.since(firstTrendPoint.date)}</div></> : copy.needTwoSnapshots}</div>}
+          {selectedView === 'single' && <div className={`text-right text-caption tabular-nums ${signClass(trendChange)}`}>{valuedTrendData.length > 1 ? <>{trendChangeLabel}<div className="text-micro font-normal text-ink-3">{copy.since(firstTrendPoint.date)}</div></> : copy.needTwoSnapshots}</div>}
         </div>
         <div className="mb-3 flex flex-wrap items-center gap-1">
           <Link
             href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=single`}
             scroll={false}
-            className={`rounded-sm border px-2 py-1 text-[11px] ${selectedView === 'single' ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
+            className={`rounded-sm border px-2 py-1 text-label ${selectedView === 'single' ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
           >{copy.individual}</Link>
           <Link
             href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=combined`}
             scroll={false}
-            className={`rounded-sm border px-2 py-1 text-[11px] ${selectedView === 'combined' ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
+            className={`rounded-sm border px-2 py-1 text-label ${selectedView === 'combined' ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
           >{copy.combined}</Link>
           <span className="mx-1 h-4 w-px bg-line-subtle" />
           {TREND_SCOPES.map((scope) => (
@@ -745,7 +745,7 @@ export default async function OverviewPage({
               key={scope.key}
               href={`/?trend=${selectedRange.key}&scope=${scope.key}&metric=${selectedMetric.key}&view=${selectedView}`}
               scroll={false}
-              className={`rounded-sm border px-2 py-1 text-[11px] ${selectedScope === scope.key ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
+              className={`rounded-sm border px-2 py-1 text-label ${selectedScope === scope.key ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
             >
               {copy.scopeLabels[scope.key]}
             </Link>
@@ -756,7 +756,7 @@ export default async function OverviewPage({
               key={metric.key}
               href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${metric.key}&view=single`}
               scroll={false}
-              className={`rounded-sm border px-2 py-1 text-[11px] ${selectedMetric.key === metric.key ? 'border-line bg-surface font-medium text-ink' : 'border-transparent text-ink-3 hover:border-line hover:text-ink'}`}
+              className={`rounded-sm border px-2 py-1 text-label ${selectedMetric.key === metric.key ? 'border-line bg-surface font-medium text-ink' : 'border-transparent text-ink-3 hover:border-line hover:text-ink'}`}
             >
               {copy.metricLabels[metric.key]}
             </Link>
@@ -783,10 +783,10 @@ export default async function OverviewPage({
             axisLabel={selectedMetric.key === 'return_pct' ? copy.chartAxisReturn : displayAxisLabel}
           />
         )}
-        <div className="mt-1 text-[11px] text-ink-3">
+        <div className="mt-1 text-label text-ink-3">
           {trendData.length ? copy.trendRangeSummary(trendData[0].date, trendData[trendData.length - 1].date, valuedTrendData.length, trendData.length, missingTrendPoints) : copy.snapshotsOnce}
         </div>
-        <div className="mt-2 text-[11px] leading-relaxed text-ink-3">
+        <div className="mt-2 text-label leading-relaxed text-ink-3">
           {copy.trendExplanation}
         </div>
       </Card>
@@ -806,7 +806,7 @@ export default async function OverviewPage({
             yAxisSuffix="M"
             yAxisLabel={displayAxisLabel}
           />
-          <p className="mt-2 text-[11px] text-ink-3">{copy.topHoldingsNote}</p>
+          <p className="mt-2 text-label text-ink-3">{copy.topHoldingsNote}</p>
         </Card>
 
         <Card title={copy.dividendTrend}>
@@ -820,7 +820,7 @@ export default async function OverviewPage({
             allowDecimals
             yAxisLabel={copy.dividendAxis}
           />
-          <p className="mt-2 text-[11px] text-ink-3">{copy.dividendTrendNote}</p>
+          <p className="mt-2 text-label text-ink-3">{copy.dividendTrendNote}</p>
         </Card>
       </div>
 
@@ -832,9 +832,9 @@ export default async function OverviewPage({
             <ul className="divide-y divide-line-subtle">
               {accounts.map((a) => (
                 <li key={a.account} className="flex items-center gap-3 py-2">
-                  <div className="min-w-0 flex-1 truncate text-[13px] text-ink">{a.account}</div>
-                  <div className="text-[12px] tabular-nums text-ink-3">{copy.holdingRows(a.count)}</div>
-                  <div className="w-36 text-right text-[12px] font-medium tabular-nums text-ink">{money(a.value, a.currency)}</div>
+                  <div className="min-w-0 flex-1 truncate text-body text-ink">{a.account}</div>
+                  <div className="text-caption tabular-nums text-ink-3">{copy.holdingRows(a.count)}</div>
+                  <div className="w-36 text-right text-caption font-medium tabular-nums text-ink">{money(a.value, a.currency)}</div>
                 </li>
               ))}
             </ul>
@@ -847,10 +847,10 @@ export default async function OverviewPage({
               <li key={h.id} className="flex items-center gap-3 py-2">
                 <Badge tone={marketTone(h.market)}>{h.market}</Badge>
                 <Badge tone="neutral">{h.ticker}</Badge>
-                <Link href={positionHref(h.market, h.ticker)} className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink hover:underline">
+                <Link href={positionHref(h.market, h.ticker)} className="min-w-0 flex-1 truncate text-body font-medium text-ink hover:underline">
                   {h.name}
                 </Link>
-                <span className="text-[12px] tabular-nums text-ink-3">{money(h.base_cost ?? 0, 'KRW')}</span>
+                <span className="text-caption tabular-nums text-ink-3">{money(h.base_cost ?? 0, 'KRW')}</span>
               </li>
             ))}
           </ul>
@@ -866,7 +866,7 @@ export default async function OverviewPage({
                     {t.type}
                   </Badge>
                 </div>
-                <span className="text-[12px] tabular-nums text-ink-3">{copy.count(fmtNumber(t.count))}</span>
+                <span className="text-caption tabular-nums text-ink-3">{copy.count(fmtNumber(t.count))}</span>
               </li>
             ))}
           </ul>
