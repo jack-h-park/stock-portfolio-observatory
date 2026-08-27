@@ -29,6 +29,7 @@ import { CandidateTable, MasterPlanAnnualTax, MasterPlanOverview, MasterScenario
 import { getTaxPlanningCopy } from './copy'
 import { DecisionSummary, PlanningMap, buildOpportunityRows, opportunitySummary, type OpportunityCoverage } from './opportunity-analysis'
 import { sameKrw } from './view-utils'
+import { Select } from '@/components/form'
 
 export const dynamic = 'force-dynamic'
 
@@ -163,12 +164,12 @@ export default async function TaxPlanningPage({
               {copy.settings.schedulingRule}
               <InfoTooltip align="left">{copy.settings.schedulingRuleInfo}</InfoTooltip>
             </Label>
-            <select name="master" defaultValue={selectedMasterStrategy} className="w-full rounded-md border border-line bg-card px-3 py-2.5 text-body text-ink outline-none focus:border-info">
+            <Select name="master" defaultValue={selectedMasterStrategy} className="w-full">
               <option value="STAGED">{copy.settings.staged}</option>
               <option value="EARLIEST_LT">{copy.settings.earliestLongTerm}</option>
               <option value="WAIT_US_ONLY">{copy.settings.waitUsOnly}</option>
               <option value="ACCELERATE_LOSSES">{copy.settings.accelerateLosses}</option>
-            </select>
+            </Select>
             <span className="mt-1 block text-micro text-ink-3">{copy.settings.schedulingHint}</span>
           </label>
           <label className="block">
@@ -177,11 +178,11 @@ export default async function TaxPlanningPage({
               {copy.settings.executionWindow}
               <InfoTooltip align="left">{copy.settings.executionWindowInfo}</InfoTooltip>
             </Label>
-            <select name="pace" defaultValue={executionMonths} className="w-full rounded-md border border-line bg-card px-3 py-2.5 text-body text-ink outline-none focus:border-info">
+            <Select name="pace" defaultValue={executionMonths} className="w-full">
               {[12, 18, 24, 36, 48].map((months) => (
                 <option key={months} value={months}>{months} {copy.settings.months}</option>
               ))}
-            </select>
+            </Select>
             <span className="mt-1 block text-micro text-ink-3">{copy.settings.executionHint}</span>
           </label>
           <label className="block">
@@ -189,11 +190,11 @@ export default async function TaxPlanningPage({
               <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface text-micro text-ink">3</span>
               {copy.settings.taxHorizon}
             </Label>
-            <select name="horizon" defaultValue={horizonYears} className="w-full rounded-md border border-line bg-card px-3 py-2.5 text-body text-ink outline-none focus:border-info">
+            <Select name="horizon" defaultValue={horizonYears} className="w-full">
               {[3, 4, 5, 7, 10].map((yearCount) => (
                 <option key={yearCount} value={yearCount}>{yearCount} {copy.settings.years}</option>
               ))}
-            </select>
+            </Select>
             <span className="mt-1 block text-micro text-ink-3">{copy.settings.horizonHint}</span>
           </label>
           <button type="submit" className="rounded-md border border-ink bg-ink px-5 py-2.5 text-body font-medium text-card transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-info">

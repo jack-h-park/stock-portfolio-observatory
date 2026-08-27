@@ -10,6 +10,7 @@ import type { MonthlySaleMasterPlan, MonthlySalePlanSet, TaxPlanCandidate, Maste
 import { savedTaxPlanProgress, type SavedTaxPlan } from '@/lib/tax-plan-store'
 import { bucketTone, signClass } from '@/lib/tone'
 import type { TaxPlanningCopy } from './copy'
+import { Input } from '@/components/form'
 
 type MoneyFormatter = ReturnType<typeof createMoneyFormatter>
 
@@ -315,14 +316,12 @@ export function SavedPlansPanel({
           <label htmlFor="plan-name" className="mt-3 block text-micro font-medium uppercase text-ink-3">
             {copy.savedPlans.planName}
           </label>
-          <input
+          <Input
             id="plan-name"
             name="name"
             type="text"
             maxLength={120}
-            placeholder={copy.savedPlans.placeholder}
-            className="mt-1 w-full rounded-md border border-line bg-card px-3 py-2 text-caption text-ink outline-none placeholder:text-ink-3 focus:border-info"
-          />
+            placeholder={copy.savedPlans.placeholder} className="mt-1 w-full" />
           <button type="submit" className="mt-2 w-full rounded-md border border-ink bg-ink px-3 py-2 text-caption font-medium text-card">
             {copy.savedPlans.saveAsDraft}
           </button>
