@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { Fragment } from 'react'
 import { createSavedTaxPlanAction } from '@/app/tax-planning/actions'
 import { DataTable } from '@/components/DataTable'
-import { Badge, Card, EmptyState, MetricField, Signed, marketTone, type Tone } from '@/components/ui'
+import { Badge, Card, EmptyState, Label, MetricField, Signed, marketTone, type Tone } from '@/components/ui'
 import type { createMoneyFormatter } from '@/lib/currency'
 import { fmtDateShort, fmtDateTime, fmtDurationDays, fmtNumber, fmtQuantity } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
@@ -108,7 +108,7 @@ export function MasterPlanOverview({
     >
       <div className="flex flex-col gap-3 border-b border-line-subtle pb-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <div className="text-micro font-medium uppercase text-ink-3">{copy.overview.executionWindow}</div>
+          <Label size="micro">{copy.overview.executionWindow}</Label>
           <h2 className="mt-1 text-title font-medium leading-tight text-ink">
             {fmtDateShort(plan.summary.startDate)} <span className="text-ink-3">{copy.overview.to}</span>{' '}
             {fmtDateShort(plan.summary.endDate)}
@@ -116,7 +116,7 @@ export function MasterPlanOverview({
           <p className="mt-2 max-w-[58rem] text-body leading-relaxed text-ink-2">{plan.description}</p>
         </div>
         <div className="shrink-0 rounded-md border border-[color:var(--accent-success)]/25 bg-[color:var(--accent-success)]/5 px-3 py-2 lg:max-w-[19rem]">
-          <div className="text-micro font-medium uppercase text-success">{copy.overview.whyThisMatters}</div>
+          <Label size="micro" className="text-success">{copy.overview.whyThisMatters}</Label>
           <div className="mt-1 text-label leading-relaxed text-ink-2">
             {copy.overview.longTermTreatment(fmtNumber(plan.summary.longTermSalePct, 1))}
           </div>
@@ -159,7 +159,7 @@ export function MasterPlanOverview({
 
       <div className="mt-3 grid gap-3 lg:grid-cols-3">
         <div className="border-l-2 border-[color:var(--accent-info)] px-3 py-1">
-          <div className="text-micro font-medium uppercase text-ink-3">{copy.overview.lotsStillWaiting}</div>
+          <Label size="micro">{copy.overview.lotsStillWaiting}</Label>
           <div className="mt-1 text-caption leading-relaxed text-ink-2">
             <span className="font-medium tabular-nums text-ink">
               {copy.overview.waitingLots(fmtNumber(planSet.timing.waitingLotCount), money(planSet.timing.waitingProceedsKrw), planSet.timing.nextLongTermDate ? fmtDateShort(planSet.timing.nextLongTermDate) : null)}
@@ -167,7 +167,7 @@ export function MasterPlanOverview({
           </div>
         </div>
         <div className="border-l-2 border-[color:var(--accent-success)] px-3 py-1">
-          <div className="text-micro font-medium uppercase text-ink-3">{copy.overview.estimatedTermBenefit}</div>
+          <Label size="micro">{copy.overview.estimatedTermBenefit}</Label>
           <div className="mt-1 text-caption leading-relaxed text-ink-2">
             <span className="font-medium tabular-nums text-success">
               {copy.overview.termBenefit(money(planSet.timing.estimatedFederalTaxAvoidedKrw))}
@@ -175,7 +175,7 @@ export function MasterPlanOverview({
           </div>
         </div>
         <div className="border-l-2 border-[color:var(--accent-warning)] px-3 py-1">
-          <div className="text-micro font-medium uppercase text-ink-3">{copy.overview.waitingUntil2028}</div>
+          <Label size="micro">{copy.overview.waitingUntil2028}</Label>
           <div className="mt-1 text-caption leading-relaxed text-ink-2">
             <span className={`font-medium tabular-nums ${signClass(waitSavings)}`}>
               {copy.overview.waitUntil2028(waitSavings >= 0 ? copy.overview.saving : copy.overview.extraTax, money(Math.abs(waitSavings)), fmtDurationDays(Math.max(waitDays, 0)), money(earliestKrTopUp), money(waitKrTopUp))}
@@ -209,7 +209,7 @@ export function MasterScenarioComparison({
     >
       <div className="mb-3 flex flex-col gap-1 border-b border-line-subtle pb-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="text-micro font-medium uppercase text-ink-3">{copy.comparison.lowestEstimatedTax}</div>
+          <Label size="micro">{copy.comparison.lowestEstimatedTax}</Label>
           <div className="mt-1 text-title font-medium tabular-nums text-success">{money(minTax)}</div>
         </div>
         <div className="text-label text-ink-3">{copy.comparison.scale}</div>
@@ -244,7 +244,7 @@ export function MasterScenarioComparison({
 
               <div>
                 <div className="flex items-end justify-between gap-3">
-                  <span className="text-micro uppercase text-ink-3">{copy.comparison.estimatedTax}</span>
+                  <Label as="span" size="micro">{copy.comparison.estimatedTax}</Label>
                   <span className="text-body font-medium tabular-nums text-ink">
                     {money(scenarioRow.summary.estimatedTaxKrw)}
                   </span>
@@ -305,7 +305,7 @@ export function SavedPlansPanel({
     >
       <div className="grid gap-5 xl:grid-cols-[20rem_minmax(0,1fr)]">
         <form action={createSavedTaxPlanAction} className="rounded-md border border-line-subtle bg-surface p-3">
-          <div className="text-micro font-medium uppercase text-ink-3">{copy.savedPlans.saveCurrentCalculation}</div>
+          <Label size="micro">{copy.savedPlans.saveCurrentCalculation}</Label>
           <p className="mt-1 text-label leading-relaxed text-ink-3">
             {copy.savedPlans.saveDescription}
           </p>
@@ -395,7 +395,7 @@ export function MasterPlanAnnualTax({ plan, copy, money }: { plan: MonthlySaleMa
                 <Badge tone="info">{year.filingScenario}</Badge>
               </div>
               <div className="text-right">
-                <div className="text-micro uppercase text-ink-3">{copy.annualTax.netTax}</div>
+                <Label size="micro">{copy.annualTax.netTax}</Label>
                 <div className="mt-0.5 text-body-lg font-medium tabular-nums text-ink">{money(year.estimatedTaxKrw)}</div>
               </div>
             </div>

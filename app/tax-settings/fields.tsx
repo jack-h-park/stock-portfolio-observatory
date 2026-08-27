@@ -1,3 +1,5 @@
+import { Label } from '@/components/ui'
+
 export function Field({
   label,
   name,
@@ -15,7 +17,7 @@ export function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-label font-medium uppercase tracking-[0.08em] text-ink-3">{label}</span>
+      <Label as="span" className="mb-1 block">{label}</Label>
       <span className="flex items-center overflow-hidden rounded-md border border-line bg-card">
         <input
           name={name}

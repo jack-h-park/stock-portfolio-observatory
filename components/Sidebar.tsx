@@ -7,6 +7,7 @@ import { clsx } from 'clsx'
 import { CurrencySwitcher, LanguageSwitcher } from '@/components/LanguageSwitcher'
 import type { DisplayCurrency } from '@/lib/currency'
 import type { Language } from '@/lib/i18n'
+import { Label } from '@/components/ui'
 
 const COPY = {
   en: {
@@ -156,7 +157,7 @@ export function Sidebar({ language, displayCurrency }: { language: Language; dis
           </svg>
         </button>
         <div className="flex min-w-0 items-baseline gap-1.5">
-          <span className="text-micro font-medium uppercase tracking-[0.1em] text-ink-3">Stock</span>
+          <Label as="span" size="micro" variant="eyebrow">Stock</Label>
           <span
             className="bg-clip-text text-body-lg font-semibold leading-tight tracking-tight text-transparent"
             style={{ backgroundImage: 'var(--gradient-full)' }}
@@ -199,7 +200,7 @@ export function Sidebar({ language, displayCurrency }: { language: Language; dis
         </div>
 
         <div className="mt-3 px-1">
-          <div className="text-micro font-medium uppercase tracking-[0.1em] text-ink-3">Stock</div>
+          <Label size="micro" variant="eyebrow">Stock</Label>
           <div
             className="bg-clip-text text-title font-semibold leading-tight tracking-tight text-transparent"
             style={{ backgroundImage: 'var(--gradient-full)' }}

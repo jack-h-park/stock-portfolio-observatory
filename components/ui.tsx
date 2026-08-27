@@ -114,10 +114,10 @@ export function MetricField({
 }) {
   return (
     <div className="min-w-0">
-      <div className={clsx('flex items-center text-label font-medium uppercase tracking-[0.08em] text-ink-3', labelClassName)}>
+      <Label className={clsx('flex items-center', labelClassName)}>
         {label}
         {info ? <InfoTooltip>{info}</InfoTooltip> : null}
-      </div>
+      </Label>
       <div
         className={clsx(
           'mt-1 font-medium leading-tight tabular-nums',
@@ -159,7 +159,7 @@ export function MetricHeroCard({
     <Card title={title} info={info} accent className={className}>
       <div className="flex min-h-[16rem] flex-col justify-between gap-6">
         <div>
-          <div className="text-label font-medium uppercase tracking-[0.1em] text-ink-3">{eyebrow}</div>
+          <Label variant="eyebrow">{eyebrow}</Label>
           <div className="mt-2 text-hero font-medium leading-none tracking-normal text-ink sm:text-display">{value}</div>
           {hint ? <div className="mt-2 text-body text-ink-3">{hint}</div> : null}
         </div>
@@ -230,11 +230,48 @@ export function Signed({
   )
 }
 
-export function Eyebrow({ children }: { children: ReactNode }) {
+/**
+ * The small uppercase label above a value, a column or a section.
+ *
+ * This recipe was retyped roughly 57 times and had drifted into every
+ * combination of two sizes, two weights and four letter-spacings — including
+ * twenty sites with no tracking at all — for what is visually one thing. Two
+ * roles survive, because they are genuinely different:
+ *
+ *   default  a field or column label, tucked under the value it names
+ *   eyebrow  the overline above a hero value, given more air on purpose
+ *
+ * `size` exists for density, not for decoration: a card label reads at 11px
+ * and a label inside a dense table row at 10px.
+ */
+export function Label({
+  children,
+  size = 'label',
+  variant = 'default',
+  as: Tag = 'div',
+  className,
+}: {
+  children: ReactNode
+  size?: 'micro' | 'label'
+  variant?: 'default' | 'eyebrow'
+  /** Inline uses need a span; a div would break the line it sits on. */
+  as?: 'div' | 'span'
+  className?: string
+}) {
   return (
-    <div className="text-label font-medium uppercase tracking-[0.1em] text-ink-3">{children}</div>
+    <Tag
+      className={clsx(
+        'font-medium uppercase text-ink-3',
+        size === 'micro' ? 'text-micro' : 'text-label',
+        variant === 'eyebrow' ? 'tracking-[0.1em]' : 'tracking-[0.08em]',
+        className
+      )}
+    >
+      {children}
+    </Tag>
   )
 }
+
 
 // — Button ——————————————————————————————————————————————————————————————————
 // The single button primitive. Before this, every action/control component

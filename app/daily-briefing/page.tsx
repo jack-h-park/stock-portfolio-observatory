@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, MetricField, MetricHeroCard, Signed, Table, Thead, Th, Tbody, Tr, Td, MetaRow, MetaItem, type Tone } from '@/components/ui'
+import { Badge, Card, EmptyState, Label, MetaItem, MetaRow, MetricField, MetricHeroCard, Signed, Table, Tbody, Td, Th, Thead, Tr, type Tone } from '@/components/ui'
 import {
   getArchiveStatus,
   getBriefing,
@@ -445,7 +445,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                   <div className="mb-1 flex flex-wrap items-center gap-2">
                     <Badge tone={PRIORITY_TONE[priority]}>{PRIORITY_LABEL[priority]}</Badge>
                     <span className="text-caption font-medium text-ink">{a.head}</span>
-                    <span className="text-label uppercase tracking-[0.06em] text-ink-3">{a.kind}</span>
+                    <Label as="span">{a.kind}</Label>
                   </div>
                   <p className="text-caption leading-relaxed text-ink-2">{a.body}</p>
                 </li>

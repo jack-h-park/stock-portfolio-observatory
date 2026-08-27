@@ -1,6 +1,6 @@
 import { PageHeader } from '@/components/PageHeader'
 import { FreshnessRows } from '@/components/Freshness'
-import { Badge, Card, EmptyState, marketTone, type Tone } from '@/components/ui'
+import { Badge, Card, EmptyState, Label, marketTone, type Tone } from '@/components/ui'
 import { getAccountCoverage, getEvidenceReports, getMeta, getOperationalHealth, getOverview, getReconciliationReview, getRefreshRuns, getSourceFiles, getValidationChecks, type ReconciliationReview } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtDuration, fmtNumber, shortHash } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
@@ -236,7 +236,7 @@ export default async function HealthPage() {
 
             {latestRefresh.steps.some((step) => step.status === 'failed' && step.stderrTail) ? (
               <div className="rounded-md border border-line-subtle bg-surface p-3">
-                <div className="mb-2 text-label font-medium uppercase tracking-[0.08em] text-ink-3">Latest error tail</div>
+                <Label className="mb-2">Latest error tail</Label>
                 <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-label leading-relaxed text-danger">
                   {latestRefresh.steps.find((step) => step.status === 'failed' && step.stderrTail)?.stderrTail}
                 </pre>

@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { DataTable } from '@/components/DataTable'
 import { FreshnessInline } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, MetricField, MetricHeroCard } from '@/components/ui'
+import { Badge, Card, EmptyState, Label, MetricField, MetricHeroCard } from '@/components/ui'
 import { getOperationalHealth, getPositionDetail, type FreshnessItem } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtNumber, fmtPct, fmtQuantity, shortHash } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
@@ -183,7 +183,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
         <div className="grid gap-2 lg:grid-cols-2">
           {freshnessItems.map((item) => (
             <div key={item.key} className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-              <div className="mb-1 text-label font-medium uppercase tracking-[0.08em] text-ink-3">{item.label}</div>
+              <Label className="mb-1">{item.label}</Label>
               <FreshnessInline item={item} />
             </div>
           ))}
