@@ -6,6 +6,8 @@ import { getRecentTransactions } from '@/lib/adapters/portfolio-db'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { fmtNumber, fmtQuantity } from '@/lib/format'
+import { getLanguage } from '@/lib/i18n-server'
+import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { applyFilters, applySearch, filterOptions, readFilters, withParam, type FilterGroup } from '@/lib/table-filter'
 import { formatSort, parseSort, sortRows, type TableSort } from '@/lib/table-sort'
 import type { Tone } from '@/lib/tone'
@@ -15,9 +17,9 @@ export const dynamic = 'force-dynamic'
 const BASE = '/transactions'
 
 const GROUPS: FilterGroup<any>[] = [
-  { key: 'market', label: 'Market' },
-  { key: 'brokerage', label: 'Broker' },
-  { key: 'type', label: 'Type' },
+  { key: 'market', label: 'market' },
+  { key: 'brokerage', label: 'broker' },
+  { key: 'type', label: 'type' },
 ]
 
 /** A ledger row's kind: money in, money out, everything else. */
@@ -33,6 +35,8 @@ export default async function TransactionsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const params = await searchParams
+  const language = await getLanguage()
+  const copy = getPageCopy('transactions', language)
   const money = createMoneyFormatter(await getCurrencyPreferences())
   const rows = getRecentTransactions(200)
 
@@ -50,21 +54,21 @@ export default async function TransactionsPage({
   return (
     <>
       <PageHeader
-        eyebrow="Portfolio"
-        title="Transactions"
-        emphasis="Transactions"
-        subtitle="Most recent ledger rows from the normalized transaction TSV."
+        eyebrow={copy.eyebrow}
+        title={copy.title}
+        emphasis={copy.emphasis}
+        subtitle={copy.subtitle}
       />
-      <Card title="Recent transactions">
+      <Card title={copy.card}>
         <div className="space-y-3">
           <FilterBar
             basePath={BASE}
             params={params}
-            summary={`${fmtNumber(filtered.length)} of ${fmtNumber(rows.length)} recent rows`}
-            search={{ key: 'q', label: 'Search', placeholder: 'Ticker, name, account, or broker', value: query }}
+            summary={copy.summary(fmtNumber(filtered.length), fmtNumber(rows.length))}
+            search={{ key: 'q', label: getUiCopy(language).common.search, placeholder: copy.searchPlaceholder, value: query }}
             groups={GROUPS.map((group) => ({
               key: group.key,
-              label: group.label,
+              label: copy.filters[group.label as keyof typeof copy.filters],
               options: options[group.key].map((value: string) => ({ value, label: value })),
               selected: selected[group.key],
             }))}
@@ -74,18 +78,18 @@ export default async function TransactionsPage({
             sort={sort}
             sortHref={(next: TableSort) => withParam(BASE, params, 'sort', formatSort(next))}
             columns={[
-              { key: 'market', label: 'Market', sortable: true, sortFirst: 'asc', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
-              { key: 'date', label: 'Date', sortable: true, nowrap: true },
-              { key: 'brokerage', label: 'Broker', sortable: true, sortFirst: 'asc' },
-              { key: 'account', label: 'Account', sortable: true, sortFirst: 'asc', priority: 'secondary' },
-              { key: 'type', label: 'Type', sortable: true, sortFirst: 'asc', render: (r) => <Badge tone={typeTone(r.type)}>{r.type}</Badge> },
-              { key: 'ticker', label: 'Ticker', sortable: true, sortFirst: 'asc' },
-              { key: 'name', label: 'Name', sortable: true, sortFirst: 'asc' },
-              { key: 'quantity', label: 'Qty', align: 'right', sortable: true, render: (r) => fmtQuantity(r.quantity, 2) },
-              { key: 'native_amount', label: 'Amount', align: 'right', sortable: true, render: (r) => money(r.native_amount, r.currency) },
-              { key: 'amount_krw', label: 'Base Amount', align: 'right', sortable: true, render: (r) => (r.amount_krw == null ? 'n/a' : money(r.amount_krw, 'KRW')) },
-              { key: 'source', label: 'Source', priority: 'tertiary' },
-              { key: 'page', label: 'Page', align: 'right', priority: 'tertiary' },
+              { key: 'market', label: copy.columns.market, sortable: true, sortFirst: 'asc', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
+              { key: 'date', label: copy.columns.date, sortable: true, nowrap: true },
+              { key: 'brokerage', label: copy.columns.broker, sortable: true, sortFirst: 'asc' },
+              { key: 'account', label: copy.columns.account, sortable: true, sortFirst: 'asc', priority: 'secondary' },
+              { key: 'type', label: copy.columns.type, sortable: true, sortFirst: 'asc', render: (r) => <Badge tone={typeTone(r.type)}>{r.type}</Badge> },
+              { key: 'ticker', label: copy.columns.ticker, sortable: true, sortFirst: 'asc' },
+              { key: 'name', label: copy.columns.name, sortable: true, sortFirst: 'asc' },
+              { key: 'quantity', label: copy.columns.quantity, align: 'right', sortable: true, render: (r) => fmtQuantity(r.quantity, 2) },
+              { key: 'native_amount', label: copy.columns.amount, align: 'right', sortable: true, render: (r) => money(r.native_amount, r.currency) },
+              { key: 'amount_krw', label: copy.columns.baseAmount, align: 'right', sortable: true, render: (r) => (r.amount_krw == null ? 'n/a' : money(r.amount_krw, 'KRW')) },
+              { key: 'source', label: copy.columns.source, priority: 'tertiary' },
+              { key: 'page', label: copy.columns.page, align: 'right', priority: 'tertiary' },
             ]}
           />
         </div>

@@ -1,4 +1,3 @@
-import type { Language } from '@/lib/i18n'
 
 export const UI_COPY_BY_LANG = {
   en: {
@@ -94,7 +93,3 @@ export const UI_COPY_BY_LANG = {
     },
   },
 } as const
-
-export function getUiCopy(language: Language = 'en') {
-  return UI_COPY_BY_LANG[language]
-}
