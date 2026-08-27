@@ -13,6 +13,16 @@
   --gradient-full: linear-gradient(90deg, #f06292 0%, #b439df 30%, #5b8def 60%, #4dd0e1 100%);
   --gradient-mini: linear-gradient(90deg, #b439df 0%, #5b8def 50%, #4dd0e1 100%);
 
+  /* The gradient for text that is clipped to it, as opposed to a bar or a rule.
+     The brand stops are drawn for decoration and only one of them survives being
+     read: on white, cyan #4dd0e1 is 1.84:1, blue #5b8def 3.23:1 and pink
+     #f06292 3.06:1, against the 4.5:1 that normal-size text needs. The h1
+     emphasis is 22px at weight 500, which is not "large text" under WCAG, so it
+     needs the full 4.5:1 — and the largest word on the page was the least
+     readable one. This keeps the purple-to-cool sweep with stops that pass:
+     4.57:1 and 5.67:1. */
+  --gradient-text: linear-gradient(90deg, #b439df 0%, #0B6E99 100%);
+
   --ease-std: cubic-bezier(0.4, 0, 0.2, 1);
   --dur-1: 80ms;
   --dur-2: 150ms;

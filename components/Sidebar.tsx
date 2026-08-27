@@ -57,7 +57,7 @@ export function Sidebar({ language, displayCurrency }: { language: Language; dis
           <Label as="span" size="micro" variant="eyebrow">Stock</Label>
           <span
             className="bg-clip-text text-body-lg font-semibold leading-tight tracking-tight text-transparent"
-            style={{ backgroundImage: 'var(--gradient-full)' }}
+            style={{ backgroundImage: 'var(--gradient-text)' }}
           >
             Portfolio Observatory
           </span>
@@ -100,7 +100,7 @@ export function Sidebar({ language, displayCurrency }: { language: Language; dis
           <Label size="micro" variant="eyebrow">Stock</Label>
           <div
             className="bg-clip-text text-title font-semibold leading-tight tracking-tight text-transparent"
-            style={{ backgroundImage: 'var(--gradient-full)' }}
+            style={{ backgroundImage: 'var(--gradient-text)' }}
           >
             Portfolio Observatory
           </div>
