@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { FreshnessRows } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, MetricField, MetricHeroCard, Signed, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, Signed, marketTone } from '@/components/ui'
 import { getOperationalHealth, getPortfolioReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
 import { fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
@@ -11,6 +11,7 @@ import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
 import { getPageCopy } from '@/lib/ui-copy'
+import { signTone } from '@/lib/tone'
 
 export const dynamic = 'force-dynamic'
 
@@ -90,65 +91,42 @@ export default async function ReviewPage() {
         action={issueCount ? <Badge tone="warning">{copy.freshnessIssues(issueCount)}</Badge> : <Badge tone="success">{copy.ready}</Badge>}
       />
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
-        <MetricHeroCard
-          title={copy.baseMarketValue}
-          info={copy.baseMarketValueInfo}
-          eyebrow={copy.reviewHeadline}
-          value={money(review.totals.base_market_value)}
-          hint={copy.globalValueHint}
-        >
-          <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
-            <MetricField
-              label={copy.unrealizedGl}
-              value={money(review.totals.base_unrealized_gl)}
-              info={glossary.unrealizedGl.description}
-              hint={fmtPct(totalReturnPct)}
-              tone={review.totals.base_unrealized_gl >= 0 ? 'success' : 'danger'}
-              valueClassName="text-title"
-            />
-            <MetricField
-              label={copy.top5Concentration}
-              value={fmtPct(review.concentration.top5Share)}
-              info={glossary.concentration.description}
-              hint={copy.concentrationHint}
-              tone={review.concentration.top5Share >= 50 ? 'warning' : 'neutral'}
-              valueClassName="text-title"
-            />
-            <MetricField
-              label={copy.freshnessIssuesLabel}
-              value={fmtNumber(issueCount)}
-              info={glossary.freshness.description}
-              hint={copy.inputsNeedingReview}
-              tone={issueCount > 0 ? 'warning' : 'success'}
-              valueClassName="text-title"
-            />
-          </div>
-        </MetricHeroCard>
-
-        <Card title={copy.reviewScope} info={copy.reviewScopeInfo}>
-          <div className="flex min-h-[16rem] flex-col justify-between gap-4">
-            <div className="space-y-4">
-              <MetricField
-                label={copy.positions}
-                value={fmtNumber(review.totals.position_count)}
-                hint={copy.accounts(fmtNumber(review.totals.account_count))}
-                valueClassName="text-metric"
-              />
-              <div className="h-px bg-line-subtle" />
-              <MetricField
-                label={copy.positiveNegative}
-                value={`${fmtNumber(review.totals.positive_positions)} / ${fmtNumber(review.totals.negative_positions)}`}
-                hint={copy.positionsByResult}
-                valueClassName="text-title"
-              />
-            </div>
-            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
-              {copy.readOrder}
-            </div>
-          </div>
-        </Card>
+      {/* No hero. The market value that used to headline this page is the same
+          number the overview leads with, so the reader met it twice and learned
+          nothing the second time. What is left is what only this page frames:
+          how many positions, how they split, and how much needs attention. */}
+      <div className="mb-5 grid grid-cols-2 gap-4 rounded-md border border-line bg-card px-4 py-3 shadow-card sm:grid-cols-4">
+        <MetricField
+          label={copy.positions}
+          value={fmtNumber(review.totals.position_count)}
+          hint={copy.accounts(fmtNumber(review.totals.account_count))}
+          valueClassName="text-title"
+        />
+        <MetricField
+          label={copy.positiveNegative}
+          value={`${fmtNumber(review.totals.positive_positions)} / ${fmtNumber(review.totals.negative_positions)}`}
+          hint={copy.positionsByResult}
+          valueClassName="text-title"
+        />
+        <MetricField
+          label={copy.unrealizedGl}
+          value={money(review.totals.base_unrealized_gl)}
+          info={glossary.unrealizedGl.description}
+          hint={fmtPct(totalReturnPct)}
+          tone={signTone(review.totals.base_unrealized_gl)}
+          valueClassName="text-title"
+        />
+        <MetricField
+          label={copy.freshnessIssuesLabel}
+          value={fmtNumber(issueCount)}
+          info={glossary.freshness.description}
+          hint={copy.inputsNeedingReview}
+          tone={issueCount > 0 ? 'warning' : 'success'}
+          valueClassName="text-title"
+        />
       </div>
+
+      <p className="mb-5 rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{copy.readOrder}</p>
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
         <Card title={copy.marketSummary}>

@@ -1,8 +1,8 @@
 import { PageHeader } from '@/components/PageHeader'
 import { FreshnessRows } from '@/components/Freshness'
 import { Badge, Card, EmptyState, Label, marketTone, type Tone } from '@/components/ui'
-import { getAccountCoverage, getEvidenceReports, getMeta, getOperationalHealth, getOverview, getReconciliationReview, getRefreshRuns, getSourceFiles, getValidationChecks, type ReconciliationReview } from '@/lib/adapters/portfolio-db'
-import { fmtDateTime, fmtDuration, fmtNumber, shortHash } from '@/lib/format'
+import { getAccountCoverage, getEvidenceReports, getMeta, getOperationalHealth, getOverview, getReconciliationReview, getRefreshRuns, getValidationChecks, type ReconciliationReview } from '@/lib/adapters/portfolio-db'
+import { fmtDateTime, fmtDuration, fmtNumber } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { getUiCopy } from '@/lib/ui-copy'
 import Link from 'next/link'
@@ -84,7 +84,6 @@ export default async function HealthPage() {
   const meta = getMeta()
   const overview = getOverview()
   const checks = getValidationChecks()
-  const sources = getSourceFiles()
   const evidence = getEvidenceReports()
   const operational = getOperationalHealth()
   const accountCoverage = getAccountCoverage()
@@ -265,21 +264,6 @@ export default async function HealthPage() {
           )}
         </Card>
 
-        <Card title="Source freshness">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-body">
-              <span className="text-ink-2">Tracked files</span>
-              <span className="font-medium tabular-nums text-ink">{fmtNumber(sources.length)}</span>
-            </div>
-            <div className="flex items-center justify-between text-body">
-              <span className="text-ink-2">Rows observed</span>
-              <span className="font-medium tabular-nums text-ink">{fmtNumber(sources.reduce((sum: number, s: any) => sum + Number(s.row_count || 0), 0))}</span>
-            </div>
-            <div className="text-label leading-relaxed text-ink-3">
-              Source file size, mtime, row count, and SHA-256 fingerprints are captured on every ingest, including KR/US price snapshots when present.
-            </div>
-          </div>
-        </Card>
       </div>
 
       <Card title="Freshness issues" accent={operational.staleItems.length > 0}>
@@ -308,10 +292,6 @@ export default async function HealthPage() {
         )}
       </Card>
 
-      <Card title="Source drift monitor" className="mt-5" accent={operational.sourceDrift.some((item) => item.status !== 'fresh')}>
-        <FreshnessRows items={operational.sourceDrift} />
-      </Card>
-
       <Card title="PDF evidence" className="mt-5">
         {evidence.length === 0 ? (
           <EmptyState>No PDF evidence extracted</EmptyState>
@@ -337,18 +317,6 @@ export default async function HealthPage() {
         )}
       </Card>
 
-      <Card title="Source fingerprints" className="mt-5">
-        <ul className="divide-y divide-line-subtle">
-          {sources.map((source: any) => (
-            <li key={source.name} className="flex flex-col gap-1 py-2.5 lg:flex-row lg:items-center lg:gap-3">
-              <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">{source.name}</span>
-              <span className="text-caption tabular-nums text-ink-3">{fmtNumber(source.row_count)} rows</span>
-              <span className="text-caption tabular-nums text-ink-3">{fmtDateTime(new Date(source.mtime_ms).toISOString())}</span>
-              <code className="font-mono text-label text-ink-3">{shortHash(source.sha256)}</code>
-            </li>
-          ))}
-        </ul>
-      </Card>
     </>
   )
 }
