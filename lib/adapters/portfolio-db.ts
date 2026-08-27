@@ -124,6 +124,8 @@ export type FxDashboard = {
     hanaOutboundValueKrw: number
     hanaOutboundUnrealizedKrw: number
     hanaOutboundEstimatedCostRate: number | null
+    hanaOutboundConfirmedUnrealizedKrw: number
+    hanaOutboundEstimatedUnrealizedKrw: number
     currentUsdKrw: number | null
     currentUsdKrwAsOf: string | null
   }
@@ -2921,6 +2923,8 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
     let hanaUnknownDestinationUsd = 0
     let hanaSourceUsd = 0
     let hanaSourceCostKrw = 0
+    let hanaConfirmedSourceUsd = 0
+    let hanaConfirmedSourceCostKrw = 0
     let realizedEventCount = 0
     let realizedFxGlKrw = 0
 
@@ -2984,6 +2988,10 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
       if (event.institution === 'Hana Bank') {
         hanaSourceUsd += sign * event.usd_amount
         hanaSourceCostKrw += sign * (event.krw_amount ?? 0)
+        if (event.rate_status === 'actual') {
+          hanaConfirmedSourceUsd += sign * event.usd_amount
+          hanaConfirmedSourceCostKrw += sign * (event.krw_amount ?? 0)
+        }
       }
       const monthKey = event.date.slice(0, 7)
       const month = monthly.get(monthKey) ?? { month: monthKey, usdBought: 0, krwSpent: 0, averageRate: null, spreadSavingsKrw: 0 }
@@ -3002,6 +3010,15 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
     }
     for (const item of monthly.values()) item.averageRate = item.usdBought ? item.krwSpent / item.usdBought : null
 
+    const hanaOutboundCostRate = hanaSourceUsd ? hanaSourceCostKrw / hanaSourceUsd : null
+    const hanaOutboundCostKrw = hanaOutboundUsd && hanaSourceUsd ? hanaOutboundUsd * hanaOutboundCostRate! : 0
+    const hanaOutboundValueKrw = hanaOutboundUsd && currentRate ? hanaOutboundUsd * currentRate.rate : 0
+    const hanaConfirmedAllocatedUsd = hanaOutboundUsd && hanaSourceUsd ? hanaOutboundUsd * hanaConfirmedSourceUsd / hanaSourceUsd : 0
+    const hanaConfirmedAllocatedCostKrw = hanaConfirmedSourceUsd && hanaSourceUsd ? hanaOutboundUsd * hanaConfirmedSourceCostKrw / hanaSourceUsd : 0
+    const hanaOutboundConfirmedUnrealizedKrw = hanaConfirmedAllocatedUsd && currentRate ? hanaConfirmedAllocatedUsd * currentRate.rate - hanaConfirmedAllocatedCostKrw : 0
+    const hanaOutboundUnrealizedKrw = hanaOutboundValueKrw - hanaOutboundCostKrw
+    const hanaOutboundEstimatedUnrealizedKrw = hanaOutboundUnrealizedKrw - hanaOutboundConfirmedUnrealizedKrw
+
     return {
       summary: {
         exchangeCount,
@@ -3019,10 +3036,12 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
         hanaOutboundUsd,
         hanaKnownMiraeUsd,
         hanaUnknownDestinationUsd,
-        hanaOutboundCostKrw: hanaOutboundUsd && hanaSourceUsd ? hanaOutboundUsd * (hanaSourceCostKrw / hanaSourceUsd) : 0,
-        hanaOutboundValueKrw: hanaOutboundUsd && currentRate ? hanaOutboundUsd * currentRate.rate : 0,
-        hanaOutboundUnrealizedKrw: hanaOutboundUsd && currentRate ? hanaOutboundUsd * currentRate.rate - hanaOutboundUsd * (hanaSourceUsd ? hanaSourceCostKrw / hanaSourceUsd : 0) : 0,
-        hanaOutboundEstimatedCostRate: hanaSourceUsd ? hanaSourceCostKrw / hanaSourceUsd : null,
+        hanaOutboundCostKrw,
+        hanaOutboundValueKrw,
+        hanaOutboundUnrealizedKrw,
+        hanaOutboundEstimatedCostRate: hanaOutboundCostRate,
+        hanaOutboundConfirmedUnrealizedKrw,
+        hanaOutboundEstimatedUnrealizedKrw,
         currentUsdKrw: currentRate?.rate ?? null,
         currentUsdKrwAsOf: currentRate?.as_of_date ?? null,
       },

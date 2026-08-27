@@ -25,6 +25,7 @@ const COPY = {
     institutions: 'By Institution', trend: 'Monthly Weighted Exchange Rate', transferReview: 'Transfer Review', recent: 'Recent FX Ledger',
     hanaOutbound: 'Hana USD Remittance Baseline', hanaOutboundHint: 'Outbound USD total to reconcile against US-account inbound statements later.', knownMirae: 'Known Mirae transfers', destinationUnknown: 'Destination unknown',
     remittanceCost: 'Estimated KRW cost', remittanceValue: 'Value at current rate', remittanceGl: 'Estimated unrealized FX gain/loss',
+    confirmedGl: 'Confirmed-source portion', estimatedGl: 'Estimated-source portion',
     date: 'Date', institution: 'Institution', type: 'Event', usd: 'USD', krw: 'KRW', rate: 'Rate', status: 'Rate status',
     counterparty: 'Counterparty', match: 'Match status', source: 'Source', accountBalance: 'Latest USD balance',
     preference: 'Preference', count: 'Exchanges', note: 'Evidence note',
@@ -43,6 +44,7 @@ const COPY = {
     institutions: '기관별 현황', trend: '월별 가중평균 환율', transferReview: '이체 검토', recent: '최근 FX 원장',
     hanaOutbound: '하나은행 미국 송금 검증 기준액', hanaOutboundHint: '향후 미국 계좌 입금내역과 대조할 하나은행 USD 출금 합계입니다. 미국 송금 확정액은 아닙니다.', knownMirae: '확인된 미래에셋 이체', destinationUnknown: '목적지 미확인',
     remittanceCost: '추정 원화 원가', remittanceValue: '현재 환율 평가액', remittanceGl: '추정 미실현 환차익',
+    confirmedGl: '확정 출처 원가분', estimatedGl: '추정 출처 원가분',
     date: '일자', institution: '기관', type: '유형', usd: '달러', krw: '원화', rate: '환율', status: '환율 상태',
     counterparty: '상대 기관', match: '연결 상태', source: '원본', accountBalance: '최근 달러 잔액',
     preference: '우대율', count: '환전 건수', note: '근거 메모',
@@ -99,6 +101,8 @@ export default async function FxPage() {
           <MetricField label={copy.remittanceCost} value={money(data.summary.hanaOutboundCostKrw)} hint={data.summary.hanaOutboundEstimatedCostRate == null ? 'n/a' : `₩${fmtNumber(data.summary.hanaOutboundEstimatedCostRate, 2)} / USD`} valueClassName="text-title" />
           <MetricField label={copy.remittanceValue} value={money(data.summary.hanaOutboundValueKrw)} hint={data.summary.currentUsdKrwAsOf ?? 'n/a'} valueClassName="text-title" />
           <MetricField label={copy.remittanceGl} value={money(data.summary.hanaOutboundUnrealizedKrw)} hint={language === 'ko' ? '입금일 환율 가정 포함' : 'Includes deposit-date rate assumptions'} tone={data.summary.hanaOutboundUnrealizedKrw >= 0 ? 'success' : 'warning'} valueClassName="text-title" />
+          <MetricField label={copy.confirmedGl} value={money(data.summary.hanaOutboundConfirmedUnrealizedKrw)} hint={language === 'ko' ? '실제 적용환율이 기록된 원가만' : 'Only rows with an actual applied rate'} tone={data.summary.hanaOutboundConfirmedUnrealizedKrw >= 0 ? 'success' : 'warning'} valueClassName="text-title" />
+          <MetricField label={copy.estimatedGl} value={money(data.summary.hanaOutboundEstimatedUnrealizedKrw)} hint={language === 'ko' ? '과거 추정환율·입금일 환율 가정' : 'Historical and deposit-date assumptions'} tone="warning" valueClassName="text-title" />
         </div>
       </Card>
 
