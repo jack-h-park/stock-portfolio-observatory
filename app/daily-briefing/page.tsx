@@ -12,10 +12,14 @@ import {
 } from '@/lib/adapters/briefing-archive'
 import { activityBadge, activityWording, moverNote } from '@/lib/briefing-copy'
 import { fmtPct, fmtQuantity } from '@/lib/format'
-import { GLOSSARY } from '@/lib/glossary'
+import { getGlossary } from '@/lib/glossary'
 import { positionHref } from '@/lib/position-url'
 import { signTone } from '@/lib/tone'
 import { Select } from '@/components/form'
+import { getLanguage } from '@/lib/i18n-server'
+import { getPageCopy } from '@/lib/ui-copy'
+
+type PageCopy = ReturnType<typeof getPageCopy<'dailyBriefing'>>
 
 export const dynamic = 'force-dynamic'
 
@@ -48,24 +52,30 @@ function TickerLink({ ticker, name, market }: { ticker: string; name?: string | 
 // Priority is the primary signal (how soon), kind the secondary one (what sort).
 // The writer already orders actions by priority, so this page only displays.
 const PRIORITY_TONE: Record<string, Tone> = { 'act-now': 'danger', 'this-week': 'warning', fyi: 'neutral' }
-const PRIORITY_LABEL: Record<string, string> = { 'act-now': 'Act now', 'this-week': 'This week', fyi: 'FYI' }
+// Built per request rather than at module scope, because the wording is now
+// per-language and a module constant would freeze whichever language loaded first.
+const priorityLabels = (copy: PageCopy): Record<string, string> => ({
+  'act-now': copy.actNow,
+  'this-week': copy.thisWeek,
+  fyi: 'FYI',
+})
 
 /** Documents archived before priority existed default to the least urgent level. */
 function priorityOf(action: { priority?: string }) {
-  return action.priority && action.priority in PRIORITY_LABEL ? action.priority : 'fyi'
+  return action.priority && ['act-now', 'this-week', 'fyi'].includes(action.priority) ? action.priority : 'fyi'
 }
 
-const SESSION_EXPLAIN: Record<string, string> = {
-  'no-prior-snapshot': 'This was the first briefing with a retained holdings snapshot, so there was nothing yet to compare against.',
-  'no-holdings': 'No holdings snapshot was retained for this briefing.',
-  'no-price-coverage': 'The holdings sheet carried no usable prices on both sides of the comparison.',
-}
+const sessionExplain = (copy: PageCopy): Record<string, string> => ({
+  'no-prior-snapshot': copy.noPriorSnapshot,
+  'no-holdings': copy.noSnapshot,
+  'no-price-coverage': copy.noPrices,
+})
 
 type Notes = BriefingDocument['narrative']['moverNotes']
 
 /** Standing versus cost — cumulative since purchase. */
-function MoverList({ movers, notes, market }: { movers: BriefingPosition[]; notes: Notes; market: BriefingMarket }) {
-  if (movers.length === 0) return <EmptyState>No movers in this briefing</EmptyState>
+function MoverList({ movers, notes, market, copy }: { movers: BriefingPosition[]; notes: Notes; market: BriefingMarket; copy: PageCopy }) {
+  if (movers.length === 0) return <EmptyState>{copy.noMovers}</EmptyState>
   return (
     <ul className="divide-y divide-[color:var(--border-subtle)]">
       {movers.map((m) => (
@@ -76,7 +86,7 @@ function MoverList({ movers, notes, market }: { movers: BriefingPosition[]; note
               <Signed value={m.pct} format={(m) => fmtPct(m)} />
             </div>
           </div>
-          <p className="min-w-0 text-caption leading-relaxed text-ink-2">{notes[m.ticker]?.why ?? 'No note in this briefing.'}</p>
+          <p className="min-w-0 text-caption leading-relaxed text-ink-2">{notes[m.ticker]?.why ?? copy.noNote}</p>
         </li>
       ))}
     </ul>
@@ -130,7 +140,7 @@ function Band({ title, subtitle }: { title: string; subtitle: string }) {
   )
 }
 
-function DatePicker({ dates, selected }: { dates: string[]; selected: string }) {
+function DatePicker({ dates, selected, copy }: { dates: string[]; selected: string; copy: PageCopy }) {
   const i = dates.indexOf(selected)
   // dates are newest-first, so "newer" is the lower index.
   const newer = i > 0 ? dates[i - 1] : null
@@ -154,17 +164,18 @@ function DatePicker({ dates, selected }: { dates: string[]; selected: string }) 
       <Select
         name="date"
         defaultValue={selected}
-       
-        aria-label="Briefing date" size="sm">
+        aria-label={copy.briefingDate}
+        size="sm"
+      >
         {dates.map((d, idx) => (
           <option key={d} value={d}>
             {d}
-            {idx === 0 ? ' (latest)' : ''}
+            {idx === 0 ? ` (${copy.latestSuffix})` : ''}
           </option>
         ))}
       </Select>
       <Button type="submit">
-        View
+        {copy.view}
       </Button>
       {newer ? (
         <Link href={`/daily-briefing?date=${newer}`} className={link} aria-label={`Newer briefing, ${newer}`}>
@@ -183,6 +194,9 @@ function DatePicker({ dates, selected }: { dates: string[]; selected: string }) 
 }
 
 export default async function DailyBriefingPage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
+  const language = await getLanguage()
+  const copy = getPageCopy('dailyBriefing', language)
+  const glossary = getGlossary(language)
   const params = await searchParams
   const archive = getArchiveStatus()
   const latest = archive.dates[0]
@@ -193,10 +207,10 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
     return (
       <>
         <PageHeader
-          eyebrow="Portfolio"
-          title="Daily Briefing"
-          emphasis="Briefing"
-          subtitle="Archived daily briefings, published each trading morning."
+          eyebrow={copy.eyebrow}
+          title={copy.title}
+          emphasis={copy.emphasis}
+          subtitle={copy.subtitle}
         />
         <Card>
           <EmptyState
@@ -207,8 +221,8 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
             }
           >
             {archive.present && archive.dates.length > 0
-              ? 'That briefing could not be read.'
-              : 'No briefings archived yet.'}
+              ? copy.unreadable
+              : copy.noArchive}
           </EmptyState>
         </Card>
       </>
@@ -223,13 +237,13 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
   return (
     <>
       <PageHeader
-        eyebrow="Portfolio"
-        title="Daily Briefing"
-        emphasis="Briefing"
+        eyebrow={copy.eyebrow}
+        title={copy.title}
+        emphasis={copy.emphasis}
         subtitle={`${doc.dateLabel} · built ${doc.generatedAt.slice(0, 10)}`}
         action={
           <div className="flex items-center gap-2">
-            {isLatest ? <Badge tone="success">Latest</Badge> : <Badge tone="neutral">Archived</Badge>}
+            {isLatest ? <Badge tone="success">{copy.latest}</Badge> : <Badge tone="neutral">{copy.archived}</Badge>}
             <a
               href={publicBriefingUrl(doc.date, isLatest)}
               target="_blank"
@@ -242,7 +256,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
         }
       />
 
-      <DatePicker dates={archive.dates} selected={doc.date} />
+      <DatePicker dates={archive.dates} selected={doc.date} copy={copy} />
 
       {markets.length === 0 && (
         <Card className="mb-5">
@@ -272,7 +286,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
             )}
             {!session && (
               <Card className="mb-3">
-                <EmptyState hint={SESSION_EXPLAIN[m.session?.reason ?? ''] ?? 'No prior snapshot was available to compare against.'}>
+                <EmptyState hint={sessionExplain(copy)[m.session?.reason ?? ''] ?? copy.noPriorSnapshot}>
                   No day-over-day comparison for {m.label} in this briefing.
                 </EmptyState>
               </Card>
@@ -280,9 +294,9 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
 
             <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
               <MetricHeroCard
-                title={session ? 'Session P/L' : 'Portfolio Value'}
-                info="Price movement on the shares already held, measured against the previous archived snapshot. Shares bought or sold since then are excluded, so this is the market move and not the effect of trading."
-                eyebrow={session ? 'Daily move' : 'Standing snapshot'}
+                title={session ? copy.sessionPl : copy.portfolioValue}
+                info={copy.sessionPlInfo}
+                eyebrow={session ? copy.dailyMove : copy.standingSnapshot}
                 value={session ? amount(session.totals!.pl, m) : amount(totals.marketValue, m)}
                 hint={
                   session
@@ -292,22 +306,22 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
               >
                 <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
                   <MetricField
-                    label="Session Return"
+                    label={copy.sessionReturn}
                     value={session ? fmtPct(session.totals!.plPct, { signed: true }) : '—'}
                     hint={session ? `on ${amount(session.totals!.priorMarketValue, m)} prior value` : 'not available'}
                     tone={session ? signTone(session.totals!.plPct) : 'neutral'}
                     valueClassName="text-title"
                   />
                   <MetricField
-                    label="Portfolio Value"
+                    label={copy.portfolioValue}
                     value={amount(totals.marketValue, m)}
                     hint={`${totals.positions} positions`}
                     valueClassName="text-title"
                   />
                   <MetricField
-                    label="Unrealized P/L"
+                    label={copy.unrealized}
                     value={amount(totals.gl, m)}
-                    info={GLOSSARY.unrealizedGl.description}
+                    info={glossary.unrealizedGl.description}
                     hint={`${fmtPct(totals.pct, { signed: true })} vs ${amount(totals.cost, m)} cost`}
                     tone={signTone(totals.gl)}
                     valueClassName="text-title"
@@ -315,21 +329,21 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                 </div>
               </MetricHeroCard>
 
-              <Card title="Briefing Read Order" info="Use the daily move first, then standing value and cumulative unrealized performance.">
+              <Card title={copy.readOrder} info={copy.readOrderInfo}>
                 <div className="flex min-h-[16rem] flex-col justify-between gap-4">
                   <div className="space-y-4">
                     <MetricField
-                      label="Market"
+                      label={copy.market}
                       value={m.label}
                       hint={`${m.currency} reporting currency`}
                       valueClassName="text-metric"
                     />
                     <div className="h-px bg-line-subtle" />
                     <MetricField
-                      label="Cost Basis"
+                      label={copy.costBasis}
                       value={amount(totals.cost, m)}
-                      info={GLOSSARY.costBasis.description}
-                      hint="Standing versus purchase cost"
+                      info={glossary.costBasis.description}
+                      hint={copy.standingVsCost}
                       valueClassName="text-title"
                     />
                   </div>
@@ -342,10 +356,10 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
 
             {session && !session.marketClosed && (
               <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
-                <Card title="Session gainers" info={`Ranked by price change since the previous snapshot, among positions worth at least ${amount(m.moverMinCost, m)}.`}>
+                <Card title={copy.gainers} info={`Ranked by price change since the previous snapshot, among positions worth at least ${amount(m.moverMinCost, m)}.`}>
                   <SessionMoverList movers={session.gainers} notes={doc.narrative.moverNotes} direction="up" market={m} />
                 </Card>
-                <Card title="Session decliners" info={`Ranked by price change since the previous snapshot, among positions worth at least ${amount(m.moverMinCost, m)}.`}>
+                <Card title={copy.decliners} info={`Ranked by price change since the previous snapshot, among positions worth at least ${amount(m.moverMinCost, m)}.`}>
                   <SessionMoverList movers={session.losers} notes={doc.narrative.moverNotes} direction="down" market={m} />
                 </Card>
               </div>
@@ -374,24 +388,24 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
             <Band title={`${m.flag} ${m.label} — standing vs cost`} subtitle="cumulative since purchase — moves slowly" />
 
             <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
-              <Card title="Best vs cost" info={`Ranked by unrealized gain versus cost basis, among positions of at least ${amount(m.moverMinCost, m)}. Cumulative since purchase — not a one-day move.`}>
-                <MoverList movers={m.aggregates!.gainers} notes={doc.narrative.moverNotes} market={m} />
+              <Card title={copy.bestVsCost} info={`Ranked by unrealized gain versus cost basis, among positions of at least ${amount(m.moverMinCost, m)}. Cumulative since purchase — not a one-day move.`}>
+                <MoverList movers={m.aggregates!.gainers} notes={doc.narrative.moverNotes} market={m} copy={copy} />
               </Card>
-              <Card title="Worst vs cost" info={`Ranked by unrealized loss versus cost basis, among positions of at least ${amount(m.moverMinCost, m)}. Cumulative since purchase — not a one-day move.`}>
-                <MoverList movers={m.aggregates!.losers} notes={doc.narrative.moverNotes} market={m} />
+              <Card title={copy.worstVsCost} info={`Ranked by unrealized loss versus cost basis, among positions of at least ${amount(m.moverMinCost, m)}. Cumulative since purchase — not a one-day move.`}>
+                <MoverList movers={m.aggregates!.losers} notes={doc.narrative.moverNotes} market={m} copy={copy} />
               </Card>
             </div>
 
-            <Card title="Largest positions" className="mb-5" info="Ranked by market value, not cost — a position down 60% is no longer a large exposure whatever was paid for it.">
+            <Card title={copy.largestPositions} className="mb-5" info="Ranked by market value, not cost — a position down 60% is no longer a large exposure whatever was paid for it.">
               <Table scroll>
                 <Thead>
-                  <Th>Ticker</Th>
-                  <Th align="right">Cost</Th>
-                  <Th align="right">Market Value</Th>
-                  <Th align="right">Unrealized P/L</Th>
-                  <Th align="right">Return</Th>
+                  <Th>{copy.columns.ticker}</Th>
+                  <Th align="right">{copy.costShort}</Th>
+                  <Th align="right">{copy.columns.marketValue}</Th>
+                  <Th align="right">{copy.unrealized}</Th>
+                  <Th align="right">{copy.columns.returnPct}</Th>
                   <Th align="right">Qty</Th>
-                  <Th>Accounts</Th>
+                  <Th>{copy.columns.accounts}</Th>
                 </Thead>
                 <Tbody>
                   {m.aggregates!.largest.map((p) => (
@@ -424,7 +438,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
         )
       })}
 
-      <Card title="Market context" className="mb-5">
+      <Card title={copy.marketContext} className="mb-5">
         {/* Pipeline-generated HTML (<b> emphasis only), from our own cron — not user input. */}
         <div
           className="briefing-macro text-body leading-relaxed text-ink-2"
@@ -433,14 +447,14 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
       </Card>
 
       {doc.narrative.actions.length > 0 && (
-        <Card title="Suggested actions to consider" className="mb-5">
+        <Card title={copy.suggestedActions} className="mb-5">
           <ul className="space-y-2.5">
             {doc.narrative.actions.map((a, i) => {
               const priority = priorityOf(a)
               return (
                 <li key={i} className="rounded-sm border border-line bg-surface px-3 py-2.5">
                   <div className="mb-1 flex flex-wrap items-center gap-2">
-                    <Badge tone={PRIORITY_TONE[priority]}>{PRIORITY_LABEL[priority]}</Badge>
+                    <Badge tone={PRIORITY_TONE[priority]}>{priorityLabels(copy)[priority]}</Badge>
                     <span className="text-caption font-medium text-ink">{a.head}</span>
                     <Label as="span">{a.kind}</Label>
                   </div>
@@ -459,10 +473,10 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
       )}
 
       <MetaRow>
-        <MetaItem label="Briefing date">{doc.date}</MetaItem>
-        <MetaItem label="Document built">{doc.generatedAt}</MetaItem>
-        <MetaItem label="Markets">{markets.map((m) => m.id).join(', ') || 'none'}</MetaItem>
-        <MetaItem label="Archive">{archive.dir}</MetaItem>
+        <MetaItem label={copy.briefingDate}>{doc.date}</MetaItem>
+        <MetaItem label={copy.documentBuilt}>{doc.generatedAt}</MetaItem>
+        <MetaItem label={copy.markets}>{markets.map((m) => m.id).join(', ') || 'none'}</MetaItem>
+        <MetaItem label={copy.archive}>{archive.dir}</MetaItem>
       </MetaRow>
       <p className="mt-2 text-label leading-relaxed text-ink-3">
         Read-only view of the briefing archive written by the daily briefing cron. The same documents are published to

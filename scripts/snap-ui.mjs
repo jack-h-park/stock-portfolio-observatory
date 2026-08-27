@@ -46,6 +46,11 @@ const ROUTES = [
   '/data-ops',
   '/reconciliation',
   '/data-map',
+  // The two detail routes. They were missing until the copy work reached them,
+  // so a page could be rewritten end to end and the capture would report
+  // nothing — which is exactly what happened to position detail.
+  '/positions/KR/005930',
+  '/tax-planning/plans/none',
 ]
 
 const LANGUAGES = ['en', 'ko']
