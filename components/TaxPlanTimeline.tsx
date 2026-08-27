@@ -9,14 +9,11 @@ import { fmtNumber } from '@/lib/format'
 import { useMoneyFormatter } from '@/components/LanguageProvider'
 import type { Language } from '@/lib/i18n'
 import { positionHref } from '@/lib/position-url'
-import type {
-  MasterPlanInstruction,
-  MasterPlanMonth,
-  MonthlySaleMasterPlan,
-} from '@/lib/tax-planning'
+import type { MasterPlanMonth, MonthlySaleMasterPlan } from '@/lib/tax-planning'
 import type { SavedInstructionExecution, SavedInstructionStatus } from '@/lib/tax-plan-store'
 import { bucketTone } from '@/lib/tone'
 import { Input, Select } from '@/components/form'
+import { DataTable } from '@/components/DataTable'
 
 const PAGE_SIZE = 50
 
@@ -121,87 +118,6 @@ function ExecutionStatusControl({
   )
 }
 
-function MonthDetailCard({
-  row,
-  savedPlanId,
-  execution,
-  copy,
-  language,
-  money,
-}: {
-  row: MasterPlanInstruction
-  savedPlanId?: string
-  execution?: SavedInstructionExecution
-  copy: ReturnType<typeof getTaxPlanningCopy>['timeline']
-  language: Language
-  money: (value: number | null | undefined, currency?: string | null | undefined) => string
-}) {
-  return (
-    <article className="rounded-md border border-line-subtle bg-card p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={marketTone(row.market)}>{row.market}</Badge>
-            <Link
-              href={positionHref(row.market, row.ticker)}
-              className="font-mono text-caption font-medium text-info hover:underline"
-            >
-              {row.ticker}
-            </Link>
-            <span className="truncate text-body font-medium text-ink">{row.name}</span>
-          </div>
-          <div className="mt-1 text-label text-ink-3">
-            {row.brokerage} · {row.account}
-          </div>
-        </div>
-        <Badge tone={row.role === 'loss' ? 'danger' : row.role === 'gain' ? 'info' : 'neutral'}>
-          {row.role === 'loss' ? copy.lossOffset : row.role === 'gain' ? copy.gainSale : copy.neutral}
-        </Badge>
-      </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-y border-line-subtle py-2 text-label">
-        <div>
-          <div className="text-ink-3">{copy.saleDate}</div>
-          <div className="mt-0.5 font-mono text-ink">{dateLabel(row.plannedDate, language)}</div>
-        </div>
-        <div className="text-right">
-          <div className="text-ink-3">{copy.quantity}</div>
-          <div className="mt-0.5 tabular-nums text-ink">{fmtNumber(row.quantity, 4)}</div>
-        </div>
-        <div>
-          <div className="text-ink-3">{copy.estimatedProceeds}</div>
-          <div className="mt-0.5 tabular-nums text-ink">{money(row.proceedsKrw, 'KRW')}</div>
-        </div>
-        <div className="text-right">
-          <div className="text-ink-3">{copy.estimatedGainLoss}</div>
-          <div className="mt-0.5 tabular-nums"><Signed value={row.gainKrw} format={(m) => money(m, 'KRW')} /></div>
-        </div>
-      </div>
-
-      <div className="mt-2 flex items-start gap-2 text-label leading-relaxed text-ink-3">
-        <Badge tone={bucketTone(row.holdingBucket)}>{row.holdingBucket}</Badge>
-        <span>{row.reason}</span>
-      </div>
-      {row.washSaleRisk && (
-        <div className="mt-2 flex items-start gap-2 rounded-md border border-warning/30 bg-warning/5 px-2.5 py-2 text-micro leading-relaxed text-ink-2">
-          <Badge tone="warning">{copy.washSaleReview}</Badge>
-          <span>{row.washSaleNote}</span>
-        </div>
-      )}
-      {savedPlanId && (
-        <div className="mt-3 border-t border-line-subtle pt-3">
-          <div className="mb-2 flex items-center justify-between">
-            <Label as="span" size="micro">{copy.execution}</Label>
-            <Badge tone={EXECUTION_TONE[execution?.status ?? 'planned']}>
-              {instructionStatusLabel(execution?.status ?? 'planned', copy)}
-            </Badge>
-          </div>
-          <ExecutionStatusControl planId={savedPlanId} instructionId={row.id} execution={execution} copy={copy} />
-        </div>
-      )}
-    </article>
-  )
-}
 
 function MonthSummary({
   month,
@@ -403,50 +319,34 @@ export function TaxPlanTimeline({
 
             <MonthSummary month={activeMonth} copy={copy} money={money} />
 
-            <div className="mt-3 space-y-2 sm:hidden">
-              {visibleInstructions.map((row) => (
-                <MonthDetailCard
-                  key={row.id}
-                  row={row}
-                  savedPlanId={savedPlanId}
-                  execution={execution[row.id]}
-                  copy={copy}
-                  language={language}
-                  money={money}
-                />
-              ))}
-            </div>
-
-            <div className="mt-3 hidden overflow-x-auto rounded-md border border-line-subtle bg-card sm:block">
-              <table className="min-w-full text-left text-caption">
-                <thead className="sticky top-0 bg-surface text-micro uppercase text-ink-3">
-                  <tr>
-                    <th className="px-3 py-2 font-medium">{copy.saleDate}</th>
-                    <th className="px-3 py-2 font-medium">{copy.position}</th>
-                    <th className="px-3 py-2 font-medium">{copy.account}</th>
-                    <th className="px-3 py-2 text-right font-medium">{copy.quantity}</th>
-                    <th className="px-3 py-2 font-medium">{copy.purpose}</th>
-                    <th className="px-3 py-2 text-right font-medium">{copy.estimatedProceeds}</th>
-                    <th className="px-3 py-2 text-right font-medium">{copy.estimatedGainLoss}</th>
-                    {savedPlanId && <th className="px-3 py-2 font-medium">{copy.execution}</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line-subtle">
-                  {visibleInstructions.map((row) => (
-                    <tr key={row.id} className="align-top hover:bg-surface/60">
-                      <td className="whitespace-nowrap px-3 py-2.5 font-mono text-ink">
-                        {dateLabel(row.plannedDate, language)}
-                        <div className="mt-1 text-micro text-ink-3">
-                          {copy.longTermFrom(dateLabel(row.longTermEligibleDate, language))}
-                        </div>
-                      </td>
-                      <td className="min-w-[16rem] px-3 py-2.5">
+            {/* One table. The card list that stood beside it below sm was a
+                second rendering of the same rows, kept in step by hand;
+                DataTable's column priorities hide the same columns instead. */}
+            <div className="mt-3">
+              <DataTable
+                caption={copy.saleDate}
+                rows={visibleInstructions}
+                getRowKey={(row: any) => row.id}
+                columns={[
+                  {
+                    key: 'plannedDate',
+                    label: copy.saleDate,
+                    nowrap: true,
+                    render: (row: any) => (
+                      <>
+                        <span className="font-mono text-ink">{dateLabel(row.plannedDate, language)}</span>
+                        <div className="mt-1 text-micro text-ink-3">{copy.longTermFrom(dateLabel(row.longTermEligibleDate, language))}</div>
+                      </>
+                    ),
+                  },
+                  {
+                    key: 'position',
+                    label: copy.position,
+                    render: (row: any) => (
+                      <div className="min-w-[16rem]">
                         <div className="flex items-center gap-2">
                           <Badge tone={marketTone(row.market)}>{row.market}</Badge>
-                          <Link
-                            href={positionHref(row.market, row.ticker)}
-                            className="font-mono font-medium text-info hover:underline"
-                          >
+                          <Link href={positionHref(row.market, row.ticker)} className="font-mono font-medium text-info hover:underline">
                             {row.ticker}
                           </Link>
                           <span className="max-w-[16rem] truncate font-medium text-ink">{row.name}</span>
@@ -457,45 +357,56 @@ export function TaxPlanTimeline({
                             {copy.washSaleReviewDetail(row.washSaleMatches)}
                           </div>
                         )}
-                      </td>
-                      <td className="px-3 py-2.5 text-ink-2">
+                      </div>
+                    ),
+                  },
+                  {
+                    key: 'account',
+                    label: copy.account,
+                    priority: 'secondary',
+                    render: (row: any) => (
+                      <>
                         {row.brokerage}
                         <div className="mt-1 text-micro text-ink-3">{row.account}</div>
-                      </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-ink">
-                        {fmtNumber(row.quantity, 4)}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex flex-col items-start gap-1">
-                          <Badge tone={bucketTone(row.holdingBucket)}>
-                            {row.holdingBucket}
-                          </Badge>
-                          <Badge tone={row.role === 'loss' ? 'danger' : row.role === 'gain' ? 'info' : 'neutral'}>
-                            {row.role === 'loss' ? copy.lossOffset : row.role === 'gain' ? copy.gainSale : copy.neutral}
-                          </Badge>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-ink">{money(row.proceedsKrw, 'KRW')}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums"><Signed value={row.gainKrw} format={(m) => money(m, 'KRW')} /></td>
-                      {savedPlanId && (
-                        <td className="px-3 py-2.5">
-                          <div className="mb-1.5">
-                            <Badge tone={EXECUTION_TONE[execution[row.id]?.status ?? 'planned']}>
-                              {instructionStatusLabel(execution[row.id]?.status ?? 'planned', copy)}
-                            </Badge>
-                          </div>
-                          <ExecutionStatusControl
-                            planId={savedPlanId}
-                            instructionId={row.id}
-                            execution={execution[row.id]}
-                            copy={copy}
-                          />
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </>
+                    ),
+                  },
+                  { key: 'quantity', label: copy.quantity, align: 'right', render: (row: any) => fmtNumber(row.quantity, 4) },
+                  {
+                    key: 'purpose',
+                    label: copy.purpose,
+                    priority: 'secondary',
+                    render: (row: any) => (
+                      <div className="flex flex-col items-start gap-1">
+                        <Badge tone={bucketTone(row.holdingBucket)}>{row.holdingBucket}</Badge>
+                        <Badge tone={row.role === 'loss' ? 'danger' : row.role === 'gain' ? 'info' : 'neutral'}>
+                          {row.role === 'loss' ? copy.lossOffset : row.role === 'gain' ? copy.gainSale : copy.neutral}
+                        </Badge>
+                      </div>
+                    ),
+                  },
+                  { key: 'proceeds', label: copy.estimatedProceeds, align: 'right', render: (row: any) => money(row.proceedsKrw, 'KRW') },
+                  { key: 'gain', label: copy.estimatedGainLoss, align: 'right', render: (row: any) => <Signed value={row.gainKrw} format={(m) => money(m, 'KRW')} /> },
+                  ...(savedPlanId
+                    ? [
+                        {
+                          key: 'execution',
+                          label: copy.execution,
+                          render: (row: any) => (
+                            <>
+                              <div className="mb-1.5">
+                                <Badge tone={EXECUTION_TONE[execution[row.id]?.status ?? 'planned']}>
+                                  {instructionStatusLabel(execution[row.id]?.status ?? 'planned', copy)}
+                                </Badge>
+                              </div>
+                              <ExecutionStatusControl planId={savedPlanId} instructionId={row.id} execution={execution[row.id]} copy={copy} />
+                            </>
+                          ),
+                        },
+                      ]
+                    : []),
+                ]}
+              />
             </div>
 
             {pageCount > 1 && (

@@ -23,6 +23,7 @@ import {
   projectedWagesUsd,
   scenarioFromTaxYearProfile,
   type FilingScenario,
+  type TaxYearProfile,
 } from '@/lib/tax-policy'
 
 import { CandidateTable, MasterPlanAnnualTax, MasterPlanOverview, MasterScenarioComparison, SavedPlansPanel } from './components'
@@ -30,6 +31,7 @@ import { getTaxPlanningCopy } from './copy'
 import { DecisionSummary, PlanningMap, buildOpportunityRows, opportunitySummary, type OpportunityCoverage } from './opportunity-analysis'
 import { sameKrw } from './view-utils'
 import { Select } from '@/components/form'
+import { DataTable } from '@/components/DataTable'
 
 export const dynamic = 'force-dynamic'
 
@@ -270,45 +272,45 @@ export default async function TaxPlanningPage({
           info={copy.page.annualFilingProfileInfo}
           accent
         >
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-caption">
-              <thead className="text-micro uppercase tracking-[0.08em] text-ink-3">
-                <tr>
-                  <th className="pb-2 pr-4 font-medium">{copy.page.year}</th>
-                  <th className="pb-2 pr-4 font-medium">{copy.page.taxCalc}</th>
-                  <th className="pb-2 pr-4 text-right font-medium">
-                    {copy.page.projectedWages}
-                    <InfoTooltip align="right">{copy.page.projectedWagesInfo}</InfoTooltip>
-                  </th>
-                  <th className="pb-2 pr-4 font-medium">
-                    {copy.page.usFiling}
-                    <InfoTooltip align="left">{copy.page.usFilingInfo}</InfoTooltip>
-                  </th>
-                  <th className="pb-2 pr-4 font-medium">
-                    {copy.page.krFiling}
-                    <InfoTooltip align="left">{copy.page.krFilingInfo}</InfoTooltip>
-                  </th>
-                  <th className="pb-2 pr-4 font-medium">{copy.page.status}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line-subtle">
-                {filingProfiles.map((profile) => {
-                  const us = profile.jurisdictions.find((item) => item.code === 'US')
-                  const kr = profile.jurisdictions.find((item) => item.code === 'KR')
-                  return (
-                    <tr key={profile.year}>
-                      <td className="py-2 pr-4 font-mono text-ink">{profile.year}</td>
-                      <td className="py-2 pr-4"><Badge tone="info">{scenarioFromTaxYearProfile(profile)}</Badge></td>
-                      <td className="py-2 pr-4 text-right tabular-nums text-ink">{fmtMoney(projectedWagesUsd(taxPolicy.policy, profile.year), 'USD')}</td>
-                      <td className="py-2 pr-4">{us?.filingRequired ? <Badge tone="success">{copy.page.required}</Badge> : <Badge>{copy.page.off}</Badge>}</td>
-                      <td className="py-2 pr-4">{kr?.filingRequired ? <Badge tone="success">{copy.page.required}</Badge> : <Badge>{copy.page.off}</Badge>}</td>
-                      <td className="py-2 pr-4"><Badge tone={profile.status === 'confirmed' ? 'success' : 'warning'}>{profile.status}</Badge></td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption={copy.page.annualFilingProfile}
+            rows={filingProfiles}
+            getRowKey={(profile: TaxYearProfile) => profile.year}
+            columns={[
+              { key: 'year', label: copy.page.year, render: (p: TaxYearProfile) => <span className="font-mono text-ink">{p.year}</span> },
+              { key: 'scenario', label: copy.page.taxCalc, render: (p: TaxYearProfile) => <Badge tone="info">{scenarioFromTaxYearProfile(p)}</Badge> },
+              {
+                key: 'wages',
+                label: copy.page.projectedWages,
+                description: copy.page.projectedWagesInfo,
+                align: 'right',
+                render: (p: TaxYearProfile) => fmtMoney(projectedWagesUsd(taxPolicy.policy, p.year), 'USD'),
+              },
+              {
+                key: 'us',
+                label: copy.page.usFiling,
+                description: copy.page.usFilingInfo,
+                render: (p: TaxYearProfile) =>
+                  p.jurisdictions.find((item) => item.code === 'US')?.filingRequired ? (
+                    <Badge tone="success">{copy.page.required}</Badge>
+                  ) : (
+                    <Badge>{copy.page.off}</Badge>
+                  ),
+              },
+              {
+                key: 'kr',
+                label: copy.page.krFiling,
+                description: copy.page.krFilingInfo,
+                render: (p: TaxYearProfile) =>
+                  p.jurisdictions.find((item) => item.code === 'KR')?.filingRequired ? (
+                    <Badge tone="success">{copy.page.required}</Badge>
+                  ) : (
+                    <Badge>{copy.page.off}</Badge>
+                  ),
+              },
+              { key: 'status', label: copy.page.status, render: (p: TaxYearProfile) => <Badge tone={p.status === 'confirmed' ? 'success' : 'warning'}>{p.status}</Badge> },
+            ]}
+          />
         </Card>
 
         <Card title={copy.page.baseAssumptions}>
@@ -338,41 +340,36 @@ export default async function TaxPlanningPage({
           <div className="mb-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption leading-relaxed text-ink-3">
             {copy.page.annualTargetNote}
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-caption">
-              <thead className="text-micro uppercase tracking-[0.08em] text-ink-3">
-                <tr>
-                  <th className="pb-2 pr-4 font-medium">{copy.page.scenario}</th>
-                  <th className="pb-2 pr-4 text-right font-medium">{copy.page.totalSales}</th>
-                  <th className="pb-2 pr-4 text-right font-medium">{copy.page.realizedGainLoss}</th>
-                  <th className="pb-2 pr-4 text-right font-medium">{copy.page.estimatedTax}</th>
-                  <th className="pb-2 pr-4 text-right font-medium">{copy.page.afterTaxCash}</th>
-                  <th className="pb-2 pr-4 text-right font-medium">{copy.page.peakYearTax}</th>
-                  <th className="pb-2 pr-4 text-right font-medium">{copy.page.lotsUsed}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line-subtle">
-                {multiYearPlan.scenarios.map((scenarioRow) => (
-                  <tr key={scenarioRow.key} className={multiYearPlan.bestScenario?.key === scenarioRow.key ? 'bg-surface/60' : undefined}>
-                    <td className="py-3 pr-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-ink">{scenarioRow.label}</span>
-                        {multiYearPlan.bestScenario?.key === scenarioRow.key && <Badge tone="success">{copy.page.lowestTax}</Badge>}
-                        {multiYearPlan.bestScenario?.key !== scenarioRow.key && sameKrw(scenarioRow.summary.taxKrw, multiYearPlan.bestScenario?.summary.taxKrw) && <Badge tone="neutral">{copy.page.sameTax}</Badge>}
-                      </div>
-                      <div className="mt-1 max-w-[24rem] text-label text-ink-3">{scenarioRow.description}</div>
-                    </td>
-                    <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(scenarioRow.summary.proceedsKrw)}</td>
-                    <td className="py-3 pr-4 text-right tabular-nums"><Signed value={scenarioRow.summary.gainKrw} format={fmtKrw} /></td>
-                    <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(scenarioRow.summary.taxKrw)}</td>
-                    <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(scenarioRow.summary.afterTaxKrw)}</td>
-                    <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(scenarioRow.summary.peakYearTaxKrw)}</td>
-                    <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtNumber(scenarioRow.summary.lotCount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption={copy.page.annualTargetScenarioComparison}
+            rows={multiYearPlan.scenarios}
+            getRowKey={(row: MultiYearTaxScenario) => row.key}
+            columns={[
+              {
+                key: 'scenario',
+                label: copy.page.scenario,
+                render: (row: MultiYearTaxScenario) => (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-ink">{row.label}</span>
+                      {multiYearPlan.bestScenario?.key === row.key && <Badge tone="success">{copy.page.lowestTax}</Badge>}
+                      {multiYearPlan.bestScenario?.key !== row.key &&
+                        sameKrw(row.summary.taxKrw, multiYearPlan.bestScenario?.summary.taxKrw) && (
+                          <Badge tone="neutral">{copy.page.sameTax}</Badge>
+                        )}
+                    </div>
+                    <div className="mt-1 max-w-[24rem] text-label text-ink-3">{row.description}</div>
+                  </>
+                ),
+              },
+              { key: 'proceeds', label: copy.page.totalSales, align: 'right', render: (row: MultiYearTaxScenario) => fmtKrw(row.summary.proceedsKrw) },
+              { key: 'gain', label: copy.page.realizedGainLoss, align: 'right', render: (row: MultiYearTaxScenario) => <Signed value={row.summary.gainKrw} format={fmtKrw} /> },
+              { key: 'tax', label: copy.page.estimatedTax, align: 'right', render: (row: MultiYearTaxScenario) => fmtKrw(row.summary.taxKrw) },
+              { key: 'afterTax', label: copy.page.afterTaxCash, align: 'right', render: (row: MultiYearTaxScenario) => fmtKrw(row.summary.afterTaxKrw) },
+              { key: 'peak', label: copy.page.peakYearTax, align: 'right', priority: 'secondary', render: (row: MultiYearTaxScenario) => fmtKrw(row.summary.peakYearTaxKrw) },
+              { key: 'lots', label: copy.page.lotsUsed, align: 'right', priority: 'secondary', render: (row: MultiYearTaxScenario) => fmtNumber(row.summary.lotCount) },
+            ]}
+          />
         </Card>
       ) : (
         <Card title={copy.page.annualTargetScenarioComparison} className="mb-5">

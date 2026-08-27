@@ -1,14 +1,15 @@
 import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Button, Card, InfoTooltip, Label, MetricField, MetricHeroCard } from '@/components/ui'
+import { Badge, Button, Card, Label, MetricField, MetricHeroCard } from '@/components/ui'
 import { fmtDateTime, fmtNumber } from '@/lib/format'
 import { getMeta } from '@/lib/adapters/portfolio-db'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
-import { annualProfiles, assumptionBool, assumptionNumber, assumptionString, getTaxPolicyState } from '@/lib/tax-policy'
+import { annualProfiles, assumptionBool, assumptionNumber, assumptionString, getTaxPolicyState, type TaxYearProfile } from '@/lib/tax-policy'
 import { saveTaxSettings } from './actions'
 import { getTaxSettingsCopy, scenarioLabel } from './copy'
 import { CheckField, CompactCheck, Field, Select } from '@/components/form'
+import { DataTable } from '@/components/DataTable'
 
 export const dynamic = 'force-dynamic'
 
@@ -135,64 +136,97 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
           info={copy.annualTimeline.info}
           accent
         >
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-caption">
-              <thead className="text-micro uppercase tracking-[0.08em] text-ink-3">
-                <tr>
-                  <th className="pb-2 pr-4 font-medium">{copy.annualTimeline.year}</th>
-                  <th className="pb-2 pr-4 font-medium">{copy.annualTimeline.defaultScenario}</th>
-                  <th className="pb-2 pr-4 text-center font-medium">
-                    {copy.annualTimeline.usFiling}
-                    <InfoTooltip align="left">{copy.annualTimeline.usFilingInfo}</InfoTooltip>
-                  </th>
-                  <th className="pb-2 pr-4 text-center font-medium">
-                    {copy.annualTimeline.usTaxCalc}
-                    <InfoTooltip align="left">{copy.annualTimeline.usTaxCalcInfo}</InfoTooltip>
-                  </th>
-                  <th className="pb-2 pr-4 text-center font-medium">
-                    {copy.annualTimeline.krFiling}
-                    <InfoTooltip align="left">{copy.annualTimeline.krFilingInfo}</InfoTooltip>
-                  </th>
-                  <th className="pb-2 pr-4 text-center font-medium">
-                    {copy.annualTimeline.krTaxCalc}
-                    <InfoTooltip align="left">{copy.annualTimeline.krTaxCalcInfo}</InfoTooltip>
-                  </th>
-                  <th className="pb-2 pr-4 font-medium">{copy.annualTimeline.status}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line-subtle">
-                {profiles.map((profile) => {
-                  const us = profile.jurisdictions.find((item) => item.code === 'US')
-                  const kr = profile.jurisdictions.find((item) => item.code === 'KR')
-                  return (
-                    <tr key={profile.year}>
-                      <td className="py-2 pr-4 font-mono text-ink">
-                        {profile.year}
-                        <input type="hidden" name="profileYear" value={profile.year} />
-                      </td>
-                      <td className="py-2 pr-4">
-                        <Select name={`filingScenario_${profile.year}`} defaultValue={profile.filingScenario} size="md" className="w-full min-w-[8rem]">
-                          <option value="US_ONLY">{copy.scenarios.US_ONLY}</option>
-                          <option value="KR_ONLY">{copy.scenarios.KR_ONLY}</option>
-                          <option value="US_AND_KR">{copy.scenarios.US_AND_KR}</option>
-                        </Select>
-                      </td>
-                      <td className="py-2 pr-4 text-center"><CompactCheck name={`usFilingRequired_${profile.year}`} defaultChecked={us?.filingRequired ?? false} label={`${profile.year} ${copy.compactCheck.usFilingRequired}`} /></td>
-                      <td className="py-2 pr-4 text-center"><CompactCheck name={`usTaxCalculationEnabled_${profile.year}`} defaultChecked={us?.taxCalculationEnabled ?? false} label={`${profile.year} ${copy.compactCheck.usTaxCalculationEnabled}`} /></td>
-                      <td className="py-2 pr-4 text-center"><CompactCheck name={`krFilingRequired_${profile.year}`} defaultChecked={kr?.filingRequired ?? false} label={`${profile.year} ${copy.compactCheck.krFilingRequired}`} /></td>
-                      <td className="py-2 pr-4 text-center"><CompactCheck name={`krTaxCalculationEnabled_${profile.year}`} defaultChecked={kr?.taxCalculationEnabled ?? false} label={`${profile.year} ${copy.compactCheck.krTaxCalculationEnabled}`} /></td>
-                      <td className="py-2 pr-4">
-                        <Select name={`status_${profile.year}`} defaultValue={profile.status} size="md" className="w-full min-w-[7rem]">
-                          <option value="assumed">{copy.annualTimeline.assumed}</option>
-                          <option value="confirmed">{copy.annualTimeline.confirmed}</option>
-                        </Select>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption={copy.annualTimeline.title}
+            rows={profiles}
+            getRowKey={(profile: TaxYearProfile) => profile.year}
+            columns={[
+              {
+                key: 'year',
+                label: copy.annualTimeline.year,
+                nowrap: true,
+                render: (p: TaxYearProfile) => (
+                  <>
+                    <span className="font-mono text-ink">{p.year}</span>
+                    <input type="hidden" name="profileYear" value={p.year} />
+                  </>
+                ),
+              },
+              {
+                key: 'scenario',
+                label: copy.annualTimeline.defaultScenario,
+                render: (p: TaxYearProfile) => (
+                  <Select name={`filingScenario_${p.year}`} defaultValue={p.filingScenario} className="w-full min-w-[8rem]">
+                    <option value="US_ONLY">{copy.scenarios.US_ONLY}</option>
+                    <option value="KR_ONLY">{copy.scenarios.KR_ONLY}</option>
+                    <option value="US_AND_KR">{copy.scenarios.US_AND_KR}</option>
+                  </Select>
+                ),
+              },
+              {
+                key: 'usFiling',
+                label: copy.annualTimeline.usFiling,
+                description: copy.annualTimeline.usFilingInfo,
+                align: 'center',
+                render: (p: TaxYearProfile) => (
+                  <CompactCheck
+                    name={`usFilingRequired_${p.year}`}
+                    defaultChecked={p.jurisdictions.find((item) => item.code === 'US')?.filingRequired ?? false}
+                    label={`${p.year} ${copy.compactCheck.usFilingRequired}`}
+                  />
+                ),
+              },
+              {
+                key: 'usTax',
+                label: copy.annualTimeline.usTaxCalc,
+                description: copy.annualTimeline.usTaxCalcInfo,
+                align: 'center',
+                render: (p: TaxYearProfile) => (
+                  <CompactCheck
+                    name={`usTaxCalculationEnabled_${p.year}`}
+                    defaultChecked={p.jurisdictions.find((item) => item.code === 'US')?.taxCalculationEnabled ?? false}
+                    label={`${p.year} ${copy.compactCheck.usTaxCalculationEnabled}`}
+                  />
+                ),
+              },
+              {
+                key: 'krFiling',
+                label: copy.annualTimeline.krFiling,
+                description: copy.annualTimeline.krFilingInfo,
+                align: 'center',
+                render: (p: TaxYearProfile) => (
+                  <CompactCheck
+                    name={`krFilingRequired_${p.year}`}
+                    defaultChecked={p.jurisdictions.find((item) => item.code === 'KR')?.filingRequired ?? false}
+                    label={`${p.year} ${copy.compactCheck.krFilingRequired}`}
+                  />
+                ),
+              },
+              {
+                key: 'krTax',
+                label: copy.annualTimeline.krTaxCalc,
+                description: copy.annualTimeline.krTaxCalcInfo,
+                align: 'center',
+                render: (p: TaxYearProfile) => (
+                  <CompactCheck
+                    name={`krTaxCalculationEnabled_${p.year}`}
+                    defaultChecked={p.jurisdictions.find((item) => item.code === 'KR')?.taxCalculationEnabled ?? false}
+                    label={`${p.year} ${copy.compactCheck.krTaxCalculationEnabled}`}
+                  />
+                ),
+              },
+              {
+                key: 'status',
+                label: copy.annualTimeline.status,
+                render: (p: TaxYearProfile) => (
+                  <Select name={`status_${p.year}`} defaultValue={p.status} className="w-full min-w-[7rem]">
+                    <option value="assumed">{copy.annualTimeline.assumed}</option>
+                    <option value="confirmed">{copy.annualTimeline.confirmed}</option>
+                  </Select>
+                ),
+              },
+            ]}
+          />
           <div className="mt-3 text-label leading-relaxed text-ink-3">
             {copy.annualTimeline.note}
           </div>

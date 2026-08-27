@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { Fragment } from 'react'
 import { createSavedTaxPlanAction } from '@/app/tax-planning/actions'
 import { DataTable } from '@/components/DataTable'
 import { Badge, Button, Card, EmptyState, Label, MetricField, Signed, marketTone, type Tone } from '@/components/ui'
@@ -385,88 +384,42 @@ export function MasterPlanAnnualTax({ plan, copy, money }: { plan: MonthlySaleMa
       info={copy.annualTax.info}
       className="mb-5"
     >
-      <div className="space-y-3 md:hidden">
-        {plan.years.map((year) => (
-          <article key={year.year} className="rounded-md border border-line-subtle bg-surface px-3 py-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-body text-ink">{year.year}</span>
-                <Badge tone="info">{year.filingScenario}</Badge>
+      {/* One table, not a card list and a table side by side. The pair had to be
+          kept in step by hand and the mobile copy quietly dropped two of the tax
+          components; DataTable's column priorities hide the same columns below
+          md without a second rendering. */}
+      <DataTable
+        caption={copy.annualTax.title}
+        rows={plan.years}
+        getRowKey={(year: any) => year.year}
+        columns={[
+          { key: 'year', label: copy.annualTax.taxYear, nowrap: true, render: (y: any) => <span className="font-mono text-ink">{y.year}</span> },
+          { key: 'profile', label: copy.annualTax.profile, render: (y: any) => <Badge tone="info">{y.filingScenario}</Badge> },
+          { key: 'proceeds', label: copy.annualTax.sales, align: 'right', render: (y: any) => money(y.proceedsKrw) },
+          { key: 'gain', label: copy.annualTax.netGainLoss, align: 'right', render: (y: any) => <Signed value={y.gainKrw} format={(m) => money(m, 'KRW')} /> },
+          { key: 'usGross', label: copy.annualTax.usGross, align: 'right', priority: 'secondary', render: (y: any) => money(y.usGrossTaxKrw ?? 0) },
+          { key: 'krGross', label: copy.annualTax.krGross, align: 'right', priority: 'secondary', render: (y: any) => money(y.krGrossTaxKrw ?? 0) },
+          { key: 'credit', label: copy.annualTax.credit, align: 'right', priority: 'secondary', render: (y: any) => <span className="text-success">-{money(y.estimatedCrossBorderTaxCreditKrw)}</span> },
+          { key: 'netTax', label: copy.annualTax.netTax, align: 'right', render: (y: any) => <span className="font-medium text-ink">{money(y.estimatedTaxKrw)}</span> },
+          { key: 'afterTax', label: copy.annualTax.afterTaxCash, align: 'right', render: (y: any) => money(y.afterTaxKrw) },
+          {
+            key: 'components',
+            label: copy.annualTax.taxComponents,
+            priority: 'tertiary',
+            render: (y: any) => (
+              <div className="grid gap-1 text-micro text-ink-3">
+                <span>{copy.annualTax.federalShortTerm} <strong className="font-medium text-ink">{money(y.usFederalShortTermTaxKrw ?? 0)}</strong></span>
+                <span>{copy.annualTax.federalLongTerm} <strong className="font-medium text-ink">{money(y.usFederalLongTermTaxKrw ?? 0)}</strong></span>
+                <span>{copy.annualTax.niit} <strong className="font-medium text-ink">{money(y.usNiitTaxKrw ?? 0)}</strong></span>
+                <span>{copy.annualTax.california} <strong className="font-medium text-ink">{money(y.usStateTaxKrw ?? 0)}</strong></span>
+                <span>{copy.annualTax.usFtcLimit} <strong className="font-medium text-ink">{money(y.usForeignTaxCreditLimitKrw ?? 0)}</strong></span>
+                <span>{copy.annualTax.usFtcUsed} <strong className="font-medium text-success">-{money(y.usForeignTaxCreditKrw ?? 0)}</strong></span>
+                <span>{copy.annualTax.krCreditUsed} <strong className="font-medium text-success">-{money(y.krForeignTaxCreditKrw ?? 0)}</strong></span>
               </div>
-              <div className="text-right">
-                <Label size="micro">{copy.annualTax.netTax}</Label>
-                <div className="mt-0.5 text-body-lg font-medium tabular-nums text-ink">{money(year.estimatedTaxKrw)}</div>
-              </div>
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-y border-line-subtle py-2 text-label">
-              <div><span className="text-ink-3">{copy.annualTax.sales}</span><div className="mt-0.5 tabular-nums text-ink">{money(year.proceedsKrw)}</div></div>
-              <div className="text-right"><span className="text-ink-3">{copy.annualTax.netGainLoss}</span><div className="mt-0.5 tabular-nums"><Signed value={year.gainKrw} format={(m) => money(m, 'KRW')} /></div></div>
-              <div><span className="text-ink-3">{copy.annualTax.usGross}</span><div className="mt-0.5 tabular-nums text-ink">{money(year.usGrossTaxKrw ?? 0)}</div></div>
-              <div className="text-right"><span className="text-ink-3">{copy.annualTax.krGross}</span><div className="mt-0.5 tabular-nums text-ink">{money(year.krGrossTaxKrw ?? 0)}</div></div>
-              <div><span className="text-ink-3">{copy.annualTax.creditUsed}</span><div className="mt-0.5 tabular-nums text-success">-{money(year.estimatedCrossBorderTaxCreditKrw)}</div></div>
-              <div className="text-right"><span className="text-ink-3">{copy.annualTax.afterTaxCash}</span><div className="mt-0.5 tabular-nums text-ink">{money(year.afterTaxKrw)}</div></div>
-            </div>
-            <details className="mt-2 text-micro text-ink-3">
-              <summary className="cursor-pointer font-medium text-info">{copy.annualTax.taxComponents}</summary>
-              <div className="mt-2 grid grid-cols-2 gap-1.5">
-                <span>{copy.annualTax.federalShortTerm} {money(year.usFederalShortTermTaxKrw ?? 0)}</span>
-                <span>{copy.annualTax.federalLongTerm} {money(year.usFederalLongTermTaxKrw ?? 0)}</span>
-                <span>{copy.annualTax.niit} {money(year.usNiitTaxKrw ?? 0)}</span>
-                <span>{copy.annualTax.california} {money(year.usStateTaxKrw ?? 0)}</span>
-                <span>{copy.annualTax.usFtcLimit} {money(year.usForeignTaxCreditLimitKrw ?? 0)}</span>
-                <span>{copy.annualTax.krCreditUsed} {money(year.krForeignTaxCreditKrw ?? 0)}</span>
-              </div>
-            </details>
-          </article>
-        ))}
-      </div>
-      <div className="hidden overflow-x-auto md:block">
-        <table className="min-w-full text-left text-caption">
-          <thead className="text-micro uppercase text-ink-3">
-            <tr>
-              <th className="pb-2 pr-4 font-medium">{copy.annualTax.taxYear}</th>
-              <th className="pb-2 pr-4 font-medium">{copy.annualTax.profile}</th>
-              <th className="pb-2 pr-4 text-right font-medium">{copy.annualTax.sales}</th>
-              <th className="pb-2 pr-4 text-right font-medium">{copy.annualTax.netGainLoss}</th>
-              <th className="pb-2 pr-4 text-right font-medium">{copy.annualTax.usGross}</th>
-              <th className="pb-2 pr-4 text-right font-medium">{copy.annualTax.krGross}</th>
-              <th className="pb-2 pr-4 text-right font-medium">{copy.annualTax.credit}</th>
-              <th className="pb-2 pr-4 text-right font-medium">{copy.annualTax.netTax}</th>
-              <th className="pb-2 text-right font-medium">{copy.annualTax.afterTaxCash}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line-subtle">
-            {plan.years.map((year) => (
-              <Fragment key={year.year}>
-                <tr>
-                  <td className="pt-3 pr-4 font-mono text-ink">{year.year}</td>
-                  <td className="pt-3 pr-4"><Badge tone="info">{year.filingScenario}</Badge></td>
-                  <td className="pt-3 pr-4 text-right tabular-nums text-ink">{money(year.proceedsKrw)}</td>
-                  <td className="pt-3 pr-4 text-right tabular-nums"><Signed value={year.gainKrw} format={(m) => money(m, 'KRW')} /></td>
-                  <td className="pt-3 pr-4 text-right tabular-nums text-ink">{money(year.usGrossTaxKrw ?? 0)}</td>
-                  <td className="pt-3 pr-4 text-right tabular-nums text-ink">{money(year.krGrossTaxKrw ?? 0)}</td>
-                  <td className="pt-3 pr-4 text-right tabular-nums text-success">-{money(year.estimatedCrossBorderTaxCreditKrw)}</td>
-                  <td className="pt-3 pr-4 text-right tabular-nums font-medium text-ink">{money(year.estimatedTaxKrw)}</td>
-                  <td className="pt-3 text-right tabular-nums text-ink">{money(year.afterTaxKrw)}</td>
-                </tr>
-                <tr>
-                  <td colSpan={9} className="pb-3 pt-2">
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-md bg-surface px-3 py-2 text-micro text-ink-3">
-                      <span>{copy.annualTax.federalShortTerm} <strong className="font-medium text-ink">{money(year.usFederalShortTermTaxKrw ?? 0)}</strong></span>
-                      <span>{copy.annualTax.federalLongTerm} <strong className="font-medium text-ink">{money(year.usFederalLongTermTaxKrw ?? 0)}</strong></span>
-                      <span>{copy.annualTax.niit} <strong className="font-medium text-ink">{money(year.usNiitTaxKrw ?? 0)}</strong></span>
-                      <span>{copy.annualTax.california} <strong className="font-medium text-ink">{money(year.usStateTaxKrw ?? 0)}</strong></span>
-                      <span>{copy.annualTax.usFtcLimit} <strong className="font-medium text-ink">{money(year.usForeignTaxCreditLimitKrw ?? 0)}</strong></span>
-                      <span>{copy.annualTax.usFtcUsed} <strong className="font-medium text-success">-{money(year.usForeignTaxCreditKrw ?? 0)}</strong></span>
-                      <span>{copy.annualTax.krCreditUsed} <strong className="font-medium text-success">-{money(year.krForeignTaxCreditKrw ?? 0)}</strong></span>
-                    </div>
-                  </td>
-                </tr>
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            ),
+          },
+        ]}
+      />
     </Card>
   )
 }

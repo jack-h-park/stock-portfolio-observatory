@@ -1,4 +1,4 @@
-import { Badge, Card, EmptyState, InfoTooltip, Label, MetricField, Signed, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, Label, MetricField, Signed, marketTone } from '@/components/ui'
 import { fmtKrw, fmtNumber, fmtPct } from '@/lib/format'
 import {
   buildTaxPlan,
@@ -7,6 +7,7 @@ import {
   type TaxPlanningLot,
 } from '@/lib/tax-planning'
 import { scenarioFromTaxYearProfile, type FilingScenario, type TaxPolicy, type TaxYearProfile } from '@/lib/tax-policy'
+import { DataTable } from '@/components/DataTable'
 import type { TaxPlanningCopy } from './copy'
 import { marketAmount, sameKrw } from './view-utils'
 
@@ -349,45 +350,30 @@ export function PlanningMap({
       {!hasPlanningTarget || !scenario ? (
         <OpportunityTable rows={opportunityRows} coverage={coverage} policy={policy} assumptionsAreExample={assumptionsAreExample} copy={copy} />
       ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-caption">
-            <thead className="text-micro uppercase tracking-[0.08em] text-ink-3">
-              <tr>
-                <th className="pb-2 pr-4 font-medium">{copy.opportunity.year}</th>
-                <th className="pb-2 pr-4 font-medium">{copy.opportunity.filingProfile}</th>
-                <th className="pb-2 pr-4 text-right font-medium">{copy.opportunity.sellKrMarket}</th>
-                <th className="pb-2 pr-4 text-right font-medium">{copy.opportunity.sellUsMarket}</th>
-                <th className="pb-2 pr-4 text-right font-medium">{copy.opportunity.target}</th>
-                <th className="pb-2 pr-4 text-right font-medium">{copy.opportunity.estimatedTax}</th>
-                <th className="pb-2 pr-4 font-medium">{copy.opportunity.readout}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line-subtle">
-              {scenario.years.map((year) => {
-                const krAmount = marketAmount(year, 'KR')
-                const usAmount = marketAmount(year, 'US')
-                const readout = krAmount > usAmount
-                  ? copy.opportunity.mostlyKrSales
-                  : usAmount > krAmount
-                    ? copy.opportunity.mostlyUsSales
-                    : krAmount + usAmount > 0
-                      ? copy.opportunity.mixedMarketSales
-                      : copy.opportunity.noPlannedSale
-                return (
-                  <tr key={year.year}>
-                    <td className="py-3 pr-4 font-mono text-ink">{year.year}</td>
-                    <td className="py-3 pr-4"><Badge tone="info">{year.filingScenario}</Badge></td>
-                    <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(krAmount)}</td>
-                    <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(usAmount)}</td>
-                    <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(annualTargetCashKrw)}</td>
-                    <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(year.taxKrw)}</td>
-                    <td className="py-3 pr-4 text-ink-2">{readout}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          caption={copy.opportunity.year}
+          rows={scenario.years}
+          getRowKey={(year: MultiYearTaxScenario['years'][number]) => year.year}
+          columns={[
+            { key: 'year', label: copy.opportunity.year, render: (y: any) => <span className="font-mono text-ink">{y.year}</span> },
+            { key: 'profile', label: copy.opportunity.filingProfile, render: (y: any) => <Badge tone="info">{y.filingScenario}</Badge> },
+            { key: 'kr', label: copy.opportunity.sellKrMarket, align: 'right', render: (y: any) => fmtKrw(marketAmount(y, 'KR')) },
+            { key: 'us', label: copy.opportunity.sellUsMarket, align: 'right', render: (y: any) => fmtKrw(marketAmount(y, 'US')) },
+            { key: 'target', label: copy.opportunity.target, align: 'right', render: () => fmtKrw(annualTargetCashKrw) },
+            { key: 'tax', label: copy.opportunity.estimatedTax, align: 'right', render: (y: any) => fmtKrw(y.taxKrw) },
+            {
+              key: 'readout',
+              label: copy.opportunity.readout,
+              render: (y: any) => {
+                const kr = marketAmount(y, 'KR')
+                const us = marketAmount(y, 'US')
+                if (kr > us) return copy.opportunity.mostlyKrSales
+                if (us > kr) return copy.opportunity.mostlyUsSales
+                return kr + us > 0 ? copy.opportunity.mixedMarketSales : copy.opportunity.noPlannedSale
+              },
+            },
+          ]}
+        />
       )}
     </Card>
   )
@@ -451,83 +437,45 @@ function OpportunityTable({
           ))}
         </div>
       )}
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-left text-caption">
-          <thead className="text-micro uppercase tracking-[0.08em] text-ink-3">
-            <tr>
-              <th className="pb-2 pr-4 font-medium">{copy.opportunity.years}</th>
-              <th className="pb-2 pr-4 font-medium">{copy.opportunity.market}</th>
-              <th className="pb-2 pr-4 font-medium">
-                {copy.opportunity.taxProfile}
-                <InfoTooltip align="left">{copy.opportunity.taxProfileInfo}</InfoTooltip>
-              </th>
-              <th className="pb-2 pr-4 text-right font-medium">
-                {copy.opportunity.netGainLoss}
-                <InfoTooltip align="right">{copy.opportunity.netGainLossInfo}</InfoTooltip>
-              </th>
-              <th className="pb-2 pr-4 text-right font-medium">
-                {copy.opportunity.lossInventory}
-                <InfoTooltip align="right">{copy.opportunity.lossInventoryInfo}</InfoTooltip>
-              </th>
-              <th className="pb-2 pr-4 text-right font-medium">
-                {copy.opportunity.usEstimate}
-                <InfoTooltip align="right">{copy.opportunity.usEstimateInfo}</InfoTooltip>
-              </th>
-              <th className="pb-2 pr-4 text-right font-medium">
-                {copy.opportunity.krEstimate}
-                <InfoTooltip align="right">{copy.opportunity.krEstimateInfo}</InfoTooltip>
-              </th>
-              <th className="pb-2 pr-4 text-right font-medium">
-                {copy.opportunity.beforeCredits}
-                <InfoTooltip align="right">{copy.opportunity.beforeCreditsInfo}</InfoTooltip>
-              </th>
-              <th className="pb-2 pr-4 text-right font-medium">
-                {copy.opportunity.estimatedCredit}
-                <InfoTooltip align="right">{copy.opportunity.estimatedCreditInfo}</InfoTooltip>
-              </th>
-              <th className="pb-2 pr-4 text-right font-medium">
-                {copy.opportunity.afterCredit}
-                <InfoTooltip align="right">{copy.opportunity.afterCreditInfo}</InfoTooltip>
-              </th>
-              <th className="pb-2 pr-4 font-medium">
-                {copy.opportunity.whyItMatters}
-                <InfoTooltip align="left">{copy.opportunity.whyItMattersInfo}</InfoTooltip>
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line-subtle">
-            {groups.map((row) => {
-              const readout = row.market === 'US' && row.krTaxIfAllSoldKrw > 0
-                ? copy.opportunity.rowReadoutUsKr(fmtKrw(row.krTaxIfAllSoldKrw), fmtKrw(row.estimatedCrossBorderTaxCreditKrw), fmtKrw(row.incrementalKrTaxAfterCreditKrw))
-                : row.market === 'US'
-                  ? copy.opportunity.rowReadoutUsOnly
-                  : row.usTaxIfAllSoldKrw > 0
-                    ? copy.opportunity.rowReadoutKrUs
-                    : copy.opportunity.rowReadoutNone
-              return (
-                <tr key={`${row.yearLabel}-${row.market}-${row.filingScenario}`}>
-                  <td className="py-3 pr-4 font-mono text-ink">{row.yearLabel}</td>
-                  <td className="py-3 pr-4"><Badge tone={marketTone(row.market)}>{row.market}</Badge></td>
-                  <td className="py-3 pr-4"><Badge tone="neutral">{row.filingScenario}</Badge></td>
-                  <td className="py-3 pr-4 text-right tabular-nums"><Signed value={row.netGainKrw} format={fmtKrw} /></td>
-                  <td className="py-3 pr-4 text-right tabular-nums text-danger">{row.lossHarvestKrw > 0 ? fmtKrw(row.lossHarvestKrw) : '₩0'}</td>
-                  <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(row.usTaxIfAllSoldKrw)}</td>
-                  <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(row.krTaxIfAllSoldKrw)}</td>
-                  <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(row.combinedTaxBeforeCreditsKrw)}</td>
-                  <td className="py-3 pr-4 text-right tabular-nums text-success">-{fmtKrw(row.estimatedCrossBorderTaxCreditKrw)}</td>
-                  <td className="py-3 pr-4 text-right tabular-nums font-medium text-ink">{fmtKrw(row.combinedTaxAfterCreditsKrw)}</td>
-                  <td className="py-3 pr-4 text-ink-2">
-                    <div>{readout}</div>
-                    <div className="mt-0.5 text-label text-ink-3">
-                      {copy.opportunity.rowDetail(fmtNumber(row.candidateCount), fmtKrw(row.lossLotProceedsKrw), fmtKrw(row.totalProceedsKrw))}
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        caption={copy.opportunity.years}
+        rows={groups}
+        getRowKey={(row: any) => `${row.yearLabel}-${row.market}-${row.filingScenario}`}
+        columns={[
+          { key: 'yearLabel', label: copy.opportunity.years, render: (r: any) => <span className="font-mono text-ink">{r.yearLabel}</span> },
+          { key: 'market', label: copy.opportunity.market, render: (r: any) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
+          { key: 'filingScenario', label: copy.opportunity.taxProfile, description: copy.opportunity.taxProfileInfo, render: (r: any) => <Badge tone="neutral">{r.filingScenario}</Badge> },
+          { key: 'netGainKrw', label: copy.opportunity.netGainLoss, description: copy.opportunity.netGainLossInfo, align: 'right', render: (r: any) => <Signed value={r.netGainKrw} format={fmtKrw} /> },
+          { key: 'lossHarvestKrw', label: copy.opportunity.lossInventory, description: copy.opportunity.lossInventoryInfo, align: 'right', render: (r: any) => <span className="text-danger">{r.lossHarvestKrw > 0 ? fmtKrw(r.lossHarvestKrw) : fmtKrw(0)}</span> },
+          { key: 'usTaxIfAllSoldKrw', label: copy.opportunity.usEstimate, description: copy.opportunity.usEstimateInfo, align: 'right', render: (r: any) => fmtKrw(r.usTaxIfAllSoldKrw) },
+          { key: 'krTaxIfAllSoldKrw', label: copy.opportunity.krEstimate, description: copy.opportunity.krEstimateInfo, align: 'right', render: (r: any) => fmtKrw(r.krTaxIfAllSoldKrw) },
+          { key: 'combinedTaxBeforeCreditsKrw', label: copy.opportunity.beforeCredits, description: copy.opportunity.beforeCreditsInfo, align: 'right', priority: 'secondary', render: (r: any) => fmtKrw(r.combinedTaxBeforeCreditsKrw) },
+          { key: 'estimatedCrossBorderTaxCreditKrw', label: copy.opportunity.estimatedCredit, description: copy.opportunity.estimatedCreditInfo, align: 'right', priority: 'secondary', render: (r: any) => <span className="text-success">-{fmtKrw(r.estimatedCrossBorderTaxCreditKrw)}</span> },
+          { key: 'combinedTaxAfterCreditsKrw', label: copy.opportunity.afterCredit, description: copy.opportunity.afterCreditInfo, align: 'right', render: (r: any) => <span className="font-medium text-ink">{fmtKrw(r.combinedTaxAfterCreditsKrw)}</span> },
+          {
+            key: 'readout',
+            label: copy.opportunity.whyItMatters,
+            description: copy.opportunity.whyItMattersInfo,
+            priority: 'tertiary',
+            render: (r: any) => (
+              <>
+                <div>
+                  {r.market === 'US' && r.krTaxIfAllSoldKrw > 0
+                    ? copy.opportunity.rowReadoutUsKr(fmtKrw(r.krTaxIfAllSoldKrw), fmtKrw(r.estimatedCrossBorderTaxCreditKrw), fmtKrw(r.incrementalKrTaxAfterCreditKrw))
+                    : r.market === 'US'
+                      ? copy.opportunity.rowReadoutUsOnly
+                      : r.usTaxIfAllSoldKrw > 0
+                        ? copy.opportunity.rowReadoutKrUs
+                        : copy.opportunity.rowReadoutNone}
+                </div>
+                <div className="mt-0.5 text-label text-ink-3">
+                  {copy.opportunity.rowDetail(fmtNumber(r.candidateCount), fmtKrw(r.lossLotProceedsKrw), fmtKrw(r.totalProceedsKrw))}
+                </div>
+              </>
+            ),
+          },
+        ]}
+      />
     </>
   )
 }

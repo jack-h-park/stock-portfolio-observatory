@@ -8,7 +8,9 @@ import { nextSort, type SortDirection, type TableSort } from '@/lib/table-sort'
 export type DataTableColumn<Row = any> = {
   key: string
   label: ReactNode
-  align?: 'left' | 'right'
+  /** `center` is for a column of checkboxes or icons, where a left edge reads
+   *  as ragged under a centred header. */
+  align?: 'left' | 'right' | 'center'
   render?: (row: Row) => ReactNode
   /** Short, plain-language explanation for a domain term or calculation. */
   description?: ReactNode
@@ -79,7 +81,13 @@ export function DataTable({
                   col.nowrap && 'whitespace-nowrap'
                 )}
               >
-                <span className={clsx('inline-flex items-center', col.align === 'right' && 'w-full justify-end text-right')}>
+                <span
+                  className={clsx(
+                    'inline-flex items-center',
+                    col.align === 'right' && 'w-full justify-end text-right',
+                    col.align === 'center' && 'w-full justify-center text-center'
+                  )}
+                >
                   {col.sortable && sortHref ? (
                     <Link
                       href={sortHref(nextSort(sort ?? null, col.key, col.sortFirst))}
@@ -109,6 +117,7 @@ export function DataTable({
                   className={clsx(
                     'border-b border-line-subtle px-3 py-2.5 align-top text-ink-2',
                     col.align === 'right' && 'text-right tabular-nums',
+                    col.align === 'center' && 'text-center',
                     PRIORITY_CLASS[col.priority ?? 'primary'],
                     col.nowrap && 'whitespace-nowrap'
                   )}

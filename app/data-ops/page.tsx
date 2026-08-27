@@ -260,36 +260,71 @@ export default async function DataOpsPage() {
           <MetricField label={coverageCopy.due} value={fmtNumber(coverage.dueSoon)} tone={coverage.dueSoon ? 'warning' : 'success'} valueClassName="text-title" />
           <MetricField label={coverageCopy.current} value={fmtNumber(coverage.current)} tone="success" valueClassName="text-title" />
         </div>
-        <div id="account-coverage" className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-caption">
-            <caption className="sr-only">{coverageCopy.title}</caption>
-            <thead className="border-y border-line-subtle text-label uppercase tracking-[0.06em] text-ink-3">
-              <tr>
-                <th scope="col" className="px-2 py-2">{coverageCopy.account}</th>
-                <th scope="col" className="px-2 py-2">{coverageCopy.coverage}</th>
-                <th scope="col" className="px-2 py-2">{coverageCopy.lag}</th>
-                <th scope="col" className="px-2 py-2">{coverageCopy.artifact}</th>
-                <th scope="col" className="px-2 py-2">{coverageCopy.method}</th>
-                <th scope="col" className="px-2 py-2">{coverageCopy.destination}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line-subtle">
-              {coverage.rows.map((row) => (
-                <tr key={row.id} className="align-top">
-                  <td className="px-2 py-3">
-                    <div className="flex items-center gap-2"><Badge tone={coverageTone(row.status)}>{coverageCopy.status[row.status]}</Badge><span className="font-medium text-ink">{row.brokerage}</span></div>
+        <div id="account-coverage">
+          <DataTable
+            caption={coverageCopy.title}
+            rows={coverage.rows}
+            getRowKey={(row: AccountCoverage) => row.id}
+            emptyMessage={<span className="text-success">{coverageCopy.none} ✓</span>}
+            columns={[
+              {
+                key: 'account',
+                label: coverageCopy.account,
+                render: (row: AccountCoverage) => (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <Badge tone={coverageTone(row.status)}>{coverageCopy.status[row.status]}</Badge>
+                      <span className="font-medium text-ink">{row.brokerage}</span>
+                    </div>
                     <div className="mt-1 text-label text-ink-3">{row.account}</div>
-                  </td>
-                  <td className="px-2 py-3 tabular-nums text-ink-2">{coverageDateLabel(row)}</td>
-                  <td className="px-2 py-3 tabular-nums text-ink-2">{coverageLagLabel(row, language)}{row.method !== 'mixed' && row.overdueDays ? <span className="ml-1 text-danger">(+{row.overdueDays})</span> : null}</td>
-                  <td className="max-w-[24rem] px-2 py-3"><div className="font-medium text-ink">{row.requiredArtifact}</div><div className="mt-1 text-label text-ink-3">{row.format}</div><div className="mt-1 text-label font-medium leading-relaxed text-info">{language === 'ko' ? '추가 다운로드' : 'Download range'}: {coverageDownloadLabel(row, language)}</div><div className="mt-1 text-label leading-relaxed text-ink-3">{row.action}</div>{row.lastFile ? <code className="mt-1 block truncate text-micro text-ink-3" title={row.lastFile}>last: {row.lastFile}</code> : null}</td>
-                  <td className="px-2 py-3 whitespace-nowrap text-ink-2">{coverageCopy.methodLabel[row.method]}</td>
-                  <td className="px-2 py-3"><code className="text-label text-ink-3">{row.destination}</code><div className="mt-1 max-w-[15rem] text-label leading-relaxed text-ink-3">{row.detail}</div></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {coverage.rows.length === 0 ? <EmptyState ok>{coverageCopy.none}</EmptyState> : null}
+                  </>
+                ),
+              },
+              { key: 'coverage', label: coverageCopy.coverage, nowrap: true, render: (row: AccountCoverage) => <span className="tabular-nums">{coverageDateLabel(row)}</span> },
+              {
+                key: 'lag',
+                label: coverageCopy.lag,
+                nowrap: true,
+                render: (row: AccountCoverage) => (
+                  <span className="tabular-nums">
+                    {coverageLagLabel(row, language)}
+                    {row.method !== 'mixed' && row.overdueDays ? <span className="ml-1 text-danger">(+{row.overdueDays})</span> : null}
+                  </span>
+                ),
+              },
+              {
+                key: 'artifact',
+                label: coverageCopy.artifact,
+                render: (row: AccountCoverage) => (
+                  <div className="max-w-[24rem]">
+                    <div className="font-medium text-ink">{row.requiredArtifact}</div>
+                    <div className="mt-1 text-label text-ink-3">{row.format}</div>
+                    <div className="mt-1 text-label font-medium leading-relaxed text-info">
+                      {language === 'ko' ? '추가 다운로드' : 'Download range'}: {coverageDownloadLabel(row, language)}
+                    </div>
+                    <div className="mt-1 text-label leading-relaxed text-ink-3">{row.action}</div>
+                    {row.lastFile ? (
+                      <code className="mt-1 block truncate text-micro text-ink-3" title={row.lastFile}>
+                        last: {row.lastFile}
+                      </code>
+                    ) : null}
+                  </div>
+                ),
+              },
+              { key: 'method', label: coverageCopy.method, nowrap: true, priority: 'secondary', render: (row: AccountCoverage) => coverageCopy.methodLabel[row.method] },
+              {
+                key: 'destination',
+                label: coverageCopy.destination,
+                priority: 'tertiary',
+                render: (row: AccountCoverage) => (
+                  <>
+                    <code className="text-label text-ink-3">{row.destination}</code>
+                    <div className="mt-1 max-w-[15rem] text-label leading-relaxed text-ink-3">{row.detail}</div>
+                  </>
+                ),
+              },
+            ]}
+          />
         </div>
       </Card>
 
