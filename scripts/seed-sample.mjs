@@ -144,6 +144,10 @@ create table transactions (id integer primary key, market text not null, currenc
 create table dividends (id integer primary key, market text not null, currency text not null, base_currency text not null, brokerage text, account_type text, source_system text, date text not null, account text not null, ticker text, name text, native_amount real not null, native_tax_withheld real, amount_krw real not null, type text, income_category text, mapping_status text, mapping_note text, source text, page integer);
 create table validation_checks (id integer primary key, name text not null, status text not null, detail text not null, severity text not null);
 create table evidence_reports (id integer primary key, name text not null, category text not null, filename text not null, path text not null, account_hint text, pages integer, row_count integer, metrics_json text);
+-- /cost-basis reads the previous close from here. Without the table the page
+-- is a 500 under sample data, which made it the one route the screenshot
+-- baseline could never actually check.
+create table historical_prices (id integer primary key, market text not null, ticker text not null, price_date text not null, close real not null, source text);
 `)
 
 insertMany(db, 'meta', [
@@ -194,6 +198,20 @@ insertMany(db, 'dividends', [
 ], ['market', 'currency', 'base_currency', 'brokerage', 'account_type', 'source_system', 'date', 'account', 'ticker', 'name', 'native_amount', 'native_tax_withheld', 'amount_krw', 'type', 'income_category', 'mapping_status', 'mapping_note', 'source', 'page'])
 
 insertMany(db, 'realized_lots', [{ market: 'US', currency: 'USD', base_currency: 'KRW', brokerage: 'Sample US Broker', source_system: 'sample', account: 'Sample US Account', ticker: 'MSFT', name: 'Example Microsoft', acquired_date: '2025-01-01', sold_date: '2026-01-15', quantity_sold: 1, cost_basis_krw: 300000, proceeds_krw: 352000, realized_gl_krw: 52000, holding_days: 379, tax_term: 'Long-term', basis: 'replay', tax_year: '2026', native_cost_basis: 220, native_proceeds: 258, native_realized_gl: 38, covered_status: '', form_8949_box: '', superseded_by: null, dividends_native: 3.1, source: 'sample-realized.tsv' }], ['market', 'currency', 'base_currency', 'brokerage', 'source_system', 'account', 'ticker', 'name', 'acquired_date', 'sold_date', 'quantity_sold', 'cost_basis_krw', 'proceeds_krw', 'realized_gl_krw', 'holding_days', 'tax_term', 'basis', 'tax_year', 'native_cost_basis', 'native_proceeds', 'native_realized_gl', 'covered_status', 'form_8949_box', 'superseded_by', 'dividends_native', 'source'])
+// Two closes per instrument, so the "previous close" lookup (limit 1 offset 1)
+// has something to return and the day-change column is exercised.
+insertMany(
+  db,
+  'historical_prices',
+  [
+    { market: 'KR', ticker: '005930', price_date: '2025-12-31', close: 79000, source: 'sample' },
+    { market: 'KR', ticker: '005930', price_date: '2026-01-01', close: 82000, source: 'sample' },
+    { market: 'US', ticker: 'AAPL', price_date: '2025-12-31', close: 320, source: 'sample' },
+    { market: 'US', ticker: 'AAPL', price_date: '2026-01-01', close: 336, source: 'sample' },
+  ],
+  ['market', 'ticker', 'price_date', 'close', 'source']
+)
+
 insertMany(db, 'validation_checks', [
   { name: 'sample:source files', status: 'pass', detail: 'Synthetic source files are present.', severity: 'warning' },
   { name: 'sample:valuation coverage', status: 'pass', detail: 'Sample includes one intentional missing valuation row for Data Ops demonstration.', severity: 'warning' },
