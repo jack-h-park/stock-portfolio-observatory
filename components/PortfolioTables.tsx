@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Badge, Button, Label, marketTone } from '@/components/ui'
+import { Input } from '@/components/form'
 import { DataTable } from '@/components/DataTable'
 import { GlossaryTerm } from '@/components/GlossaryTerm'
 import { fmtNumber, fmtQuantity } from '@/lib/format'
@@ -77,11 +78,11 @@ function SearchBox({
   return (
     <label className="flex min-w-0 flex-1 flex-col gap-1 text-caption font-medium text-ink-2 sm:max-w-sm">
       {label}
-      <input
+      <Input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="min-h-11 rounded-sm border border-line bg-card px-3 text-body-lg font-normal text-ink outline-none placeholder:text-ink-3 focus:border-info focus:ring-2 focus:ring-info/20"
+        className="min-h-11 font-normal"
       />
     </label>
   )

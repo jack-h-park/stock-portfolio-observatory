@@ -16,6 +16,7 @@ import type {
 } from '@/lib/tax-planning'
 import type { SavedInstructionExecution, SavedInstructionStatus } from '@/lib/tax-plan-store'
 import { bucketTone } from '@/lib/tone'
+import { Input, Select } from '@/components/form'
 
 const PAGE_SIZE = 50
 
@@ -77,53 +78,43 @@ function ExecutionStatusControl({
       <input type="hidden" name="planId" value={planId} />
       <input type="hidden" name="instructionId" value={instructionId} />
       <div className="flex items-center gap-1.5">
-        <select
+        <Select
           name="status"
           defaultValue={status}
-          aria-label={copy.executionStatus}
-          className="rounded-sm border border-line bg-card px-2 py-1 text-label text-ink outline-none focus:border-info"
-        >
+          aria-label={copy.executionStatus} size="sm">
           <option value="planned">{copy.plannedStatus}</option>
           <option value="reviewed">{copy.reviewedStatus}</option>
           <option value="executed">{copy.executedStatus}</option>
           <option value="skipped">{copy.skippedStatus}</option>
-        </select>
+        </Select>
         <Button type="submit">{copy.save}</Button>
       </div>
       <details className="mt-1.5 text-micro text-ink-3">
         <summary className="cursor-pointer">{copy.actualsAndNote}</summary>
         <div className="mt-2 grid gap-1.5">
-          <input
+          <Input
             type="date"
             name="executedAt"
             defaultValue={execution?.executedAt ?? ''}
-            aria-label={copy.executedDate}
-            className="rounded-sm border border-line bg-card px-2 py-1 text-label text-ink outline-none"
-          />
-          <input
+            aria-label={copy.executedDate} size="sm" />
+          <Input
             type="number"
             name="actualProceedsKrw"
             defaultValue={execution?.actualProceedsKrw ?? ''}
             placeholder={copy.actualProceedsKrw}
-            aria-label={copy.actualProceedsKrw}
-            className="rounded-sm border border-line bg-card px-2 py-1 text-label text-ink outline-none"
-          />
-          <input
+            aria-label={copy.actualProceedsKrw} size="sm" />
+          <Input
             type="number"
             name="actualGainKrw"
             defaultValue={execution?.actualGainKrw ?? ''}
             placeholder={copy.actualGainLossKrw}
-            aria-label={copy.actualGainOrLossKrw}
-            className="rounded-sm border border-line bg-card px-2 py-1 text-label text-ink outline-none"
-          />
-          <input
+            aria-label={copy.actualGainOrLossKrw} size="sm" />
+          <Input
             type="text"
             name="note"
             defaultValue={execution?.note ?? ''}
             placeholder={copy.executionNote}
-            aria-label={copy.executionNote}
-            className="rounded-sm border border-line bg-card px-2 py-1 text-label text-ink outline-none"
-          />
+            aria-label={copy.executionNote} size="sm" />
         </div>
       </details>
     </form>

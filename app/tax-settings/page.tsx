@@ -8,7 +8,7 @@ import { getLanguage } from '@/lib/i18n-server'
 import { annualProfiles, assumptionBool, assumptionNumber, assumptionString, getTaxPolicyState } from '@/lib/tax-policy'
 import { saveTaxSettings } from './actions'
 import { getTaxSettingsCopy, scenarioLabel } from './copy'
-import { CheckField, CompactCheck, Field } from './fields'
+import { CheckField, CompactCheck, Field, Select } from '@/components/form'
 
 export const dynamic = 'force-dynamic'
 
@@ -116,11 +116,11 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
           <div className="grid gap-4 lg:grid-cols-3">
             <label className="block">
               <Label as="span" className="mb-1 block">{copy.filingProfile.activeScenario}</Label>
-              <select name="activeScenario" defaultValue={policy.activeScenario} className="w-full rounded-md border border-line bg-card px-3 py-2 text-body text-ink outline-none">
+              <Select name="activeScenario" defaultValue={policy.activeScenario} className="w-full">
                 <option value="US_ONLY">{copy.scenarios.US_ONLY}</option>
                 <option value="KR_ONLY">{copy.scenarios.KR_ONLY}</option>
                 <option value="US_AND_KR">{copy.scenarios.US_AND_KR}</option>
-              </select>
+              </Select>
             </label>
             <Field label={copy.filingProfile.baseCurrency} name="baseCurrency" defaultValue={policy.baseCurrency} type="text" />
             <Field label={copy.filingProfile.planningHorizon} name="planningHorizonYears" defaultValue={policy.planningHorizonYears ?? 5} suffix={copy.readOrder.years} />
@@ -171,21 +171,21 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
                         <input type="hidden" name="profileYear" value={profile.year} />
                       </td>
                       <td className="py-2 pr-4">
-                        <select name={`filingScenario_${profile.year}`} defaultValue={profile.filingScenario} className="w-full min-w-[8rem] rounded-md border border-line bg-card px-2 py-1.5 text-caption text-ink outline-none">
+                        <Select name={`filingScenario_${profile.year}`} defaultValue={profile.filingScenario} size="md" className="w-full min-w-[8rem]">
                           <option value="US_ONLY">{copy.scenarios.US_ONLY}</option>
                           <option value="KR_ONLY">{copy.scenarios.KR_ONLY}</option>
                           <option value="US_AND_KR">{copy.scenarios.US_AND_KR}</option>
-                        </select>
+                        </Select>
                       </td>
                       <td className="py-2 pr-4 text-center"><CompactCheck name={`usFilingRequired_${profile.year}`} defaultChecked={us?.filingRequired ?? false} label={`${profile.year} ${copy.compactCheck.usFilingRequired}`} /></td>
                       <td className="py-2 pr-4 text-center"><CompactCheck name={`usTaxCalculationEnabled_${profile.year}`} defaultChecked={us?.taxCalculationEnabled ?? false} label={`${profile.year} ${copy.compactCheck.usTaxCalculationEnabled}`} /></td>
                       <td className="py-2 pr-4 text-center"><CompactCheck name={`krFilingRequired_${profile.year}`} defaultChecked={kr?.filingRequired ?? false} label={`${profile.year} ${copy.compactCheck.krFilingRequired}`} /></td>
                       <td className="py-2 pr-4 text-center"><CompactCheck name={`krTaxCalculationEnabled_${profile.year}`} defaultChecked={kr?.taxCalculationEnabled ?? false} label={`${profile.year} ${copy.compactCheck.krTaxCalculationEnabled}`} /></td>
                       <td className="py-2 pr-4">
-                        <select name={`status_${profile.year}`} defaultValue={profile.status} className="w-full min-w-[7rem] rounded-md border border-line bg-card px-2 py-1.5 text-caption text-ink outline-none">
+                        <Select name={`status_${profile.year}`} defaultValue={profile.status} size="md" className="w-full min-w-[7rem]">
                           <option value="assumed">{copy.annualTimeline.assumed}</option>
                           <option value="confirmed">{copy.annualTimeline.confirmed}</option>
-                        </select>
+                        </Select>
                       </td>
                     </tr>
                   )
@@ -237,11 +237,11 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
               <Field label={copy.kr.residentThroughYear} name="krResidentThroughYear" defaultValue={assumptionNumber(policy, 'KR', 'residentThroughYear', 2027)} />
               <label className="block">
                 <Label as="span" className="mb-1 block">{copy.kr.crossBorderCreditModel}</Label>
-                <select name="krForeignTaxCreditMode" defaultValue={assumptionString(policy, 'KR', 'foreignTaxCreditMode', 'manual')} className="w-full rounded-md border border-line bg-card px-3 py-2 text-body text-ink outline-none">
+                <Select name="krForeignTaxCreditMode" defaultValue={assumptionString(policy, 'KR', 'foreignTaxCreditMode', 'manual')} className="w-full">
                   <option value="manual">{copy.kr.noAutomaticCredit}</option>
                   <option value="estimated-us-source">{copy.kr.krCreditForUsTax}</option>
                   <option value="estimated-us-ftc">{copy.kr.usForm1116Limit}</option>
-                </select>
+                </Select>
               </label>
               <div className="sm:col-span-2 grid gap-2">
                 <CheckField label={copy.kr.domesticMajorShareholder} name="krDomesticMajorShareholder" defaultChecked={assumptionBool(policy, 'KR', 'domesticMajorShareholder', false)} />

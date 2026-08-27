@@ -1,6 +1,6 @@
 import { clsx } from 'clsx'
 import Link from 'next/link'
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
+import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { HelpPopover } from '@/components/HelpPopover'
 
 // InfoTooltip — a small "i" affordance that reveals an explanation on hover or
@@ -451,17 +451,3 @@ export function MetaItem({ label, children }: { label: ReactNode; children: Reac
   )
 }
 
-// — Input / TextArea ——————————————————————————————————————————————————————
-// Text inputs with the shared border/focus treatment, so config editors stop
-// re-typing `rounded-sm border border-line bg-card …`.
-export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <input
-      className={clsx(
-        'rounded-sm border border-line bg-card px-2 py-1 text-body text-ink outline-none placeholder:text-ink-3 focus:border-ink-3',
-        className
-      )}
-      {...rest}
-    />
-  )
-}

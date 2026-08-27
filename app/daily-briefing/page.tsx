@@ -15,6 +15,7 @@ import { fmtPct, fmtQuantity } from '@/lib/format'
 import { GLOSSARY } from '@/lib/glossary'
 import { positionHref } from '@/lib/position-url'
 import { signTone } from '@/lib/tone'
+import { Select } from '@/components/form'
 
 export const dynamic = 'force-dynamic'
 
@@ -150,19 +151,18 @@ function DatePicker({ dates, selected }: { dates: string[]; selected: string }) 
           ←
         </span>
       )}
-      <select
+      <Select
         name="date"
         defaultValue={selected}
-        className="rounded-sm border border-line bg-card px-2 py-1 text-caption text-ink focus:border-info focus:outline-none"
-        aria-label="Briefing date"
-      >
+       
+        aria-label="Briefing date" size="sm">
         {dates.map((d, idx) => (
           <option key={d} value={d}>
             {d}
             {idx === 0 ? ' (latest)' : ''}
           </option>
         ))}
-      </select>
+      </Select>
       <button
         type="submit"
         className="rounded-sm border border-line bg-card px-2.5 py-1 text-caption font-medium text-ink transition-colors hover:border-ink-3 hover:bg-surface"

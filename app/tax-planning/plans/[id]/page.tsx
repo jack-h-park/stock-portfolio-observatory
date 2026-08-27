@@ -11,6 +11,7 @@ import { getSavedTaxPlan, savedTaxPlanProgress, type SavedTaxPlanStatus } from '
 import { getTaxPolicyState } from '@/lib/tax-policy'
 import { updateSavedTaxPlanStatusAction } from '@/app/tax-planning/actions'
 import { getTaxPlanningCopy } from '@/app/tax-planning/copy'
+import { Select } from '@/components/form'
 
 export const dynamic = 'force-dynamic'
 
@@ -103,18 +104,16 @@ export default async function SavedTaxPlanPage({ params }: { params: Promise<{ i
             <label className="block text-micro font-medium uppercase text-ink-3" htmlFor="plan-status">
               {copy.planStatus}
             </label>
-            <select
+            <Select
               id="plan-status"
               name="status"
-              defaultValue={saved.status}
-              className="mt-1.5 w-full rounded-md border border-line bg-card px-3 py-2 text-caption text-ink outline-none focus:border-info"
-            >
+              defaultValue={saved.status} className="mt-1.5 w-full">
               <option value="draft">{copy.statusLabels.draft}</option>
               <option value="reviewed">{copy.statusLabels.reviewed}</option>
               <option value="active">{copy.statusLabels.active}</option>
               <option value="completed">{copy.statusLabels.completed}</option>
               <option value="archived">{copy.statusLabels.archived}</option>
-            </select>
+            </Select>
             <button type="submit" className="mt-2 w-full rounded-md border border-ink bg-ink px-3 py-2 text-caption font-medium text-card">
               {copy.updateStatus}
             </button>
