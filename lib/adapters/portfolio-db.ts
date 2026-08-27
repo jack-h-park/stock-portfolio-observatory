@@ -116,6 +116,10 @@ export type FxDashboard = {
     actualCount: number
     transferCount: number
     missingDestinationCount: number
+    hanaOutboundTransferCount: number
+    hanaOutboundUsd: number
+    hanaKnownMiraeUsd: number
+    hanaUnknownDestinationUsd: number
     currentUsdKrw: number | null
     currentUsdKrwAsOf: string | null
   }
@@ -2903,6 +2907,10 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
     let actualCount = 0
     let transferCount = 0
     let missingDestinationCount = 0
+    let hanaOutboundTransferCount = 0
+    let hanaOutboundUsd = 0
+    let hanaKnownMiraeUsd = 0
+    let hanaUnknownDestinationUsd = 0
     let realizedEventCount = 0
     let realizedFxGlKrw = 0
 
@@ -2930,6 +2938,12 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
       if (event.event_type === 'TRANSFER') {
         transferCount += 1
         if (event.match_status === 'destination_account_missing') missingDestinationCount += 1
+        if (event.institution === 'Hana Bank' && event.direction === 'OUT') {
+          hanaOutboundTransferCount += 1
+          hanaOutboundUsd += event.usd_amount
+          if (event.counterparty === 'Mirae Asset Securities') hanaKnownMiraeUsd += event.usd_amount
+          else if (!event.counterparty) hanaUnknownDestinationUsd += event.usd_amount
+        }
         continue
       }
       const sign = event.event_type === 'EXCHANGE_CANCEL' ? -1 : 1
@@ -2982,6 +2996,10 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
         actualCount,
         transferCount,
         missingDestinationCount,
+        hanaOutboundTransferCount,
+        hanaOutboundUsd,
+        hanaKnownMiraeUsd,
+        hanaUnknownDestinationUsd,
         currentUsdKrw: currentRate?.rate ?? null,
         currentUsdKrwAsOf: currentRate?.as_of_date ?? null,
       },

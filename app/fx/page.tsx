@@ -22,6 +22,7 @@ const COPY = {
     method: 'Rate & Coverage Status', actual: 'Actual rate rows', estimated: 'Estimated rate rows', transfers: 'USD transfer rows',
     missing: 'Mirae 9346 gaps', balance: 'Latest Hana USD balance', current: 'Current USD/KRW snapshot',
     institutions: 'By Institution', trend: 'Monthly Weighted Exchange Rate', transferReview: 'Transfer Review', recent: 'Recent FX Ledger',
+    hanaOutbound: 'Hana USD Remittance Baseline', hanaOutboundHint: 'Outbound USD total to reconcile against US-account inbound statements later.', knownMirae: 'Known Mirae transfers', destinationUnknown: 'Destination unknown',
     date: 'Date', institution: 'Institution', type: 'Event', usd: 'USD', krw: 'KRW', rate: 'Rate', status: 'Rate status',
     counterparty: 'Counterparty', match: 'Match status', source: 'Source', accountBalance: 'Latest USD balance',
     preference: 'Preference', count: 'Exchanges', note: 'Evidence note',
@@ -38,6 +39,7 @@ const COPY = {
     method: '환율 · 원장 상태', actual: '실제 환율 행', estimated: '추정 환율 행', transfers: '달러 이체 행',
     missing: '미래에셋 9346 미연결', balance: '최근 하나은행 달러 잔액', current: '현재 USD/KRW 스냅샷',
     institutions: '기관별 현황', trend: '월별 가중평균 환율', transferReview: '이체 검토', recent: '최근 FX 원장',
+    hanaOutbound: '하나은행 미국 송금 검증 기준액', hanaOutboundHint: '향후 미국 계좌 입금내역과 대조할 하나은행 USD 출금 합계입니다. 미국 송금 확정액은 아닙니다.', knownMirae: '확인된 미래에셋 이체', destinationUnknown: '목적지 미확인',
     date: '일자', institution: '기관', type: '유형', usd: '달러', krw: '원화', rate: '환율', status: '환율 상태',
     counterparty: '상대 기관', match: '연결 상태', source: '원본', accountBalance: '최근 달러 잔액',
     preference: '우대율', count: '환전 건수', note: '근거 메모',
@@ -85,6 +87,14 @@ export default async function FxPage() {
           </div>
         </Card>
       </div>
+
+      <Card title={copy.hanaOutbound} className="mb-5" info={copy.hanaOutboundHint}>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <MetricField label={language === 'ko' ? '하나은행 USD 출금 합계' : 'Hana outbound USD total'} value={money(data.summary.hanaOutboundUsd, 'USD')} hint={`${fmtNumber(data.summary.hanaOutboundTransferCount)} ${language === 'ko' ? '건' : 'rows'}`} valueClassName="text-metric" />
+          <MetricField label={copy.knownMirae} value={money(data.summary.hanaKnownMiraeUsd, 'USD')} hint={language === 'ko' ? '미래에셋으로 표시된 2건' : 'Two rows marked Mirae Asset'} valueClassName="text-title" />
+          <MetricField label={copy.destinationUnknown} value={money(data.summary.hanaUnknownDestinationUsd, 'USD')} hint={language === 'ko' ? '미국 계좌 입금과 후속 대조 필요' : 'Requires later US-account reconciliation'} tone="warning" valueClassName="text-title" />
+        </div>
+      </Card>
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card title={copy.institutions}>
