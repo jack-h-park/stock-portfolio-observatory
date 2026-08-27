@@ -1,4 +1,4 @@
-import { Badge, Card, EmptyState, InfoTooltip, MetricField, Signed, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, InfoTooltip, Label, MetricField, Signed, marketTone } from '@/components/ui'
 import { fmtKrw, fmtNumber, fmtPct } from '@/lib/format'
 import {
   buildTaxPlan,
@@ -271,15 +271,15 @@ export function DecisionSummary({
           <p className="mt-2 max-w-[56rem] text-body leading-relaxed text-ink-2">{body}</p>
           <div className="mt-4 grid gap-2 md:grid-cols-3">
             <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-              <div className="text-micro font-medium uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.step1}</div>
+              <Label size="micro">{copy.opportunity.step1}</Label>
               <div className="mt-1 text-caption text-ink">{copy.opportunity.step1Body}</div>
             </div>
             <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-              <div className="text-micro font-medium uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.step2}</div>
+              <Label size="micro">{copy.opportunity.step2}</Label>
               <div className="mt-1 text-caption text-ink">{copy.opportunity.step2Body}</div>
             </div>
             <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-              <div className="text-micro font-medium uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.step3}</div>
+              <Label size="micro">{copy.opportunity.step3}</Label>
               <div className="mt-1 text-caption text-ink">{copy.opportunity.step3Body}</div>
             </div>
           </div>
@@ -416,19 +416,19 @@ function OpportunityTable({
       </div>
       <div className="mb-4 grid overflow-hidden rounded-md border border-line-subtle bg-card sm:grid-cols-2 xl:grid-cols-4">
         <div className="border-b border-line-subtle px-3 py-2 sm:border-r xl:border-b-0">
-          <div className="text-micro uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.fullHoldingsGl}</div>
+          <Label size="micro">{copy.opportunity.fullHoldingsGl}</Label>
           <div className="mt-1 text-body-lg font-medium tabular-nums text-ink">{fmtKrw(coverage.holdingsUnrealizedGainKrw)}</div>
         </div>
         <div className="border-b border-line-subtle px-3 py-2 xl:border-b-0 xl:border-r">
-          <div className="text-micro uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.taxLotModeledGl}</div>
+          <Label size="micro">{copy.opportunity.taxLotModeledGl}</Label>
           <div className="mt-1 text-body-lg font-medium tabular-nums text-ink">{fmtKrw(coverage.modeledGainKrw)}</div>
         </div>
         <div className="border-b border-line-subtle px-3 py-2 sm:border-b-0 sm:border-r">
-          <div className="text-micro uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.unallocatedHoldingValue}</div>
+          <Label size="micro">{copy.opportunity.unallocatedHoldingValue}</Label>
           <div className="mt-1 text-body-lg font-medium tabular-nums text-warning">{fmtKrw(coverage.unallocatedMarketValueKrw)}</div>
         </div>
         <div className="px-3 py-2">
-          <div className="text-micro uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.unmodeledGlDifference}</div>
+          <Label size="micro">{copy.opportunity.unmodeledGlDifference}</Label>
           <div className="mt-1 text-body-lg font-medium tabular-nums text-warning">{fmtKrw(coverage.unmodeledGainKrw)}</div>
         </div>
       </div>
@@ -443,7 +443,7 @@ function OpportunityTable({
               <div className="mt-2 text-body font-medium leading-tight text-ink">{takeaway.title}</div>
               <div className="mt-1 text-label leading-relaxed text-ink-2">{takeaway.body}</div>
               <div className="mt-3 border-t border-line-subtle pt-2">
-                <div className="text-micro font-medium uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.whatToConsider}</div>
+                <Label size="micro">{copy.opportunity.whatToConsider}</Label>
                 <div className="mt-1 text-label leading-relaxed text-ink">{takeaway.action}</div>
               </div>
               <div className="mt-auto pt-3 text-micro leading-relaxed text-ink-3">{takeaway.caveat}</div>

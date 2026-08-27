@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Badge, Button , marketTone } from '@/components/ui'
+import { Badge, Button, Label, marketTone } from '@/components/ui'
 import { DataTable } from '@/components/DataTable'
 import { GlossaryTerm } from '@/components/GlossaryTerm'
 import { fmtNumber, fmtQuantity } from '@/lib/format'
@@ -504,7 +504,7 @@ export function CostBasisHoldingsTable({ rows }: { rows: CostBasisHolding[] }) {
         />
         <FilterBar label="Account" value={account} options={['All', ...unique(brokerRows.map((r) => r.account))]} onChange={setAccount} />
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-label font-medium uppercase tracking-[0.08em] text-ink-3">Status</span>
+          <Label as="span" className="mr-1">Status</Label>
           {(['All', ...Object.keys(COST_BASIS_STATUS_LABEL)] as string[]).map((option) => (
             <Button
               key={option}
@@ -519,29 +519,29 @@ export function CostBasisHoldingsTable({ rows }: { rows: CostBasisHolding[] }) {
       </div>
       <div className="grid gap-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption sm:grid-cols-5">
         <div>
-          <div className="text-label uppercase tracking-[0.08em] text-ink-3">Filtered</div>
+          <Label>Filtered</Label>
           <div className="font-medium tabular-nums text-ink">{fmtNumber(filtered.length)} / {fmtNumber(rows.length)}</div>
         </div>
         <div>
-          <div className="text-label uppercase tracking-[0.08em] text-ink-3">Total value</div>
+          <Label>Total value</Label>
           <div className="font-medium tabular-nums text-ink">
             {singleCurrency ? money(totals.value, singleCurrency) : money(totals.baseValue, 'KRW')}
           </div>
         </div>
         <div>
-          <div className="text-label uppercase tracking-[0.08em] text-ink-3">Total cost</div>
+          <Label>Total cost</Label>
           <div className="font-medium tabular-nums text-ink">
             {singleCurrency ? money(totals.cost, singleCurrency) : 'Mixed currencies'}
           </div>
         </div>
         <div>
-          <div className="text-label uppercase tracking-[0.08em] text-ink-3">Missing cost</div>
+          <Label>Missing cost</Label>
           <div className={totals.missing > 0 ? 'font-medium tabular-nums text-danger' : 'font-medium tabular-nums text-success'}>
             {fmtNumber(totals.missing)}
           </div>
         </div>
         <div>
-          <div className="text-label uppercase tracking-[0.08em] text-ink-3">Estimated</div>
+          <Label>Estimated</Label>
           <div className={totals.estimated > 0 ? 'font-medium tabular-nums text-warning' : 'font-medium tabular-nums text-ink'}>
             {fmtNumber(totals.estimated)}
           </div>
@@ -702,15 +702,15 @@ export function LotsTable({ rows }: { rows: any[] }) {
       </div>
       <div className="grid gap-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption sm:grid-cols-3">
         <div>
-          <div className="text-label uppercase tracking-[0.08em] text-ink-3">Filtered</div>
+          <Label>Filtered</Label>
           <div className="font-medium tabular-nums text-ink">{fmtNumber(filtered.length)} / {fmtNumber(rows.length)}</div>
         </div>
         <div>
-          <div className="text-label uppercase tracking-[0.08em] text-ink-3">Open quantity</div>
+          <Label>Open quantity</Label>
           <div className="font-medium tabular-nums text-ink">{fmtQuantity(totals.quantity, 2)}</div>
         </div>
         <div>
-          <div className="text-label uppercase tracking-[0.08em] text-ink-3">Base cost</div>
+          <Label>Base cost</Label>
           <div className="font-medium tabular-nums text-ink">{money(totals.cost, 'KRW')}</div>
         </div>
       </div>

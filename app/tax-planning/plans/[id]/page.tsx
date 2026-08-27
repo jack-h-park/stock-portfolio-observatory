@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
-import { Badge, Card } from '@/components/ui'
+import { Badge, Card, Label } from '@/components/ui'
 import { fmtDateShort, fmtDateTime, fmtKrw, fmtNumber } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { buildMonthlySalePlanSet } from '@/lib/tax-planning'
@@ -81,7 +81,7 @@ export default async function SavedTaxPlanPage({ params }: { params: Promise<{ i
                 [copy.complete, `${fmtNumber(progress.completionPct, 1)}%`],
               ].map(([label, value]) => (
                 <div key={label} className="bg-card px-3 py-3">
-                  <div className="text-micro font-medium uppercase text-ink-3">{label}</div>
+                  <Label size="micro">{label}</Label>
                   <div className="mt-1 text-title font-medium tabular-nums text-ink">{value}</div>
                 </div>
               ))}
@@ -140,7 +140,7 @@ export default async function SavedTaxPlanPage({ params }: { params: Promise<{ i
             [copy.instructions, deltaLabel(drift.instructionCount, copy.noChange, (value) => fmtNumber(value)), -Math.abs(drift.instructionCount)],
           ].map(([label, value, toneValue]) => (
             <div key={String(label)} className="bg-card px-3 py-3">
-              <div className="text-micro font-medium uppercase text-ink-3">{label}</div>
+              <Label size="micro">{label}</Label>
               <div className={`mt-1 text-title font-medium tabular-nums ${Number(toneValue) > 0 ? 'text-success' : Number(toneValue) < 0 ? 'text-warning' : 'text-ink'}`}>
                 {value}
               </div>

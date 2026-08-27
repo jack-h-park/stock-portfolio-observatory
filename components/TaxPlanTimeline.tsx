@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { updateSavedInstructionExecutionAction } from '@/app/tax-planning/actions'
 import { getTaxPlanningCopy } from '@/app/tax-planning/copy'
-import { Badge, Button, Card, EmptyState, Signed, marketTone } from '@/components/ui'
+import { Badge, Button, Card, EmptyState, Label, Signed, marketTone } from '@/components/ui'
 import { fmtNumber } from '@/lib/format'
 import { useMoneyFormatter } from '@/components/LanguageProvider'
 import type { Language } from '@/lib/i18n'
@@ -200,7 +200,7 @@ function MonthDetailCard({
       {savedPlanId && (
         <div className="mt-3 border-t border-line-subtle pt-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-micro font-medium uppercase text-ink-3">{copy.execution}</span>
+            <Label as="span" size="micro">{copy.execution}</Label>
             <Badge tone={EXECUTION_TONE[execution?.status ?? 'planned']}>
               {instructionStatusLabel(execution?.status ?? 'planned', copy)}
             </Badge>
@@ -232,7 +232,7 @@ function MonthSummary({
         [copy.netGainLoss, money(month.gainKrw, 'KRW'), month.gainKrw >= 0 ? 'text-success' : 'text-danger'],
       ].map(([label, value, tone]) => (
         <div key={label} className="bg-card px-3 py-2.5">
-          <div className="text-micro font-medium uppercase text-ink-3">{label}</div>
+          <Label size="micro">{label}</Label>
           <div className={`mt-1 text-body-lg font-medium tabular-nums ${tone}`}>{value}</div>
         </div>
       ))}
@@ -305,7 +305,7 @@ export function TaxPlanTimeline({
         <>
           <div className="flex flex-col gap-3 border-b border-line-subtle pb-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <div className="text-micro font-medium uppercase text-ink-3">{copy.executionSpan}</div>
+              <Label size="micro">{copy.executionSpan}</Label>
               <div className="mt-1 text-title font-medium text-ink">
                 {dateLabel(plan.summary.startDate, language)} <span className="text-ink-3">{copy.to}</span>{' '}
                 {dateLabel(plan.summary.endDate, language)}

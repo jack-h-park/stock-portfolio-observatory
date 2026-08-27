@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
-import { Badge, Card, EmptyState, InfoTooltip, Signed, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, InfoTooltip, Label, Signed, marketTone } from '@/components/ui'
 import { getOperationalHealth, getOverview, getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
@@ -158,11 +158,11 @@ export default async function TaxPlanningPage({
         </div>
         <form className="grid gap-4 p-4 lg:grid-cols-[minmax(14rem,1.4fr)_minmax(11rem,0.8fr)_minmax(10rem,0.7fr)_auto] lg:items-end">
           <label className="block">
-            <span className="mb-1.5 flex items-center text-micro font-medium uppercase text-ink-3">
+            <Label as="span" size="micro" className="mb-1.5 flex items-center">
               <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface text-micro text-ink">1</span>
               {copy.settings.schedulingRule}
               <InfoTooltip align="left">{copy.settings.schedulingRuleInfo}</InfoTooltip>
-            </span>
+            </Label>
             <select name="master" defaultValue={selectedMasterStrategy} className="w-full rounded-md border border-line bg-card px-3 py-2.5 text-body text-ink outline-none focus:border-info">
               <option value="STAGED">{copy.settings.staged}</option>
               <option value="EARLIEST_LT">{copy.settings.earliestLongTerm}</option>
@@ -172,11 +172,11 @@ export default async function TaxPlanningPage({
             <span className="mt-1 block text-micro text-ink-3">{copy.settings.schedulingHint}</span>
           </label>
           <label className="block">
-            <span className="mb-1.5 flex items-center text-micro font-medium uppercase text-ink-3">
+            <Label as="span" size="micro" className="mb-1.5 flex items-center">
               <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface text-micro text-ink">2</span>
               {copy.settings.executionWindow}
               <InfoTooltip align="left">{copy.settings.executionWindowInfo}</InfoTooltip>
-            </span>
+            </Label>
             <select name="pace" defaultValue={executionMonths} className="w-full rounded-md border border-line bg-card px-3 py-2.5 text-body text-ink outline-none focus:border-info">
               {[12, 18, 24, 36, 48].map((months) => (
                 <option key={months} value={months}>{months} {copy.settings.months}</option>
@@ -185,10 +185,10 @@ export default async function TaxPlanningPage({
             <span className="mt-1 block text-micro text-ink-3">{copy.settings.executionHint}</span>
           </label>
           <label className="block">
-            <span className="mb-1.5 flex items-center text-micro font-medium uppercase text-ink-3">
+            <Label as="span" size="micro" className="mb-1.5 flex items-center">
               <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface text-micro text-ink">3</span>
               {copy.settings.taxHorizon}
-            </span>
+            </Label>
             <select name="horizon" defaultValue={horizonYears} className="w-full rounded-md border border-line bg-card px-3 py-2.5 text-body text-ink outline-none focus:border-info">
               {[3, 4, 5, 7, 10].map((yearCount) => (
                 <option key={yearCount} value={yearCount}>{yearCount} {copy.settings.years}</option>

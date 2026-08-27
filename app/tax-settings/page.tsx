@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, InfoTooltip, MetricField, MetricHeroCard } from '@/components/ui'
+import { Badge, Card, InfoTooltip, Label, MetricField, MetricHeroCard } from '@/components/ui'
 import { fmtDateTime, fmtNumber } from '@/lib/format'
 import { getMeta } from '@/lib/adapters/portfolio-db'
 import { getGlossary } from '@/lib/glossary'
@@ -115,7 +115,7 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
         <Card title={copy.filingProfile.title} accent>
           <div className="grid gap-4 lg:grid-cols-3">
             <label className="block">
-              <span className="mb-1 block text-label font-medium uppercase tracking-[0.08em] text-ink-3">{copy.filingProfile.activeScenario}</span>
+              <Label as="span" className="mb-1 block">{copy.filingProfile.activeScenario}</Label>
               <select name="activeScenario" defaultValue={policy.activeScenario} className="w-full rounded-md border border-line bg-card px-3 py-2 text-body text-ink outline-none">
                 <option value="US_ONLY">{copy.scenarios.US_ONLY}</option>
                 <option value="KR_ONLY">{copy.scenarios.KR_ONLY}</option>
@@ -236,7 +236,7 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
               <Field label={copy.kr.foreignTaxableResidenceThreshold} name="krForeignStockTaxableResidenceYearsThreshold" defaultValue={assumptionNumber(policy, 'KR', 'foreignStockTaxableResidenceYearsThreshold', 5)} suffix={copy.readOrder.years} />
               <Field label={copy.kr.residentThroughYear} name="krResidentThroughYear" defaultValue={assumptionNumber(policy, 'KR', 'residentThroughYear', 2027)} />
               <label className="block">
-                <span className="mb-1 block text-label font-medium uppercase tracking-[0.08em] text-ink-3">{copy.kr.crossBorderCreditModel}</span>
+                <Label as="span" className="mb-1 block">{copy.kr.crossBorderCreditModel}</Label>
                 <select name="krForeignTaxCreditMode" defaultValue={assumptionString(policy, 'KR', 'foreignTaxCreditMode', 'manual')} className="w-full rounded-md border border-line bg-card px-3 py-2 text-body text-ink outline-none">
                   <option value="manual">{copy.kr.noAutomaticCredit}</option>
                   <option value="estimated-us-source">{copy.kr.krCreditForUsTax}</option>

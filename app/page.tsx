@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { FreshnessInline } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, Label, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
 import { PortfolioMultiTrendChart, PortfolioTrendChart, TrendBarChart } from '@/components/charts'
 import {
   dbAvailable,
@@ -612,7 +612,7 @@ export default async function OverviewPage({
         <div className="grid gap-2 lg:grid-cols-3">
           {operational.snapshots.map((item) => (
             <div key={item.key} className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-              <div className="mb-1 text-label font-medium uppercase tracking-[0.08em] text-ink-3">{item.label}</div>
+              <Label className="mb-1">{item.label}</Label>
               <FreshnessInline item={item} language={language} />
             </div>
           ))}
