@@ -74,6 +74,68 @@ export type EvidenceReport = {
   metrics_json: string | null
 }
 
+export type FxEvent = {
+  id: number
+  institution: string
+  account: string
+  date: string
+  time: string | null
+  event_type: 'EXCHANGE' | 'EXCHANGE_CANCEL' | 'TRANSFER'
+  direction: string
+  usd_amount: number
+  krw_amount: number | null
+  applied_rate: number | null
+  rate_status: string
+  preference_rate: number | null
+  reference_base_rate: number | null
+  reference_customer_rate: number | null
+  reference_source: string | null
+  spread_cost_krw: number | null
+  spread_savings_krw: number | null
+  realized_fx_gl_krw: number | null
+  counterparty: string | null
+  match_status: string
+  confidence: string
+  method: string
+  balance_usd: number | null
+  source: string
+  page: number | null
+  note: string | null
+}
+
+export type FxDashboard = {
+  summary: {
+    exchangeCount: number
+    usdBought: number
+    krwSpent: number
+    weightedAverageRate: number | null
+    spreadSavingsKrw: number
+    realizedFxGlKrw: number | null
+    realizedEventCount: number
+    estimatedCount: number
+    actualCount: number
+    transferCount: number
+    missingDestinationCount: number
+    currentUsdKrw: number | null
+    currentUsdKrwAsOf: string | null
+  }
+  institutions: Array<{
+    institution: string
+    exchangeCount: number
+    usdBought: number
+    krwSpent: number
+    weightedAverageRate: number | null
+    estimatedCount: number
+    actualCount: number
+    spreadSavingsKrw: number
+    latestBalanceUsd: number | null
+    latestBalanceDate: string | null
+  }>
+  monthly: Array<{ month: string; usdBought: number; krwSpent: number; averageRate: number | null; spreadSavingsKrw: number }>
+  transfers: FxEvent[]
+  recent: FxEvent[]
+}
+
 export type PositionSourceRef = {
   source: string
   usages: string[]
@@ -2802,6 +2864,132 @@ export function getRecentTransactions(limit = 30) {
          limit ?`
       )
       .all(limit) as any[]
+  } finally {
+    conn.close()
+  }
+}
+
+export function getFxDashboard(recentLimit = 120): FxDashboard {
+  const conn = db()
+  try {
+    const events = conn
+      .prepare(
+        `select id, institution, account, date, time, event_type, direction, usd_amount, krw_amount,
+                applied_rate, rate_status, preference_rate, reference_base_rate, reference_customer_rate, reference_source,
+                spread_cost_krw, spread_savings_krw, realized_fx_gl_krw, counterparty, match_status,
+                confidence, method, balance_usd, source, page, note
+           from fx_events
+          order by date, coalesce(time, ''), id`
+      )
+      .all() as FxEvent[]
+    const balances = conn
+      .prepare(`select institution, as_of_date, balance_usd from fx_account_balances order by as_of_date`)
+      .all() as Array<{ institution: string; as_of_date: string; balance_usd: number }>
+    const currentRate = conn
+      .prepare(
+        `select rate, as_of_date from fx_rates
+          where from_currency = 'USD' and to_currency = 'KRW'
+          order by as_of_date desc, id desc limit 1`
+      )
+      .get() as { rate: number; as_of_date: string } | undefined
+
+    const institutions = new Map<string, FxDashboard['institutions'][number]>()
+    const monthly = new Map<string, FxDashboard['monthly'][number]>()
+    let usdBought = 0
+    let krwSpent = 0
+    let spreadSavingsKrw = 0
+    let exchangeCount = 0
+    let estimatedCount = 0
+    let actualCount = 0
+    let transferCount = 0
+    let missingDestinationCount = 0
+    let realizedEventCount = 0
+    let realizedFxGlKrw = 0
+
+    for (const event of events) {
+      let institution = institutions.get(event.institution)
+      if (!institution) {
+        institution = {
+          institution: event.institution,
+          exchangeCount: 0,
+          usdBought: 0,
+          krwSpent: 0,
+          weightedAverageRate: null,
+          estimatedCount: 0,
+          actualCount: 0,
+          spreadSavingsKrw: 0,
+          latestBalanceUsd: null,
+          latestBalanceDate: null,
+        }
+        institutions.set(event.institution, institution)
+      }
+      if (event.balance_usd != null && (!institution.latestBalanceDate || event.date >= institution.latestBalanceDate)) {
+        institution.latestBalanceUsd = event.balance_usd
+        institution.latestBalanceDate = event.date
+      }
+      if (event.event_type === 'TRANSFER') {
+        transferCount += 1
+        if (event.match_status === 'destination_account_missing') missingDestinationCount += 1
+        continue
+      }
+      const sign = event.event_type === 'EXCHANGE_CANCEL' ? -1 : 1
+      exchangeCount += sign
+      usdBought += sign * event.usd_amount
+      krwSpent += sign * (event.krw_amount ?? 0)
+      spreadSavingsKrw += sign * (event.spread_savings_krw ?? 0)
+      institution.exchangeCount += sign
+      institution.usdBought += sign * event.usd_amount
+      institution.krwSpent += sign * (event.krw_amount ?? 0)
+      institution.spreadSavingsKrw += sign * (event.spread_savings_krw ?? 0)
+      if (event.rate_status === 'estimated') {
+        estimatedCount += sign
+        institution.estimatedCount += sign
+      } else if (event.rate_status === 'actual') {
+        actualCount += sign
+        institution.actualCount += sign
+      }
+      if (event.realized_fx_gl_krw != null) {
+        realizedEventCount += 1
+        realizedFxGlKrw += event.realized_fx_gl_krw
+      }
+      const monthKey = event.date.slice(0, 7)
+      const month = monthly.get(monthKey) ?? { month: monthKey, usdBought: 0, krwSpent: 0, averageRate: null, spreadSavingsKrw: 0 }
+      month.usdBought += sign * event.usd_amount
+      month.krwSpent += sign * (event.krw_amount ?? 0)
+      month.spreadSavingsKrw += sign * (event.spread_savings_krw ?? 0)
+      monthly.set(monthKey, month)
+    }
+    for (const item of institutions.values()) {
+      item.weightedAverageRate = item.usdBought ? item.krwSpent / item.usdBought : null
+      const reported = balances.filter((row) => row.institution === item.institution).at(-1)
+      if (reported) {
+        item.latestBalanceUsd = reported.balance_usd
+        item.latestBalanceDate = reported.as_of_date
+      }
+    }
+    for (const item of monthly.values()) item.averageRate = item.usdBought ? item.krwSpent / item.usdBought : null
+
+    return {
+      summary: {
+        exchangeCount,
+        usdBought,
+        krwSpent,
+        weightedAverageRate: usdBought ? krwSpent / usdBought : null,
+        spreadSavingsKrw,
+        realizedFxGlKrw: realizedEventCount ? realizedFxGlKrw : null,
+        realizedEventCount,
+        estimatedCount,
+        actualCount,
+        transferCount,
+        missingDestinationCount,
+        currentUsdKrw: currentRate?.rate ?? null,
+        currentUsdKrwAsOf: currentRate?.as_of_date ?? null,
+      },
+      institutions: [...institutions.values()].sort((a, b) => b.krwSpent - a.krwSpent),
+      monthly: [...monthly.values()].sort((a, b) => a.month.localeCompare(b.month)),
+      transfers: events.filter((event) => event.event_type === 'TRANSFER').sort((a, b) => b.date.localeCompare(a.date)),
+      recent: events.slice(-recentLimit).reverse(),
+    }
   } finally {
     conn.close()
   }

@@ -31,6 +31,8 @@ const refreshRunsPath = process.env.STOCK_REFRESH_RUNS_PATH || path.join(process
 // so a hand-entered assumption can be checked against the transactions the
 // ingest actually sees — see `us_ytd_realized_assumption_reviewed` below.
 const taxPolicyPath = process.env.STOCK_TAX_POLICY_PATH || path.join(process.cwd(), 'data/tax-policy.json')
+const fxLedgerPath =
+  process.env.STOCK_FX_LEDGER_PATH || path.join(outDir, 'fx-ledger.json')
 
 const sources = {
   holdings: 'summary.noapost.tsv',
@@ -499,12 +501,18 @@ function loadCryptoPrices() {
   return JSON.parse(fs.readFileSync(cryptoPricesPath, 'utf8'))
 }
 
+function loadFxLedger() {
+  if (!fs.existsSync(fxLedgerPath)) return { events: [], sources: [], findings: ['FX ledger is missing'] }
+  return JSON.parse(fs.readFileSync(fxLedgerPath, 'utf8'))
+}
+
 const fxConfig = loadFxRates()
 const krPriceConfig = loadKrPrices()
 const usPriceConfig = loadUsPrices()
 const usPdfEvidence = loadUsPdfEvidence()
 const cryptoActivity = loadCryptoActivity()
 const cryptoPriceConfig = loadCryptoPrices()
+const fxLedger = loadFxLedger()
 const manualMappings = loadManualMappings()
 // Loaded before the first normalizeTicker call: every ticker in this ingest,
 // from any source, is read through the rename table so the old and new symbol
@@ -643,6 +651,45 @@ create table fx_rates (
   source text not null,
   source_url text,
   note text
+);
+
+create table fx_events (
+  id integer primary key,
+  institution text not null,
+  account text not null,
+  date text not null,
+  time text,
+  event_type text not null,
+  direction text not null,
+  usd_amount real not null,
+  krw_amount real,
+  applied_rate real,
+  rate_status text not null,
+  preference_rate real,
+  reference_base_rate real,
+  reference_customer_rate real,
+  reference_source text,
+  spread_cost_krw real,
+  spread_savings_krw real,
+  realized_fx_gl_krw real,
+  counterparty text,
+  match_status text not null,
+  confidence text not null,
+  method text not null,
+  balance_usd real,
+  source text not null,
+  source_path text,
+  page integer,
+  note text
+);
+
+create table fx_account_balances (
+  id integer primary key,
+  institution text not null,
+  account text not null,
+  as_of_date text not null,
+  balance_usd real not null,
+  source text not null
 );
 
 create table holdings (
@@ -1041,6 +1088,19 @@ if (fs.existsSync(fxRatesPath)) {
   db.prepare(
     'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
   ).run('fx_rates', fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, fxConfig.rates.length)
+}
+if (fs.existsSync(fxLedgerPath)) {
+  const fp = fingerprint(fxLedgerPath)
+  db.prepare(
+    'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run('fx_ledger', fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, fxLedger.events?.length ?? 0)
+}
+for (const source of fxLedger.sources ?? []) {
+  if (!source.path || !fs.existsSync(source.path)) continue
+  const fp = fingerprint(source.path)
+  db.prepare(
+    'insert or replace into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run(`fx_source:${source.filename}`, fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, source.rows ?? 0)
 }
 if (fs.existsSync(krPricesPath)) {
   const fp = fingerprint(krPricesPath)
@@ -4113,6 +4173,41 @@ insertMany(db, 'transactions', transactionRows, [
   'source',
   'page',
 ])
+insertMany(db, 'fx_events', fxLedger.events ?? [], [
+  'institution',
+  'account',
+  'date',
+  'time',
+  'event_type',
+  'direction',
+  'usd_amount',
+  'krw_amount',
+  'applied_rate',
+  'rate_status',
+  'preference_rate',
+  'reference_base_rate',
+  'reference_customer_rate',
+  'reference_source',
+  'spread_cost_krw',
+  'spread_savings_krw',
+  'realized_fx_gl_krw',
+  'counterparty',
+  'match_status',
+  'confidence',
+  'method',
+  'balance_usd',
+  'source',
+  'source_path',
+  'page',
+  'note',
+])
+insertMany(db, 'fx_account_balances', fxLedger.balances ?? [], [
+  'institution',
+  'account',
+  'as_of_date',
+  'balance_usd',
+  'source',
+])
 insertMany(db, 'dividends', dividendRows, [
   'market',
   'currency',
@@ -4170,6 +4265,53 @@ const checks = []
 function check(name, ok, detail, severity = 'error') {
   checks.push({ name, status: ok ? 'pass' : 'fail', detail, severity })
 }
+
+const fxEvents = fxLedger.events ?? []
+const fxEstimated = fxEvents.filter((row) => row.event_type === 'EXCHANGE' && row.rate_status === 'estimated')
+const fxBadEstimates = fxEstimated.filter(
+  (row) => !(row.applied_rate > 0) || !(row.reference_base_rate > 0) || !text(row.method)
+)
+const fxTransferValuationErrors = fxEvents.filter(
+  (row) => row.event_type === 'TRANSFER' && (row.krw_amount != null || row.realized_fx_gl_krw != null)
+)
+const fxMissingDestinations = fxEvents.filter((row) => row.match_status === 'destination_account_missing')
+const fxObservedPreference = fxEvents.find(
+  (row) => row.institution === 'Hana Bank' && row.date === '2025-10-29' && row.rate_status === 'actual'
+)
+const observedPreference = fxObservedPreference
+  ? 1 -
+    (fxObservedPreference.applied_rate - fxObservedPreference.reference_base_rate) /
+      (fxObservedPreference.reference_customer_rate - fxObservedPreference.reference_base_rate)
+  : null
+check('fx_ledger_present', fxEvents.length > 0, `${fxEvents.length} normalized FX event(s)`, 'warning')
+check(
+  'fx_estimates_have_provenance',
+  fxBadEstimates.length === 0,
+  fxBadEstimates.length ? `${fxBadEstimates.length} estimated row(s) lack reference-rate provenance` : `${fxEstimated.length} estimated exchange row(s) carry reference rates and methods`
+)
+check(
+  'fx_transfers_not_realized',
+  fxTransferValuationErrors.length === 0,
+  fxTransferValuationErrors.length ? `${fxTransferValuationErrors.length} transfer row(s) were assigned KRW value or realized FX gain` : 'internal USD transfers do not realize FX gain'
+)
+check(
+  'hana_preference_observation',
+  observedPreference != null && Math.abs(observedPreference - 0.9) < 0.000001,
+  observedPreference == null ? 'no actual Hana FX Market row with a transaction-time reference rate' : `${(observedPreference * 100).toFixed(1)}% preference inferred from the 2025-10-29 actual transaction`,
+  'warning'
+)
+check(
+  'fx_transfer_destination_coverage',
+  fxMissingDestinations.length === 0,
+  fxMissingDestinations.length === 0 ? 'every owned-account transfer has both sides represented' : `${fxMissingDestinations.length} Hana-to-Mirae transfer(s) await the Mirae 9346 statement`,
+  'warning'
+)
+check(
+  'fx_extract_findings',
+  (fxLedger.findings ?? []).length === 0,
+  (fxLedger.findings ?? []).length ? (fxLedger.findings ?? []).slice(0, 3).join('; ') : 'FX extraction reported no findings',
+  'warning'
+)
 
 // Shares leaving one of these accounts should arrive in another of them, and
 // when they do not, the cost basis they were carrying is somewhere this
@@ -5500,6 +5642,8 @@ create index idx_holdings_ticker on holdings(ticker);
 create index idx_tax_lots_ticker on tax_lots(ticker);
 create index idx_transactions_date on transactions(date);
 create index idx_transactions_type on transactions(type);
+create index idx_fx_events_date on fx_events(date);
+create index idx_fx_events_institution on fx_events(institution, event_type);
 create index idx_dividends_date on dividends(date);
 `)
 
@@ -5515,6 +5659,7 @@ const report = {
       ['robinhood_snapshot', { file: robinhoodSnapshotPath, rows: robinhoodSnapshot?.accounts?.length ?? 0 }],
       ['crypto_activity', { file: cryptoActivityPath, rows: cryptoActivity.transactions?.length ?? 0 }],
       ['crypto_prices', { file: cryptoPricesPath, rows: cryptoPriceConfig.prices?.length ?? 0 }],
+      ['fx_ledger', { file: fxLedgerPath, rows: fxLedger.events?.length ?? 0 }],
       [
         'manual_mappings',
         {

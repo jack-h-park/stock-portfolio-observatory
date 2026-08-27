@@ -23,6 +23,7 @@
     "fetch:historical-prices": "node scripts/fetch-historical-prices.mjs",
     "extract:us-pdf-evidence": "node scripts/extract-us-pdf-evidence.mjs",
     "extract:kr-statements": "node scripts/extract-kr-statements.mjs",
+    "extract:fx-ledger": "node scripts/extract-fx-ledger.mjs",
     "fetch:toss": "node scripts/fetch-toss.mjs",
     "extract:crypto-activity": "node scripts/extract-crypto-activity.mjs",
     "fetch:crypto-prices": "node scripts/fetch-crypto-prices.mjs",

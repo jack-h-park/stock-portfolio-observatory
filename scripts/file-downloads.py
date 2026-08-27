@@ -100,6 +100,7 @@ DIR_US_TRANSACTIONS = "us-transactions"
 DIR_US_TAX = "us-tax-documents"
 DIR_BITHUMB = "crypto-bithumb"
 DIR_RH_CRYPTO = "crypto-robinhood"
+DIR_FX = "fx-statements"
 
 # What lands in the inbox but is not a source. macOS writes .DS_Store into any
 # folder a Finder window has opened; a browser writes .crdownload/.part while a
@@ -620,6 +621,45 @@ def detect_toss_transactions(doc):
     )
 
 
+def detect_hana_fx_history(doc):
+    """Hana foreign-currency account history -> fx-statements/hana-usd-...."""
+    if doc.suffix == ".pdf":
+        cover = despace(doc.page_text(0))
+        # Safari's print PDF duplicates each title/header glyph four times, but
+        # leaves account values, dates, currency, and data rows intact.
+        if "228-910040-10938" not in cover or "USD" not in cover or "FX마켓" not in cover:
+            return None
+        window = re.search(r"(\d{4}-\d{2}-\d{2})~(\d{4}-\d{2}-\d{2})", cover)
+        if not window:
+            return Refusal("Hana USD account history", "the PDF has no printed 조회기간")
+        start, end = parse_ymd(window.group(1)), parse_ymd(window.group(2))
+        return Plan(
+            DIR_FX,
+            f"hana-usd-history-{period_from_window(start, end)}.pdf",
+            [f"조회기간 {iso(start)} ~ {iso(end)}", "account ...10938", "currency USD"],
+        )
+
+    # Hana's download is legacy BIFF/XLS. Its shared-string stream is UTF-16LE;
+    # these content markers distinguish it without trusting the browser name.
+    if doc.suffix == ".xls":
+        raw = doc.path.read_bytes()
+        if not raw.startswith(bytes.fromhex("D0CF11E0A1B11AE1")):
+            return None
+        decoded = raw.decode("utf-16le", errors="ignore")
+        if not all(marker in decoded for marker in ("계좌번호", "외화", "적용환율", "거래일자")):
+            return None
+        window = re.search(r"(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})", decoded)
+        if not window:
+            return Refusal("Hana USD account history XLS", "the workbook has no 조회기간")
+        start, end = parse_ymd(window.group(1)), parse_ymd(window.group(2))
+        return Plan(
+            DIR_FX,
+            f"hana-usd-history-{period_from_window(start, end)}.xls",
+            [f"조회기간 {iso(start)} ~ {iso(end)}", "legacy XLS", "currency USD"],
+        )
+    return None
+
+
 def detect_samsung_rsu(doc):
     """삼성증권 계좌거래내역 (주식보상) → kr-statements/samsung-rsu-transactions-<id>.pdf
 
@@ -1107,6 +1147,7 @@ DETECTORS = [
     ("미래에셋 거래내역증명서", detect_mirae_transactions),
     ("미래에셋 잔고증명서", detect_mirae_balance),
     ("토스증권 거래내역서", detect_toss_transactions),
+    ("Hana USD account history", detect_hana_fx_history),
     ("삼성증권 계좌거래내역 (주식보상)", detect_samsung_rsu),
     ("Robinhood Crypto statement", detect_robinhood_crypto_statement),
     ("Robinhood Gain/Loss report", detect_robinhood_gain_loss),
