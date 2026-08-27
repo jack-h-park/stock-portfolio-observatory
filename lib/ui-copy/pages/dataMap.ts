@@ -31,6 +31,8 @@ export const dataMap = defineCopy({
     reviewQueue: 'Source issue queue',
     noQueue: 'No drifted or missing source files',
     fullInventory: 'Full source inventory',
+    driftMonitor: 'Source drift monitor',
+    driftMonitorInfo: 'Whether a tracked file changed after the ingest read it. A drifted file means the dashboard and the file on disk no longer agree.',
     columns: {
       status: 'Status',
       category: 'Category',
@@ -75,6 +77,8 @@ export const dataMap = defineCopy({
     reviewQueue: '원본 이슈 대기열',
     noQueue: '변경되거나 누락된 원본 파일이 없습니다.',
     fullInventory: '전체 원본 인벤토리',
+    driftMonitor: '원본 변경 감시',
+    driftMonitorInfo: 'ingest가 읽은 뒤 파일이 바뀌었는지 봅니다. 변경된 파일은 대시보드와 디스크의 내용이 더 이상 일치하지 않는다는 뜻입니다.',
     columns: {
       status: '상태',
       category: '분류',

@@ -1,7 +1,8 @@
 import { DataTable } from '@/components/DataTable'
+import { FreshnessRows } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, type Tone } from '@/components/ui'
-import { getMeta, getSourceInventory } from '@/lib/adapters/portfolio-db'
+import { getMeta, getOperationalHealth, getSourceInventory } from '@/lib/adapters/portfolio-db'
 import { fmtBytes, fmtDateTime, fmtNumber, shortHash } from '@/lib/format'
 import { getGlossary } from '@/lib/glossary'
 import { formatSort, parseSort, sortRows, type TableSort } from '@/lib/table-sort'
@@ -41,6 +42,7 @@ export default async function DataMapPage({
   const glossary = getGlossary(language)
   const meta = getMeta()
   const inventory = getSourceInventory()
+  const operational = getOperationalHealth()
   const actionItems = inventory.items.filter((item) => ['drift', 'missing'].includes(item.status)).slice(0, 20)
   const reviewCount = inventory.summary.missing + inventory.summary.drift
   return (
@@ -137,6 +139,19 @@ export default async function DataMapPage({
             ]}
           />
         )}
+      </Card>
+
+      {/* Whether a source file changed after the ingest read it. This lived on
+          /health, which is about whether the pipeline is running; a file that
+          moved under the ingest is a fact about the file, and belongs beside
+          the inventory that lists it. */}
+      <Card
+        title={copy.driftMonitor}
+        info={copy.driftMonitorInfo}
+        className="mt-5"
+        accent={operational.sourceDrift.some((item) => item.status !== 'fresh')}
+      >
+        <FreshnessRows items={operational.sourceDrift} language={language} />
       </Card>
 
       <Card title={copy.fullInventory} className="mt-5">
