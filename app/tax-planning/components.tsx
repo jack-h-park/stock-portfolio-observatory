@@ -8,7 +8,9 @@ import { positionHref } from '@/lib/position-url'
 import type { MonthlySaleMasterPlan, MonthlySalePlanSet, TaxPlanCandidate, MasterPlanStrategyKey } from '@/lib/tax-planning'
 import { savedTaxPlanProgress, type SavedTaxPlan } from '@/lib/tax-plan-store'
 import { bucketTone, signClass } from '@/lib/tone'
-import type { TaxPlanningCopy } from './copy'
+import type { getPageCopy } from '@/lib/ui-copy'
+
+type TaxPlanningCopy = ReturnType<typeof getPageCopy<'taxPlanning'>>
 import { Input } from '@/components/form'
 
 type MoneyFormatter = ReturnType<typeof createMoneyFormatter>

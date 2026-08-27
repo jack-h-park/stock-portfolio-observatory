@@ -1,6 +1,6 @@
 import type { Language } from '@/lib/i18n'
 import { UI_COPY_BY_LANG } from '@/lib/ui-copy/common'
-import { PAGE_COPY } from '@/lib/ui-copy/pages'
+import { PAGE_COPY } from '@/lib/ui-copy/pages/index'
 
 export { UI_COPY_BY_LANG } from '@/lib/ui-copy/common'
 

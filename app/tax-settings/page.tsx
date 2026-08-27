@@ -7,16 +7,17 @@ import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
 import { annualProfiles, assumptionBool, assumptionNumber, assumptionString, getTaxPolicyState, type TaxYearProfile } from '@/lib/tax-policy'
 import { saveTaxSettings } from './actions'
-import { getTaxSettingsCopy, scenarioLabel } from './copy'
+import { scenarioLabel } from './copy'
 import { CheckField, CompactCheck, Field, Select } from '@/components/form'
 import { DataTable } from '@/components/DataTable'
+import { getPageCopy } from '@/lib/ui-copy'
 
 export const dynamic = 'force-dynamic'
 
 export default async function TaxSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const params = await searchParams
   const language = await getLanguage()
-  const copy = getTaxSettingsCopy(language)
+  const copy = getPageCopy('taxSettings', language)
   const glossary = getGlossary(language)
   const state = getTaxPolicyState()
   const { policy } = state

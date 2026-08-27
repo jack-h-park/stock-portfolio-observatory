@@ -9,7 +9,7 @@ import { getCurrencyPreferences } from '@/lib/currency-server'
 import { fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
-import { getUiCopy } from '@/lib/ui-copy'
+import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { applyFilters, applySearch, filterOptions, readFilters, withParam, type FilterGroup } from '@/lib/table-filter'
 import { formatSort, parseSort, sortRows, type TableSort } from '@/lib/table-sort'
 
@@ -17,74 +17,6 @@ export const dynamic = 'force-dynamic'
 
 const BASE = '/holdings'
 
-const COPY = {
-  en: {
-    searchPlaceholder: 'Ticker, name, account, or broker',
-    sortLabel: 'Sort',
-    sort: {
-      value: 'Market value',
-      gain: 'Unrealized G/L',
-      return: 'Return',
-      name: 'Name A-Z',
-    },
-    filtered: 'Displayed holdings',
-    marketValue: 'Current market value',
-    quantity: 'Qty',
-    costBasis: 'Cost basis',
-    noValue: 'No value',
-    caption: 'Current holdings list',
-    market: 'Market',
-    broker: 'Broker',
-    account: 'Account',
-    instrument: 'Instrument',
-    open: 'Open',
-    baseCost: 'KRW cost basis',
-    baseGain: 'KRW unrealized G/L',
-    nativeCostDescription: 'Actual acquisition amount in the market currency.',
-    baseCostDescription: 'Cost basis converted to KRW using the dashboard FX rate.',
-    gainDescription: 'Unrealized gain or loss based on the current price.',
-    baseGainDescription: 'Unrealized gain or loss converted to KRW using the base FX rate.',
-    longTerm: 'Long',
-    shortTerm: 'Short',
-    taxLots: 'Tax lots',
-    longTermDescription: 'Quantity that satisfies the long-term holding-period rule.',
-    shortTermDescription: 'Quantity that has not yet satisfied the long-term holding-period rule.',
-    lotDescription: 'Number of tax-calculation groups split by purchase date and price.',
-  },
-  ko: {
-    searchPlaceholder: '종목코드, 종목명, 계좌 또는 증권사',
-    sortLabel: '정렬',
-    sort: {
-      value: '평가금액',
-      gain: '평가손익',
-      return: '수익률',
-      name: '이름순',
-    },
-    filtered: '표시 종목',
-    marketValue: '현재 평가금액',
-    quantity: '수량',
-    costBasis: '취득원가',
-    noValue: '값 없음',
-    caption: '현재 보유종목 목록',
-    market: '시장',
-    broker: '증권사',
-    account: '계좌',
-    instrument: '종목',
-    open: '열기',
-    baseCost: '원화 취득원가',
-    baseGain: '원화 평가손익',
-    nativeCostDescription: '해당 시장 통화로 표시한 실제 취득 금액입니다.',
-    baseCostDescription: '취득원가를 화면의 기준 환율로 원화 환산한 값입니다.',
-    gainDescription: '현재 가격으로 계산한 미실현 손익입니다.',
-    baseGainDescription: '평가손익을 기준 환율로 원화 환산한 값입니다.',
-    longTerm: '장기',
-    shortTerm: '단기',
-    taxLots: '세금 단위',
-    longTermDescription: '세금상 장기 보유 요건을 충족한 수량입니다.',
-    shortTermDescription: '장기 보유 요건을 아직 충족하지 않은 수량입니다.',
-    lotDescription: '매수 시점과 가격별로 나뉜 세금 계산용 묶음 수입니다.',
-  },
-} as const
 
 const GROUPS: FilterGroup<any>[] = [
   { key: 'market', label: 'Market' },
@@ -99,7 +31,7 @@ export default async function HoldingsPage({
 }) {
   const params = await searchParams
   const language = await getLanguage()
-  const copy = COPY[language]
+  const copy = getPageCopy('holdings', language)
   const labels = getUiCopy(language).common
   const money = createMoneyFormatter(await getCurrencyPreferences())
   const rows = getHoldings(1000)

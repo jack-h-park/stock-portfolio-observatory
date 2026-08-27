@@ -10,7 +10,7 @@ import { buildMonthlySalePlanSet } from '@/lib/tax-planning'
 import { getSavedTaxPlan, savedTaxPlanProgress, type SavedTaxPlanStatus } from '@/lib/tax-plan-store'
 import { getTaxPolicyState } from '@/lib/tax-policy'
 import { updateSavedTaxPlanStatusAction } from '@/app/tax-planning/actions'
-import { getTaxPlanningCopy } from '@/app/tax-planning/copy'
+import { getPageCopy } from '@/lib/ui-copy'
 import { Select } from '@/components/form'
 
 export const dynamic = 'force-dynamic'
@@ -31,7 +31,7 @@ function deltaLabel(value: number, noChange: string, formatter: (amount: number)
 export default async function SavedTaxPlanPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const language = await getLanguage()
-  const copy = getTaxPlanningCopy(language).savedPlanDetail
+  const copy = getPageCopy('taxPlanning', language).savedPlanDetail
   const saved = getSavedTaxPlan(id)
   if (!saved) notFound()
   const progress = savedTaxPlanProgress(saved)
