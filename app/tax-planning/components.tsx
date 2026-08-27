@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { Fragment } from 'react'
 import { createSavedTaxPlanAction } from '@/app/tax-planning/actions'
 import { DataTable } from '@/components/DataTable'
-import { Badge, Card, EmptyState, Label, MetricField, Signed, marketTone, type Tone } from '@/components/ui'
+import { Badge, Button, Card, EmptyState, Label, MetricField, Signed, marketTone, type Tone } from '@/components/ui'
 import type { createMoneyFormatter } from '@/lib/currency'
 import { fmtDateShort, fmtDateTime, fmtDurationDays, fmtNumber, fmtQuantity } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
@@ -322,9 +322,9 @@ export function SavedPlansPanel({
             type="text"
             maxLength={120}
             placeholder={copy.savedPlans.placeholder} className="mt-1 w-full" />
-          <button type="submit" className="mt-2 w-full rounded-md border border-ink bg-ink px-3 py-2 text-caption font-medium text-card">
+          <Button type="submit" variant="solid" size="md" className="mt-2 w-full">
             {copy.savedPlans.saveAsDraft}
-          </button>
+          </Button>
           <div className="mt-2 text-micro leading-relaxed text-ink-3">
             {copy.savedPlans.storageNote}
           </div>

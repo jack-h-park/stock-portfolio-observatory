@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { SegmentedControl } from '@/components/ui'
 import {
   DISPLAY_CURRENCIES,
   DISPLAY_CURRENCY_COOKIE,
@@ -9,68 +10,43 @@ import {
 } from '@/lib/currency'
 import { LANGUAGE_COOKIE, LANGUAGE_LABELS, type Language } from '@/lib/i18n'
 
-const SEGMENT_CLASS =
-  'grid rounded-md border border-line-subtle bg-surface p-0.5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)]'
-const SEGMENT_BUTTON_CLASS =
-  'min-h-8 rounded-[4px] px-2 text-center text-caption font-medium leading-none transition-colors'
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 365
+
+function persist(name: string, value: string) {
+  document.cookie = `${name}=${value}; path=/; max-age=${COOKIE_MAX_AGE}; samesite=lax`
+}
 
 export function LanguageSwitcher({ language }: { language: Language }) {
   const router = useRouter()
 
-  const setLanguage = (nextLanguage: Language) => {
-    document.cookie = `${LANGUAGE_COOKIE}=${nextLanguage}; path=/; max-age=31536000; samesite=lax`
-    document.documentElement.lang = nextLanguage
-    router.refresh()
-  }
-
   return (
-    <div className={`${SEGMENT_CLASS} grid-cols-2`} role="group" aria-label="Language">
-      {(['en', 'ko'] as Language[]).map((option) => {
-        const active = option === language
-        return (
-          <button
-            key={option}
-            type="button"
-            onClick={() => setLanguage(option)}
-            aria-pressed={active}
-            className={`${SEGMENT_BUTTON_CLASS} ${
-              active ? 'bg-card text-ink shadow-card' : 'text-ink-3 hover:bg-card hover:text-ink'
-            }`}
-          >
-            {LANGUAGE_LABELS[option]}
-          </button>
-        )
-      })}
-    </div>
+    <SegmentedControl
+      label="Language"
+      value={language}
+      options={(['en', 'ko'] as Language[]).map((option) => ({ value: option, label: LANGUAGE_LABELS[option] }))}
+      onChange={(next) => {
+        persist(LANGUAGE_COOKIE, next)
+        // AutoRefresh and HelpPopover read the language off the document, so it
+        // has to change here as well as in the cookie the server reads.
+        document.documentElement.lang = next
+        router.refresh()
+      }}
+    />
   )
 }
 
 export function CurrencySwitcher({ displayCurrency }: { displayCurrency: DisplayCurrency }) {
   const router = useRouter()
 
-  const setDisplayCurrency = (nextCurrency: DisplayCurrency) => {
-    document.cookie = `${DISPLAY_CURRENCY_COOKIE}=${nextCurrency}; path=/; max-age=31536000; samesite=lax`
-    router.refresh()
-  }
-
   return (
-    <div className={`${SEGMENT_CLASS} grid-cols-2`} role="group" aria-label="Currency">
-      {DISPLAY_CURRENCIES.map((option) => {
-        const active = option === displayCurrency
-        return (
-          <button
-            key={option}
-            type="button"
-            onClick={() => setDisplayCurrency(option)}
-            aria-pressed={active}
-            className={`${SEGMENT_BUTTON_CLASS} ${
-              active ? 'bg-card text-ink shadow-card' : 'text-ink-3 hover:bg-card hover:text-ink'
-            }`}
-          >
-            {DISPLAY_CURRENCY_LABELS[option]}
-          </button>
-        )
-      })}
-    </div>
+    <SegmentedControl
+      label="Currency"
+      value={displayCurrency}
+      options={DISPLAY_CURRENCIES.map((option) => ({ value: option, label: DISPLAY_CURRENCY_LABELS[option] }))}
+      onChange={(next) => {
+        persist(DISPLAY_CURRENCY_COOKIE, next)
+        router.refresh()
+      }}
+    />
   )
 }

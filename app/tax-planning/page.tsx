@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
-import { Badge, Card, EmptyState, InfoTooltip, Label, Signed, marketTone } from '@/components/ui'
+import { Badge, Button, Card, EmptyState, InfoTooltip, Label, Signed, marketTone } from '@/components/ui'
 import { getOperationalHealth, getOverview, getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
@@ -197,9 +197,9 @@ export default async function TaxPlanningPage({
             </Select>
             <span className="mt-1 block text-micro text-ink-3">{copy.settings.horizonHint}</span>
           </label>
-          <button type="submit" className="rounded-md border border-ink bg-ink px-5 py-2.5 text-body font-medium text-card transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-info">
+          <Button type="submit" variant="solid" size="md">
             {copy.settings.rebuild}
-          </button>
+          </Button>
         </form>
       </section>
 

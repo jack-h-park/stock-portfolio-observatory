@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, Label, MetaItem, MetaRow, MetricField, MetricHeroCard, Signed, Table, Tbody, Td, Th, Thead, Tr, type Tone } from '@/components/ui'
+import { Badge, Button, Card, EmptyState, Label, MetaItem, MetaRow, MetricField, MetricHeroCard, Signed, Table, Tbody, Td, Th, Thead, Tr, type Tone } from '@/components/ui'
 import {
   getArchiveStatus,
   getBriefing,
@@ -163,12 +163,9 @@ function DatePicker({ dates, selected }: { dates: string[]; selected: string }) 
           </option>
         ))}
       </Select>
-      <button
-        type="submit"
-        className="rounded-sm border border-line bg-card px-2.5 py-1 text-caption font-medium text-ink transition-colors hover:border-ink-3 hover:bg-surface"
-      >
+      <Button type="submit">
         View
-      </button>
+      </Button>
       {newer ? (
         <Link href={`/daily-briefing?date=${newer}`} className={link} aria-label={`Newer briefing, ${newer}`}>
           →

@@ -309,6 +309,60 @@ const BTN_OUTLINE_TONE: Record<Tone, string> = {
     'border-[color:var(--accent-danger)]/30 bg-[color:var(--accent-danger)]/10 text-[color:var(--accent-danger)] hover:border-[color:var(--accent-danger)]',
 }
 
+/**
+ * A row of mutually exclusive options, one of them current.
+ *
+ * LanguageSwitcher built this inline twice — once for language, once for
+ * currency — with the recipe kept in two module-level string constants because
+ * even it could tell it was repeating itself. The sort and filter chips in
+ * PortfolioTables are the same idea drawn differently; they join this in P2,
+ * when FilterBar is built.
+ */
+export function SegmentedControl<T extends string>({
+  value,
+  options,
+  onChange,
+  label,
+  className,
+}: {
+  value: T
+  options: { value: T; label: ReactNode }[]
+  onChange: (value: T) => void
+  label: string
+  className?: string
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className={clsx(
+        'grid rounded-md border border-line-subtle bg-surface p-0.5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)]',
+        className
+      )}
+      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+    >
+      {options.map((option) => {
+        const active = option.value === value
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            aria-pressed={active}
+            className={clsx(
+              'min-h-8 rounded-[4px] px-2 text-center text-caption font-medium leading-none transition-colors',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-info/40',
+              active ? 'bg-card text-ink shadow-card' : 'text-ink-3 hover:bg-card hover:text-ink'
+            )}
+          >
+            {option.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export function Button({
   children,
   variant = 'outline',
@@ -332,7 +386,7 @@ export function Button({
 } & ButtonHTMLAttributes<HTMLButtonElement>) {
   const isDisabled = disabled || loading
   const cls = clsx(
-    'inline-flex items-center justify-center gap-1.5 font-medium transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-info disabled:cursor-not-allowed disabled:opacity-50',
+    'inline-flex items-center justify-center gap-1.5 font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-info/40 disabled:cursor-not-allowed disabled:opacity-50',
     variant === 'link'
       ? clsx('hover:underline', BTN_LINK_TONE[tone])
       : clsx('rounded-sm border', BTN_SIZE[size]),
