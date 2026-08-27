@@ -112,13 +112,15 @@ body.dark-mode [data-theme="jp"] {
 
 /* ── Gradient signature (§3.2) ──────────────────────────────────────
    Full gradient: once per surface — logo, page header stripe, primary CTA.
-   Mini gradient: inside interactions only — eyebrow text, active nav,
-                  link hover, focus rings. May repeat per interaction.
+   Mini gradient: inside interactions only — active nav, link hover, focus
+                  rings. May repeat per interaction.
+   Text gradient: anything clipped to text. Same sweep, stops that pass 4.5:1;
+                  see the note beside --gradient-text in globals.css.
    ─────────────────────────────────────────────────────────────────── */
 
-/* Eyebrow / overline → mini gradient text */
+/* Eyebrow / overline → gradient text (accessible stops) */
 [data-theme="jp"] .t-eyebrow {
-  background-image: var(--gradient-mini);
+  background-image: var(--gradient-text);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -259,7 +261,7 @@ body.dark-mode [data-theme="jp"] {
 
 /* Gradient text emphasis — for a single key word per heading */
 [data-theme="jp"] .t-emph-gradient {
-  background-image: var(--gradient-mini);
+  background-image: var(--gradient-text);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
