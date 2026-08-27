@@ -314,9 +314,11 @@ const BTN_OUTLINE_TONE: Record<Tone, string> = {
  *
  * LanguageSwitcher built this inline twice — once for language, once for
  * currency — with the recipe kept in two module-level string constants because
- * even it could tell it was repeating itself. The sort and filter chips in
- * PortfolioTables are the same idea drawn differently; they join this in P2,
- * when FilterBar is built.
+ * even it could tell it was repeating itself.
+ *
+ * The table filter chips are a different shape: they are links, because a
+ * filter is a URL, and there can be more of them than fit a segmented row. They
+ * live in FilterBar.
  */
 export function SegmentedControl<T extends string>({
   value,

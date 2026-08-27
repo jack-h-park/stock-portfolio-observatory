@@ -51,6 +51,19 @@ export function bucketTone(bucket: string | null | undefined): Tone {
 }
 
 /**
+ * Whether a holding's cost basis can be relied on.
+ *
+ * Lived in PortfolioTables beside its label map; the labels stay with the page
+ * that words them, the colour comes here with the other meaning-to-tone rules.
+ */
+export const COST_BASIS_STATUS_TONE: Record<string, Tone> = {
+  ready: 'success',
+  missing_cost: 'danger',
+  estimated: 'warning',
+  unpriced: 'neutral',
+}
+
+/**
  * Triage priority.
  *
  * Anything that is not high or medium reads as informational, not as a muted
