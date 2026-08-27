@@ -6,6 +6,7 @@ import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getFxDashboard } from '@/lib/adapters/portfolio-db'
 import { fmtNumber } from '@/lib/format'
+import { formatUsd } from '@/lib/currency'
 import { getLanguage } from '@/lib/i18n-server'
 
 export const dynamic = 'force-dynamic'
@@ -90,9 +91,9 @@ export default async function FxPage() {
 
       <Card title={copy.hanaOutbound} className="mb-5" info={copy.hanaOutboundHint}>
         <div className="grid gap-4 sm:grid-cols-3">
-          <MetricField label={language === 'ko' ? '하나은행 USD 출금 합계' : 'Hana outbound USD total'} value={money(data.summary.hanaOutboundUsd, 'USD')} hint={`${fmtNumber(data.summary.hanaOutboundTransferCount)} ${language === 'ko' ? '건' : 'rows'}`} valueClassName="text-metric" />
-          <MetricField label={copy.knownMirae} value={money(data.summary.hanaKnownMiraeUsd, 'USD')} hint={language === 'ko' ? '미래에셋으로 표시된 2건' : 'Two rows marked Mirae Asset'} valueClassName="text-title" />
-          <MetricField label={copy.destinationUnknown} value={money(data.summary.hanaUnknownDestinationUsd, 'USD')} hint={language === 'ko' ? '미국 계좌 입금과 후속 대조 필요' : 'Requires later US-account reconciliation'} tone="warning" valueClassName="text-title" />
+          <MetricField label={language === 'ko' ? '하나은행 USD 출금 합계' : 'Hana outbound USD total'} value={formatUsd(data.summary.hanaOutboundUsd)} hint={`${fmtNumber(data.summary.hanaOutboundTransferCount)} ${language === 'ko' ? '건' : 'rows'}`} valueClassName="text-metric" />
+          <MetricField label={copy.knownMirae} value={formatUsd(data.summary.hanaKnownMiraeUsd)} hint={language === 'ko' ? '미래에셋으로 표시된 2건' : 'Two rows marked Mirae Asset'} valueClassName="text-title" />
+          <MetricField label={copy.destinationUnknown} value={formatUsd(data.summary.hanaUnknownDestinationUsd)} hint={language === 'ko' ? '미국 계좌 입금과 후속 대조 필요' : 'Requires later US-account reconciliation'} tone="warning" valueClassName="text-title" />
         </div>
       </Card>
 
