@@ -8,7 +8,9 @@ import {
 } from '@/lib/tax-planning'
 import { scenarioFromTaxYearProfile, type FilingScenario, type TaxPolicy, type TaxYearProfile } from '@/lib/tax-policy'
 import { DataTable } from '@/components/DataTable'
-import type { TaxPlanningCopy } from './copy'
+import type { getPageCopy } from '@/lib/ui-copy'
+
+type TaxPlanningCopy = ReturnType<typeof getPageCopy<'taxPlanning'>>
 import { marketAmount, sameKrw } from './view-utils'
 
 type OpportunityRow = {

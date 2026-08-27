@@ -8,53 +8,14 @@ import { getFxDashboard } from '@/lib/adapters/portfolio-db'
 import { fmtNumber } from '@/lib/format'
 import { formatUsd } from '@/lib/currency'
 import { getLanguage } from '@/lib/i18n-server'
+import { getPageCopy } from '@/lib/ui-copy'
 
 export const dynamic = 'force-dynamic'
 
-const COPY = {
-  en: {
-    eyebrow: 'Detailed Records', title: 'FX Exchange & Gain', emphasis: 'FX',
-    subtitle: (count: string) => `${count} net KRW/USD exchanges from Toss Securities and Hana Bank.`,
-    qualityOk: 'FX ledger current', qualityGap: (count: string) => `${count} transfer gap(s)`,
-    deployed: 'KRW Exchanged', acquired: 'USD acquired', avg: 'Weighted Average Rate',
-    savings: 'Estimated Spread Savings', savingsHint: 'Hana savings versus the full published TT-send spread',
-    realized: 'Realized FX Gain/Loss', realizedNone: 'Not realized',
-    realizedHint: 'Owned-account USD transfers carry basis and do not realize FX gain. No explicit USD→KRW sale is present.',
-    method: 'Rate & Coverage Status', actual: 'Actual rate rows', estimated: 'Estimated rate rows', transfers: 'USD transfer rows',
-    missing: 'Mirae 9346 gaps', balance: 'Latest Hana USD balance', current: 'Current USD/KRW snapshot',
-    institutions: 'By Institution', trend: 'Monthly Weighted Exchange Rate', transferReview: 'Transfer Review', recent: 'Recent FX Ledger',
-    hanaOutbound: 'Hana USD Remittance Baseline', hanaOutboundHint: 'Outbound USD total to reconcile against US-account inbound statements later.', knownMirae: 'Known Mirae transfers', destinationUnknown: 'Destination unknown',
-    remittanceCost: 'Estimated KRW cost', remittanceValue: 'Value at current rate', remittanceGl: 'Estimated unrealized FX gain/loss',
-    confirmedGl: 'Confirmed-source portion', estimatedGl: 'Estimated-source portion',
-    date: 'Date', institution: 'Institution', type: 'Event', usd: 'USD', krw: 'KRW', rate: 'Rate', status: 'Rate status',
-    counterparty: 'Counterparty', match: 'Match status', source: 'Source', accountBalance: 'Latest USD balance',
-    preference: 'Preference', count: 'Exchanges', note: 'Evidence note',
-    estimateNote: 'Hana annual PDF rows use the first published daily TT-send spread with a user-confirmed 90% preference. They remain marked estimated because transaction times are absent.',
-  },
-  ko: {
-    eyebrow: '상세 기록', title: '환전 · 환차익', emphasis: '환전',
-    subtitle: (count: string) => `토스증권과 하나은행의 원/달러 순환전 ${count}건입니다.`,
-    qualityOk: 'FX 원장 최신', qualityGap: (count: string) => `이체 미연결 ${count}건`,
-    deployed: '환전한 원화', acquired: '취득한 달러', avg: '가중평균 환율',
-    savings: '추정 환율우대 절감액', savingsHint: '하나은행 고시 송금 보낼 때 환율의 우대 전 스프레드 대비 절감액',
-    realized: '실현 환차익', realizedNone: '미실현',
-    realizedHint: '본인 계좌 간 달러 이체는 취득원가를 승계하며 환차익을 실현하지 않습니다. 명시적인 달러→원화 매도는 현재 없습니다.',
-    method: '환율 · 원장 상태', actual: '실제 환율 행', estimated: '추정 환율 행', transfers: '달러 이체 행',
-    missing: '미래에셋 9346 미연결', balance: '최근 하나은행 달러 잔액', current: '현재 USD/KRW 스냅샷',
-    institutions: '기관별 현황', trend: '월별 가중평균 환율', transferReview: '이체 검토', recent: '최근 FX 원장',
-    hanaOutbound: '하나은행 미국 송금 검증 기준액', hanaOutboundHint: '향후 미국 계좌 입금내역과 대조할 하나은행 USD 출금 합계입니다. 미국 송금 확정액은 아닙니다.', knownMirae: '확인된 미래에셋 이체', destinationUnknown: '목적지 미확인',
-    remittanceCost: '추정 원화 원가', remittanceValue: '현재 환율 평가액', remittanceGl: '추정 미실현 환차익',
-    confirmedGl: '확정 출처 원가분', estimatedGl: '추정 출처 원가분',
-    date: '일자', institution: '기관', type: '유형', usd: '달러', krw: '원화', rate: '환율', status: '환율 상태',
-    counterparty: '상대 기관', match: '연결 상태', source: '원본', accountBalance: '최근 달러 잔액',
-    preference: '우대율', count: '환전 건수', note: '근거 메모',
-    estimateNote: '하나은행 연간 PDF 행은 거래시각이 없어 당일 최초 고시 송금 스프레드와 사용자가 확인한 90% 우대율로 추정했습니다. 모든 행은 실제값이 아닌 추정값으로 표시됩니다.',
-  },
-} as const
 
 export default async function FxPage() {
   const language = await getLanguage()
-  const copy = COPY[language]
+  const copy = getPageCopy('fx', language)
   const money = createMoneyFormatter(await getCurrencyPreferences())
   const data = getFxDashboard(100)
   const hana = data.institutions.find((item) => item.institution === 'Hana Bank')

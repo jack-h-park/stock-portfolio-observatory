@@ -1,6 +1,6 @@
-import type { Language } from '@/lib/i18n'
+import { defineCopy } from '@/lib/ui-copy/define'
 
-export const TAX_PLANNING_COPY = {
+export const taxPlanning = defineCopy({
   en: {
     page: {
       eyebrow: 'Tax',
@@ -787,10 +787,4 @@ export const TAX_PLANNING_COPY = {
       tax: '세금',
     },
   },
-} as const
-
-export type TaxPlanningCopy = (typeof TAX_PLANNING_COPY)[Language]
-
-export function getTaxPlanningCopy(language: Language): TaxPlanningCopy {
-  return TAX_PLANNING_COPY[language]
-}
+})

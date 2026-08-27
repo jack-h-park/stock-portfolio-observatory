@@ -27,11 +27,11 @@ import {
 } from '@/lib/tax-policy'
 
 import { CandidateTable, MasterPlanAnnualTax, MasterPlanOverview, MasterScenarioComparison, SavedPlansPanel } from './components'
-import { getTaxPlanningCopy } from './copy'
 import { DecisionSummary, PlanningMap, buildOpportunityRows, opportunitySummary, type OpportunityCoverage } from './opportunity-analysis'
 import { sameKrw } from './view-utils'
 import { Select } from '@/components/form'
 import { DataTable } from '@/components/DataTable'
+import { getPageCopy } from '@/lib/ui-copy'
 
 export const dynamic = 'force-dynamic'
 
@@ -81,7 +81,7 @@ export default async function TaxPlanningPage({
   const params = await searchParams
   const language = await getLanguage()
   const money = createMoneyFormatter(await getCurrencyPreferences())
-  const copy = getTaxPlanningCopy(language)
+  const copy = getPageCopy('taxPlanning', language)
   const taxPolicy = getTaxPolicyState()
   const activeScenario = scenario(params.scenario, taxPolicy.policy.activeScenario)
   const objective = params.objective || 'minimize-tax'
@@ -434,7 +434,7 @@ export default async function TaxPlanningPage({
   )
 }
 
-function ScenarioTimeline({ scenario, copy }: { scenario: MultiYearTaxScenario; copy: ReturnType<typeof getTaxPlanningCopy> }) {
+function ScenarioTimeline({ scenario, copy }: { scenario: MultiYearTaxScenario; copy: ReturnType<typeof getPageCopy<'taxPlanning'>> }) {
   return (
     <Card title={scenario.label} action={<Badge tone={scenario.summary.taxKrw > 0 ? 'warning' : 'success'}>{fmtKrw(scenario.summary.taxKrw)}</Badge>}>
       <div className="space-y-3">

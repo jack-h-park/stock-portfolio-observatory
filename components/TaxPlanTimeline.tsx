@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { updateSavedInstructionExecutionAction } from '@/app/tax-planning/actions'
-import { getTaxPlanningCopy } from '@/app/tax-planning/copy'
+import { getPageCopy } from '@/lib/ui-copy'
 import { Badge, Button, Card, EmptyState, Label, Signed, marketTone } from '@/components/ui'
 import { fmtNumber } from '@/lib/format'
 import { useMoneyFormatter } from '@/components/LanguageProvider'
@@ -37,14 +37,14 @@ function compactKrw(value: number, language: Language) {
 }
 
 
-function profileLabel(value: string | undefined, copy: ReturnType<typeof getTaxPlanningCopy>['timeline']) {
+function profileLabel(value: string | undefined, copy: ReturnType<typeof getPageCopy<'taxPlanning'>>['timeline']) {
   if (value === 'US_AND_KR') return 'US + KR'
   if (value === 'US_ONLY') return copy.usOnly
   if (value === 'KR_ONLY') return copy.krOnly
   return value ?? copy.noProfile
 }
 
-function instructionStatusLabel(status: SavedInstructionStatus, copy: ReturnType<typeof getTaxPlanningCopy>['timeline']) {
+function instructionStatusLabel(status: SavedInstructionStatus, copy: ReturnType<typeof getPageCopy<'taxPlanning'>>['timeline']) {
   if (status === 'reviewed') return copy.reviewedStatus
   if (status === 'executed') return copy.executedStatus
   if (status === 'skipped') return copy.skippedStatus
@@ -67,7 +67,7 @@ function ExecutionStatusControl({
   planId: string
   instructionId: string
   execution?: SavedInstructionExecution
-  copy: ReturnType<typeof getTaxPlanningCopy>['timeline']
+  copy: ReturnType<typeof getPageCopy<'taxPlanning'>>['timeline']
 }) {
   const status = execution?.status ?? 'planned'
   return (
@@ -125,7 +125,7 @@ function MonthSummary({
   money,
 }: {
   month: MasterPlanMonth
-  copy: ReturnType<typeof getTaxPlanningCopy>['timeline']
+  copy: ReturnType<typeof getPageCopy<'taxPlanning'>>['timeline']
   money: (value: number | null | undefined, currency?: string | null | undefined) => string
 }) {
   const grossGainKrw = month.gainKrw + month.lossKrw
@@ -163,7 +163,7 @@ export function TaxPlanTimeline({
   language?: Language
 }) {
   const money = useMoneyFormatter()
-  const copy = getTaxPlanningCopy(language).timeline
+  const copy = getPageCopy('taxPlanning', language).timeline
   const fallbackMonth = plan.months[0]?.yearMonth ?? ''
   const [selectedMonth, setSelectedMonth] = useState(initialMonth || fallbackMonth)
   const [page, setPage] = useState(initialPage)
