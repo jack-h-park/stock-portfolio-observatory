@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "observations": [
+    {
+      "institution": "Hana Bank",
+      "currency": "USD",
+      "date": "2025-10-29",
+      "transactionTime": "15:54:36",
+      "publishedTime": "15:51:34",
+      "publishedRound": 279,
+      "baseRate": 1430.9,
+      "ttSendRate": 1444.9,
+      "source": "https://www.hanabank.com/cms/rate/wpfxd651_07i_01.do",
+      "selection": "Nearest preceding published round"
+    }
+  ]
+}

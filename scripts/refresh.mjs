@@ -79,6 +79,7 @@ const steps = [
   // step derives its ticker list from the database, so a certificate that adds a
   // holding also needs its price history fetched on the same run.
   { name: 'extract:kr-statements', args: ['extract:kr-statements'] },
+  { name: 'extract:fx-ledger', args: ['extract:fx-ledger'] },
   { name: 'extract:us-pdf-evidence', args: ['extract:us-pdf-evidence'] },
   { name: 'fetch:us-prices', args: ['fetch:us-prices'] },
   // Extract before pricing: the crypto price step reads the activity snapshot to

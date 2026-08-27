@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "overrides": [
+    {
+      "institution": "Hana Bank",
+      "date": "2025-06-02",
+      "direction": "OUT",
+      "usdAmount": 1000,
+      "counterparty": "Mirae Asset Securities",
+      "matchStatus": "destination_account_missing",
+      "confidence": "high",
+      "provenance": "User confirmed destination institution; Mirae account 9346 statement is not yet available."
+    },
+    {
+      "institution": "Hana Bank",
+      "date": "2025-10-27",
+      "direction": "OUT",
+      "usdAmount": 26604.01,
+      "counterparty": "Mirae Asset Securities",
+      "matchStatus": "destination_account_missing",
+      "confidence": "high",
+      "provenance": "User confirmed destination institution; Mirae account 9346 statement is not yet available."
+    }
+  ]
+}

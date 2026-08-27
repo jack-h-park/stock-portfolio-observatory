@@ -87,6 +87,7 @@ done
 SOURCES=(
   kr-statements
   us-transactions
+  fx-statements
   us-holdings
   us-tax-documents
   crypto-bithumb
