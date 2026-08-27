@@ -10,6 +10,7 @@ import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
 import { getUiCopy } from '@/lib/ui-copy'
+import { formatSort, parseSort, sortRows, type TableSort } from '@/lib/table-sort'
 import { priorityTone } from '@/lib/tone'
 
 export const dynamic = 'force-dynamic'
@@ -149,7 +150,15 @@ const COPY = {
   },
 } as const
 
-export default async function ReconciliationPage() {
+export default async function ReconciliationPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = await searchParams
+  // Largest cost break first: this table exists to be triaged from the top.
+  const sort = parseSort(params.sort, { key: 'base_cost_diff', direction: 'desc' })
+  const sortHref = (next: TableSort) => `/reconciliation?sort=${formatSort(next)}`
   const language = await getLanguage()
   const money = createMoneyFormatter(await getCurrencyPreferences())
   const copy = COPY[language]
@@ -274,24 +283,29 @@ export default async function ReconciliationPage() {
           <EmptyState ok>{copy.noPositionBreaks}</EmptyState>
         ) : (
           <DataTable
-            rows={review.positionBreaks}
+            sort={sort}
+            sortHref={sortHref}
+            rows={sortRows(review.positionBreaks, sort, (row, key) => (row as Record<string, any>)[key])}
             columns={[
-              { key: 'status', label: copy.columns.status, render: (r) => <Badge tone={statusTone(r.status)}>{r.status}</Badge> },
-              { key: 'market', label: copy.columns.market, render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
-              { key: 'brokerage', label: copy.columns.brokerage },
+              { key: 'status', label: copy.columns.status, sortable: true, sortFirst: 'asc', render: (r) => <Badge tone={statusTone(r.status)}>{r.status}</Badge> },
+              { key: 'market', label: copy.columns.market, sortable: true, sortFirst: 'asc', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
+              { key: 'brokerage', label: copy.columns.brokerage, sortable: true, sortFirst: 'asc' },
               {
                 key: 'ticker',
                 label: copy.columns.position,
+                sortable: true,
+                sortFirst: 'asc',
+                sortValue: (r) => r.name ?? r.ticker,
                 render: (r) => (
                   <Link href={positionHref(r.market, r.ticker)} className="font-mono text-caption font-medium text-info hover:underline">
                     {r.name} ({r.ticker})
                   </Link>
                 ),
               },
-              { key: 'holding_quantity', label: copy.columns.holdingQty, align: 'right', render: (r) => fmtQuantity(r.holding_quantity, 4) },
-              { key: 'lot_quantity', label: copy.columns.lotQty, align: 'right', render: (r) => fmtQuantity(r.lot_quantity, 4) },
-              { key: 'quantity_diff', label: copy.columns.qtyDiff, align: 'right', render: (r) => (r.quantity_diff == null ? 'n/a' : fmtQuantity(r.quantity_diff, 4)) },
-              { key: 'base_cost_diff', label: copy.columns.costDiff, align: 'right', render: (r) => (r.base_cost_diff == null ? 'n/a' : money(r.base_cost_diff)) },
+              { key: 'holding_quantity', sortable: true, label: copy.columns.holdingQty, align: 'right', render: (r) => fmtQuantity(r.holding_quantity, 4) },
+              { key: 'lot_quantity', sortable: true, label: copy.columns.lotQty, align: 'right', render: (r) => fmtQuantity(r.lot_quantity, 4) },
+              { key: 'quantity_diff', sortable: true, label: copy.columns.qtyDiff, align: 'right', render: (r) => (r.quantity_diff == null ? 'n/a' : fmtQuantity(r.quantity_diff, 4)) },
+              { key: 'base_cost_diff', sortable: true, label: copy.columns.costDiff, align: 'right', render: (r) => (r.base_cost_diff == null ? 'n/a' : money(r.base_cost_diff)) },
             ]}
           />
         )}

@@ -10,6 +10,12 @@
  *   node scripts/snap-ui.mjs --out tests/__screenshots__/after
  *   node scripts/snap-ui.mjs --compare tests/__screenshots__/baseline tests/__screenshots__/after
  *
+ * IMPORTANT — restart the dev server before capturing if you have run
+ * `next build` in the same worktree since it started. Both write .next/, so a
+ * build pulls the ground out from under a running dev server and the capture
+ * that follows reports every page as changed. That is not a regression; it is
+ * this mistake.
+ *
  * IMPORTANT — never point this at a server backed by real holdings. It writes
  * full-page images of every screen, so a run against the private database
  * would put the whole portfolio into image files. Seed a sample database first

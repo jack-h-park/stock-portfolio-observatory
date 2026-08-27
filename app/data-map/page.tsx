@@ -4,6 +4,7 @@ import { Badge, Card, EmptyState, MetricField, MetricHeroCard, type Tone } from 
 import { getMeta, getSourceInventory } from '@/lib/adapters/portfolio-db'
 import { fmtBytes, fmtDateTime, fmtNumber, shortHash } from '@/lib/format'
 import { getGlossary } from '@/lib/glossary'
+import { formatSort, parseSort, sortRows, type TableSort } from '@/lib/table-sort'
 import { getLanguage } from '@/lib/i18n-server'
 
 export const dynamic = 'force-dynamic'
@@ -115,7 +116,15 @@ const COPY = {
   },
 } as const
 
-export default async function DataMapPage() {
+export default async function DataMapPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = await searchParams
+  // Newest file first: the inventory is read to answer "what arrived recently".
+  const sort = parseSort(params.sort, { key: 'mtimeMs', direction: 'desc' })
+  const sortHref = (next: TableSort) => `/data-map?sort=${formatSort(next)}#inventory`
   const language = await getLanguage()
   const copy = COPY[language]
   const glossary = getGlossary(language)
@@ -221,15 +230,17 @@ export default async function DataMapPage() {
 
       <Card title={copy.fullInventory} className="mt-5">
         <DataTable
-          rows={inventory.items}
+          sort={sort}
+          sortHref={sortHref}
+          rows={sortRows(inventory.items, sort, (row, key) => (row as Record<string, any>)[key])}
           columns={[
-            { key: 'status', label: copy.columns.status, render: (r) => <Badge tone={statusTone(r.status)}>{r.status}</Badge> },
-            { key: 'category', label: copy.columns.category },
-            { key: 'name', label: copy.columns.dataset },
-            { key: 'relativePath', label: copy.columns.path, render: (r) => <span className="block max-w-[32rem] truncate">{r.relativePath}</span> },
-            { key: 'rowCount', label: copy.columns.rows, align: 'right', render: (r) => (r.rowCount == null ? 'n/a' : fmtNumber(r.rowCount)) },
-            { key: 'bytes', label: copy.columns.size, align: 'right', render: (r) => fmtBytes(r.bytes) },
-            { key: 'mtimeMs', label: copy.columns.modified, render: (r) => (r.mtimeMs ? fmtDateTime(new Date(r.mtimeMs).toISOString()) : 'n/a') },
+            { key: 'status', sortable: true, sortFirst: 'asc', label: copy.columns.status, render: (r) => <Badge tone={statusTone(r.status)}>{r.status}</Badge> },
+            { key: 'category', sortable: true, sortFirst: 'asc', label: copy.columns.category },
+            { key: 'name', sortable: true, sortFirst: 'asc', label: copy.columns.dataset },
+            { key: 'relativePath', sortable: true, sortFirst: 'asc', label: copy.columns.path, render: (r) => <span className="block max-w-[32rem] truncate">{r.relativePath}</span> },
+            { key: 'rowCount', sortable: true, sortFirst: 'desc', label: copy.columns.rows, align: 'right', render: (r) => (r.rowCount == null ? 'n/a' : fmtNumber(r.rowCount)) },
+            { key: 'bytes', sortable: true, sortFirst: 'desc', label: copy.columns.size, align: 'right', render: (r) => fmtBytes(r.bytes) },
+            { key: 'mtimeMs', sortable: true, sortFirst: 'desc', label: copy.columns.modified, render: (r) => (r.mtimeMs ? fmtDateTime(new Date(r.mtimeMs).toISOString()) : 'n/a') },
             { key: 'sha256', label: copy.columns.sha, render: (r) => (r.sha256 ? <code className="font-mono text-label">{shortHash(r.sha256)}</code> : 'n/a') },
             { key: 'retention', label: copy.columns.retention, render: (r) => <div className="min-w-[16rem]"><Badge tone={retentionTone(r.retention)}>{copy.retentionLabels[r.retention as keyof typeof copy.retentionLabels]}</Badge><div className="mt-1 text-label leading-relaxed text-ink-3">{r.retentionReason}</div></div> },
           ]}
