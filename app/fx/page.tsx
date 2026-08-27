@@ -64,6 +64,7 @@ export default async function FxPage() {
           <MetricField label={copy.remittanceGl} value={money(data.summary.hanaOutboundUnrealizedKrw)} hint={language === 'ko' ? '입금일 환율 가정 포함' : 'Includes deposit-date rate assumptions'} tone={data.summary.hanaOutboundUnrealizedKrw >= 0 ? 'success' : 'warning'} valueClassName="text-title" />
           <MetricField label={copy.confirmedGl} value={money(data.summary.hanaOutboundConfirmedUnrealizedKrw)} hint={language === 'ko' ? '실제 적용환율이 기록된 원가만' : 'Only rows with an actual applied rate'} tone={data.summary.hanaOutboundConfirmedUnrealizedKrw >= 0 ? 'success' : 'warning'} valueClassName="text-title" />
           <MetricField label={copy.estimatedGl} value={money(data.summary.hanaOutboundEstimatedUnrealizedKrw)} hint={language === 'ko' ? '과거 추정환율·입금일 환율 가정' : 'Historical and deposit-date assumptions'} tone="warning" valueClassName="text-title" />
+          <MetricField label={copy.tossMatched} value={formatUsd(data.summary.hanaTossMatchedUsd)} hint={language === 'ko' ? `미매칭 ${formatUsd(data.summary.hanaTossUnmatchedUsd)}` : `${formatUsd(data.summary.hanaTossUnmatchedUsd)} unmatched`} valueClassName="text-title" />
         </div>
       </Card>
 

@@ -4,6 +4,7 @@ export const fx = defineCopy({
   en: {
     eyebrow: 'Detailed Records', title: 'FX Exchange & Gain', emphasis: 'FX',
     subtitle: (count: string) => `${count} net KRW/USD exchanges from Toss Securities and Hana Bank.`,
+    tossMatched: 'Toss→Hana matched',
     qualityOk: 'FX ledger current', qualityGap: (count: string) => `${count} transfer gap(s)`,
     deployed: 'KRW Exchanged', acquired: 'USD acquired', avg: 'Weighted Average Rate',
     savings: 'Estimated Spread Savings', savingsHint: 'Hana savings versus the full published TT-send spread',
@@ -23,6 +24,7 @@ export const fx = defineCopy({
   ko: {
     eyebrow: '상세 기록', title: '환전 · 환차익', emphasis: '환전',
     subtitle: (count: string) => `토스증권과 하나은행의 원/달러 순환전 ${count}건입니다.`,
+    tossMatched: '토스→하나 매칭액',
     qualityOk: 'FX 원장 최신', qualityGap: (count: string) => `이체 미연결 ${count}건`,
     deployed: '환전한 원화', acquired: '취득한 달러', avg: '가중평균 환율',
     savings: '추정 환율우대 절감액', savingsHint: '하나은행 고시 송금 보낼 때 환율의 우대 전 스프레드 대비 절감액',
