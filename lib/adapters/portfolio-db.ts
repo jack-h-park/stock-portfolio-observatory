@@ -126,6 +126,8 @@ export type FxDashboard = {
     hanaOutboundEstimatedCostRate: number | null
     hanaOutboundConfirmedUnrealizedKrw: number
     hanaOutboundEstimatedUnrealizedKrw: number
+    hanaTossMatchedUsd: number
+    hanaTossUnmatchedUsd: number
     currentUsdKrw: number | null
     currentUsdKrwAsOf: string | null
   }
@@ -2906,6 +2908,10 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
       .prepare(`select price_date, rate from historical_fx_rates order by price_date`)
       .all() as Array<{ price_date: string; rate: number }>
     const historicalRateByDate = new Map(historicalRates.map((row) => [row.price_date, row.rate]))
+    const tossLots = events
+      .filter((event) => event.institution === 'Toss Securities' && event.event_type === 'EXCHANGE' && event.direction === 'BUY_USD')
+      .map((event) => ({ remainingUsd: event.usd_amount, costRate: event.usd_amount ? (event.krw_amount ?? 0) / event.usd_amount : null, confirmed: event.rate_status === 'actual' }))
+    let tossLotIndex = 0
 
     const institutions = new Map<string, FxDashboard['institutions'][number]>()
     const monthly = new Map<string, FxDashboard['monthly'][number]>()
@@ -2925,6 +2931,8 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
     let hanaSourceCostKrw = 0
     let hanaConfirmedSourceUsd = 0
     let hanaConfirmedSourceCostKrw = 0
+    let hanaTossMatchedUsd = 0
+    let hanaTossUnmatchedUsd = 0
     let realizedEventCount = 0
     let realizedFxGlKrw = 0
 
@@ -2959,9 +2967,32 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
           else if (!event.counterparty) hanaUnknownDestinationUsd += event.usd_amount
         }
         if (event.institution === 'Hana Bank' && event.direction === 'IN') {
+          let matchedUsd = 0
+          let matchedCostKrw = 0
+          let matchedConfirmedUsd = 0
+          if (event.counterparty === 'Toss Securities') {
+            let remaining = event.usd_amount
+            while (remaining > 0.000001 && tossLotIndex < tossLots.length) {
+              const lot = tossLots[tossLotIndex]
+              const take = Math.min(remaining, lot.remainingUsd)
+              if (lot.costRate != null) {
+                matchedUsd += take
+                matchedCostKrw += take * lot.costRate
+                if (lot.confirmed) matchedConfirmedUsd += take
+              }
+              remaining -= take
+              lot.remainingUsd -= take
+              if (lot.remainingUsd <= 0.000001) tossLotIndex += 1
+            }
+            hanaTossMatchedUsd += matchedUsd
+            hanaTossUnmatchedUsd += Math.max(0, event.usd_amount - matchedUsd)
+          }
           const assumedRate = historicalRateByDate.get(event.date) ?? currentRate?.rate ?? null
+          const estimatedUsd = event.usd_amount - matchedUsd
           hanaSourceUsd += event.usd_amount
-          if (assumedRate) hanaSourceCostKrw += event.usd_amount * assumedRate
+          hanaSourceCostKrw += matchedCostKrw + (assumedRate ? estimatedUsd * assumedRate : 0)
+          hanaConfirmedSourceUsd += matchedConfirmedUsd
+          hanaConfirmedSourceCostKrw += matchedCostKrw
         }
         continue
       }
@@ -3042,6 +3073,8 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
         hanaOutboundEstimatedCostRate: hanaOutboundCostRate,
         hanaOutboundConfirmedUnrealizedKrw,
         hanaOutboundEstimatedUnrealizedKrw,
+        hanaTossMatchedUsd,
+        hanaTossUnmatchedUsd,
         currentUsdKrw: currentRate?.rate ?? null,
         currentUsdKrwAsOf: currentRate?.as_of_date ?? null,
       },
