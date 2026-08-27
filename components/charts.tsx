@@ -13,6 +13,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { marketTone, type Tone } from '@/lib/tone'
 
 const AXIS = { fontSize: 10, fill: 'var(--text-tertiary)' }
 
@@ -20,13 +21,39 @@ const AXIS = { fontSize: 10, fill: 'var(--text-tertiary)' }
 // per-bar gradient). Used on time-series trends to carry the brand identity
 // without sacrificing readability. Categorical charts keep a single `color`.
 const BRAND_BARS = ['var(--brand-pink)', 'var(--brand-purple)', 'var(--brand-blue)', 'var(--brand-cyan)']
-const MARKET_BARS: Record<string, string> = {
-  KR: 'var(--accent-success)',
-  US: 'var(--accent-info)',
-  CRYPTO: 'var(--accent-warning)',
-  KRW: 'var(--accent-success)',
-  USD: 'var(--accent-info)',
+/**
+ * The tooltip's surface. Four charts declared this object inline, so a change
+ * to the chrome meant finding all four.
+ */
+const TOOLTIP_SURFACE = {
+  background: 'var(--bg-card)',
+  border: '1px solid var(--border-default)',
+  borderRadius: 6,
+  fontSize: 12,
+} as const
+
+/**
+ * A market's colour on a chart, derived from the same rule that colours its
+ * badge — so a new market cannot end up green in a table and orange in a chart.
+ * Currency codes map to the market that trades in them.
+ */
+const TONE_VAR: Record<Tone, string> = {
+  neutral: 'var(--text-tertiary)',
+  info: 'var(--accent-info)',
+  success: 'var(--accent-success)',
+  warning: 'var(--accent-warning)',
+  danger: 'var(--accent-danger)',
 }
+
+const CURRENCY_MARKET: Record<string, string> = { KRW: 'KR', USD: 'US' }
+
+export function marketColor(key: string) {
+  return TONE_VAR[marketTone(CURRENCY_MARKET[key] ?? key)]
+}
+
+const MARKET_BARS: Record<string, string> = Object.fromEntries(
+  ['KR', 'US', 'CRYPTO', 'KRW', 'USD'].map((key) => [key, marketColor(key)])
+)
 
 export function TrendBarChart({
   data,
@@ -113,12 +140,7 @@ export function TrendBarChart({
         />
         <Tooltip
           cursor={{ fill: 'var(--bg-surface)' }}
-          contentStyle={{
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-default)',
-            borderRadius: 6,
-            fontSize: 12,
-          }}
+          contentStyle={TOOLTIP_SURFACE}
           formatter={(value: number) => [`${yAxisPrefix}${value.toLocaleString()}${yAxisSuffix}`, undefined]}
         />
         <Bar
@@ -182,12 +204,7 @@ export function PortfolioTrendChart({
           label={axisLabel ? { value: axisLabel, angle: -90, position: 'insideLeft', style: AXIS } : undefined}
         />
         <Tooltip
-          contentStyle={{
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-default)',
-            borderRadius: 6,
-            fontSize: 12,
-          }}
+          contentStyle={TOOLTIP_SURFACE}
           formatter={(value: number) => [formatValue(value), 'Value']}
         />
         <Line
@@ -234,12 +251,7 @@ export function PortfolioMultiTrendChart({
           label={{ value: axisLabel, angle: -90, position: 'insideLeft', style: AXIS }}
         />
         <Tooltip
-          contentStyle={{
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-default)',
-            borderRadius: 6,
-            fontSize: 12,
-          }}
+          contentStyle={TOOLTIP_SURFACE}
           formatter={(value: number, name: string) => [formatValue(value), name]}
         />
         <Legend wrapperStyle={{ fontSize: 11 }} />

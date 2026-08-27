@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
-import { Badge, Card, Label } from '@/components/ui'
+import { Badge, Button, Card, Label } from '@/components/ui'
 import { fmtDateShort, fmtDateTime, fmtKrw, fmtNumber } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { buildMonthlySalePlanSet } from '@/lib/tax-planning'
@@ -114,9 +114,9 @@ export default async function SavedTaxPlanPage({ params }: { params: Promise<{ i
               <option value="completed">{copy.statusLabels.completed}</option>
               <option value="archived">{copy.statusLabels.archived}</option>
             </Select>
-            <button type="submit" className="mt-2 w-full rounded-md border border-ink bg-ink px-3 py-2 text-caption font-medium text-card">
+            <Button type="submit" variant="solid" size="md" className="mt-2 w-full">
               {copy.updateStatus}
-            </button>
+            </Button>
             <div className="mt-3 border-t border-line-subtle pt-2 text-micro leading-relaxed text-ink-3">
               {copy.created} {fmtDateTime(saved.createdAt)}<br />
               {copy.updated} {fmtDateTime(saved.updatedAt)}

@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, InfoTooltip, Label, MetricField, MetricHeroCard } from '@/components/ui'
+import { Badge, Button, Card, InfoTooltip, Label, MetricField, MetricHeroCard } from '@/components/ui'
 import { fmtDateTime, fmtNumber } from '@/lib/format'
 import { getMeta } from '@/lib/adapters/portfolio-db'
 import { getGlossary } from '@/lib/glossary'
@@ -259,9 +259,9 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
               <span className="text-ink-3">{copy.localPolicy.fallback}</span>
               <code className="break-words font-mono text-label text-ink">{state.examplePath}</code>
             </div>
-            <button type="submit" className="rounded-md border border-line bg-ink px-4 py-2 text-body font-medium text-card transition-opacity hover:opacity-90">
+            <Button type="submit" variant="solid" size="md">
               {copy.localPolicy.save}
-            </button>
+            </Button>
           </div>
         </Card>
 
