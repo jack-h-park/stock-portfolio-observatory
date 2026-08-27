@@ -120,6 +120,10 @@ export type FxDashboard = {
     hanaOutboundUsd: number
     hanaKnownMiraeUsd: number
     hanaUnknownDestinationUsd: number
+    hanaOutboundCostKrw: number
+    hanaOutboundValueKrw: number
+    hanaOutboundUnrealizedKrw: number
+    hanaOutboundEstimatedCostRate: number | null
     currentUsdKrw: number | null
     currentUsdKrwAsOf: string | null
   }
@@ -2896,6 +2900,10 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
           order by as_of_date desc, id desc limit 1`
       )
       .get() as { rate: number; as_of_date: string } | undefined
+    const historicalRates = conn
+      .prepare(`select price_date, rate from historical_fx_rates order by price_date`)
+      .all() as Array<{ price_date: string; rate: number }>
+    const historicalRateByDate = new Map(historicalRates.map((row) => [row.price_date, row.rate]))
 
     const institutions = new Map<string, FxDashboard['institutions'][number]>()
     const monthly = new Map<string, FxDashboard['monthly'][number]>()
@@ -2911,6 +2919,8 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
     let hanaOutboundUsd = 0
     let hanaKnownMiraeUsd = 0
     let hanaUnknownDestinationUsd = 0
+    let hanaSourceUsd = 0
+    let hanaSourceCostKrw = 0
     let realizedEventCount = 0
     let realizedFxGlKrw = 0
 
@@ -2944,6 +2954,11 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
           if (event.counterparty === 'Mirae Asset Securities') hanaKnownMiraeUsd += event.usd_amount
           else if (!event.counterparty) hanaUnknownDestinationUsd += event.usd_amount
         }
+        if (event.institution === 'Hana Bank' && event.direction === 'IN') {
+          const assumedRate = historicalRateByDate.get(event.date) ?? currentRate?.rate ?? null
+          hanaSourceUsd += event.usd_amount
+          if (assumedRate) hanaSourceCostKrw += event.usd_amount * assumedRate
+        }
         continue
       }
       const sign = event.event_type === 'EXCHANGE_CANCEL' ? -1 : 1
@@ -2965,6 +2980,10 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
       if (event.realized_fx_gl_krw != null) {
         realizedEventCount += 1
         realizedFxGlKrw += event.realized_fx_gl_krw
+      }
+      if (event.institution === 'Hana Bank') {
+        hanaSourceUsd += sign * event.usd_amount
+        hanaSourceCostKrw += sign * (event.krw_amount ?? 0)
       }
       const monthKey = event.date.slice(0, 7)
       const month = monthly.get(monthKey) ?? { month: monthKey, usdBought: 0, krwSpent: 0, averageRate: null, spreadSavingsKrw: 0 }
@@ -3000,6 +3019,10 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
         hanaOutboundUsd,
         hanaKnownMiraeUsd,
         hanaUnknownDestinationUsd,
+        hanaOutboundCostKrw: hanaOutboundUsd && hanaSourceUsd ? hanaOutboundUsd * (hanaSourceCostKrw / hanaSourceUsd) : 0,
+        hanaOutboundValueKrw: hanaOutboundUsd && currentRate ? hanaOutboundUsd * currentRate.rate : 0,
+        hanaOutboundUnrealizedKrw: hanaOutboundUsd && currentRate ? hanaOutboundUsd * currentRate.rate - hanaOutboundUsd * (hanaSourceUsd ? hanaSourceCostKrw / hanaSourceUsd : 0) : 0,
+        hanaOutboundEstimatedCostRate: hanaSourceUsd ? hanaSourceCostKrw / hanaSourceUsd : null,
         currentUsdKrw: currentRate?.rate ?? null,
         currentUsdKrwAsOf: currentRate?.as_of_date ?? null,
       },
