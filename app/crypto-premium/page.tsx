@@ -6,8 +6,10 @@ import { getCryptoPremium } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
-import { GLOSSARY } from '@/lib/glossary'
+import { getGlossary } from '@/lib/glossary'
 import { signTone } from '@/lib/tone'
+import { getLanguage } from '@/lib/i18n-server'
+import { getPageCopy } from '@/lib/ui-copy'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,6 +21,9 @@ const SERIES_COLORS = ['var(--brand-blue)', 'var(--brand-purple)', 'var(--accent
 const NOTABLE_PREMIUM_PCT = 2
 
 export default async function CryptoPremiumPage() {
+  const language = await getLanguage()
+  const copy = getPageCopy('cryptoPremium', language)
+  const glossary = getGlossary(language)
   const money = createMoneyFormatter(await getCurrencyPreferences())
   const premium = getCryptoPremium()
   const chartData = premium.history.map((point) => ({
@@ -38,51 +43,51 @@ export default async function CryptoPremiumPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Crypto"
-        title="Korea Premium"
-        emphasis="Premium"
+        eyebrow={copy.eyebrow}
+        title={copy.title}
+        emphasis={copy.emphasis}
         subtitle={
           premium.fx
             ? `Won order book against the dollar order book converted at USD/KRW ${fmtNumber(premium.fx.rate, 2)} (${premium.fx.asOfDate}). Snapshot ${fmtDateTime(premium.generatedAt)}.`
-            : 'No crypto price snapshot yet — run pnpm refresh.'
+            : copy.subtitleNoData
         }
         action={
           notable.length ? (
             <Badge tone="warning">{notable.length} coin(s) beyond ±{NOTABLE_PREMIUM_PCT}%</Badge>
           ) : (
-            <Badge tone="success">Near parity</Badge>
+            <Badge tone="success">{copy.nearParity}</Badge>
           )
         }
       />
 
       {premium.spot.length === 0 ? (
-        <EmptyState>No coin is quoted on both a KRW and a USD book — nothing to compare.</EmptyState>
+        <EmptyState>{copy.noPairs}</EmptyState>
       ) : (
         <>
           <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
             <MetricHeroCard
-              title="Weighted Premium"
+              title={copy.weightedPremium}
               info="KRW-venue crypto premium weighted by the value of held KRW-venue positions. Use this as the headline premium exposure signal."
-              eyebrow="Premium headline"
+              eyebrow={copy.premiumHeadline}
               value={weighted == null ? 'n/a' : `${weighted >= 0 ? '+' : ''}${fmtNumber(weighted, 2)}%`}
-              hint="Across KRW-venue holdings, weighted by value"
+              hint={copy.weightedHint}
             >
               <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
                 <MetricField
-                  label="Premium-Bearing Value"
+                  label={copy.premiumBearingValue}
                   value={money(premium.exposure.heldValueKrw)}
-                  hint="KRW-venue positions marked at their own book"
+                  hint={copy.premiumBearingHint}
                   valueClassName="text-title"
                 />
                 <MetricField
-                  label="Value From Premium"
+                  label={copy.valueFromPremium}
                   value={money(premium.exposure.premiumValueKrw)}
-                  hint="What parity would remove"
+                  hint={copy.valueFromPremiumHint}
                   tone={signTone(premium.exposure.premiumValueKrw)}
                   valueClassName="text-title"
                 />
                 <MetricField
-                  label="Coins Compared"
+                  label={copy.coinsCompared}
                   value={fmtNumber(premium.spot.length)}
                   hint={`${premium.symbols.length} with history`}
                   valueClassName="text-title"
@@ -90,21 +95,21 @@ export default async function CryptoPremiumPage() {
               </div>
             </MetricHeroCard>
 
-            <Card title="Premium Read Order" info="Start with weighted exposure, then check premium-bearing value and coin-level rows.">
+            <Card title={copy.readOrder} info={copy.readOrderInfo}>
               <div className="flex min-h-[16rem] flex-col justify-between gap-4">
                 <div className="space-y-4">
                   <MetricField
-                    label="Threshold"
+                    label={copy.threshold}
                     value={`±${NOTABLE_PREMIUM_PCT}%`}
-                    hint="Notable premium threshold"
+                    hint={copy.thresholdHint}
                     valueClassName="text-metric"
                   />
                   <div className="h-px bg-line-subtle" />
                   <MetricField
-                    label="Coverage"
+                    label={copy.coverage}
                     value={coverageStart && coverageEnd ? `${coverageStart} → ${coverageEnd}` : 'n/a'}
-                    info={GLOSSARY.coverage.description}
-                    hint="Available premium history"
+                    info={glossary.coverage.description}
+                    hint={copy.coverageHint}
                     valueClassName="text-title"
                   />
                 </div>
@@ -116,13 +121,13 @@ export default async function CryptoPremiumPage() {
           </div>
 
           <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
-            <Card title="Current premium by coin" className="xl:col-span-2">
+            <Card title={copy.byCoin} className="xl:col-span-2">
               <DataTable
                 rows={premium.spot}
                 columns={[
                   {
                     key: 'symbol',
-                    label: 'Coin',
+                    label: copy.columns.coin,
                     render: (r) => (
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-caption font-medium text-ink">{r.symbol}</span>
@@ -130,19 +135,19 @@ export default async function CryptoPremiumPage() {
                       </div>
                     ),
                   },
-                  { key: 'krwPrice', label: 'Bithumb (KRW)', align: 'right', render: (r) => money(r.krwPrice) },
-                  { key: 'usdPrice', label: 'Global (USD)', align: 'right', render: (r) => money(r.usdPrice, 'USD') },
-                  { key: 'impliedKrw', label: 'Implied KRW', align: 'right', render: (r) => money(r.impliedKrw) },
-                  { key: 'premiumPct', label: 'Premium', align: 'right', render: (r) => <Signed value={r.premiumPct} format={(m) => fmtPct(m)} /> },
+                  { key: 'krwPrice', label: copy.columns.krwVenue, align: 'right', render: (r) => money(r.krwPrice) },
+                  { key: 'usdPrice', label: copy.columns.globalVenue, align: 'right', render: (r) => money(r.usdPrice, 'USD') },
+                  { key: 'impliedKrw', label: copy.columns.impliedKrw, align: 'right', render: (r) => money(r.impliedKrw) },
+                  { key: 'premiumPct', label: copy.columns.premium, align: 'right', render: (r) => <Signed value={r.premiumPct} format={(m) => fmtPct(m)} /> },
                   {
                     key: 'heldQuantity',
-                    label: 'Held',
+                    label: copy.columns.held,
                     align: 'right',
                     render: (r) => (r.heldQuantity > 0 ? fmtQuantity(r.heldQuantity) : '—'),
                   },
                   {
                     key: 'premiumValueKrw',
-                    label: 'Value From Premium',
+                    label: copy.columns.valueFromPremium,
                     align: 'right',
                     render: (r) => (r.heldQuantity > 0 ? <Signed value={r.premiumValueKrw} format={(m) => money(m, 'KRW')} /> : '—'),
                   },
@@ -154,7 +159,7 @@ export default async function CryptoPremiumPage() {
               </p>
             </Card>
 
-            <Card title="What this measures">
+            <Card title={copy.whatThisMeasures}>
               <div className="space-y-3 text-caption leading-relaxed text-ink-2">
                 <p>
                   Each venue&apos;s holding is valued at that venue&apos;s own order book, so the premium never distorts the
@@ -163,7 +168,7 @@ export default async function CryptoPremiumPage() {
                 </p>
                 <p>
                   It is a second way to lose money on a Bithumb position: the coin can be flat in dollars and still fall in
-                  won if the premium compresses. <span className="text-ink">Value From Premium</span> is what that would cost
+                  won if the premium compresses. <span className="text-ink">{copy.valueFromPremium}</span> is what that would cost
                   at today&apos;s prices.
                 </p>
                 <p className="text-ink-3">
@@ -176,7 +181,7 @@ export default async function CryptoPremiumPage() {
           </div>
 
           <Card
-            title="Premium history"
+            title={copy.history}
             info={
               coverageStart && coverageEnd
                 ? `${coverageStart} to ${coverageEnd} — the window is limited by how far Bithumb's candlestick endpoint reaches, not by choice.`
@@ -184,7 +189,7 @@ export default async function CryptoPremiumPage() {
             }
           >
             {chartData.length === 0 ? (
-              <EmptyState>No overlapping history — run pnpm refresh.</EmptyState>
+              <EmptyState>{copy.noHistory}</EmptyState>
             ) : (
               <PortfolioMultiTrendChart
                 data={chartData}
@@ -192,7 +197,7 @@ export default async function CryptoPremiumPage() {
                 height={280}
                 valuePrefix=""
                 valueSuffix="%"
-                axisLabel="Premium %"
+                axisLabel={copy.axisLabel}
               />
             )}
           </Card>
