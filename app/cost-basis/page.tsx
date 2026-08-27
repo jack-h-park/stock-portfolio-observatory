@@ -21,7 +21,7 @@ export default function CostBasisPage() {
       />
       <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]">
         <Card title="Cost basis method">
-          <div className="space-y-2 text-[13px] leading-relaxed text-ink-2">
+          <div className="space-y-2 text-body leading-relaxed text-ink-2">
             <p>
               Use this table as the read-only source for holdings that need a current shares, value, and Total Cost check.
               Match by Symbol, Name, Account/Broker, and Shares, then use the Total Cost value in the holding currency.
@@ -34,7 +34,7 @@ export default function CostBasisPage() {
           </div>
         </Card>
         <Card title="Price basis">
-          <div className="grid gap-2 text-[12px] text-ink-2">
+          <div className="grid gap-2 text-caption text-ink-2">
             <div className="flex items-center justify-between gap-3">
               <span className="text-ink-3">Latest price date</span>
               <span className="font-medium tabular-nums text-ink">{priceDate ?? 'n/a'}</span>

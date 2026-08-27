@@ -153,7 +153,7 @@ export default async function DataMapPage() {
               value={fmtNumber(inventory.summary.unused)}
               hint={copy.unusedHint}
               tone="info"
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
             <MetricField
               label={copy.drift}
@@ -161,14 +161,14 @@ export default async function DataMapPage() {
               info={glossary.drift.description}
               hint={copy.driftHint}
               tone={inventory.summary.drift ? 'warning' : 'success'}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
             <MetricField
               label={copy.missing}
               value={fmtNumber(inventory.summary.missing)}
               hint={copy.missingHint}
               tone={inventory.summary.missing ? 'danger' : 'success'}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
           </div>
         </MetricHeroCard>
@@ -181,17 +181,17 @@ export default async function DataMapPage() {
                 value={fmtNumber(inventory.summary.used)}
                 hint={copy.usedHint}
                 tone="success"
-                valueClassName="text-[28px]"
+                valueClassName="text-metric"
               />
               <div className="h-px bg-line-subtle" />
               <MetricField
                 label={copy.inventorySize}
                 value={fmtBytes(inventory.summary.totalBytes)}
                 hint={copy.inventorySizeHint}
-                valueClassName="text-[18px]"
+                valueClassName="text-title"
               />
             </div>
-            <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
               {copy.readOrder}
             </div>
           </div>
@@ -199,7 +199,7 @@ export default async function DataMapPage() {
       </div>
 
       <Card title={copy.reviewQueue} accent={actionItems.length > 0}>
-        <div className="border-b border-line-subtle bg-surface px-4 py-3 text-[11px] leading-relaxed text-ink-3">
+        <div className="border-b border-line-subtle bg-surface px-4 py-3 text-label leading-relaxed text-ink-3">
           {copy.retentionGuide}
         </div>
         {actionItems.length === 0 ? (
@@ -212,8 +212,8 @@ export default async function DataMapPage() {
               { key: 'category', label: copy.columns.category },
               { key: 'relativePath', label: copy.columns.file, render: (r) => <span className="block max-w-[34rem] truncate">{r.relativePath}</span> },
               { key: 'bytes', label: copy.columns.size, align: 'right', render: (r) => fmtBytes(r.bytes) },
-              { key: 'retention', label: copy.columns.retention, render: (r) => <div className="min-w-[14rem]"><Badge tone={retentionTone(r.retention)}>{copy.retentionLabels[r.retention as keyof typeof copy.retentionLabels]}</Badge><div className="mt-1 text-[11px] text-ink-3">{r.retentionReason}</div></div> },
-              { key: 'detail', label: copy.columns.detail, render: (r) => <span className="text-[11px] text-ink-3">{r.detail}</span> },
+              { key: 'retention', label: copy.columns.retention, render: (r) => <div className="min-w-[14rem]"><Badge tone={retentionTone(r.retention)}>{copy.retentionLabels[r.retention as keyof typeof copy.retentionLabels]}</Badge><div className="mt-1 text-label text-ink-3">{r.retentionReason}</div></div> },
+              { key: 'detail', label: copy.columns.detail, render: (r) => <span className="text-label text-ink-3">{r.detail}</span> },
             ]}
           />
         )}
@@ -230,8 +230,8 @@ export default async function DataMapPage() {
             { key: 'rowCount', label: copy.columns.rows, align: 'right', render: (r) => (r.rowCount == null ? 'n/a' : fmtNumber(r.rowCount)) },
             { key: 'bytes', label: copy.columns.size, align: 'right', render: (r) => fmtBytes(r.bytes) },
             { key: 'mtimeMs', label: copy.columns.modified, render: (r) => (r.mtimeMs ? fmtDateTime(new Date(r.mtimeMs).toISOString()) : 'n/a') },
-            { key: 'sha256', label: copy.columns.sha, render: (r) => (r.sha256 ? <code className="font-mono text-[11px]">{shortHash(r.sha256)}</code> : 'n/a') },
-            { key: 'retention', label: copy.columns.retention, render: (r) => <div className="min-w-[16rem]"><Badge tone={retentionTone(r.retention)}>{copy.retentionLabels[r.retention as keyof typeof copy.retentionLabels]}</Badge><div className="mt-1 text-[11px] leading-relaxed text-ink-3">{r.retentionReason}</div></div> },
+            { key: 'sha256', label: copy.columns.sha, render: (r) => (r.sha256 ? <code className="font-mono text-label">{shortHash(r.sha256)}</code> : 'n/a') },
+            { key: 'retention', label: copy.columns.retention, render: (r) => <div className="min-w-[16rem]"><Badge tone={retentionTone(r.retention)}>{copy.retentionLabels[r.retention as keyof typeof copy.retentionLabels]}</Badge><div className="mt-1 text-label leading-relaxed text-ink-3">{r.retentionReason}</div></div> },
           ]}
         />
       </Card>

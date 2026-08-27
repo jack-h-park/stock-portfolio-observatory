@@ -12,7 +12,7 @@ import { LANGUAGE_COOKIE, LANGUAGE_LABELS, type Language } from '@/lib/i18n'
 const SEGMENT_CLASS =
   'grid rounded-md border border-line-subtle bg-surface p-0.5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)]'
 const SEGMENT_BUTTON_CLASS =
-  'min-h-8 rounded-[4px] px-2 text-center text-[12px] font-medium leading-none transition-colors'
+  'min-h-8 rounded-[4px] px-2 text-center text-caption font-medium leading-none transition-colors'
 
 export function LanguageSwitcher({ language }: { language: Language }) {
   const router = useRouter()

@@ -27,10 +27,10 @@ export function FreshnessRows({ items, language = 'en' }: { items: FreshnessItem
       {items.map((item) => (
         <li key={item.key} className="flex flex-col gap-1 py-2.5 lg:flex-row lg:items-center lg:gap-3">
           <FreshnessBadge status={item.status} language={language} />
-          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{item.label}</span>
-          <span className="text-[12px] tabular-nums text-ink-3">{item.observedAt ? fmtDateTime(item.observedAt) : copy.notRecorded}</span>
-          <span className="text-[12px] tabular-nums text-ink-3">{fmtDuration(item.ageMs)} {copy.elapsed}</span>
-          <span className="text-[12px] text-ink-3">{item.detail}</span>
+          <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">{item.label}</span>
+          <span className="text-caption tabular-nums text-ink-3">{item.observedAt ? fmtDateTime(item.observedAt) : copy.notRecorded}</span>
+          <span className="text-caption tabular-nums text-ink-3">{fmtDuration(item.ageMs)} {copy.elapsed}</span>
+          <span className="text-caption text-ink-3">{item.detail}</span>
         </li>
       ))}
     </ul>
@@ -40,7 +40,7 @@ export function FreshnessRows({ items, language = 'en' }: { items: FreshnessItem
 export function FreshnessInline({ item, language = 'en' }: { item: FreshnessItem; language?: Language }) {
   const copy = getUiCopy(language).common
   return (
-    <span className="inline-flex flex-wrap items-center gap-2 text-[11px] text-ink-3">
+    <span className="inline-flex flex-wrap items-center gap-2 text-label text-ink-3">
       <FreshnessBadge status={item.status} language={language} />
       <span className="tabular-nums">{fmtDuration(item.ageMs)} {copy.elapsed}</span>
       <span>{item.detail}</span>

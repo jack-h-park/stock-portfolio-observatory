@@ -56,9 +56,9 @@ function InstrumentLabel({ row }: { row: any }) {
     <div className="min-w-[13rem]">
       <div className="flex items-center gap-2">
         <Badge tone={marketTone(row.market)}>{row.market}</Badge>
-        <span className="font-mono text-[12px] text-ink">{row.ticker}</span>
+        <span className="font-mono text-caption text-ink">{row.ticker}</span>
       </div>
-      <div className="mt-1 max-w-[18rem] truncate text-[12px] font-medium text-ink">{row.name}</div>
+      <div className="mt-1 max-w-[18rem] truncate text-caption font-medium text-ink">{row.name}</div>
     </div>
   )
 }
@@ -75,13 +75,13 @@ function SearchBox({
   label?: string
 }) {
   return (
-    <label className="flex min-w-0 flex-1 flex-col gap-1 text-[12px] font-medium text-ink-2 sm:max-w-sm">
+    <label className="flex min-w-0 flex-1 flex-col gap-1 text-caption font-medium text-ink-2 sm:max-w-sm">
       {label}
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="min-h-11 rounded-sm border border-line bg-card px-3 text-[14px] font-normal text-ink outline-none placeholder:text-ink-3 focus:border-info focus:ring-2 focus:ring-info/20"
+        className="min-h-11 rounded-sm border border-line bg-card px-3 text-body-lg font-normal text-ink outline-none placeholder:text-ink-3 focus:border-info focus:ring-2 focus:ring-info/20"
       />
     </label>
   )
@@ -110,7 +110,7 @@ function FilterBar({
   const displayLabel = easyFilterLabel(label, language)
   return (
     <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={`${displayLabel} filter`}>
-      <span className="mr-1 text-[12px] font-medium text-ink-2">{displayLabel}</span>
+      <span className="mr-1 text-caption font-medium text-ink-2">{displayLabel}</span>
       {options.map((option) => (
         <Button
           key={option}
@@ -139,7 +139,7 @@ function SortBar({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={label}>
-      <span className="mr-1 text-[12px] font-medium text-ink-2">{label}</span>
+      <span className="mr-1 text-caption font-medium text-ink-2">{label}</span>
       {options.map((option) => {
         const direction = option.direction ?? 'desc'
         const active = value.key === option.key && value.direction === direction
@@ -325,37 +325,37 @@ export function HoldingsTable({ rows, language = 'en' }: { rows: any[]; language
           </Button>
         )}
       </div>
-      <div className="grid gap-3 rounded-md border border-line-subtle bg-surface px-3 py-3 text-[13px] sm:grid-cols-4" aria-live="polite">
+      <div className="grid gap-3 rounded-md border border-line-subtle bg-surface px-3 py-3 text-body sm:grid-cols-4" aria-live="polite">
         <div>
-          <div className="text-[12px] text-ink-3">{copy.filtered}</div>
+          <div className="text-caption text-ink-3">{copy.filtered}</div>
           <div className="font-medium tabular-nums text-ink">{fmtNumber(filtered.length)} / {fmtNumber(rows.length)}</div>
         </div>
         <div>
-          <div className="text-[12px] text-ink-3"><GlossaryTerm term="costBasis" compact language={language} /></div>
+          <div className="text-caption text-ink-3"><GlossaryTerm term="costBasis" compact language={language} /></div>
           <div className="font-medium tabular-nums text-ink">{money(totals.cost, 'KRW')}</div>
         </div>
         <div>
-          <div className="text-[12px] text-ink-3">{copy.marketValue}</div>
+          <div className="text-caption text-ink-3">{copy.marketValue}</div>
           <div className="font-medium tabular-nums text-ink">{money(totals.marketValue, 'KRW')}</div>
         </div>
         <div>
-          <div className="text-[12px] text-ink-3"><GlossaryTerm term="unrealizedGl" compact language={language} /></div>
+          <div className="text-caption text-ink-3"><GlossaryTerm term="unrealizedGl" compact language={language} /></div>
           <div className={totals.unrealized >= 0 ? 'font-medium tabular-nums text-success' : 'font-medium tabular-nums text-danger'}>
             {money(totals.unrealized, 'KRW')}
           </div>
         </div>
       </div>
       {selected && (
-        <div className="flex flex-col gap-2 rounded-md border border-line-subtle bg-card px-3 py-2 text-[12px] lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-2 rounded-md border border-line-subtle bg-card px-3 py-2 text-caption lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <Badge tone={marketTone(selected.market)}>{selected.market}</Badge>
               <span className="font-medium text-ink">{selected.name}</span>
-              <span className="font-mono text-[11px] text-ink-3">{selected.ticker}</span>
+              <span className="font-mono text-label text-ink-3">{selected.ticker}</span>
             </div>
-            <div className="mt-1 truncate text-[11px] text-ink-3">{selected.brokerage} · {selected.account}</div>
+            <div className="mt-1 truncate text-label text-ink-3">{selected.brokerage} · {selected.account}</div>
           </div>
-          <div className="grid gap-x-5 gap-y-1 text-[11px] sm:grid-cols-5 lg:text-right">
+          <div className="grid gap-x-5 gap-y-1 text-label sm:grid-cols-5 lg:text-right">
             <div><span className="text-ink-3">{copy.quantity} </span><span className="tabular-nums text-ink">{fmtQuantity(selected.quantity, 2)}</span></div>
             <div><span className="text-ink-3">{copy.costBasis} </span><span className="tabular-nums text-ink">{money(selected.native_cost, selected.currency)}</span></div>
             <div><span className="text-ink-3">{copy.marketValue} </span><span className="tabular-nums text-ink">{selected.native_market_value == null ? copy.noValue : money(selected.native_market_value, selected.currency)}</span></div>
@@ -386,7 +386,7 @@ export function HoldingsTable({ rows, language = 'en' }: { rows: any[]; language
                 <button type="button" className="text-left" onClick={() => setSelectedKey(positionKey(r))}>
                   <InstrumentLabel row={r} />
                 </button>
-                <Link href={positionHref(r.market, r.ticker)} className="mt-0.5 text-[11px] font-medium text-info hover:underline">
+                <Link href={positionHref(r.market, r.ticker)} className="mt-0.5 text-label font-medium text-info hover:underline">
                   {copy.open}
                 </Link>
               </div>
@@ -504,7 +504,7 @@ export function CostBasisHoldingsTable({ rows }: { rows: CostBasisHolding[] }) {
         />
         <FilterBar label="Account" value={account} options={['All', ...unique(brokerRows.map((r) => r.account))]} onChange={setAccount} />
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">Status</span>
+          <span className="mr-1 text-label font-medium uppercase tracking-[0.08em] text-ink-3">Status</span>
           {(['All', ...Object.keys(COST_BASIS_STATUS_LABEL)] as string[]).map((option) => (
             <Button
               key={option}
@@ -517,31 +517,31 @@ export function CostBasisHoldingsTable({ rows }: { rows: CostBasisHolding[] }) {
           ))}
         </div>
       </div>
-      <div className="grid gap-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] sm:grid-cols-5">
+      <div className="grid gap-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption sm:grid-cols-5">
         <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Filtered</div>
+          <div className="text-label uppercase tracking-[0.08em] text-ink-3">Filtered</div>
           <div className="font-medium tabular-nums text-ink">{fmtNumber(filtered.length)} / {fmtNumber(rows.length)}</div>
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Total value</div>
+          <div className="text-label uppercase tracking-[0.08em] text-ink-3">Total value</div>
           <div className="font-medium tabular-nums text-ink">
             {singleCurrency ? money(totals.value, singleCurrency) : money(totals.baseValue, 'KRW')}
           </div>
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Total cost</div>
+          <div className="text-label uppercase tracking-[0.08em] text-ink-3">Total cost</div>
           <div className="font-medium tabular-nums text-ink">
             {singleCurrency ? money(totals.cost, singleCurrency) : 'Mixed currencies'}
           </div>
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Missing cost</div>
+          <div className="text-label uppercase tracking-[0.08em] text-ink-3">Missing cost</div>
           <div className={totals.missing > 0 ? 'font-medium tabular-nums text-danger' : 'font-medium tabular-nums text-success'}>
             {fmtNumber(totals.missing)}
           </div>
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Estimated</div>
+          <div className="text-label uppercase tracking-[0.08em] text-ink-3">Estimated</div>
           <div className={totals.estimated > 0 ? 'font-medium tabular-nums text-warning' : 'font-medium tabular-nums text-ink'}>
             {fmtNumber(totals.estimated)}
           </div>
@@ -554,7 +554,7 @@ export function CostBasisHoldingsTable({ rows }: { rows: CostBasisHolding[] }) {
             key: 'ticker',
             label: 'Symbol',
             render: (r) => (
-              <Link href={positionHref(r.market, r.ticker)} className="font-mono text-[12px] font-medium text-info hover:underline">
+              <Link href={positionHref(r.market, r.ticker)} className="font-mono text-caption font-medium text-info hover:underline">
                 {r.ticker}
               </Link>
             ),
@@ -627,7 +627,7 @@ export function CostBasisHoldingsTable({ rows }: { rows: CostBasisHolding[] }) {
               return <Badge tone={COST_BASIS_STATUS_TONE[costStatus]}>{COST_BASIS_STATUS_LABEL[costStatus]}</Badge>
             },
           },
-          { key: 'cost_note', label: 'Why', render: (r) => <div className="max-w-[20rem] text-[11px] text-ink-3">{r.cost_note}</div> },
+          { key: 'cost_note', label: 'Why', render: (r) => <div className="max-w-[20rem] text-label text-ink-3">{r.cost_note}</div> },
         ]}
       />
     </div>
@@ -700,29 +700,29 @@ export function LotsTable({ rows }: { rows: any[] }) {
         <FilterBar label="Account" value={account} options={['All', ...unique(brokerRows.map((r) => r.account))]} onChange={setAccount} />
         <FilterBar label="Term" value={term} options={['All', ...unique(rows.map(termOf))]} onChange={setTerm} />
       </div>
-      <div className="grid gap-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] sm:grid-cols-3">
+      <div className="grid gap-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption sm:grid-cols-3">
         <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Filtered</div>
+          <div className="text-label uppercase tracking-[0.08em] text-ink-3">Filtered</div>
           <div className="font-medium tabular-nums text-ink">{fmtNumber(filtered.length)} / {fmtNumber(rows.length)}</div>
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Open quantity</div>
+          <div className="text-label uppercase tracking-[0.08em] text-ink-3">Open quantity</div>
           <div className="font-medium tabular-nums text-ink">{fmtQuantity(totals.quantity, 2)}</div>
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] text-ink-3">Base cost</div>
+          <div className="text-label uppercase tracking-[0.08em] text-ink-3">Base cost</div>
           <div className="font-medium tabular-nums text-ink">{money(totals.cost, 'KRW')}</div>
         </div>
       </div>
       {selectedLots.length > 0 && (
-        <div className="rounded-md border border-line-subtle bg-card px-3 py-2 text-[12px]">
+        <div className="rounded-md border border-line-subtle bg-card px-3 py-2 text-caption">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={marketTone(selectedLots[0].market)}>{selectedLots[0].market}</Badge>
             <span className="font-medium text-ink">{selectedLots[0].name}</span>
-            <span className="font-mono text-[11px] text-ink-3">{selectedLots[0].ticker}</span>
-            <span className="text-[11px] text-ink-3">{selectedLots.length} lot(s) selected</span>
+            <span className="font-mono text-label text-ink-3">{selectedLots[0].ticker}</span>
+            <span className="text-label text-ink-3">{selectedLots.length} lot(s) selected</span>
           </div>
-          <div className="mt-1 text-[11px] text-ink-3">
+          <div className="mt-1 text-label text-ink-3">
             {selectedLots[0].brokerage} · {selectedLots[0].account} · {money(selectedLots.reduce((sum, row) => sum + Number(row.cost_basis_krw ?? 0), 0), 'KRW')} base cost
             <Link href={positionHref(selectedLots[0].market, selectedLots[0].ticker)} className="ml-3 font-medium text-info hover:underline">
               Detail
@@ -744,7 +744,7 @@ export function LotsTable({ rows }: { rows: any[] }) {
                 <button type="button" className="text-left" onClick={() => setSelectedKey(positionKey(r))}>
                   <InstrumentLabel row={r} />
                 </button>
-                <Link href={positionHref(r.market, r.ticker)} className="mt-0.5 text-[11px] font-medium text-info hover:underline">
+                <Link href={positionHref(r.market, r.ticker)} className="mt-0.5 text-label font-medium text-info hover:underline">
                   Open
                 </Link>
               </div>
@@ -780,7 +780,7 @@ export function TransactionsTable({ rows }: { rows: any[] }) {
         <FilterBar label="Broker" value={brokerage} options={['All', ...unique(scopedRows.map((r) => r.brokerage))]} onChange={setBrokerage} />
         <FilterBar label="Type" value={type} options={['All', ...unique(scopedRows.map((r) => r.type))]} onChange={setType} />
       </div>
-      <div className="text-[11px] text-ink-3">{fmtNumber(filtered.length)} of {fmtNumber(rows.length)} recent rows</div>
+      <div className="text-label text-ink-3">{fmtNumber(filtered.length)} of {fmtNumber(rows.length)} recent rows</div>
       <DataTable
         rows={filtered}
         columns={[

@@ -50,7 +50,7 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
         action={
           <div className="flex items-center gap-2">
             {params.saved === '1' && <Badge tone="success">{copy.page.saved}</Badge>}
-            <Link href="/tax-planning" className="text-[12px] font-medium text-info hover:underline">
+            <Link href="/tax-planning" className="text-caption font-medium text-info hover:underline">
               {copy.page.openPlanner}
             </Link>
           </div>
@@ -70,19 +70,19 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
               label={copy.hero.scenario}
               value={scenarioLabel(policy.activeScenario, copy)}
               hint={copy.hero.scenarioHint}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
             <MetricField
               label={copy.hero.jurisdictions}
               value={fmtNumber(policy.jurisdictions.filter((item) => item.enabled).length)}
               hint={copy.hero.jurisdictionsHint}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
             <MetricField
               label={copy.hero.updated}
               value={state.updatedAt ? fmtDateTime(state.updatedAt).slice(0, 10) : copy.hero.notAvailable}
               hint={copy.hero.updatedHint}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
           </div>
         </MetricHeroCard>
@@ -94,17 +94,17 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
                 label={copy.readOrder.planningHorizon}
                 value={`${fmtNumber(policy.planningHorizonYears ?? 5)} ${copy.readOrder.years}`}
                 hint={copy.readOrder.planningHorizonHint}
-                valueClassName="text-[28px]"
+                valueClassName="text-metric"
               />
               <div className="h-px bg-line-subtle" />
               <MetricField
                 label={copy.readOrder.baseCurrency}
                 value={policy.baseCurrency}
                 hint={copy.readOrder.baseCurrencyHint}
-                valueClassName="text-[18px]"
+                valueClassName="text-title"
               />
             </div>
-            <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
               {copy.readOrder.note}
             </div>
           </div>
@@ -115,8 +115,8 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
         <Card title={copy.filingProfile.title} accent>
           <div className="grid gap-4 lg:grid-cols-3">
             <label className="block">
-              <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">{copy.filingProfile.activeScenario}</span>
-              <select name="activeScenario" defaultValue={policy.activeScenario} className="w-full rounded-md border border-line bg-card px-3 py-2 text-[13px] text-ink outline-none">
+              <span className="mb-1 block text-label font-medium uppercase tracking-[0.08em] text-ink-3">{copy.filingProfile.activeScenario}</span>
+              <select name="activeScenario" defaultValue={policy.activeScenario} className="w-full rounded-md border border-line bg-card px-3 py-2 text-body text-ink outline-none">
                 <option value="US_ONLY">{copy.scenarios.US_ONLY}</option>
                 <option value="KR_ONLY">{copy.scenarios.KR_ONLY}</option>
                 <option value="US_AND_KR">{copy.scenarios.US_AND_KR}</option>
@@ -124,7 +124,7 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
             </label>
             <Field label={copy.filingProfile.baseCurrency} name="baseCurrency" defaultValue={policy.baseCurrency} type="text" />
             <Field label={copy.filingProfile.planningHorizon} name="planningHorizonYears" defaultValue={policy.planningHorizonYears ?? 5} suffix={copy.readOrder.years} />
-            <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] leading-relaxed text-ink-3">
+            <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption leading-relaxed text-ink-3">
               {copy.filingProfile.note}
             </div>
           </div>
@@ -136,8 +136,8 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
           accent
         >
           <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-[12px]">
-              <thead className="text-[10px] uppercase tracking-[0.08em] text-ink-3">
+            <table className="min-w-full text-left text-caption">
+              <thead className="text-micro uppercase tracking-[0.08em] text-ink-3">
                 <tr>
                   <th className="pb-2 pr-4 font-medium">{copy.annualTimeline.year}</th>
                   <th className="pb-2 pr-4 font-medium">{copy.annualTimeline.defaultScenario}</th>
@@ -171,7 +171,7 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
                         <input type="hidden" name="profileYear" value={profile.year} />
                       </td>
                       <td className="py-2 pr-4">
-                        <select name={`filingScenario_${profile.year}`} defaultValue={profile.filingScenario} className="w-full min-w-[8rem] rounded-md border border-line bg-card px-2 py-1.5 text-[12px] text-ink outline-none">
+                        <select name={`filingScenario_${profile.year}`} defaultValue={profile.filingScenario} className="w-full min-w-[8rem] rounded-md border border-line bg-card px-2 py-1.5 text-caption text-ink outline-none">
                           <option value="US_ONLY">{copy.scenarios.US_ONLY}</option>
                           <option value="KR_ONLY">{copy.scenarios.KR_ONLY}</option>
                           <option value="US_AND_KR">{copy.scenarios.US_AND_KR}</option>
@@ -182,7 +182,7 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
                       <td className="py-2 pr-4 text-center"><CompactCheck name={`krFilingRequired_${profile.year}`} defaultChecked={kr?.filingRequired ?? false} label={`${profile.year} ${copy.compactCheck.krFilingRequired}`} /></td>
                       <td className="py-2 pr-4 text-center"><CompactCheck name={`krTaxCalculationEnabled_${profile.year}`} defaultChecked={kr?.taxCalculationEnabled ?? false} label={`${profile.year} ${copy.compactCheck.krTaxCalculationEnabled}`} /></td>
                       <td className="py-2 pr-4">
-                        <select name={`status_${profile.year}`} defaultValue={profile.status} className="w-full min-w-[7rem] rounded-md border border-line bg-card px-2 py-1.5 text-[12px] text-ink outline-none">
+                        <select name={`status_${profile.year}`} defaultValue={profile.status} className="w-full min-w-[7rem] rounded-md border border-line bg-card px-2 py-1.5 text-caption text-ink outline-none">
                           <option value="assumed">{copy.annualTimeline.assumed}</option>
                           <option value="confirmed">{copy.annualTimeline.confirmed}</option>
                         </select>
@@ -193,7 +193,7 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
               </tbody>
             </table>
           </div>
-          <div className="mt-3 text-[11px] leading-relaxed text-ink-3">
+          <div className="mt-3 text-label leading-relaxed text-ink-3">
             {copy.annualTimeline.note}
           </div>
         </Card>
@@ -223,7 +223,7 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
               <Field label={copy.us.ftcForeignSourceShare} name="usFtcForeignSourceGainPct" defaultValue={assumptionNumber(policy, 'US', 'ftcForeignSourceGainPct', 0)} suffix="%" />
               <Field label={copy.us.washSaleBefore} name="usWashSaleBefore" defaultValue={assumptionNumber(policy, 'US', 'washSaleWindowDaysBefore', 30)} suffix={copy.us.days} hint={glossary.washSale.description} />
               <Field label={copy.us.washSaleAfter} name="usWashSaleAfter" defaultValue={assumptionNumber(policy, 'US', 'washSaleWindowDaysAfter', 30)} suffix={copy.us.days} hint={glossary.washSale.description} />
-              <div className="sm:col-span-2 rounded-md border border-line-subtle bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+              <div className="sm:col-span-2 rounded-md border border-line-subtle bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
                 {copy.us.note}
               </div>
             </div>
@@ -236,8 +236,8 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
               <Field label={copy.kr.foreignTaxableResidenceThreshold} name="krForeignStockTaxableResidenceYearsThreshold" defaultValue={assumptionNumber(policy, 'KR', 'foreignStockTaxableResidenceYearsThreshold', 5)} suffix={copy.readOrder.years} />
               <Field label={copy.kr.residentThroughYear} name="krResidentThroughYear" defaultValue={assumptionNumber(policy, 'KR', 'residentThroughYear', 2027)} />
               <label className="block">
-                <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">{copy.kr.crossBorderCreditModel}</span>
-                <select name="krForeignTaxCreditMode" defaultValue={assumptionString(policy, 'KR', 'foreignTaxCreditMode', 'manual')} className="w-full rounded-md border border-line bg-card px-3 py-2 text-[13px] text-ink outline-none">
+                <span className="mb-1 block text-label font-medium uppercase tracking-[0.08em] text-ink-3">{copy.kr.crossBorderCreditModel}</span>
+                <select name="krForeignTaxCreditMode" defaultValue={assumptionString(policy, 'KR', 'foreignTaxCreditMode', 'manual')} className="w-full rounded-md border border-line bg-card px-3 py-2 text-body text-ink outline-none">
                   <option value="manual">{copy.kr.noAutomaticCredit}</option>
                   <option value="estimated-us-source">{copy.kr.krCreditForUsTax}</option>
                   <option value="estimated-us-ftc">{copy.kr.usForm1116Limit}</option>
@@ -252,36 +252,36 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
         </div>
 
         <Card title={copy.localPolicy.title}>
-          <div className="space-y-3 text-[12px] text-ink-2">
+          <div className="space-y-3 text-caption text-ink-2">
             <div className="grid gap-2 lg:grid-cols-[8rem_1fr]">
               <span className="text-ink-3">{copy.localPolicy.localPath}</span>
-              <code className="break-words font-mono text-[11px] text-ink">{state.path}</code>
+              <code className="break-words font-mono text-label text-ink">{state.path}</code>
               <span className="text-ink-3">{copy.localPolicy.fallback}</span>
-              <code className="break-words font-mono text-[11px] text-ink">{state.examplePath}</code>
+              <code className="break-words font-mono text-label text-ink">{state.examplePath}</code>
             </div>
-            <button type="submit" className="rounded-md border border-line bg-ink px-4 py-2 text-[13px] font-medium text-card transition-opacity hover:opacity-90">
+            <button type="submit" className="rounded-md border border-line bg-ink px-4 py-2 text-body font-medium text-card transition-opacity hover:opacity-90">
               {copy.localPolicy.save}
             </button>
           </div>
         </Card>
 
         <Card title={copy.calculationBasis.title} info={copy.calculationBasis.info}>
-          <div className="grid gap-3 text-[12px] text-ink-2 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 text-caption text-ink-2 md:grid-cols-2 xl:grid-cols-4">
             <a href="https://www.irs.gov/newsroom/irs-releases-tax-inflation-adjustments-for-tax-year-2026-including-amendments-from-the-one-big-beautiful-bill" target="_blank" rel="noreferrer" className="rounded-md border border-line-subtle bg-surface px-3 py-2 hover:border-info">
               <span className="block font-medium text-ink">{copy.calculationBasis.federalBrackets}</span>
-              <span className="mt-1 block text-[11px] text-ink-3">{copy.calculationBasis.federalBracketsNote}</span>
+              <span className="mt-1 block text-label text-ink-3">{copy.calculationBasis.federalBracketsNote}</span>
             </a>
             <a href="https://www.irs.gov/taxtopics/tc409" target="_blank" rel="noreferrer" className="rounded-md border border-line-subtle bg-surface px-3 py-2 hover:border-info">
               <span className="block font-medium text-ink">{copy.calculationBasis.capitalGainNetting}</span>
-              <span className="mt-1 block text-[11px] text-ink-3">{copy.calculationBasis.capitalGainNettingNote}</span>
+              <span className="mt-1 block text-label text-ink-3">{copy.calculationBasis.capitalGainNettingNote}</span>
             </a>
             <a href="https://www.irs.gov/individuals/international-taxpayers/foreign-tax-credit-how-to-figure-the-credit" target="_blank" rel="noreferrer" className="rounded-md border border-line-subtle bg-surface px-3 py-2 hover:border-info">
               <span className="block font-medium text-ink">{copy.calculationBasis.foreignTaxCreditLimit}</span>
-              <span className="mt-1 block text-[11px] text-ink-3">{copy.calculationBasis.foreignTaxCreditLimitNote}</span>
+              <span className="mt-1 block text-label text-ink-3">{copy.calculationBasis.foreignTaxCreditLimitNote}</span>
             </a>
             <a href="https://www.ftb.ca.gov/forms/2025/2025-540-booklet.html" target="_blank" rel="noreferrer" className="rounded-md border border-line-subtle bg-surface px-3 py-2 hover:border-info">
               <span className="block font-medium text-ink">{copy.calculationBasis.californiaSchedule}</span>
-              <span className="mt-1 block text-[11px] text-ink-3">{copy.calculationBasis.californiaScheduleNote}</span>
+              <span className="mt-1 block text-label text-ink-3">{copy.calculationBasis.californiaScheduleNote}</span>
             </a>
           </div>
         </Card>

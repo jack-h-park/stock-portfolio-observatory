@@ -37,7 +37,7 @@ export function DataTable({
   if (rows.length === 0) return <EmptyState>{emptyMessage ?? <CommonLabel label="noRows" />}</EmptyState>
 
   return (
-    <Table scroll minWidth="48rem" className="border-separate border-spacing-0 text-[12px]">
+    <Table scroll minWidth="48rem" className="border-separate border-spacing-0">
         {caption ? <caption className="sr-only">{caption}</caption> : null}
         <thead>
           <tr>

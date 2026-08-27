@@ -139,7 +139,7 @@ export default async function TaxPlanningPage({
         action={
           <div className="flex items-center gap-2">
             {taxPolicy.source === 'example' && <Badge tone="warning">{copy.page.usingExampleAssumptions}</Badge>}
-            <Link href="/tax-settings" className="text-[12px] font-medium text-info hover:underline">
+            <Link href="/tax-settings" className="text-caption font-medium text-info hover:underline">
               {copy.page.editAssumptions}
             </Link>
           </div>
@@ -149,8 +149,8 @@ export default async function TaxPlanningPage({
       <section className="mb-5 rounded-md border border-line bg-card shadow-card">
         <div className="flex flex-col gap-1 border-b border-line-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-[14px] font-medium text-ink">{copy.settings.title}</h2>
-            <p className="mt-0.5 text-[11px] text-ink-3">
+            <h2 className="text-body-lg font-medium text-ink">{copy.settings.title}</h2>
+            <p className="mt-0.5 text-label text-ink-3">
               {copy.settings.subtitle}
             </p>
           </div>
@@ -158,45 +158,45 @@ export default async function TaxPlanningPage({
         </div>
         <form className="grid gap-4 p-4 lg:grid-cols-[minmax(14rem,1.4fr)_minmax(11rem,0.8fr)_minmax(10rem,0.7fr)_auto] lg:items-end">
           <label className="block">
-            <span className="mb-1.5 flex items-center text-[10px] font-medium uppercase text-ink-3">
-              <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface text-[10px] text-ink">1</span>
+            <span className="mb-1.5 flex items-center text-micro font-medium uppercase text-ink-3">
+              <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface text-micro text-ink">1</span>
               {copy.settings.schedulingRule}
               <InfoTooltip align="left">{copy.settings.schedulingRuleInfo}</InfoTooltip>
             </span>
-            <select name="master" defaultValue={selectedMasterStrategy} className="w-full rounded-md border border-line bg-card px-3 py-2.5 text-[13px] text-ink outline-none focus:border-info">
+            <select name="master" defaultValue={selectedMasterStrategy} className="w-full rounded-md border border-line bg-card px-3 py-2.5 text-body text-ink outline-none focus:border-info">
               <option value="STAGED">{copy.settings.staged}</option>
               <option value="EARLIEST_LT">{copy.settings.earliestLongTerm}</option>
               <option value="WAIT_US_ONLY">{copy.settings.waitUsOnly}</option>
               <option value="ACCELERATE_LOSSES">{copy.settings.accelerateLosses}</option>
             </select>
-            <span className="mt-1 block text-[10px] text-ink-3">{copy.settings.schedulingHint}</span>
+            <span className="mt-1 block text-micro text-ink-3">{copy.settings.schedulingHint}</span>
           </label>
           <label className="block">
-            <span className="mb-1.5 flex items-center text-[10px] font-medium uppercase text-ink-3">
-              <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface text-[10px] text-ink">2</span>
+            <span className="mb-1.5 flex items-center text-micro font-medium uppercase text-ink-3">
+              <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface text-micro text-ink">2</span>
               {copy.settings.executionWindow}
               <InfoTooltip align="left">{copy.settings.executionWindowInfo}</InfoTooltip>
             </span>
-            <select name="pace" defaultValue={executionMonths} className="w-full rounded-md border border-line bg-card px-3 py-2.5 text-[13px] text-ink outline-none focus:border-info">
+            <select name="pace" defaultValue={executionMonths} className="w-full rounded-md border border-line bg-card px-3 py-2.5 text-body text-ink outline-none focus:border-info">
               {[12, 18, 24, 36, 48].map((months) => (
                 <option key={months} value={months}>{months} {copy.settings.months}</option>
               ))}
             </select>
-            <span className="mt-1 block text-[10px] text-ink-3">{copy.settings.executionHint}</span>
+            <span className="mt-1 block text-micro text-ink-3">{copy.settings.executionHint}</span>
           </label>
           <label className="block">
-            <span className="mb-1.5 flex items-center text-[10px] font-medium uppercase text-ink-3">
-              <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface text-[10px] text-ink">3</span>
+            <span className="mb-1.5 flex items-center text-micro font-medium uppercase text-ink-3">
+              <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface text-micro text-ink">3</span>
               {copy.settings.taxHorizon}
             </span>
-            <select name="horizon" defaultValue={horizonYears} className="w-full rounded-md border border-line bg-card px-3 py-2.5 text-[13px] text-ink outline-none focus:border-info">
+            <select name="horizon" defaultValue={horizonYears} className="w-full rounded-md border border-line bg-card px-3 py-2.5 text-body text-ink outline-none focus:border-info">
               {[3, 4, 5, 7, 10].map((yearCount) => (
                 <option key={yearCount} value={yearCount}>{yearCount} {copy.settings.years}</option>
               ))}
             </select>
-            <span className="mt-1 block text-[10px] text-ink-3">{copy.settings.horizonHint}</span>
+            <span className="mt-1 block text-micro text-ink-3">{copy.settings.horizonHint}</span>
           </label>
-          <button type="submit" className="rounded-md border border-ink bg-ink px-5 py-2.5 text-[13px] font-medium text-card transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-info">
+          <button type="submit" className="rounded-md border border-ink bg-ink px-5 py-2.5 text-body font-medium text-card transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-info">
             {copy.settings.rebuild}
           </button>
         </form>
@@ -237,7 +237,7 @@ export default async function TaxPlanningPage({
       <MasterPlanAnnualTax plan={masterPlanSet.selectedPlan} copy={copy} money={money} />
 
       <details className="mb-5 rounded-md border border-line bg-card shadow-card">
-        <summary className="cursor-pointer px-4 py-3 text-[13px] font-medium text-ink">
+        <summary className="cursor-pointer px-4 py-3 text-body font-medium text-ink">
           {copy.page.openStaticOpportunityAnalysis}
         </summary>
         <div className="border-t border-line-subtle p-4">
@@ -270,8 +270,8 @@ export default async function TaxPlanningPage({
           accent
         >
           <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-[12px]">
-              <thead className="text-[10px] uppercase tracking-[0.08em] text-ink-3">
+            <table className="min-w-full text-left text-caption">
+              <thead className="text-micro uppercase tracking-[0.08em] text-ink-3">
                 <tr>
                   <th className="pb-2 pr-4 font-medium">{copy.page.year}</th>
                   <th className="pb-2 pr-4 font-medium">{copy.page.taxCalc}</th>
@@ -311,7 +311,7 @@ export default async function TaxPlanningPage({
         </Card>
 
         <Card title={copy.page.baseAssumptions}>
-          <div className="space-y-2 text-[12px] text-ink-2">
+          <div className="space-y-2 text-caption text-ink-2">
             <div className="flex items-center justify-between gap-3"><span>{copy.page.scenario}</span><Badge tone="info">{plan.assumptions.scenario}</Badge></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.filingState}</span><span className="text-ink">{assumptionString(taxPolicy.policy, 'US', 'filingStatus', 'n/a')} / {assumptionString(taxPolicy.policy, 'US', 'stateCode', 'n/a')}</span></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.w2WageBase}</span><span className="tabular-nums text-ink">{assumptionNumber(taxPolicy.policy, 'US', 'wageBaseYear', 0)} · {fmtMoney(assumptionNumber(taxPolicy.policy, 'US', 'wageBaseUsd', 0), 'USD')}</span></div>
@@ -334,12 +334,12 @@ export default async function TaxPlanningPage({
           className="mb-5"
           accent
         >
-          <div className="mb-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] leading-relaxed text-ink-3">
+          <div className="mb-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption leading-relaxed text-ink-3">
             {copy.page.annualTargetNote}
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-[12px]">
-              <thead className="text-[10px] uppercase tracking-[0.08em] text-ink-3">
+            <table className="min-w-full text-left text-caption">
+              <thead className="text-micro uppercase tracking-[0.08em] text-ink-3">
                 <tr>
                   <th className="pb-2 pr-4 font-medium">{copy.page.scenario}</th>
                   <th className="pb-2 pr-4 text-right font-medium">{copy.page.totalSales}</th>
@@ -359,7 +359,7 @@ export default async function TaxPlanningPage({
                         {multiYearPlan.bestScenario?.key === scenarioRow.key && <Badge tone="success">{copy.page.lowestTax}</Badge>}
                         {multiYearPlan.bestScenario?.key !== scenarioRow.key && sameKrw(scenarioRow.summary.taxKrw, multiYearPlan.bestScenario?.summary.taxKrw) && <Badge tone="neutral">{copy.page.sameTax}</Badge>}
                       </div>
-                      <div className="mt-1 max-w-[24rem] text-[11px] text-ink-3">{scenarioRow.description}</div>
+                      <div className="mt-1 max-w-[24rem] text-label text-ink-3">{scenarioRow.description}</div>
                     </td>
                     <td className="py-3 pr-4 text-right tabular-nums text-ink">{fmtKrw(scenarioRow.summary.proceedsKrw)}</td>
                     <td className="py-3 pr-4 text-right tabular-nums"><Signed value={scenarioRow.summary.gainKrw} format={fmtKrw} /></td>
@@ -376,10 +376,10 @@ export default async function TaxPlanningPage({
       ) : (
         <Card title={copy.page.annualTargetScenarioComparison} className="mb-5">
           <div className="grid gap-3 md:grid-cols-[1fr_18rem]">
-            <div className="text-[13px] leading-relaxed text-ink-2">
+            <div className="text-body leading-relaxed text-ink-2">
               {copy.page.annualTargetHidden}
             </div>
-            <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] text-ink-3">
+            <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption text-ink-3">
               {copy.page.annualTargetHiddenHint}
             </div>
           </div>
@@ -396,7 +396,7 @@ export default async function TaxPlanningPage({
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card title={copy.page.selectedSingleYearTaxSplit} info={copy.page.singleYearTaxSplitInfo}>
-          <div className="space-y-2 text-[12px] text-ink-2">
+          <div className="space-y-2 text-caption text-ink-2">
             <div className="flex items-center justify-between gap-3"><span>{copy.page.federalShortTerm}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.usFederalShortTermTaxKrw)}</span></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.federalLongTerm}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.usFederalLongTermTaxKrw)}</span></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.niit}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.usNiitTaxKrw)}</span></div>
@@ -407,7 +407,7 @@ export default async function TaxPlanningPage({
             <div className="flex items-center justify-between gap-3"><span>{copy.page.krCreditUsed}</span><span className="tabular-nums text-success">-{fmtKrw(plan.summary.krForeignTaxCreditKrw)}</span></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.combinedAfterCredit}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.estimatedTaxKrw)}</span></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.afterTaxProceeds}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.estimatedAfterTaxKrw)}</span></div>
-            <div className="text-[11px] leading-relaxed text-ink-3">{copy.page.methodNote(plan.summary.taxCalculationMethod)}</div>
+            <div className="text-label leading-relaxed text-ink-3">{copy.page.methodNote(plan.summary.taxCalculationMethod)}</div>
           </div>
         </Card>
 
@@ -415,7 +415,7 @@ export default async function TaxPlanningPage({
           {plan.summary.warnings.length === 0 && operational.staleItems.length === 0 ? (
             <EmptyState ok>{copy.page.noPlannerWarnings}</EmptyState>
           ) : (
-            <ul className="space-y-2 text-[12px] text-ink-2">
+            <ul className="space-y-2 text-caption text-ink-2">
               {operational.staleItems.length > 0 && <li><Badge tone="warning">{copy.page.inputs}</Badge> {copy.page.resolveFreshness(fmtNumber(operational.staleItems.length))}</li>}
               {plan.summary.warnings.map((warning) => (
                 <li key={warning}><Badge tone="warning">{copy.page.review}</Badge> {warning}</li>
@@ -444,20 +444,20 @@ function ScenarioTimeline({ scenario, copy }: { scenario: MultiYearTaxScenario; 
           <div key={year.year} className="rounded-md border border-line-subtle bg-surface p-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <span className="font-mono text-[13px] text-ink">{year.year}</span>
+                <span className="font-mono text-body text-ink">{year.year}</span>
                 <Badge tone="info">{year.filingScenario}</Badge>
               </div>
-              <div className="text-right text-[12px] tabular-nums text-ink">
+              <div className="text-right text-caption tabular-nums text-ink">
                 {fmtKrw(year.taxKrw)}
-                <div className="text-[10px] text-ink-3">{fmtPct(year.effectiveTaxRatePct)}</div>
+                <div className="text-micro text-ink-3">{fmtPct(year.effectiveTaxRatePct)}</div>
               </div>
             </div>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
               {year.markets.length === 0 ? (
-                <div className="text-[11px] text-ink-3">{copy.opportunity.noAllocatedSaleLots}</div>
+                <div className="text-label text-ink-3">{copy.opportunity.noAllocatedSaleLots}</div>
               ) : (
                 year.markets.map((market) => (
-                  <div key={market.market} className="rounded-sm border border-line bg-card px-2.5 py-2 text-[11px]">
+                  <div key={market.market} className="rounded-sm border border-line bg-card px-2.5 py-2 text-label">
                     <div className="flex items-center justify-between gap-2">
                       <Badge tone={marketTone(market.market)}>{market.market}</Badge>
                       <span className="tabular-nums text-ink">{fmtKrw(market.proceedsKrw)}</span>

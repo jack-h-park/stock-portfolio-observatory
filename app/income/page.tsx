@@ -180,21 +180,21 @@ export default async function IncomePage() {
               value={money(income.totals.ytd_base_income)}
               hint={copy.latestMonth(latestMonthLabel)}
               tone="success"
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
             <MetricField
               label={copy.yieldOnMarket}
               value={fmtPct(income.totals.yield_on_market)}
               info={glossary.yieldOnMarket.description}
               hint={copy.yieldOnMarketHint}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
             <MetricField
               label={copy.yieldOnCost}
               value={fmtPct(income.totals.yield_on_cost)}
               info={glossary.yieldOnCost.description}
               hint={copy.yieldOnCostHint}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
           </div>
         </MetricHeroCard>
@@ -206,7 +206,7 @@ export default async function IncomePage() {
                 label={copy.nativeTotals}
                 value={`${money(income.totals.krw_income, 'KRW')} / ${money(income.totals.usd_income, 'USD')}`}
                 hint={copy.sourceRows(fmtNumber(income.totals.row_count))}
-                valueClassName="text-[18px]"
+                valueClassName="text-title"
               />
               <div className="h-px bg-line-subtle" />
               <MetricField
@@ -215,10 +215,10 @@ export default async function IncomePage() {
                 info={glossary.tickerless.description}
                 hint={copy.tickerlessHint}
                 tone={income.totals.tickerless_count ? 'warning' : 'success'}
-                valueClassName="text-[28px]"
+                valueClassName="text-metric"
               />
             </div>
-            <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
               {copy.readOrder}
             </div>
           </div>
@@ -227,7 +227,7 @@ export default async function IncomePage() {
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
         <Card title={copy.incomeMix}>
-          <div className="grid gap-3 text-[12px]">
+          <div className="grid gap-3 text-caption">
             <div className="flex items-center justify-between">
               <span className="text-ink-3">{copy.dividendDistribution}</span>
               <span className="font-medium tabular-nums text-ink">{money(income.totals.dividend_base_income)}</span>
@@ -246,11 +246,11 @@ export default async function IncomePage() {
         <Card title={copy.marketIncome}>
           <ul className="divide-y divide-line-subtle">
             {income.byMarket.map((row) => (
-              <li key={`${row.market}:${row.currency}`} className="flex items-center gap-3 py-2 text-[12px]">
+              <li key={`${row.market}:${row.currency}`} className="flex items-center gap-3 py-2 text-caption">
                 <Badge tone={marketTone(row.market)}>{row.market}</Badge>
                 <div className="min-w-0 flex-1">
                   <div className="font-medium tabular-nums text-ink">{money(row.base_income)}</div>
-                  <div className="text-[11px] text-ink-3">{money(row.native_income, row.currency)} {copy.native} · {fmtNumber(row.row_count)} {copy.rows}</div>
+                  <div className="text-label text-ink-3">{money(row.native_income, row.currency)} {copy.native} · {fmtNumber(row.row_count)} {copy.rows}</div>
                 </div>
               </li>
             ))}
@@ -258,7 +258,7 @@ export default async function IncomePage() {
         </Card>
 
         <Card title={copy.dataQuality}>
-          <div className="grid gap-3 text-[12px]">
+          <div className="grid gap-3 text-caption">
             <div className="flex items-center justify-between">
               <span className="text-ink-3">{copy.tickerMappedRows}</span>
               <span className="font-medium tabular-nums text-success">{fmtNumber(income.totals.row_count - income.totals.tickerless_count)}</span>
@@ -269,7 +269,7 @@ export default async function IncomePage() {
                 {fmtNumber(income.totals.tickerless_count)}
               </span>
             </div>
-            <div className="text-[11px] leading-relaxed text-ink-3">
+            <div className="text-label leading-relaxed text-ink-3">
               {copy.tickerlessQualityNote}
             </div>
           </div>
@@ -288,7 +288,7 @@ export default async function IncomePage() {
             yAxisSuffix={chartSuffix}
             yAxisLabel={usd ? copy.chartAxisUsd : copy.chartAxis}
           />
-          <p className="mt-2 text-[11px] text-ink-3">{usd ? copy.chartNoteUsd : copy.chartNote}</p>
+          <p className="mt-2 text-label text-ink-3">{usd ? copy.chartNoteUsd : copy.chartNote}</p>
         </Card>
 
         <Card title={copy.yearlyNativeTotals}>
@@ -317,11 +317,11 @@ export default async function IncomePage() {
                   <div className="min-w-[14rem]">
                     <div className="flex items-center gap-2">
                       <Badge tone={marketTone(r.market)}>{r.market}</Badge>
-                      <Link href={positionHref(r.market, r.ticker)} className="font-mono text-[12px] font-medium text-info hover:underline">
+                      <Link href={positionHref(r.market, r.ticker)} className="font-mono text-caption font-medium text-info hover:underline">
                         {r.ticker}
                       </Link>
                     </div>
-                    <div className="mt-1 max-w-[20rem] truncate text-[12px] font-medium text-ink">{r.name}</div>
+                    <div className="mt-1 max-w-[20rem] truncate text-caption font-medium text-ink">{r.name}</div>
                   </div>
                 ),
               },

@@ -254,16 +254,16 @@ export default async function DataOpsPage() {
         action={issueCount ? <Badge tone="warning">{copy.needsReview(fmtNumber(issueCount))}</Badge> : <Badge tone="success">{copy.noPending}</Badge>}
       />
 
-      <Card title={coverageCopy.title} info={coverageCopy.info} accent={coverage.actionNeeded > 0} className="mb-5" action={<Link href="#account-coverage" className="text-[12px] font-medium text-info hover:underline">{language === 'ko' ? '전체 보기' : 'View all'}</Link>}>
+      <Card title={coverageCopy.title} info={coverageCopy.info} accent={coverage.actionNeeded > 0} className="mb-5" action={<Link href="#account-coverage" className="text-caption font-medium text-info hover:underline">{language === 'ko' ? '전체 보기' : 'View all'}</Link>}>
         <div className="mb-4 grid grid-cols-3 gap-3">
-          <MetricField label={coverageCopy.action} value={fmtNumber(coverage.actionNeeded)} tone={coverage.actionNeeded ? 'danger' : 'success'} valueClassName="text-[20px]" />
-          <MetricField label={coverageCopy.due} value={fmtNumber(coverage.dueSoon)} tone={coverage.dueSoon ? 'warning' : 'success'} valueClassName="text-[20px]" />
-          <MetricField label={coverageCopy.current} value={fmtNumber(coverage.current)} tone="success" valueClassName="text-[20px]" />
+          <MetricField label={coverageCopy.action} value={fmtNumber(coverage.actionNeeded)} tone={coverage.actionNeeded ? 'danger' : 'success'} valueClassName="text-title" />
+          <MetricField label={coverageCopy.due} value={fmtNumber(coverage.dueSoon)} tone={coverage.dueSoon ? 'warning' : 'success'} valueClassName="text-title" />
+          <MetricField label={coverageCopy.current} value={fmtNumber(coverage.current)} tone="success" valueClassName="text-title" />
         </div>
         <div id="account-coverage" className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-[12px]">
+          <table className="w-full min-w-[980px] text-left text-caption">
             <caption className="sr-only">{coverageCopy.title}</caption>
-            <thead className="border-y border-line-subtle text-[11px] uppercase tracking-[0.06em] text-ink-3">
+            <thead className="border-y border-line-subtle text-label uppercase tracking-[0.06em] text-ink-3">
               <tr>
                 <th scope="col" className="px-2 py-2">{coverageCopy.account}</th>
                 <th scope="col" className="px-2 py-2">{coverageCopy.coverage}</th>
@@ -278,13 +278,13 @@ export default async function DataOpsPage() {
                 <tr key={row.id} className="align-top">
                   <td className="px-2 py-3">
                     <div className="flex items-center gap-2"><Badge tone={coverageTone(row.status)}>{coverageCopy.status[row.status]}</Badge><span className="font-medium text-ink">{row.brokerage}</span></div>
-                    <div className="mt-1 text-[11px] text-ink-3">{row.account}</div>
+                    <div className="mt-1 text-label text-ink-3">{row.account}</div>
                   </td>
                   <td className="px-2 py-3 tabular-nums text-ink-2">{coverageDateLabel(row)}</td>
                   <td className="px-2 py-3 tabular-nums text-ink-2">{coverageLagLabel(row, language)}{row.method !== 'mixed' && row.overdueDays ? <span className="ml-1 text-danger">(+{row.overdueDays})</span> : null}</td>
-                  <td className="max-w-[24rem] px-2 py-3"><div className="font-medium text-ink">{row.requiredArtifact}</div><div className="mt-1 text-[11px] text-ink-3">{row.format}</div><div className="mt-1 text-[11px] font-medium leading-relaxed text-info">{language === 'ko' ? '추가 다운로드' : 'Download range'}: {coverageDownloadLabel(row, language)}</div><div className="mt-1 text-[11px] leading-relaxed text-ink-3">{row.action}</div>{row.lastFile ? <code className="mt-1 block truncate text-[10px] text-ink-3" title={row.lastFile}>last: {row.lastFile}</code> : null}</td>
+                  <td className="max-w-[24rem] px-2 py-3"><div className="font-medium text-ink">{row.requiredArtifact}</div><div className="mt-1 text-label text-ink-3">{row.format}</div><div className="mt-1 text-label font-medium leading-relaxed text-info">{language === 'ko' ? '추가 다운로드' : 'Download range'}: {coverageDownloadLabel(row, language)}</div><div className="mt-1 text-label leading-relaxed text-ink-3">{row.action}</div>{row.lastFile ? <code className="mt-1 block truncate text-micro text-ink-3" title={row.lastFile}>last: {row.lastFile}</code> : null}</td>
                   <td className="px-2 py-3 whitespace-nowrap text-ink-2">{coverageCopy.methodLabel[row.method]}</td>
-                  <td className="px-2 py-3"><code className="text-[11px] text-ink-3">{row.destination}</code><div className="mt-1 max-w-[15rem] text-[11px] leading-relaxed text-ink-3">{row.detail}</div></td>
+                  <td className="px-2 py-3"><code className="text-label text-ink-3">{row.destination}</code><div className="mt-1 max-w-[15rem] text-label leading-relaxed text-ink-3">{row.detail}</div></td>
                 </tr>
               ))}
             </tbody>
@@ -307,14 +307,14 @@ export default async function DataOpsPage() {
               value={fmtNumber(ops.mappingSuggestions.length)}
               hint={copy.mappingSuggestionsHint}
               tone={ops.mappingSuggestions.length ? 'warning' : 'success'}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
             <MetricField
               label={copy.valuationFixes}
               value={fmtNumber(ops.valuationFixes.length)}
               hint={copy.valuationFixesHint}
               tone={ops.valuationFixes.length ? 'warning' : 'success'}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
             <MetricField
               label={copy.sourceCheckIssues}
@@ -322,7 +322,7 @@ export default async function DataOpsPage() {
               info={glossary.inputIssues.description}
               hint={copy.sourceCheckIssuesHint}
               tone={ops.sourceIssues.length + ops.validationIssues.length ? 'warning' : 'success'}
-              valueClassName="text-[18px]"
+              valueClassName="text-title"
             />
           </div>
         </MetricHeroCard>
@@ -334,17 +334,17 @@ export default async function DataOpsPage() {
                 label={copy.incomeRules}
                 value={fmtNumber(ops.manualMappings.incomeRuleCount)}
                 hint={copy.incomeRulesHint}
-                valueClassName="text-[28px]"
+                valueClassName="text-metric"
               />
               <div className="h-px bg-line-subtle" />
               <MetricField
                 label={copy.manualOverrides}
                 value={fmtNumber(ops.manualMappings.overrideCount)}
                 hint={copy.manualOverridesHint}
-                valueClassName="text-[18px]"
+                valueClassName="text-title"
               />
             </div>
-            <div className="rounded-md bg-surface px-3 py-2 text-[11px] leading-relaxed text-ink-3">
+            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
               {copy.readOrder}
             </div>
           </div>
@@ -362,12 +362,12 @@ export default async function DataOpsPage() {
               { key: 'priority', label: copy.columns.priority, render: (r) => <Badge tone={priorityTone(r.priority)}>{priorityLabels[r.priority as keyof typeof priorityLabels] ?? r.priority}</Badge> },
               { key: 'area', label: copy.columns.area },
               { key: 'count', label: copy.columns.count, align: 'right', render: (r) => fmtNumber(r.count) },
-              { key: 'action', label: copy.columns.action, render: (r) => <span className="text-[12px] text-ink-2">{r.action}</span> },
+              { key: 'action', label: copy.columns.action, render: (r) => <span className="text-caption text-ink-2">{r.action}</span> },
               {
                 key: 'href',
                 label: copy.columns.open,
                 render: (r) => (
-                  <Link href={r.href} className="text-[12px] font-medium text-info hover:underline">
+                  <Link href={r.href} className="text-caption font-medium text-info hover:underline">
                     {copy.view}
                   </Link>
                 ),
@@ -379,7 +379,7 @@ export default async function DataOpsPage() {
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card title={copy.manualSettings} info={copy.manualSettingsInfo}>
-          <div className="space-y-2 text-[12px] text-ink-2">
+          <div className="space-y-2 text-caption text-ink-2">
             <div className="flex items-center justify-between gap-3">
               <span>{copy.version}</span>
               <span className="font-medium tabular-nums text-ink">{ops.manualMappings.version ?? copy.notRecorded}</span>
@@ -392,7 +392,7 @@ export default async function DataOpsPage() {
               <span>{copy.dividendOverrides}</span>
               <span className="font-medium tabular-nums text-ink">{fmtNumber(ops.manualMappings.overrideCount)}</span>
             </div>
-            <code className="block break-words rounded-sm border border-line-subtle bg-surface px-2 py-1 font-mono text-[11px] text-ink-3">
+            <code className="block break-words rounded-sm border border-line-subtle bg-surface px-2 py-1 font-mono text-label text-ink-3">
               {ops.manualMappings.path}
             </code>
           </div>
@@ -425,7 +425,7 @@ export default async function DataOpsPage() {
                 { key: 'income_category', label: copy.columns.category },
                 { key: 'row_count', label: copy.columns.rows, align: 'right', render: (r) => fmtNumber(r.row_count) },
                 { key: 'base_income', label: copy.columns.base, align: 'right', render: (r) => money(r.base_income) },
-                { key: 'rule', label: copy.columns.suggestedRule, render: (r) => <code className="block max-w-[24rem] whitespace-pre-wrap font-mono text-[11px] text-ink-2">{r.rule}</code> },
+                { key: 'rule', label: copy.columns.suggestedRule, render: (r) => <code className="block max-w-[24rem] whitespace-pre-wrap font-mono text-label text-ink-2">{r.rule}</code> },
               ]}
             />
           )}
@@ -443,13 +443,13 @@ export default async function DataOpsPage() {
                   key: 'ticker',
                   label: copy.columns.position,
                   render: (r) => (
-                    <Link href={positionHref(r.market, r.ticker)} className="font-mono text-[12px] font-medium text-info hover:underline">
+                    <Link href={positionHref(r.market, r.ticker)} className="font-mono text-caption font-medium text-info hover:underline">
                       {r.ticker}
                     </Link>
                   ),
                 },
                 { key: 'reason', label: copy.columns.reason },
-                { key: 'suggestion', label: copy.columns.suggestion, render: (r) => <span className="text-[12px] text-ink-2">{r.suggestion}</span> },
+                { key: 'suggestion', label: copy.columns.suggestion, render: (r) => <span className="text-caption text-ink-2">{r.suggestion}</span> },
               ]}
             />
           )}
@@ -472,7 +472,7 @@ export default async function DataOpsPage() {
               { key: 'native_income', label: copy.columns.native, align: 'right', render: (r) => money(r.native_income, r.currency) },
               { key: 'base_income', label: copy.columns.base, align: 'right', render: (r) => money(r.base_income) },
               { key: 'suggestion', label: copy.columns.suggestion },
-              { key: 'suggestedRule', label: copy.columns.rule, render: (r) => <code className="block max-w-[18rem] whitespace-pre-wrap font-mono text-[11px] text-ink-3">{r.suggestedRule}</code> },
+              { key: 'suggestedRule', label: copy.columns.rule, render: (r) => <code className="block max-w-[18rem] whitespace-pre-wrap font-mono text-label text-ink-3">{r.suggestedRule}</code> },
             ]}
           />
         )}
@@ -491,7 +491,7 @@ export default async function DataOpsPage() {
                   key: 'ticker',
                   label: copy.columns.position,
                   render: (r) => (
-                    <Link href={positionHref(r.market, r.ticker)} className="font-mono text-[12px] font-medium text-info hover:underline">
+                    <Link href={positionHref(r.market, r.ticker)} className="font-mono text-caption font-medium text-info hover:underline">
                       {r.ticker}
                     </Link>
                   ),
@@ -518,8 +518,8 @@ export default async function DataOpsPage() {
                   {ops.validationIssues.map((issue) => (
                     <li key={issue.id} className="flex flex-col gap-1 py-2.5 lg:flex-row lg:items-center lg:gap-3">
                       <Badge tone={issue.severity === 'error' ? 'danger' : 'warning'}>{issue.status}</Badge>
-                      <span className="min-w-0 flex-1 text-[13px] font-medium text-ink">{issue.name}</span>
-                      <span className="text-[12px] text-ink-3">{issue.detail}</span>
+                      <span className="min-w-0 flex-1 text-body font-medium text-ink">{issue.name}</span>
+                      <span className="text-caption text-ink-3">{issue.detail}</span>
                     </li>
                   ))}
                 </ul>

@@ -266,21 +266,21 @@ export function DecisionSummary({
             <Badge tone={!hasPlanningTarget ? 'warning' : tiedTax ? 'neutral' : 'success'}>
               {!hasPlanningTarget ? copy.opportunity.explore : tiedTax ? copy.opportunity.tie : copy.opportunity.recommendation}
             </Badge>
-            <h2 className="text-[22px] font-medium leading-tight tracking-tight text-ink">{title}</h2>
+            <h2 className="text-title font-medium leading-tight tracking-tight text-ink">{title}</h2>
           </div>
-          <p className="mt-2 max-w-[56rem] text-[13px] leading-relaxed text-ink-2">{body}</p>
+          <p className="mt-2 max-w-[56rem] text-body leading-relaxed text-ink-2">{body}</p>
           <div className="mt-4 grid gap-2 md:grid-cols-3">
             <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-              <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.step1}</div>
-              <div className="mt-1 text-[12px] text-ink">{copy.opportunity.step1Body}</div>
+              <div className="text-micro font-medium uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.step1}</div>
+              <div className="mt-1 text-caption text-ink">{copy.opportunity.step1Body}</div>
             </div>
             <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-              <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.step2}</div>
-              <div className="mt-1 text-[12px] text-ink">{copy.opportunity.step2Body}</div>
+              <div className="text-micro font-medium uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.step2}</div>
+              <div className="mt-1 text-caption text-ink">{copy.opportunity.step2Body}</div>
             </div>
             <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-              <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.step3}</div>
-              <div className="mt-1 text-[12px] text-ink">{copy.opportunity.step3Body}</div>
+              <div className="text-micro font-medium uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.step3}</div>
+              <div className="mt-1 text-caption text-ink">{copy.opportunity.step3Body}</div>
             </div>
           </div>
         </div>
@@ -289,7 +289,7 @@ export function DecisionSummary({
             label={copy.opportunity.openLots}
             value={fmtNumber(openLotCount)}
             hint={copy.opportunity.openLotsHint}
-            valueClassName="text-[18px]"
+            valueClassName="text-title"
           />
           <MetricField
             label={copy.opportunity.inputIssues}
@@ -297,21 +297,21 @@ export function DecisionSummary({
             info={copy.opportunity.inputIssuesInfo}
             hint={copy.opportunity.inputIssuesHint}
             tone={inputIssueCount ? 'warning' : 'success'}
-            valueClassName="text-[18px]"
+            valueClassName="text-title"
           />
           <MetricField
             label={hasPlanningTarget ? copy.opportunity.annualTest : copy.opportunity.lossLotProceeds}
             value={hasPlanningTarget ? fmtKrw(bestScenario?.years[0]?.targetCashKrw ?? 0) : fmtKrw(opportunities.lossLotProceedsKrw)}
             hint={!hasPlanningTarget && opportunities.bestLoss ? `${opportunities.bestLoss.year} ${opportunities.bestLoss.market}` : copy.opportunity.scenarioInputAmount}
             tone={hasPlanningTarget ? 'neutral' : 'success'}
-            valueClassName="text-[18px]"
+            valueClassName="text-title"
           />
           <MetricField
             label={hasPlanningTarget ? copy.opportunity.estimatedTax : copy.opportunity.lossHarvest}
             value={hasPlanningTarget ? fmtKrw(bestScenario?.summary.taxKrw ?? 0) : fmtKrw(opportunities.lossHarvestKrw)}
             hint={hasPlanningTarget ? fmtPct(bestScenario?.summary.effectiveTaxRatePct) : opportunities.bestLoss ? `${opportunities.bestLoss.year} ${opportunities.bestLoss.market}` : copy.opportunity.modeledLossInventory}
             tone={!hasPlanningTarget ? 'info' : (bestScenario?.summary.taxKrw ?? 0) > 0 ? 'warning' : 'success'}
-            valueClassName="text-[18px]"
+            valueClassName="text-title"
           />
         </div>
       </div>
@@ -350,8 +350,8 @@ export function PlanningMap({
         <OpportunityTable rows={opportunityRows} coverage={coverage} policy={policy} assumptionsAreExample={assumptionsAreExample} copy={copy} />
       ) : (
         <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-[12px]">
-            <thead className="text-[10px] uppercase tracking-[0.08em] text-ink-3">
+          <table className="min-w-full text-left text-caption">
+            <thead className="text-micro uppercase tracking-[0.08em] text-ink-3">
               <tr>
                 <th className="pb-2 pr-4 font-medium">{copy.opportunity.year}</th>
                 <th className="pb-2 pr-4 font-medium">{copy.opportunity.filingProfile}</th>
@@ -411,25 +411,25 @@ function OpportunityTable({
   const takeaways = buildTakeaways(rows, policy, assumptionsAreExample, copy)
   return (
     <>
-      <div className="mb-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-[12px] leading-relaxed text-ink-3">
+      <div className="mb-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption leading-relaxed text-ink-3">
         {copy.opportunity.stressTestNote}
       </div>
       <div className="mb-4 grid overflow-hidden rounded-md border border-line-subtle bg-card sm:grid-cols-2 xl:grid-cols-4">
         <div className="border-b border-line-subtle px-3 py-2 sm:border-r xl:border-b-0">
-          <div className="text-[10px] uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.fullHoldingsGl}</div>
-          <div className="mt-1 text-[14px] font-medium tabular-nums text-ink">{fmtKrw(coverage.holdingsUnrealizedGainKrw)}</div>
+          <div className="text-micro uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.fullHoldingsGl}</div>
+          <div className="mt-1 text-body-lg font-medium tabular-nums text-ink">{fmtKrw(coverage.holdingsUnrealizedGainKrw)}</div>
         </div>
         <div className="border-b border-line-subtle px-3 py-2 xl:border-b-0 xl:border-r">
-          <div className="text-[10px] uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.taxLotModeledGl}</div>
-          <div className="mt-1 text-[14px] font-medium tabular-nums text-ink">{fmtKrw(coverage.modeledGainKrw)}</div>
+          <div className="text-micro uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.taxLotModeledGl}</div>
+          <div className="mt-1 text-body-lg font-medium tabular-nums text-ink">{fmtKrw(coverage.modeledGainKrw)}</div>
         </div>
         <div className="border-b border-line-subtle px-3 py-2 sm:border-b-0 sm:border-r">
-          <div className="text-[10px] uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.unallocatedHoldingValue}</div>
-          <div className="mt-1 text-[14px] font-medium tabular-nums text-warning">{fmtKrw(coverage.unallocatedMarketValueKrw)}</div>
+          <div className="text-micro uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.unallocatedHoldingValue}</div>
+          <div className="mt-1 text-body-lg font-medium tabular-nums text-warning">{fmtKrw(coverage.unallocatedMarketValueKrw)}</div>
         </div>
         <div className="px-3 py-2">
-          <div className="text-[10px] uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.unmodeledGlDifference}</div>
-          <div className="mt-1 text-[14px] font-medium tabular-nums text-warning">{fmtKrw(coverage.unmodeledGainKrw)}</div>
+          <div className="text-micro uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.unmodeledGlDifference}</div>
+          <div className="mt-1 text-body-lg font-medium tabular-nums text-warning">{fmtKrw(coverage.unmodeledGainKrw)}</div>
         </div>
       </div>
       {takeaways.length > 0 && (
@@ -438,22 +438,22 @@ function OpportunityTable({
             <div key={`${takeaway.title}-${takeaway.metric}`} className="flex min-h-[15rem] flex-col rounded-md border border-line-subtle bg-surface px-3 py-3">
               <div className="flex items-center justify-between gap-2">
                 <Badge tone={takeaway.tone}>{takeaway.label}</Badge>
-                <span className="text-right text-[13px] font-medium tabular-nums text-ink">{takeaway.metric}</span>
+                <span className="text-right text-body font-medium tabular-nums text-ink">{takeaway.metric}</span>
               </div>
-              <div className="mt-2 text-[13px] font-medium leading-tight text-ink">{takeaway.title}</div>
-              <div className="mt-1 text-[11px] leading-relaxed text-ink-2">{takeaway.body}</div>
+              <div className="mt-2 text-body font-medium leading-tight text-ink">{takeaway.title}</div>
+              <div className="mt-1 text-label leading-relaxed text-ink-2">{takeaway.body}</div>
               <div className="mt-3 border-t border-line-subtle pt-2">
-                <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.whatToConsider}</div>
-                <div className="mt-1 text-[11px] leading-relaxed text-ink">{takeaway.action}</div>
+                <div className="text-micro font-medium uppercase tracking-[0.08em] text-ink-3">{copy.opportunity.whatToConsider}</div>
+                <div className="mt-1 text-label leading-relaxed text-ink">{takeaway.action}</div>
               </div>
-              <div className="mt-auto pt-3 text-[10px] leading-relaxed text-ink-3">{takeaway.caveat}</div>
+              <div className="mt-auto pt-3 text-micro leading-relaxed text-ink-3">{takeaway.caveat}</div>
             </div>
           ))}
         </div>
       )}
       <div className="overflow-x-auto">
-        <table className="min-w-full text-left text-[12px]">
-          <thead className="text-[10px] uppercase tracking-[0.08em] text-ink-3">
+        <table className="min-w-full text-left text-caption">
+          <thead className="text-micro uppercase tracking-[0.08em] text-ink-3">
             <tr>
               <th className="pb-2 pr-4 font-medium">{copy.opportunity.years}</th>
               <th className="pb-2 pr-4 font-medium">{copy.opportunity.market}</th>
@@ -518,7 +518,7 @@ function OpportunityTable({
                   <td className="py-3 pr-4 text-right tabular-nums font-medium text-ink">{fmtKrw(row.combinedTaxAfterCreditsKrw)}</td>
                   <td className="py-3 pr-4 text-ink-2">
                     <div>{readout}</div>
-                    <div className="mt-0.5 text-[11px] text-ink-3">
+                    <div className="mt-0.5 text-label text-ink-3">
                       {copy.opportunity.rowDetail(fmtNumber(row.candidateCount), fmtKrw(row.lossLotProceedsKrw), fmtKrw(row.totalProceedsKrw))}
                     </div>
                   </td>
