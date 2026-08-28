@@ -103,6 +103,37 @@ def soffice_binary():
     return next((item for item in candidates if item and Path(item).exists()), None)
 
 
+# LibreOffice builds a user profile — font cache included — the first time it sees
+# one, and that bootstrap dominates the runtime of a conversion this small. The
+# codex-runtime `soffice` on the iMac is a shim that mints a throwaway profile per
+# call and deletes it on exit, so every run paid that cost again: converting a
+# 27KB sheet measured 60.1s against a 60s ceiling. It was not failing on the file,
+# it was failing on a stopwatch.
+#
+# The shim hands the caller a way out: if any argument is already
+# -env:UserInstallation=, it execs LibreOffice directly and skips the temp profile.
+# So name a durable profile dir and the cost is paid once. Measured on the iMac:
+# 60.1s throwaway -> 49.9s first run here -> 39.4s reused.
+SOFFICE_PROFILE_DIR = Path(
+    os.environ.get("STOCK_SOFFICE_PROFILE_DIR", Path.home() / ".cache/stock-observatory-soffice-profile")
+)
+
+# 39s warm on an idle machine is not headroom when the refresh also runs behind a
+# cron. This is a "the tool wedged" ceiling, not a performance budget — the step
+# has no deadline to hit, and the cost of it being too tight is the whole refresh
+# aborting, since fx-ledger is a required step that runs before the price fetch.
+SOFFICE_TIMEOUT_SECONDS = int(os.environ.get("STOCK_SOFFICE_TIMEOUT_SECONDS", "300"))
+
+
+def soffice_convert_args(binary, temp_dir, source):
+    SOFFICE_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+    return [
+        binary,
+        f"-env:UserInstallation=file://{SOFFICE_PROFILE_DIR}",
+        "--headless", "--convert-to", "csv", "--outdir", temp_dir, str(source),
+    ]
+
+
 def parse_hana_xls():
     rows, sources, findings = [], [], []
     binary = soffice_binary()
@@ -111,10 +142,25 @@ def parse_hana_xls():
             findings.append(f"{source.name}: no soffice binary; XLS rows were not read")
             continue
         with tempfile.TemporaryDirectory(prefix="hana-fx-") as temp_dir:
-            result = subprocess.run(
-                [binary, "--headless", "--convert-to", "csv", "--outdir", temp_dir, str(source)],
-                capture_output=True, text=True, timeout=60,
-            )
+            try:
+                result = subprocess.run(
+                    soffice_convert_args(binary, temp_dir, source),
+                    capture_output=True, text=True, timeout=SOFFICE_TIMEOUT_SECONDS,
+                )
+            except subprocess.TimeoutExpired:
+                # Report it as a finding like every other per-file problem here.
+                # Letting it raise aborted extract:fx-ledger, and because that is a
+                # required step ordered before fetch:us-prices and
+                # fetch:historical-prices, the refresh stopped there — so prices
+                # were never brought up to their settled closes. On 2026-08-26 the
+                # last successful price fetch had run mid-session, and the briefing
+                # went on publishing that intraday number as the day's close for
+                # two days (TSLA -2.1% against a real -1.27%). One unreadable
+                # statement should cost its own rows, not the price refresh.
+                findings.append(
+                    f"{source.name}: XLS conversion timed out after {SOFFICE_TIMEOUT_SECONDS}s; rows were not read"
+                )
+                continue
             csv_files = list(Path(temp_dir).glob("*.csv"))
             if result.returncode or not csv_files:
                 findings.append(f"{source.name}: XLS conversion failed: {result.stderr.strip()}")
