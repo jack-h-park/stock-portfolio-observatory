@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { DataTable } from '@/components/DataTable'
@@ -16,6 +17,16 @@ import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
 
 export const dynamic = 'force-dynamic'
+
+// A detail tab named after the page type would be useless here: open three
+// positions and you get three identical tabs. Name it after the instrument.
+export async function generateMetadata({ params }: { params: Promise<{ market: string; ticker: string }> }): Promise<Metadata> {
+  const { market: rawMarket, ticker: rawTicker } = await params
+  const market = decodeURIComponent(rawMarket).toUpperCase()
+  const ticker = decodeURIComponent(rawTicker)
+  const detail = getPositionDetail(market, ticker)
+  return { title: detail ? `${ticker} · ${detail.name}` : ticker }
+}
 
 type MoneyFormatter = ReturnType<typeof createMoneyFormatter>
 type PageCopy = ReturnType<typeof getPageCopy<'positionDetail'>>

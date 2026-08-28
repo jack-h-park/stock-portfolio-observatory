@@ -11,8 +11,10 @@ import { scenarioLabel } from './copy'
 import { CheckField, CompactCheck, Field, Select } from '@/components/form'
 import { DataTable } from '@/components/DataTable'
 import { getPageCopy } from '@/lib/ui-copy'
+import { routeMetadata } from '@/lib/page-names'
 
 export const dynamic = 'force-dynamic'
+export const generateMetadata = routeMetadata('/tax-settings')
 
 export default async function TaxSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const params = await searchParams

@@ -12,8 +12,15 @@ import { getTaxPolicyState } from '@/lib/tax-policy'
 import { updateSavedTaxPlanStatusAction } from '@/app/tax-planning/actions'
 import { getPageCopy } from '@/lib/ui-copy'
 import { Select } from '@/components/form'
+import type { Metadata } from 'next'
 
 export const dynamic = 'force-dynamic'
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params
+  const saved = getSavedTaxPlan(id)
+  return { title: saved?.name ?? id }
+}
 
 const STATUS_TONE: Record<SavedTaxPlanStatus, 'neutral' | 'info' | 'success' | 'warning'> = {
   draft: 'neutral',

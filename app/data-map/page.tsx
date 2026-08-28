@@ -8,8 +8,10 @@ import { getGlossary } from '@/lib/glossary'
 import { formatSort, parseSort, sortRows, type TableSort } from '@/lib/table-sort'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
+import { routeMetadata } from '@/lib/page-names'
 
 export const dynamic = 'force-dynamic'
+export const generateMetadata = routeMetadata('/data-map')
 
 function statusTone(status: string): Tone {
   if (status === 'used') return 'success'

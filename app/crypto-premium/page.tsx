@@ -10,8 +10,10 @@ import { getGlossary } from '@/lib/glossary'
 import { signTone } from '@/lib/tone'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
+import { routeMetadata } from '@/lib/page-names'
 
 export const dynamic = 'force-dynamic'
+export const generateMetadata = routeMetadata('/crypto-premium')
 
 // Distinct hues per coin. Recharts needs a stable colour per series, and the
 // allocation palette is keyed by market rather than by symbol.

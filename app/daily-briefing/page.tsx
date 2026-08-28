@@ -18,12 +18,13 @@ import { signTone } from '@/lib/tone'
 import { Select } from '@/components/form'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
+import { routeMetadata } from '@/lib/page-names'
 
 type PageCopy = ReturnType<typeof getPageCopy<'dailyBriefing'>>
 
 export const dynamic = 'force-dynamic'
+export const generateMetadata = routeMetadata('/daily-briefing')
 
-export const metadata = { title: 'Daily Briefing' }
 
 // Amounts stay in each market's own currency. Converting them into one number
 // would need an FX snapshot the briefing does not carry, and a wrong rate

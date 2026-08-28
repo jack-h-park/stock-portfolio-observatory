@@ -12,8 +12,10 @@ import { positionHref } from '@/lib/position-url'
 import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { formatSort, parseSort, sortRows, type TableSort } from '@/lib/table-sort'
 import { priorityTone } from '@/lib/tone'
+import { routeMetadata } from '@/lib/page-names'
 
 export const dynamic = 'force-dynamic'
+export const generateMetadata = routeMetadata('/reconciliation')
 
 function statusTone(status: string): Tone {
   if (status.includes('only')) return 'warning'

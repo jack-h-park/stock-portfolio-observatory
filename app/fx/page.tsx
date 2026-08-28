@@ -9,8 +9,10 @@ import { fmtNumber } from '@/lib/format'
 import { formatUsd } from '@/lib/currency'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
+import { routeMetadata } from '@/lib/page-names'
 
 export const dynamic = 'force-dynamic'
+export const generateMetadata = routeMetadata('/fx')
 
 
 export default async function FxPage() {

@@ -12,8 +12,10 @@ import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
 import { getPageCopy } from '@/lib/ui-copy'
 import { signTone } from '@/lib/tone'
+import { routeMetadata } from '@/lib/page-names'
 
 export const dynamic = 'force-dynamic'
+export const generateMetadata = routeMetadata('/review')
 
 function PositionLink({ row }: { row: ReviewPosition }) {
   return (

@@ -7,14 +7,15 @@ import { LanguageProvider } from '@/components/LanguageProvider'
 import { Sidebar } from '@/components/Sidebar'
 import { getLanguage } from '@/lib/i18n-server'
 import { getCurrencyPreferences } from '@/lib/currency-server'
+import { APP_NAME } from '@/lib/page-names'
 
 export const metadata: Metadata = {
   title: {
-    default: 'Stock Portfolio Observatory',
-    template: '%s · Stock Portfolio Observatory',
+    default: APP_NAME,
+    template: `%s · ${APP_NAME}`,
   },
   description: 'Read-only portfolio monitoring for local stock-management data.',
-  applicationName: 'Stock Portfolio Observatory',
+  applicationName: APP_NAME,
   icons: {
     icon: '/favicon.ico',
   },
