@@ -148,6 +148,12 @@ create table evidence_reports (id integer primary key, name text not null, categ
 -- is a 500 under sample data, which made it the one route the screenshot
 -- baseline could never actually check.
 create table historical_prices (id integer primary key, market text not null, ticker text not null, price_date text not null, close real not null, source text);
+-- /fx reads these three. Without them the page was a 500 under sample data, so
+-- the screenshot baseline had been photographing an error for that route while
+-- reporting it as covered. Columns mirror the ingest DDL exactly.
+create table fx_events (id integer primary key, institution text not null, account text not null, date text not null, time text, event_type text not null, direction text not null, usd_amount real not null, krw_amount real, applied_rate real, rate_status text not null, preference_rate real, reference_base_rate real, reference_customer_rate real, reference_source text, spread_cost_krw real, spread_savings_krw real, realized_fx_gl_krw real, counterparty text, match_status text not null, confidence text not null, method text not null, balance_usd real, source text not null, source_path text, page integer, note text);
+create table fx_account_balances (id integer primary key, institution text not null, account text not null, as_of_date text not null, balance_usd real not null, source text not null);
+create table historical_fx_rates (id integer primary key, price_date text not null unique, rate real not null, source text);
 `)
 
 insertMany(db, 'meta', [
@@ -210,6 +216,41 @@ insertMany(
     { market: 'US', ticker: 'AAPL', price_date: '2026-01-01', close: 336, source: 'sample' },
   ],
   ['market', 'ticker', 'price_date', 'close', 'source']
+)
+
+// Three FX events, chosen to exercise the branches /fx actually splits on: a
+// confirmed exchange (rate_status 'actual'), an estimated one, and a transfer
+// out whose destination is unknown — the case the page raises as a warning.
+insertMany(
+  db,
+  'fx_events',
+  [
+    { institution: 'Hana Bank', account: 'Sample FX Account', date: '2025-12-15', time: '10:30', event_type: 'EXCHANGE', direction: 'BUY_USD', usd_amount: 1000, krw_amount: 1300000, applied_rate: 1300, rate_status: 'actual', preference_rate: 80, reference_base_rate: 1302, reference_customer_rate: 1305, reference_source: 'Synthetic sample', spread_cost_krw: 2000, spread_savings_krw: 4000, realized_fx_gl_krw: null, counterparty: null, match_status: 'matched', confidence: 'high', method: 'statement', balance_usd: 1000, source: 'Synthetic sample', source_path: null, page: 1, note: null },
+    { institution: 'Toss Securities', account: 'Sample US Account', date: '2025-12-20', time: null, event_type: 'EXCHANGE', direction: 'BUY_USD', usd_amount: 500, krw_amount: 655000, applied_rate: 1310, rate_status: 'estimated', preference_rate: null, reference_base_rate: 1308, reference_customer_rate: null, reference_source: 'Synthetic sample', spread_cost_krw: 1000, spread_savings_krw: 0, realized_fx_gl_krw: null, counterparty: null, match_status: 'unmatched', confidence: 'low', method: 'inferred', balance_usd: 500, source: 'Synthetic sample', source_path: null, page: null, note: 'Rate inferred from the daily close' },
+    { institution: 'Hana Bank', account: 'Sample FX Account', date: '2026-01-01', time: null, event_type: 'TRANSFER', direction: 'OUT', usd_amount: 400, krw_amount: null, applied_rate: null, rate_status: 'not_applicable', preference_rate: null, reference_base_rate: null, reference_customer_rate: null, reference_source: null, spread_cost_krw: null, spread_savings_krw: null, realized_fx_gl_krw: null, counterparty: null, match_status: 'destination_account_missing', confidence: 'low', method: 'statement', balance_usd: 600, source: 'Synthetic sample', source_path: null, page: null, note: null },
+  ],
+  ['institution', 'account', 'date', 'time', 'event_type', 'direction', 'usd_amount', 'krw_amount', 'applied_rate', 'rate_status', 'preference_rate', 'reference_base_rate', 'reference_customer_rate', 'reference_source', 'spread_cost_krw', 'spread_savings_krw', 'realized_fx_gl_krw', 'counterparty', 'match_status', 'confidence', 'method', 'balance_usd', 'source', 'source_path', 'page', 'note']
+)
+insertMany(
+  db,
+  'fx_account_balances',
+  [
+    { institution: 'Hana Bank', account: 'Sample FX Account', as_of_date: '2025-12-15', balance_usd: 1000, source: 'Synthetic sample' },
+    { institution: 'Hana Bank', account: 'Sample FX Account', as_of_date: '2026-01-01', balance_usd: 600, source: 'Synthetic sample' },
+    { institution: 'Toss Securities', account: 'Sample US Account', as_of_date: '2025-12-20', balance_usd: 500, source: 'Synthetic sample' },
+  ],
+  ['institution', 'account', 'as_of_date', 'balance_usd', 'source']
+)
+// Two closes so the rate trend chart has a line rather than a point.
+insertMany(
+  db,
+  'historical_fx_rates',
+  [
+    { price_date: '2025-12-15', rate: 1300, source: 'sample' },
+    { price_date: '2025-12-20', rate: 1310, source: 'sample' },
+    { price_date: '2026-01-01', rate: fxRate, source: 'sample' },
+  ],
+  ['price_date', 'rate', 'source']
 )
 
 insertMany(db, 'validation_checks', [
