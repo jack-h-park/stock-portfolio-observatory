@@ -45,6 +45,15 @@ export const UI_COPY_BY_LANG = {
       running: 'Running',
       pass: 'Pass',
     },
+    error: {
+      title: 'This page could not be built',
+      body: 'The page asked the local database for something it could not answer. The rest of the dashboard is unaffected — the data itself has not changed.',
+      retry: 'Try again',
+      home: 'Back to overview',
+      reference: 'Reference',
+      notFoundTitle: 'No such page',
+      notFoundBody: 'That address does not match any screen in this dashboard.',
+    },
   },
   ko: {
     common: {
@@ -90,6 +99,15 @@ export const UI_COPY_BY_LANG = {
       degraded: '일부 기능 저하',
       running: '진행 중',
       pass: '통과',
+    },
+    error: {
+      title: '이 페이지를 만들 수 없었습니다',
+      body: '페이지가 로컬 데이터베이스에 요청한 내용을 처리하지 못했습니다. 대시보드의 나머지는 영향을 받지 않으며, 데이터 자체는 그대로입니다.',
+      retry: '다시 시도',
+      home: '개요로 돌아가기',
+      reference: '참조 번호',
+      notFoundTitle: '없는 페이지입니다',
+      notFoundBody: '이 주소에 해당하는 화면이 대시보드에 없습니다.',
     },
   },
 } as const
