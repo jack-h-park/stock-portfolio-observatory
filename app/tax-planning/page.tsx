@@ -32,8 +32,10 @@ import { sameKrw } from './view-utils'
 import { Select } from '@/components/form'
 import { DataTable } from '@/components/DataTable'
 import { getPageCopy } from '@/lib/ui-copy'
+import { routeMetadata } from '@/lib/page-names'
 
 export const dynamic = 'force-dynamic'
+export const generateMetadata = routeMetadata('/tax-planning')
 
 function scenario(value: string | undefined, fallback: FilingScenario): FilingScenario {
   return value === 'US_ONLY' || value === 'KR_ONLY' || value === 'US_AND_KR' ? value : fallback

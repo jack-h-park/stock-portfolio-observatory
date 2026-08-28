@@ -11,8 +11,10 @@ import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { applyFilters, applySearch, filterOptions, readFilters, withParam, type FilterGroup } from '@/lib/table-filter'
 import { formatSort, parseSort, sortRows, type TableSort } from '@/lib/table-sort'
 import type { Tone } from '@/lib/tone'
+import { routeMetadata } from '@/lib/page-names'
 
 export const dynamic = 'force-dynamic'
+export const generateMetadata = routeMetadata('/transactions')
 
 const BASE = '/transactions'
 

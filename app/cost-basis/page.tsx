@@ -13,8 +13,10 @@ import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { applyFilters, applySearch, filterOptions, readFilters, withParam, type FilterGroup } from '@/lib/table-filter'
 import { formatSort, parseSort, sortRows, type TableSort } from '@/lib/table-sort'
 import { COST_BASIS_STATUS_TONE } from '@/lib/tone'
+import { routeMetadata } from '@/lib/page-names'
 
 export const dynamic = 'force-dynamic'
+export const generateMetadata = routeMetadata('/cost-basis')
 
 const BASE = '/cost-basis'
 

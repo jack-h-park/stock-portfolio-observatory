@@ -6,8 +6,10 @@ import { fmtDateTime, fmtDuration, fmtNumber } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { getUiCopy } from '@/lib/ui-copy'
 import Link from 'next/link'
+import { routeMetadata } from '@/lib/page-names'
 
 export const dynamic = 'force-dynamic'
+export const generateMetadata = routeMetadata('/health')
 
 function parseMetrics(value: string | null) {
   if (!value) return {} as Record<string, any>

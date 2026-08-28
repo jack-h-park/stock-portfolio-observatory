@@ -12,8 +12,10 @@ import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
 import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { priorityTone } from '@/lib/tone'
+import { routeMetadata } from '@/lib/page-names'
 
 export const dynamic = 'force-dynamic'
+export const generateMetadata = routeMetadata('/data-ops')
 
 function coverageTone(status: AccountCoverage['status']): Tone {
   if (status === 'action_needed' || status === 'missing') return 'danger'
