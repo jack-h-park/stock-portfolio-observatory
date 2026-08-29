@@ -1,10 +1,9 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { DataTable } from '@/components/DataTable'
 import { FreshnessInline } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, Label, MetricField, MetricHeroCard } from '@/components/ui'
+import { Badge, Card, EmptyState, Label, MetricField, MetricHeroCard, TextLink } from '@/components/ui'
 import { getOperationalHealth, getPositionDetail, type FreshnessItem } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtNumber, fmtPct, fmtQuantity, shortHash } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
@@ -196,7 +195,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
         title={detail.name}
         emphasis={detail.ticker}
         subtitle={`${fmtNumber(detail.totals.account_count)} accounts · ${fmtNumber(detail.lotTotals.lot_count)} open tax lots · ${fmtNumber(detail.transactions.length)} transactions`}
-        action={<Link href="/holdings" className="text-caption font-medium text-info hover:underline">{copy.backToHoldings}</Link>}
+        action={<TextLink href="/holdings">{copy.backToHoldings}</TextLink>}
       />
 
       <Card title={copy.freshness} info={glossary.freshness.description} className="mb-5">
@@ -431,9 +430,9 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
         <Card
           title={copy.taxPreview}
           action={
-            <Link href={`/tax-planning?scenario=${taxPlan.assumptions.scenario}&objective=minimize-tax`} className="text-caption font-medium text-info hover:underline">
+            <TextLink href={`/tax-planning?scenario=${taxPlan.assumptions.scenario}&objective=minimize-tax`}>
               {copy.openPlanner}
-            </Link>
+            </TextLink>
           }
         >
           {taxPlan.recommended.length === 0 ? (

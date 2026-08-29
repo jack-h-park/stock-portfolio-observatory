@@ -87,7 +87,7 @@ export function FilterBar({
           `open` is an attribute, and Tailwind cannot vary it by breakpoint. */}
       <div className="hidden sm:block">{chips}</div>
       <details className="sm:hidden">
-        <summary className="cursor-pointer list-none text-caption font-medium text-ink-2">
+        <summary className="flex min-h-6 cursor-pointer list-none items-center text-caption font-medium text-ink-2">
           Filters{active ? ` (${active})` : ''}
         </summary>
         <div className="mt-2">{chips}</div>

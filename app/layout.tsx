@@ -35,7 +35,17 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <LanguageProvider language={language} currencyPreferences={currencyPreferences}>
           <div className="flex min-h-screen flex-col lg:flex-row">
             <Sidebar language={language} displayCurrency={currencyPreferences.displayCurrency} />
-            <main id="main-content" tabIndex={-1} className="jp-stagger min-w-0 flex-1 px-4 py-5 lg:px-8 lg:py-6">{children}</main>
+            {/*
+              max-sm:overflow-x-clip stops the page itself scrolling sideways on a
+              phone. /tax-settings could be dragged 234px to the right onto blank
+              space, because a table with a 48rem min-width still adds to the
+              document's scroll width even though the card around it scrolls that
+              table on its own. `clip` rather than `hidden`: hidden would make this
+              a scroll container and break the sticky table headers inside it.
+              Scoped below `sm` because that is where the help popovers are
+              position:fixed — above it they are absolute and would be cut off.
+            */}
+            <main id="main-content" tabIndex={-1} className="jp-stagger min-w-0 flex-1 px-4 py-5 max-sm:overflow-x-clip lg:px-8 lg:py-6">{children}</main>
           </div>
         </LanguageProvider>
       </body>

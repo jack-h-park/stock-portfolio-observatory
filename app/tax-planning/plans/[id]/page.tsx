@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
-import { Badge, Card, Label } from '@/components/ui'
+import { Badge, Card, Label, TextLink } from '@/components/ui'
 import { fmtDateShort, fmtDateTime, fmtKrw, fmtNumber } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { buildMonthlySalePlanSet } from '@/lib/tax-planning'
@@ -79,9 +79,9 @@ export default async function SavedTaxPlanPage({
             {/* createSavedTaxPlanAction has always redirected here with ?saved=1;
                 until now nothing read it, so saving a plan ended in silence. */}
             {query.saved === '1' ? <Badge tone="success">{labels.form.saved}</Badge> : null}
-            <Link href="/tax-planning" className="text-caption font-medium text-info hover:underline">
+            <TextLink href="/tax-planning">
               {copy.backToPlanner}
-            </Link>
+            </TextLink>
           </span>
         }
       />

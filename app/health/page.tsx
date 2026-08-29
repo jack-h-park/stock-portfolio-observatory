@@ -1,13 +1,12 @@
 import { PageHeader } from '@/components/PageHeader'
 import { FreshnessRows } from '@/components/Freshness'
-import { Badge, Card, EmptyState, Label, marketTone, type Tone } from '@/components/ui'
+import { Badge, Card, EmptyState, Label, TextLink, marketTone, type Tone } from '@/components/ui'
 import { getAccountCoverage, getEvidenceReports, getMeta, getOperationalHealth, getOverview, getReconciliationReview, getRefreshRuns, getValidationChecks, type ReconciliationReview } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtDuration, fmtNumber } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 
 type HealthCopy = ReturnType<typeof getPageCopy<'health'>>
-import Link from 'next/link'
 import { routeMetadata } from '@/lib/page-names'
 import { CardRow } from '@/components/layout'
 
@@ -111,7 +110,7 @@ export default async function HealthPage() {
       />
 
       <CardRow columns={3}>
-        <Card title={copy.accountCoverage} info={copy.accountCoverageInfo} accent={accountCoverage.actionNeeded > 0} className="xl:col-span-3" action={<Link href="/data-ops#account-coverage" className="text-caption font-medium text-info hover:underline">{copy.openUpdates}</Link>}>
+        <Card title={copy.accountCoverage} info={copy.accountCoverageInfo} accent={accountCoverage.actionNeeded > 0} className="xl:col-span-3" action={<TextLink href="/data-ops#account-coverage">{copy.openUpdates}</TextLink>}>
           <div className="grid grid-cols-3 gap-3 text-caption">
             <div><div className="text-caption text-ink-3">{copy.actionNeeded}</div><div className="font-medium tabular-nums text-danger">{fmtNumber(accountCoverage.actionNeeded)}</div></div>
             <div><div className="text-caption text-ink-3">{copy.dueSoon}</div><div className="font-medium tabular-nums text-warning">{fmtNumber(accountCoverage.dueSoon)}</div></div>
@@ -149,7 +148,7 @@ export default async function HealthPage() {
           title={copy.reconciliationCoverage}
           info={copy.reconciliationCoverageInfo}
           accent={reconciliationBreaks > 0}
-          action={<Link href="/reconciliation" className="text-caption font-medium text-info hover:underline">{copy.openReconciliation}</Link>}
+          action={<TextLink href="/reconciliation">{copy.openReconciliation}</TextLink>}
         >
           {reconciliation.length === 0 ? (
             <EmptyState>{copy.nothingToReconcile}</EmptyState>
