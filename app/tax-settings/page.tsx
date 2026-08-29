@@ -1,6 +1,5 @@
-import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, Label, MetricField, MetricHeroCard } from '@/components/ui'
+import { Badge, Card, Label, MetricField, MetricHeroCard, TextLink } from '@/components/ui'
 import { fmtDateTime, fmtNumber } from '@/lib/format'
 import { getMeta } from '@/lib/adapters/portfolio-db'
 import { getGlossary } from '@/lib/glossary'
@@ -56,9 +55,9 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
         action={
           <div className="flex items-center gap-2">
             {params.saved === '1' && <Badge tone="success">{copy.page.saved}</Badge>}
-            <Link href="/tax-planning" className="text-caption font-medium text-info hover:underline">
+            <TextLink href="/tax-planning">
               {copy.page.openPlanner}
-            </Link>
+            </TextLink>
           </div>
         }
       />

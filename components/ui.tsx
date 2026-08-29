@@ -9,6 +9,30 @@ import { HelpPopover } from '@/components/HelpPopover'
 // depth, drift, freshness, etc.) without cluttering the surface.
 export const InfoTooltip = HelpPopover
 
+/**
+ * The "Open reconciliation" / "Back to holdings" link that sits beside a card
+ * or page heading. Twenty copies of the same class string lived across
+ * thirteen files.
+ *
+ * min-h-6 is the point of collecting them: at 375px every one of these
+ * measured about 20px tall, under the 24 that WCAG 2.2 asks of a standalone
+ * target. They are not inline links inside a sentence, so the exception for
+ * those does not apply — they are controls sitting on their own in a header.
+ */
+export function TextLink({ href, children, className }: { href: string; children: ReactNode; className?: string }) {
+  return (
+    <Link
+      href={href}
+      className={clsx(
+        'inline-flex min-h-6 items-center text-caption font-medium text-info hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/40',
+        className
+      )}
+    >
+      {children}
+    </Link>
+  )
+}
+
 export function Card({
   children,
   className,

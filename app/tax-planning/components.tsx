@@ -233,7 +233,7 @@ export function MasterScenarioComparison({
                 <div className="flex flex-wrap items-center gap-2">
                   <Link
                     href={`/tax-planning?master=${scenarioRow.strategy}&pace=${planSet.executionMonths}&horizon=${horizonYears}`}
-                    className="text-body font-medium text-info hover:underline"
+                    className="inline-flex min-h-6 items-center text-body font-medium text-info hover:underline"
                   >
                     {scenarioRow.label}
                   </Link>
@@ -342,7 +342,7 @@ export function SavedPlansPanel({
                   <div key={saved.id} className="grid gap-3 py-3 first:pt-0 lg:grid-cols-[minmax(15rem,1fr)_12rem_11rem_auto] lg:items-center">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <Link href={`/tax-planning/plans/${saved.id}`} className="text-body font-medium text-info hover:underline">
+                        <Link href={`/tax-planning/plans/${saved.id}`} className="inline-flex min-h-6 items-center text-body font-medium text-info hover:underline">
                           {saved.name}
                         </Link>
                         <Badge tone={saved.status === 'active' ? 'warning' : saved.status === 'completed' ? 'success' : saved.status === 'reviewed' ? 'info' : 'neutral'}>

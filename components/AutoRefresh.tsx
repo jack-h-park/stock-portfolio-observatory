@@ -145,7 +145,7 @@ export function AutoRefresh({ seconds = 30 }: { seconds?: number }) {
         // screen-reader users, who have no other way to read it.
         aria-label={`${paused ? copy.resume : copy.pause} · ${label}`}
         className={clsx(
-          'inline-flex cursor-pointer items-center gap-1.5 text-label tabular-nums hover:text-ink-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info',
+          'inline-flex min-h-6 cursor-pointer items-center gap-1.5 text-label tabular-nums hover:text-ink-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info',
           paused ? 'text-warning' : 'text-ink-3'
         )}
       >
@@ -166,7 +166,7 @@ export function AutoRefresh({ seconds = 30 }: { seconds?: number }) {
         <button
           type="button"
           onClick={refresh}
-          className="cursor-pointer text-label font-medium text-info hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info"
+          className="inline-flex min-h-6 cursor-pointer items-center text-label font-medium text-info hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info"
         >
           {copy.refreshNow}
         </button>

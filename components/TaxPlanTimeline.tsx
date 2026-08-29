@@ -88,7 +88,7 @@ function ExecutionStatusControl({
         <SubmitButton>{copy.save}</SubmitButton>
       </div>
       <details className="mt-1.5 text-micro text-ink-3">
-        <summary className="cursor-pointer">{copy.actualsAndNote}</summary>
+        <summary className="flex min-h-6 cursor-pointer items-center">{copy.actualsAndNote}</summary>
         <div className="mt-2 grid gap-1.5">
           <Input
             type="date"

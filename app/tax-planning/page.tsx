@@ -1,7 +1,6 @@
-import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
-import { Badge, Button, Card, EmptyState, InfoTooltip, Label, Signed, marketTone } from '@/components/ui'
+import { Badge, Button, Card, EmptyState, InfoTooltip, Label, Signed, TextLink, marketTone } from '@/components/ui'
 import { getOperationalHealth, getOverview, getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
@@ -150,9 +149,9 @@ export default async function TaxPlanningPage({
                 the reader back to an unchanged page with no explanation. */}
             {params.error === 'name' && <Badge tone="danger">{getUiCopy(language).form.nameRequired}</Badge>}
             {taxPolicy.source === 'example' && <Badge tone="warning">{copy.page.usingExampleAssumptions}</Badge>}
-            <Link href="/tax-settings" className="text-caption font-medium text-info hover:underline">
+            <TextLink href="/tax-settings">
               {copy.page.editAssumptions}
-            </Link>
+            </TextLink>
           </div>
         }
       />

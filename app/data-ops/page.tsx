@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { FreshnessRows } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone, type Tone } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, MetricHeroCard, TextLink, marketTone, type Tone } from '@/components/ui'
 import { getAccountCoverage, getDataOpsReview, type AccountCoverage } from '@/lib/adapters/portfolio-db'
 import { fmtDate, fmtNumber } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
@@ -107,7 +107,7 @@ export default async function DataOpsPage() {
         action={issueCount ? <Badge tone="warning">{copy.needsReview(fmtNumber(issueCount))}</Badge> : <Badge tone="success">{copy.noPending}</Badge>}
       />
 
-      <Card title={coverageCopy.title} info={coverageCopy.info} accent={coverage.actionNeeded > 0} className="mb-5" action={<Link href="#account-coverage" className="text-caption font-medium text-info hover:underline">{language === 'ko' ? '전체 보기' : 'View all'}</Link>}>
+      <Card title={coverageCopy.title} info={coverageCopy.info} accent={coverage.actionNeeded > 0} className="mb-5" action={<TextLink href="#account-coverage">{language === 'ko' ? '전체 보기' : 'View all'}</TextLink>}>
         <div className="mb-4 grid grid-cols-3 gap-3">
           <MetricField label={coverageCopy.action} value={fmtNumber(coverage.actionNeeded)} tone={coverage.actionNeeded ? 'danger' : 'success'} valueClassName="text-title" />
           <MetricField label={coverageCopy.due} value={fmtNumber(coverage.dueSoon)} tone={coverage.dueSoon ? 'warning' : 'success'} valueClassName="text-title" />
@@ -255,9 +255,9 @@ export default async function DataOpsPage() {
                 key: 'href',
                 label: copy.columns.open,
                 render: (r) => (
-                  <Link href={r.href} className="text-caption font-medium text-info hover:underline">
+                  <TextLink href={r.href}>
                     {copy.view}
-                  </Link>
+                  </TextLink>
                 ),
               },
             ]}

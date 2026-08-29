@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone, type Tone } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, MetricHeroCard, TextLink, marketTone, type Tone } from '@/components/ui'
 import { getReconciliationReview } from '@/lib/adapters/portfolio-db'
 import { fmtNumber, fmtQuantity } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
@@ -126,9 +126,9 @@ export default async function ReconciliationPage({
                 key: 'href',
                 label: copy.columns.open,
                 render: (r) => (
-                  <Link href={r.href} className="text-caption font-medium text-info hover:underline">
+                  <TextLink href={r.href}>
                     {copy.view}
-                  </Link>
+                  </TextLink>
                 ),
               },
             ]}

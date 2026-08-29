@@ -231,7 +231,7 @@ export default async function RebalancePage() {
             {freshnessIssues > 0 && (
               <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption text-ink-2">
                 <div className="font-medium text-warning">{copy.staleInputs(freshnessIssues)}</div>
-                <Link href="/health" className="mt-1 inline-block text-label font-medium text-info hover:underline">
+                <Link href="/health" className="mt-1 inline-flex min-h-6 items-center text-label font-medium text-info hover:underline">
                   {copy.openHealth}
                 </Link>
               </div>
