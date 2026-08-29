@@ -10,6 +10,7 @@ import { formatUsd } from '@/lib/currency'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata } from '@/lib/page-names'
+import { CardRow, KpiBand } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/fx')
@@ -36,13 +37,13 @@ export default async function FxPage() {
         action={data.summary.missingDestinationCount ? <Badge tone="warning">{copy.qualityGap(fmtNumber(data.summary.missingDestinationCount))}</Badge> : <Badge tone="success">{copy.qualityOk}</Badge>}
       />
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+      <CardRow columns="hero">
         <MetricHeroCard title={copy.deployed} eyebrow="KRW → USD" value={money(data.summary.krwSpent)} hint={`${copy.acquired}: ${money(data.summary.usdBought, 'USD')}`}>
-          <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+          <KpiBand>
             <MetricField label={copy.avg} value={data.summary.weightedAverageRate == null ? 'n/a' : `₩${fmtNumber(data.summary.weightedAverageRate, 2)}`} hint="KRW per USD" valueClassName="text-title" />
             <MetricField label={copy.savings} value={money(data.summary.spreadSavingsKrw)} hint={copy.savingsHint} tone="success" valueClassName="text-title" />
             <MetricField label={copy.realized} value={data.summary.realizedFxGlKrw == null ? copy.realizedNone : money(data.summary.realizedFxGlKrw)} hint={copy.realizedHint} valueClassName="text-title" />
-          </div>
+          </KpiBand>
         </MetricHeroCard>
 
         <Card title={copy.method}>
@@ -54,7 +55,7 @@ export default async function FxPage() {
             <MetricField label={copy.current} value={data.summary.currentUsdKrw == null ? 'n/a' : `₩${fmtNumber(data.summary.currentUsdKrw, 2)}`} hint={data.summary.currentUsdKrwAsOf ?? 'n/a'} valueClassName="text-title" />
           </div>
         </Card>
-      </div>
+      </CardRow>
 
       <Card title={copy.hanaOutbound} className="mb-5" info={copy.hanaOutboundHint}>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -70,7 +71,7 @@ export default async function FxPage() {
         </div>
       </Card>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <CardRow>
         <Card title={copy.institutions}>
           <DataTable rows={data.institutions} columns={[
             { key: 'institution', label: copy.institution },
@@ -85,7 +86,7 @@ export default async function FxPage() {
           <PortfolioMultiTrendChart data={chartData} series={[{ dataKey: 'rate', name: 'KRW/USD', color: 'var(--brand-blue)' }]} height={290} valuePrefix="₩" valueSuffix="" axisLabel="KRW per USD" />
           <p className="mt-2 text-label leading-relaxed text-ink-3">{copy.estimateNote}</p>
         </Card>
-      </div>
+      </CardRow>
 
       <Card title={copy.transferReview} className="mb-5" info={copy.realizedHint}>
         <DataTable rows={missingTransfers} emptyMessage={language === 'ko' ? '미연결 이체가 없습니다.' : 'No unmatched owned-account transfers.'} columns={[

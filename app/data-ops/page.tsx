@@ -13,6 +13,7 @@ import { positionHref } from '@/lib/position-url'
 import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { priorityTone } from '@/lib/tone'
 import { routeMetadata } from '@/lib/page-names'
+import { CardRow, KpiBand } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/data-ops')
@@ -180,7 +181,7 @@ export default async function DataOpsPage() {
         </div>
       </Card>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+      <CardRow columns="hero">
         <MetricHeroCard
           title={copy.needsReviewTitle}
           info={copy.needsReviewInfo}
@@ -188,7 +189,7 @@ export default async function DataOpsPage() {
           value={fmtNumber(issueCount)}
           hint={issueCount ? copy.triageHint : copy.noPendingHint}
         >
-          <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+          <KpiBand>
             <MetricField
               label={copy.mappingSuggestions}
               value={fmtNumber(ops.mappingSuggestions.length)}
@@ -211,7 +212,7 @@ export default async function DataOpsPage() {
               tone={ops.sourceIssues.length + ops.validationIssues.length ? 'warning' : 'success'}
               valueClassName="text-title"
             />
-          </div>
+          </KpiBand>
         </MetricHeroCard>
 
         <Card title={copy.manualCoverage} info={copy.manualCoverageInfo}>
@@ -236,7 +237,7 @@ export default async function DataOpsPage() {
             </div>
           </div>
         </Card>
-      </div>
+      </CardRow>
 
       <Card title={copy.priorityWork} info={copy.priorityWorkInfo} className="mb-5" accent={ops.actionQueue.length > 0}>
         {ops.actionQueue.length === 0 ? (
@@ -264,7 +265,7 @@ export default async function DataOpsPage() {
         )}
       </Card>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <CardRow>
         <Card title={copy.manualSettings} info={copy.manualSettingsInfo}>
           <div className="space-y-2 text-caption text-ink-2">
             <div className="flex items-center justify-between gap-3">
@@ -297,9 +298,9 @@ export default async function DataOpsPage() {
             ]}
           />
         </Card>
-      </div>
+      </CardRow>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <CardRow>
         <Card title={copy.manualSuggestions} accent={ops.mappingSuggestions.length > 0}>
           {ops.mappingSuggestions.length === 0 ? (
             <EmptyState ok>{copy.noManualSuggestions}</EmptyState>
@@ -341,7 +342,7 @@ export default async function DataOpsPage() {
             />
           )}
         </Card>
-      </div>
+      </CardRow>
 
       <Card title={copy.tickerlessTriage} accent={ops.tickerlessIncome.length > 0}>
         {ops.tickerlessIncome.length === 0 ? (
@@ -365,7 +366,7 @@ export default async function DataOpsPage() {
         )}
       </Card>
 
-      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <CardRow spacing="above">
         <Card title={copy.missingValuation}>
           {ops.missingValuation.length === 0 ? (
             <EmptyState ok>{copy.noMissingValuation}</EmptyState>
@@ -414,7 +415,7 @@ export default async function DataOpsPage() {
             </div>
           )}
         </Card>
-      </div>
+      </CardRow>
     </>
   )
 }

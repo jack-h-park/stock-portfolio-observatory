@@ -13,6 +13,7 @@ import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { formatSort, parseSort, sortRows, type TableSort } from '@/lib/table-sort'
 import { priorityTone } from '@/lib/tone'
 import { routeMetadata } from '@/lib/page-names'
+import { CardRow, KpiBand } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/reconciliation')
@@ -52,7 +53,7 @@ export default async function ReconciliationPage({
         action={hasIssues ? <Badge tone="warning">{copy.reviewItems(fmtNumber(review.totals.issue_count))}</Badge> : <Badge tone="success">{copy.reconciled}</Badge>}
       />
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+      <CardRow columns="hero">
         <MetricHeroCard
           title={copy.reviewItemsTitle}
           info={copy.reviewItemsInfo}
@@ -60,7 +61,7 @@ export default async function ReconciliationPage({
           value={fmtNumber(review.totals.issue_count)}
           hint={hasIssues ? copy.queuedHint : copy.noActionsHint}
         >
-          <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+          <KpiBand>
             <MetricField
               label={copy.positions}
               value={fmtNumber(review.totals.position_count)}
@@ -83,7 +84,7 @@ export default async function ReconciliationPage({
               tone={sourceIssueCount ? 'danger' : 'success'}
               valueClassName="text-title"
             />
-          </div>
+          </KpiBand>
         </MetricHeroCard>
 
         <Card title={copy.coverageScope} info={copy.coverageScopeInfo}>
@@ -108,7 +109,7 @@ export default async function ReconciliationPage({
             </div>
           </div>
         </Card>
-      </div>
+      </CardRow>
 
       <Card title={copy.actionQueue} accent={review.actionQueue.length > 0}>
         {review.actionQueue.length === 0 ? (
@@ -185,7 +186,7 @@ export default async function ReconciliationPage({
         )}
       </Card>
 
-      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <CardRow spacing="above">
         <Card title={copy.incomeBreaks}>
           {review.incomeBreaks.length === 0 ? (
             <EmptyState ok>{copy.allIncomeMapped}</EmptyState>
@@ -227,7 +228,7 @@ export default async function ReconciliationPage({
             />
           )}
         </Card>
-      </div>
+      </CardRow>
     </>
   )
 }

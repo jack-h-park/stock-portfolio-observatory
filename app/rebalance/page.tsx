@@ -11,6 +11,7 @@ import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata } from '@/lib/page-names'
+import { CardRow, KpiBand } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/rebalance')
@@ -50,7 +51,7 @@ export default async function RebalancePage() {
         action={freshnessIssues ? <Badge tone="warning">{copy.freshnessIssues(freshnessIssues)}</Badge> : <Badge tone="success">{copy.inputsReady}</Badge>}
       />
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+      <CardRow columns="hero">
         <MetricHeroCard
           title={copy.largestMarketGap}
           info={glossary.marketGap.description}
@@ -58,7 +59,7 @@ export default async function RebalancePage() {
           value={fmtPct(largestGap)}
           hint={copy.marketGapHint}
         >
-          <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+          <KpiBand>
             <MetricField
               label={copy.baseMarketValue}
               value={money(rebalance.totals.base_market_value)}
@@ -79,7 +80,7 @@ export default async function RebalancePage() {
               tone={rebalance.watchCandidates.length + freshnessIssues ? 'warning' : 'success'}
               valueClassName="text-title"
             />
-          </div>
+          </KpiBand>
         </MetricHeroCard>
 
         <Card title={copy.executionRisk} info={copy.executionRiskInfo}>
@@ -107,9 +108,9 @@ export default async function RebalancePage() {
             </div>
           </div>
         </Card>
-      </div>
+      </CardRow>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
+      <CardRow columns={3}>
         <Card title={copy.marketTargetGaps}>
           <DataTable
             rows={rebalance.marketGaps}
@@ -183,9 +184,9 @@ export default async function RebalancePage() {
             </div>
           </div>
         </Card>
-      </div>
+      </CardRow>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <CardRow>
         <Card title={copy.reduceCandidates}>
           {rebalance.reduceCandidates.length === 0 ? (
             <EmptyState ok>{copy.noPositionAboveCap}</EmptyState>
@@ -220,7 +221,7 @@ export default async function RebalancePage() {
             />
           )}
         </Card>
-      </div>
+      </CardRow>
 
       <Card title={copy.holdWatch} accent={rebalance.watchCandidates.length + freshnessIssues > 0}>
         {rebalance.watchCandidates.length === 0 && freshnessIssues === 0 ? (

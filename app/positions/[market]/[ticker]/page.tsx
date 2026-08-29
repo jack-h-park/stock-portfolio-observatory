@@ -15,6 +15,7 @@ import { getGlossary } from '@/lib/glossary'
 import { bucketTone, signTone } from '@/lib/tone'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
+import { CardRow, KpiBand } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
 
@@ -235,7 +236,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
         </div>
       </Card>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+      <CardRow columns="hero">
         <MetricHeroCard
           title={copy.marketValue}
           info={copy.marketValueInfo}
@@ -243,7 +244,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
           value={moneyOrNa(copy, money, detail.totals.native_market_value, detail.currency)}
           hint={`${fmtQuantity(detail.totals.quantity, 4)} shares or units`}
         >
-          <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+          <KpiBand>
             <MetricField
               label={copy.costBasis}
               value={money(detail.totals.native_cost, detail.currency)}
@@ -267,7 +268,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               tone={signTone(detail.totals.base_unrealized_gl)}
               valueClassName="text-title"
             />
-          </div>
+          </KpiBand>
         </MetricHeroCard>
 
         <Card title={copy.coverage} info={copy.coverageInfo}>
@@ -293,9 +294,9 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             </div>
           </div>
         </Card>
-      </div>
+      </CardRow>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
+      <CardRow columns={3}>
         <Card title={copy.reconciliation} info={glossary.reconciliation.description}>
           <div className="space-y-3">
             <ReconciliationStrip label={copy.openQuantity} left={detail.totals.quantity} right={detail.lotTotals.open_quantity} diff={quantityDiff} unit="quantity" money={money} copy={copy} />
@@ -335,9 +336,9 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             </ul>
           )}
         </Card>
-      </div>
+      </CardRow>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <CardRow>
         <Card title={copy.accountHoldings}>
           <DataTable
             rows={detail.holdings}
@@ -376,7 +377,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             ]}
           />
         </Card>
-      </div>
+      </CardRow>
 
       <Card title={copy.activityTimeline} className="mb-5">
         {timeline.length === 0 ? (
@@ -398,7 +399,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
         )}
       </Card>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <CardRow>
         <Card title={copy.evidenceSummary}>
           <DataTable
             rows={lineageSummary}
@@ -424,9 +425,9 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             ]}
           />
         </Card>
-      </div>
+      </CardRow>
 
-      <div className="mb-5 grid grid-cols-1 gap-5">
+      <CardRow columns={1}>
         <Card
           title={copy.taxPreview}
           action={
@@ -523,7 +524,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             />
           )}
         </Card>
-      </div>
+      </CardRow>
     </>
   )
 }

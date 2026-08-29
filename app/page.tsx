@@ -25,6 +25,7 @@ import { positionHref } from '@/lib/position-url'
 import { signClass, signTone } from '@/lib/tone'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata } from '@/lib/page-names'
+import { CardRow, KpiBand } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/')
@@ -288,7 +289,7 @@ export default async function OverviewPage({
         action={overview.failedChecks + operationalIssues > 0 ? <Badge tone="warning">{copy.needsReview(overview.failedChecks + operationalIssues)}</Badge> : <Badge tone="success">{copy.healthy}</Badge>}
       />
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+      <CardRow columns="hero">
         <MetricHeroCard
           title={copy.portfolioValue}
           info={copy.portfolioValueInfo}
@@ -296,7 +297,7 @@ export default async function OverviewPage({
           value={money(globalValue, 'KRW')}
           hint={copy.valueHint}
         >
-          <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+          <KpiBand>
             <MetricField label={copy.totalCost} value={money(globalBase, 'KRW')} info={glossary.costBasis.description} valueClassName="text-title" />
             <MetricField
               label={copy.totalGain}
@@ -312,7 +313,7 @@ export default async function OverviewPage({
               tone={signTone(globalUnrealizedPct)}
               valueClassName="text-title"
             />
-          </div>
+          </KpiBand>
         </MetricHeroCard>
 
         <Card title={copy.supportingMetrics}>
@@ -338,7 +339,7 @@ export default async function OverviewPage({
             </div>
           </div>
         </Card>
-      </div>
+      </CardRow>
 
       <Card title={copy.marketBreakdown} info={copy.marketBreakdownInfo} className="mb-5">
         <div className="mb-5">
@@ -412,7 +413,7 @@ export default async function OverviewPage({
         </div>
       </Card>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <CardRow>
         <Card title={copy.concentration} info={copy.concentrationInfo}>
           <div className="flex h-full min-h-[190px] flex-col justify-center">
             <div className="text-hero font-medium leading-none tabular-nums text-ink">{topFiveShare}%</div>
@@ -468,7 +469,7 @@ export default async function OverviewPage({
             </div>
           </div>
         </Card>
-      </div>
+      </CardRow>
 
       <Card
         title={copy.snapshotTrend(selectedScopeLabel)}
@@ -584,7 +585,7 @@ export default async function OverviewPage({
         </div>
       </Card>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <CardRow>
         <Card title={copy.topHoldingsByCost}>
           <TrendBarChart
             data={topHoldingChartData}
@@ -615,9 +616,9 @@ export default async function OverviewPage({
           />
           <p className="mt-2 text-label text-ink-3">{copy.dividendTrendNote}</p>
         </Card>
-      </div>
+      </CardRow>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <CardRow spacing="none">
         <Card title={copy.accountAllocation}>
           {accounts.length === 0 ? (
             <EmptyState>{copy.noAccountData}</EmptyState>
@@ -664,7 +665,7 @@ export default async function OverviewPage({
             ))}
           </ul>
         </Card>
-      </div>
+      </CardRow>
     </>
   )
 }

@@ -12,6 +12,7 @@ import { CheckField, CompactCheck, Field, Select } from '@/components/form'
 import { DataTable } from '@/components/DataTable'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata } from '@/lib/page-names'
+import { CardRow, KpiBand } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/tax-settings')
@@ -61,7 +62,7 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
         }
       />
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+      <CardRow columns="hero">
         <MetricHeroCard
           title={copy.hero.title}
           info={copy.hero.info}
@@ -69,7 +70,7 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
           value={state.source === 'local' ? copy.hero.local : copy.hero.example}
           hint={state.source === 'local' ? copy.hero.localHint : copy.hero.exampleHint}
         >
-          <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+          <KpiBand>
             <MetricField
               label={copy.hero.scenario}
               value={scenarioLabel(policy.activeScenario, copy)}
@@ -88,7 +89,7 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
               hint={copy.hero.updatedHint}
               valueClassName="text-title"
             />
-          </div>
+          </KpiBand>
         </MetricHeroCard>
 
         <Card title={copy.readOrder.title} info={copy.readOrder.info}>
@@ -113,7 +114,7 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
             </div>
           </div>
         </Card>
-      </div>
+      </CardRow>
 
       <form action={saveTaxSettings} className="space-y-5">
         <Card title={copy.filingProfile.title} accent>
@@ -235,7 +236,7 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
           </div>
         </Card>
 
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <CardRow spacing="none">
           <Card title={copy.us.title}>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label={copy.us.fallbackShortTermRate} name="usFederalShortTermRatePct" defaultValue={assumptionNumber(policy, 'US', 'federalShortTermRatePct', 24)} suffix="%" />
@@ -286,7 +287,7 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
               </div>
             </div>
           </Card>
-        </div>
+        </CardRow>
 
         <Card title={copy.localPolicy.title}>
           <div className="space-y-3 text-caption text-ink-2">
