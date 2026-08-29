@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { createSavedTaxPlanAction } from '@/app/tax-planning/actions'
 import { DataTable } from '@/components/DataTable'
-import { Badge, Button, Card, EmptyState, Label, MetricField, Signed, marketTone, type Tone } from '@/components/ui'
+import { Badge, Card, EmptyState, Label, MetricField, Signed, marketTone, type Tone } from '@/components/ui'
 import type { createMoneyFormatter } from '@/lib/currency'
 import { fmtDateShort, fmtDateTime, fmtDurationDays, fmtNumber, fmtQuantity } from '@/lib/format'
 import { positionHref } from '@/lib/position-url'
@@ -12,6 +12,7 @@ import type { getPageCopy } from '@/lib/ui-copy'
 
 type TaxPlanningCopy = ReturnType<typeof getPageCopy<'taxPlanning'>>
 import { Input } from '@/components/form'
+import { SubmitButton } from '@/components/SubmitButton'
 
 type MoneyFormatter = ReturnType<typeof createMoneyFormatter>
 
@@ -322,10 +323,11 @@ export function SavedPlansPanel({
             name="name"
             type="text"
             maxLength={120}
+            required
             placeholder={copy.savedPlans.placeholder} className="mt-1 w-full" />
-          <Button type="submit" variant="solid" size="md" className="mt-2 w-full">
+          <SubmitButton variant="solid" size="md" className="mt-2 w-full">
             {copy.savedPlans.saveAsDraft}
-          </Button>
+          </SubmitButton>
           <div className="mt-2 text-micro leading-relaxed text-ink-3">
             {copy.savedPlans.storageNote}
           </div>

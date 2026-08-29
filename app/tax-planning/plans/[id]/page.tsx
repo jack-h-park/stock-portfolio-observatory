@@ -3,16 +3,17 @@ import { notFound } from 'next/navigation'
 import { getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
-import { Badge, Button, Card, Label } from '@/components/ui'
+import { Badge, Card, Label } from '@/components/ui'
 import { fmtDateShort, fmtDateTime, fmtKrw, fmtNumber } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { buildMonthlySalePlanSet } from '@/lib/tax-planning'
 import { getSavedTaxPlan, savedTaxPlanProgress, type SavedTaxPlanStatus } from '@/lib/tax-plan-store'
 import { getTaxPolicyState } from '@/lib/tax-policy'
 import { updateSavedTaxPlanStatusAction } from '@/app/tax-planning/actions'
-import { getPageCopy } from '@/lib/ui-copy'
+import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { Select } from '@/components/form'
 import type { Metadata } from 'next'
+import { SubmitButton } from '@/components/SubmitButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,10 +36,18 @@ function deltaLabel(value: number, noChange: string, formatter: (amount: number)
   return `${value > 0 ? '+' : '-'}${formatter(Math.abs(value))}`
 }
 
-export default async function SavedTaxPlanPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SavedTaxPlanPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ saved?: string }>
+}) {
   const { id } = await params
+  const query = await searchParams
   const language = await getLanguage()
   const copy = getPageCopy('taxPlanning', language).savedPlanDetail
+  const labels = getUiCopy(language)
   const saved = getSavedTaxPlan(id)
   if (!saved) notFound()
   const progress = savedTaxPlanProgress(saved)
@@ -66,9 +75,14 @@ export default async function SavedTaxPlanPage({ params }: { params: Promise<{ i
         title={saved.name}
         subtitle={copy.subtitle(fmtDateShort(saved.asOfDate, language), saved.revision)}
         action={
-          <Link href="/tax-planning" className="text-caption font-medium text-info hover:underline">
-            {copy.backToPlanner}
-          </Link>
+          <span className="flex items-center gap-3">
+            {/* createSavedTaxPlanAction has always redirected here with ?saved=1;
+                until now nothing read it, so saving a plan ended in silence. */}
+            {query.saved === '1' ? <Badge tone="success">{labels.form.saved}</Badge> : null}
+            <Link href="/tax-planning" className="text-caption font-medium text-info hover:underline">
+              {copy.backToPlanner}
+            </Link>
+          </span>
         }
       />
 
@@ -121,9 +135,9 @@ export default async function SavedTaxPlanPage({ params }: { params: Promise<{ i
               <option value="completed">{copy.statusLabels.completed}</option>
               <option value="archived">{copy.statusLabels.archived}</option>
             </Select>
-            <Button type="submit" variant="solid" size="md" className="mt-2 w-full">
+            <SubmitButton variant="solid" size="md" className="mt-2 w-full">
               {copy.updateStatus}
-            </Button>
+            </SubmitButton>
             <div className="mt-3 border-t border-line-subtle pt-2 text-micro leading-relaxed text-ink-3">
               {copy.created} {fmtDateTime(saved.createdAt)}<br />
               {copy.updated} {fmtDateTime(saved.updatedAt)}

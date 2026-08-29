@@ -31,7 +31,7 @@ import { DecisionSummary, PlanningMap, buildOpportunityRows, opportunitySummary,
 import { sameKrw } from './view-utils'
 import { Select } from '@/components/form'
 import { DataTable } from '@/components/DataTable'
-import { getPageCopy } from '@/lib/ui-copy'
+import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { routeMetadata } from '@/lib/page-names'
 import { CardRow } from '@/components/layout'
 
@@ -79,6 +79,7 @@ export default async function TaxPlanningPage({
     pace?: string
     month?: string
     page?: string
+    error?: string
   }>
 }) {
   const params = await searchParams
@@ -144,6 +145,10 @@ export default async function TaxPlanningPage({
         subtitle={copy.page.subtitle}
         action={
           <div className="flex items-center gap-2">
+            {/* The only way to land here with error=name is a form posted without
+                one, which the browser normally blocks. Saying so beats bouncing
+                the reader back to an unchanged page with no explanation. */}
+            {params.error === 'name' && <Badge tone="danger">{getUiCopy(language).form.nameRequired}</Badge>}
             {taxPolicy.source === 'example' && <Badge tone="warning">{copy.page.usingExampleAssumptions}</Badge>}
             <Link href="/tax-settings" className="text-caption font-medium text-info hover:underline">
               {copy.page.editAssumptions}

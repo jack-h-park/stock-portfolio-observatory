@@ -14,6 +14,7 @@ import type { SavedInstructionExecution, SavedInstructionStatus } from '@/lib/ta
 import { bucketTone } from '@/lib/tone'
 import { Input, Select } from '@/components/form'
 import { DataTable } from '@/components/DataTable'
+import { SubmitButton } from '@/components/SubmitButton'
 
 const PAGE_SIZE = 50
 
@@ -84,7 +85,7 @@ function ExecutionStatusControl({
           <option value="executed">{copy.executedStatus}</option>
           <option value="skipped">{copy.skippedStatus}</option>
         </Select>
-        <Button type="submit">{copy.save}</Button>
+        <SubmitButton>{copy.save}</SubmitButton>
       </div>
       <details className="mt-1.5 text-micro text-ink-3">
         <summary className="cursor-pointer">{copy.actualsAndNote}</summary>

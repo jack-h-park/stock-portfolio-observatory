@@ -67,6 +67,11 @@ export const UI_COPY_BY_LANG = {
       resume: 'Resume auto-refresh',
       refreshNow: 'Refresh now',
     },
+    form: {
+      saving: 'Saving…',
+      saved: 'Saved',
+      nameRequired: 'A plan needs a name before it can be saved.',
+    },
   },
   ko: {
     common: {
@@ -134,6 +139,11 @@ export const UI_COPY_BY_LANG = {
       pause: '자동 갱신 멈추기',
       resume: '자동 갱신 다시 시작',
       refreshNow: '지금 갱신',
+    },
+    form: {
+      saving: '저장 중…',
+      saved: '저장됨',
+      nameRequired: '계획을 저장하려면 이름이 필요합니다.',
     },
   },
 } as const
