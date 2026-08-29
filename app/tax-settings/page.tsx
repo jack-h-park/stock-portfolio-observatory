@@ -161,7 +161,12 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
                 key: 'scenario',
                 label: copy.annualTimeline.defaultScenario,
                 render: (p: TaxYearProfile) => (
-                  <Select name={`filingScenario_${p.year}`} defaultValue={p.filingScenario} className="w-full min-w-[8rem]">
+                  <Select
+                    name={`filingScenario_${p.year}`}
+                    defaultValue={p.filingScenario}
+                    aria-label={`${p.year} ${copy.annualTimeline.defaultScenario}`}
+                    className="w-full min-w-[8rem]"
+                  >
                     <option value="US_ONLY">{copy.scenarios.US_ONLY}</option>
                     <option value="KR_ONLY">{copy.scenarios.KR_ONLY}</option>
                     <option value="US_AND_KR">{copy.scenarios.US_AND_KR}</option>
@@ -224,7 +229,12 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
                 key: 'status',
                 label: copy.annualTimeline.status,
                 render: (p: TaxYearProfile) => (
-                  <Select name={`status_${p.year}`} defaultValue={p.status} className="w-full min-w-[7rem]">
+                  <Select
+                    name={`status_${p.year}`}
+                    defaultValue={p.status}
+                    aria-label={`${p.year} ${copy.annualTimeline.status}`}
+                    className="w-full min-w-[7rem]"
+                  >
                     <option value="assumed">{copy.annualTimeline.assumed}</option>
                     <option value="confirmed">{copy.annualTimeline.confirmed}</option>
                   </Select>
