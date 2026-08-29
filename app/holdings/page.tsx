@@ -12,7 +12,7 @@ import { positionHref } from '@/lib/position-url'
 import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { applyFilters, applySearch, filterOptions, readFilters, withParam, type FilterGroup } from '@/lib/table-filter'
 import { formatSort, parseSort, sortRows, type TableSort } from '@/lib/table-sort'
-import { routeMetadata } from '@/lib/page-names'
+import { routeMetadata, routeSection } from '@/lib/page-names'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/holdings')
@@ -65,7 +65,7 @@ export default async function HoldingsPage({
   return (
     <>
       <PageHeader
-        eyebrow="Portfolio"
+        eyebrow={routeSection('/holdings', language)}
         title={language === 'ko' ? '보유종목' : 'Holdings'}
         emphasis={language === 'ko' ? '보유종목' : 'Holdings'}
         subtitle={

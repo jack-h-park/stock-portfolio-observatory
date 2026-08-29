@@ -2,7 +2,6 @@ import { defineCopy } from '@/lib/ui-copy/define'
 
 export const overview = defineCopy({
   en: {
-    eyebrow: 'Portfolio',
     title: 'Portfolio Overview',
     emphasis: 'Overview',
     subtitle: (ingestedAt: string, fx: string | null) =>
@@ -55,7 +54,6 @@ export const overview = defineCopy({
     gain: 'Gain',
     return: 'Return',
     share: 'Share',
-    appEyebrow: 'Stock Portfolio Observatory',
     dbMissingTitle: 'Portfolio DB not found',
     dbMissingHint: (path: string) => <>Run <code className="font-mono text-caption">pnpm ingest</code> to generate <code className="font-mono text-caption">{path}</code>.</>,
     snapshotTrend: (scope: string) => `${scope} snapshot trend`,
@@ -106,7 +104,6 @@ export const overview = defineCopy({
     },
   },
   ko: {
-    eyebrow: '포트폴리오',
     title: '포트폴리오 개요',
     emphasis: '개요',
     subtitle: (ingestedAt: string, fx: string | null) =>
@@ -159,7 +156,6 @@ export const overview = defineCopy({
     gain: '손익',
     return: '수익률',
     share: '비중',
-    appEyebrow: 'Stock Portfolio Observatory',
     dbMissingTitle: '포트폴리오 DB를 찾을 수 없습니다',
     dbMissingHint: (path: string) => <><code className="font-mono text-caption">pnpm ingest</code>를 실행해 <code className="font-mono text-caption">{path}</code>를 생성하세요.</>,
     snapshotTrend: (scope: string) => `${scope} 스냅샷 추이`,

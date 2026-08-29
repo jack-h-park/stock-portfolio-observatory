@@ -2,7 +2,6 @@ import { defineCopy } from '@/lib/ui-copy/define'
 
 export const cryptoPremium = defineCopy({
   en: {
-    eyebrow: 'Crypto',
     title: 'Korea Premium',
     emphasis: 'Premium',
     subtitleWithData: (asOf: string) => `Domestic versus global pricing for the coins actually held, as of ${asOf}.`,
@@ -41,7 +40,6 @@ export const cryptoPremium = defineCopy({
     },
   },
   ko: {
-    eyebrow: '가상자산',
     title: '코리아 프리미엄',
     emphasis: '프리미엄',
     subtitleWithData: (asOf: string) => `실제 보유한 코인의 국내·해외 가격 비교입니다. 기준 ${asOf}.`,

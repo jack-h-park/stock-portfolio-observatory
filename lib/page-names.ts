@@ -61,6 +61,28 @@ export function routeName(href: RouteHref, language: Language): string {
 }
 
 /**
+ * The sidebar section a route sits in — "Core Workflows", "Tax", "상세 기록".
+ *
+ * This is what the eyebrow above each heading says. It used to say whatever the
+ * page happened to choose: sixteen of eighteen routes carried an overline that
+ * was not their section, and it followed no other rule either — not the
+ * heading's first word (/dividends said "Portfolio"), not any real grouping
+ * (/data-ops said "System & Advanced", a section that does not exist). So the
+ * one line above the title, whose whole job is to say where you are, was the
+ * line least likely to be true.
+ *
+ * Read back from the sidebar rather than restated per page, for the same reason
+ * routeName is: a copy of a name is a name that drifts.
+ */
+export function routeSection(href: RouteHref, language: Language): string {
+  for (const section of getPageCopy('sidebar', language).sections) {
+    if (section.items.some((item) => item.href === href)) return section.label
+  }
+  // Unreachable while tests/page-names.test.ts passes.
+  return ''
+}
+
+/**
  * A page's `generateMetadata`. The root layout's template appends the
  * application name, so this supplies only the part that varies.
  *

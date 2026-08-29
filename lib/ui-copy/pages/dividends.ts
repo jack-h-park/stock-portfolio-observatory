@@ -2,7 +2,6 @@ import { defineCopy } from '@/lib/ui-copy/define'
 
 export const dividends = defineCopy({
   en: {
-    eyebrow: 'Portfolio',
     title: 'Dividends',
     emphasis: 'Dividends',
     subtitle: (total: string, rows: string) => `${total} across ${rows} dividend rows.`,
@@ -14,7 +13,6 @@ export const dividends = defineCopy({
     rows: (count: string) => `${count} rows`,
   },
   ko: {
-    eyebrow: '상세 기록',
     title: '배당 내역',
     emphasis: '내역',
     subtitle: (total: string, rows: string) => `배당 ${rows}건, 합계 ${total}.`,

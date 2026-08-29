@@ -10,7 +10,7 @@ import { scenarioLabel } from './copy'
 import { CheckField, CompactCheck, Field, Select } from '@/components/form'
 import { DataTable } from '@/components/DataTable'
 import { getPageCopy } from '@/lib/ui-copy'
-import { routeMetadata } from '@/lib/page-names'
+import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow, KpiBand } from '@/components/layout'
 import { SubmitButton } from '@/components/SubmitButton'
 
@@ -48,7 +48,7 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
   return (
     <>
       <PageHeader
-        eyebrow={copy.page.eyebrow}
+        eyebrow={routeSection('/tax-settings', language)}
         title={copy.page.title}
         emphasis={copy.page.emphasis}
         subtitle={copy.page.subtitle}

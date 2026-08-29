@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 
-import { ROUTE_HREFS, routeName } from '@/lib/page-names'
+import { ROUTE_HREFS, routeName, routeSection } from '@/lib/page-names'
 import { getPageCopy } from '@/lib/ui-copy'
 
 const LANGUAGES = ['en', 'ko'] as const
@@ -43,6 +43,32 @@ test('route names are distinct within a language', () => {
       const previous = seen.get(name)
       assert.equal(previous, undefined, `${href} and ${previous} share the ${language} name "${name}"`)
       seen.set(name, href)
+    }
+  }
+})
+
+// The eyebrow above each heading is read back from the sidebar, so it cannot
+// drift from the section the route actually sits in. It used to be chosen per
+// page, and sixteen of eighteen routes named something that was not their
+// section — including one, "System & Advanced", that was not a section at all.
+test('every route resolves to its sidebar section', () => {
+  for (const language of LANGUAGES) {
+    const sections = getPageCopy('sidebar', language).sections
+    for (const href of ROUTE_HREFS) {
+      const label = routeSection(href, language)
+      const owner = sections.find((section) => section.items.some((item) => item.href === href))
+      assert.ok(owner, `${href} is in ROUTE_HREFS but in no ${language} sidebar section`)
+      assert.equal(label, owner.label, `${href} (${language}) resolved to "${label}", not "${owner.label}"`)
+    }
+  }
+})
+
+// routeSection falls back to an empty string rather than throwing, which would
+// render a blank overline instead of failing.
+test('no route resolves to an empty section', () => {
+  for (const language of LANGUAGES) {
+    for (const href of ROUTE_HREFS) {
+      assert.ok(routeSection(href, language).trim().length > 0, `${href} (${language}) has an empty section`)
     }
   }
 })

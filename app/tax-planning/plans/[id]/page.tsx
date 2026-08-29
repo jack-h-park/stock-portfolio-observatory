@@ -14,6 +14,7 @@ import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { Select } from '@/components/form'
 import type { Metadata } from 'next'
 import { SubmitButton } from '@/components/SubmitButton'
+import { routeSection } from '@/lib/page-names'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,7 +72,7 @@ export default async function SavedTaxPlanPage({
   return (
     <>
       <PageHeader
-        eyebrow={copy.eyebrow}
+        eyebrow={routeSection('/tax-planning', language)}
         title={saved.name}
         subtitle={copy.subtitle(fmtDateShort(saved.asOfDate, language), saved.revision)}
         action={
