@@ -43,8 +43,14 @@ export async function createSavedTaxPlanAction(formData: FormData) {
     executionMonths,
     horizonYears,
   })
+  // The browser blocks an empty field with `required`, but a form can be
+  // posted without one. Storing a nameless plan would leave a row that cannot
+  // be told from the next one — and since #145 the tab title is the plan name,
+  // a blank tab too.
+  const name = String(formData.get('name') ?? '').trim()
+  if (!name) redirect('/tax-planning?error=name')
   const saved = createSavedTaxPlan({
-    name: String(formData.get('name') ?? ''),
+    name,
     plan: planSet.selectedPlan,
     asOfDate: planSet.asOfDate,
     horizonYears,

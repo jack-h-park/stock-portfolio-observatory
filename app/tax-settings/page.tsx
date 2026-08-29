@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Button, Card, Label, MetricField, MetricHeroCard } from '@/components/ui'
+import { Badge, Card, Label, MetricField, MetricHeroCard } from '@/components/ui'
 import { fmtDateTime, fmtNumber } from '@/lib/format'
 import { getMeta } from '@/lib/adapters/portfolio-db'
 import { getGlossary } from '@/lib/glossary'
@@ -13,6 +13,7 @@ import { DataTable } from '@/components/DataTable'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata } from '@/lib/page-names'
 import { CardRow, KpiBand } from '@/components/layout'
+import { SubmitButton } from '@/components/SubmitButton'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/tax-settings')
@@ -297,9 +298,9 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
               <span className="text-ink-3">{copy.localPolicy.fallback}</span>
               <code className="break-words font-mono text-label text-ink">{state.examplePath}</code>
             </div>
-            <Button type="submit" variant="solid" size="md">
+            <SubmitButton variant="solid" size="md">
               {copy.localPolicy.save}
-            </Button>
+            </SubmitButton>
           </div>
         </Card>
 
