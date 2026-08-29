@@ -4,7 +4,9 @@ import { Badge, Card, EmptyState, Label, marketTone, type Tone } from '@/compone
 import { getAccountCoverage, getEvidenceReports, getMeta, getOperationalHealth, getOverview, getReconciliationReview, getRefreshRuns, getValidationChecks, type ReconciliationReview } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtDuration, fmtNumber } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
-import { getUiCopy } from '@/lib/ui-copy'
+import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
+
+type HealthCopy = ReturnType<typeof getPageCopy<'health'>>
 import Link from 'next/link'
 import { routeMetadata } from '@/lib/page-names'
 import { CardRow } from '@/components/layout'
@@ -64,24 +66,24 @@ type ReconciliationRow = {
  * A brokerage whose holdings have no tax lots behind them cannot be
  * reconciled at all, and says so instead of passing by default.
  */
-function reconciliationRows(review: ReconciliationReview): ReconciliationRow[] {
+function reconciliationRows(review: ReconciliationReview, copy: HealthCopy): ReconciliationRow[] {
   const capped = review.positionBreaks.length >= POSITION_BREAK_CAP
   return review.coverage
     .filter((c) => c.holding_positions > 0 || c.lot_positions > 0)
     .map((c) => {
       const breaks = review.positionBreaks.filter((b) => b.market === c.market && b.brokerage === c.brokerage)
       const key = `${c.market}:${c.brokerage}`
-      if (c.lot_positions === 0) return { key, market: c.market, brokerage: c.brokerage, tone: 'warning', label: 'No lot detail' }
-      if (breaks.length === 0) return { key, market: c.market, brokerage: c.brokerage, tone: 'success', label: 'Matched' }
+      if (c.lot_positions === 0) return { key, market: c.market, brokerage: c.brokerage, tone: 'warning', label: copy.noLotDetail }
+      if (breaks.length === 0) return { key, market: c.market, brokerage: c.brokerage, tone: 'success', label: copy.matched }
       const tone: Tone = breaks.some((b) => b.status === 'quantity_break') ? 'danger' : 'warning'
-      const count = `${fmtNumber(breaks.length)}${capped ? '+' : ''}`
-      return { key, market: c.market, brokerage: c.brokerage, tone, label: `${count} ${breaks.length === 1 && !capped ? 'break' : 'breaks'}` }
+      return { key, market: c.market, brokerage: c.brokerage, tone, label: copy.breaks(breaks.length, capped) }
     })
 }
 
 export default async function HealthPage() {
   const language = await getLanguage()
   const uiCopy = getUiCopy(language)
+  const copy = getPageCopy('health', language)
   const freshnessLabels = uiCopy.freshness.labels
   const runStatusLabels = uiCopy.runStatus
   const meta = getMeta()
@@ -91,7 +93,7 @@ export default async function HealthPage() {
   const operational = getOperationalHealth()
   const accountCoverage = getAccountCoverage()
   const refreshRuns = getRefreshRuns()
-  const reconciliation = reconciliationRows(getReconciliationReview())
+  const reconciliation = reconciliationRows(getReconciliationReview(), copy)
   const reconciliationBreaks = reconciliation.filter((row) => row.tone !== 'success').length
   const latestRefresh = refreshRuns[0]
   const failed = checks.filter((c) => c.status !== 'pass')
@@ -101,23 +103,23 @@ export default async function HealthPage() {
   return (
     <>
       <PageHeader
-        eyebrow="System"
-        title="Data Health"
-        emphasis="Health"
-        subtitle={`The latest data check ran at ${fmtDateTime(meta.ingested_at)}.`}
-        action={issueCount ? <Badge tone={errors.length || operational.summary.missing ? 'danger' : 'warning'}>Needs review {issueCount}</Badge> : <Badge tone="success">All checks passed</Badge>}
+        eyebrow={copy.eyebrow}
+        title={copy.title}
+        emphasis={copy.emphasis}
+        subtitle={copy.subtitle(fmtDateTime(meta.ingested_at))}
+        action={issueCount ? <Badge tone={errors.length || operational.summary.missing ? 'danger' : 'warning'}>{copy.needsReview(fmtNumber(issueCount))}</Badge> : <Badge tone="success">{copy.allChecksPassed}</Badge>}
       />
 
       <CardRow columns={3}>
-        <Card title="Account coverage" info="How far each brokerage account's source data reaches. This is separate from file integrity." accent={accountCoverage.actionNeeded > 0} className="xl:col-span-3" action={<Link href="/data-ops#account-coverage" className="text-caption font-medium text-info hover:underline">Open updates</Link>}>
+        <Card title={copy.accountCoverage} info={copy.accountCoverageInfo} accent={accountCoverage.actionNeeded > 0} className="xl:col-span-3" action={<Link href="/data-ops#account-coverage" className="text-caption font-medium text-info hover:underline">{copy.openUpdates}</Link>}>
           <div className="grid grid-cols-3 gap-3 text-caption">
-            <div><div className="text-caption text-ink-3">Action needed</div><div className="font-medium tabular-nums text-danger">{fmtNumber(accountCoverage.actionNeeded)}</div></div>
-            <div><div className="text-caption text-ink-3">Due soon</div><div className="font-medium tabular-nums text-warning">{fmtNumber(accountCoverage.dueSoon)}</div></div>
-            <div><div className="text-caption text-ink-3">Current</div><div className="font-medium tabular-nums text-success">{fmtNumber(accountCoverage.current)}</div></div>
+            <div><div className="text-caption text-ink-3">{copy.actionNeeded}</div><div className="font-medium tabular-nums text-danger">{fmtNumber(accountCoverage.actionNeeded)}</div></div>
+            <div><div className="text-caption text-ink-3">{copy.dueSoon}</div><div className="font-medium tabular-nums text-warning">{fmtNumber(accountCoverage.dueSoon)}</div></div>
+            <div><div className="text-caption text-ink-3">{copy.current}</div><div className="font-medium tabular-nums text-success">{fmtNumber(accountCoverage.current)}</div></div>
           </div>
-          <div className="mt-3 text-label leading-relaxed text-ink-3">The account table names the exact document, account, cutoff date, and destination path. “Fresh” below continues to mean file integrity.</div>
+          <div className="mt-3 text-label leading-relaxed text-ink-3">{copy.accountCoverageNote}</div>
         </Card>
-        <Card title="Operational Status" info="Shows whether prices, FX rates, and source files are collected normally and agree with each other." accent={issueCount > 0}>
+        <Card title={copy.operationalStatus} info={copy.operationalStatusInfo} accent={issueCount > 0}>
           <div className="grid grid-cols-2 gap-3 text-caption">
             <div>
               <div className="text-caption text-ink-3">{freshnessLabels.fresh}</div>
@@ -136,46 +138,40 @@ export default async function HealthPage() {
               <div className="font-medium tabular-nums text-danger">{fmtNumber(operational.summary.missing)}</div>
             </div>
           </div>
-          <div className="mt-3 text-label leading-relaxed text-ink-3">
-            Korean and US stock prices are marked stale after 36 hours, crypto after 8 hours, and FX after 7 days. Source files are marked changed when their size or modified time differs from ingestion.
-          </div>
+          <div className="mt-3 text-label leading-relaxed text-ink-3">{copy.stalenessNote}</div>
         </Card>
 
-        <Card title="Price & FX Freshness">
+        <Card title={copy.priceFxFreshness}>
           <FreshnessRows items={operational.snapshots} language={language} />
         </Card>
 
         <Card
-          title="Reconciliation Coverage"
-          info="Whether each brokerage's holding summary agrees with its tax-lot records in the latest ingest. Breaks are counted per position; the Reconciliation page lists them."
+          title={copy.reconciliationCoverage}
+          info={copy.reconciliationCoverageInfo}
           accent={reconciliationBreaks > 0}
-          action={<Link href="/reconciliation" className="text-caption font-medium text-info hover:underline">Open reconciliation</Link>}
+          action={<Link href="/reconciliation" className="text-caption font-medium text-info hover:underline">{copy.openReconciliation}</Link>}
         >
           {reconciliation.length === 0 ? (
-            <EmptyState>No holdings or tax lots to reconcile</EmptyState>
+            <EmptyState>{copy.nothingToReconcile}</EmptyState>
           ) : (
             <ul className="space-y-2 text-body text-ink-2">
               {reconciliation.map((row) => (
                 <li key={row.key} className="flex items-center justify-between gap-3">
                   <span className="flex min-w-0 items-center gap-2">
                     <Badge tone={marketTone(row.market)}>{row.market}</Badge>
-                    <span className="truncate">{row.brokerage} holdings ↔ tax lots</span>
+                    <span className="truncate">{copy.holdingsVsLots(row.brokerage)}</span>
                   </span>
                   <Badge tone={row.tone}>{row.label}</Badge>
                 </li>
               ))}
-              <li className="text-label leading-relaxed text-ink-3">
-                Merrill exports positions under two layouts, and only one carries tax-lot detail. When the flat layout was the last download, its lots
-                drop out of the ingest and the row above reads “No lot detail” until the tax-lot view is exported again. Its reinvestments also arrive
-                as one dateless grouped lot per position, so the match is by quantity and cost, not by acquisition date.
-              </li>
+              <li className="text-label leading-relaxed text-ink-3">{copy.merrillNote}</li>
             </ul>
           )}
         </Card>
       </CardRow>
 
       <Card
-        title="Refresh History"
+        title={copy.refreshHistory}
         accent={latestRefresh?.status === 'failed'}
         action={
           latestRefresh ? (
@@ -185,40 +181,37 @@ export default async function HealthPage() {
       >
         {!latestRefresh ? (
           <EmptyState
-            hint={`Run history is read from ${getMeta().refresh_runs_path ?? 'data/refresh-runs.json'}.`}
+            hint={copy.refreshRunsHint(getMeta().refresh_runs_path ?? 'data/refresh-runs.json')}
           >
-            No refresh runs recorded
+            {copy.noRefreshRuns}
           </EmptyState>
         ) : (
           <div className="space-y-4">
             <div className="grid gap-3 text-caption sm:grid-cols-4">
               <div>
-                <div className="text-caption text-ink-3">Latest start</div>
+                <div className="text-caption text-ink-3">{copy.latestStart}</div>
                 <div className="font-medium tabular-nums text-ink">{fmtDateTime(latestRefresh.startedAt)}</div>
               </div>
               <div>
-                <div className="text-caption text-ink-3">Duration</div>
+                <div className="text-caption text-ink-3">{copy.duration}</div>
                 <div className="font-medium tabular-nums text-ink">{fmtDuration(latestRefresh.durationMs)}</div>
               </div>
               <div>
-                <div className="text-caption text-ink-3">Completed steps</div>
+                <div className="text-caption text-ink-3">{copy.completedSteps}</div>
                 <div className="font-medium tabular-nums text-ink">
                   {fmtNumber(latestRefresh.steps.filter((step) => step.status === 'success').length)} / {fmtNumber(latestRefresh.steps.length)}
                 </div>
               </div>
               <div>
-                <div className="text-caption text-ink-3">Total runs</div>
+                <div className="text-caption text-ink-3">{copy.totalRuns}</div>
                 <div className="font-medium tabular-nums text-ink">{fmtNumber(refreshRuns.length)}</div>
               </div>
             </div>
 
             {latestRefresh.degradedSteps.length > 0 ? (
               <div className="rounded-md border border-[color:var(--accent-warning)]/30 bg-[color:var(--accent-warning)]/5 px-3 py-2 text-label leading-relaxed text-ink-2">
-                <span className="font-medium text-ink">Degraded, not failed.</span>{' '}
-                {latestRefresh.degradedSteps.join(', ')} failed but {latestRefresh.degradedSteps.length > 1 ? 'are' : 'is'} marked
-                optional, so the run continued and every figure is complete. The source behind{' '}
-                {latestRefresh.degradedSteps.length > 1 ? 'those steps is' : 'that step is'} running on its previous snapshot —
-                the freshness rows above say how old.
+                <span className="font-medium text-ink">{copy.degradedLead}</span>{' '}
+                {copy.degradedBody(latestRefresh.degradedSteps)}
               </div>
             ) : null}
 
@@ -230,7 +223,7 @@ export default async function HealthPage() {
                   <span className="text-caption tabular-nums text-ink-3">{fmtDuration(step.durationMs)}</span>
                   <code className="font-mono text-label text-ink-3">{step.command}</code>
                   {step.exitCode != null ? (
-                    <span className="text-caption tabular-nums text-ink-3">exit {step.exitCode}</span>
+                    <span className="text-caption tabular-nums text-ink-3">{copy.exitCode(String(step.exitCode))}</span>
                   ) : null}
                 </li>
               ))}
@@ -238,7 +231,7 @@ export default async function HealthPage() {
 
             {latestRefresh.steps.some((step) => step.status === 'failed' && step.stderrTail) ? (
               <div className="rounded-md border border-line-subtle bg-surface p-3">
-                <Label className="mb-2">Latest error tail</Label>
+                <Label className="mb-2">{copy.latestErrorTail}</Label>
                 <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-label leading-relaxed text-danger">
                   {latestRefresh.steps.find((step) => step.status === 'failed' && step.stderrTail)?.stderrTail}
                 </pre>
@@ -249,7 +242,7 @@ export default async function HealthPage() {
       </Card>
 
       <CardRow>
-        <Card title="FX snapshot">
+        <Card title={copy.fxSnapshot}>
           {fx ? (
             <div className="space-y-2 text-body text-ink-2">
               <div className="flex items-center justify-between gap-3">
@@ -257,35 +250,35 @@ export default async function HealthPage() {
                 <span className="font-medium tabular-nums text-ink">{fmtNumber(fx.rate, 2)}</span>
               </div>
               <div className="flex items-center justify-between gap-3">
-                <span>As of</span>
+                <span>{copy.asOf}</span>
                 <span className="tabular-nums text-ink-3">{fx.as_of_date}</span>
               </div>
               <div className="text-label leading-relaxed text-ink-3">{fx.source}</div>
             </div>
           ) : (
-            <EmptyState>No FX rate configured</EmptyState>
+            <EmptyState>{copy.noFxRate}</EmptyState>
           )}
         </Card>
 
       </CardRow>
 
-      <Card title="Freshness issues" accent={operational.staleItems.length > 0}>
+      <Card title={copy.freshnessIssues} accent={operational.staleItems.length > 0}>
         {operational.staleItems.length === 0 ? (
-          <EmptyState ok>No stale, drifted, or missing operational inputs</EmptyState>
+          <EmptyState ok>{copy.noFreshnessIssues}</EmptyState>
         ) : (
-          <FreshnessRows items={operational.staleItems} />
+          <FreshnessRows items={operational.staleItems} language={language} />
         )}
       </Card>
 
-      <Card title="Validation checks" className="mt-5" accent={failed.length > 0}>
+      <Card title={copy.validationChecks} className="mt-5" accent={failed.length > 0}>
         {checks.length === 0 ? (
-          <EmptyState>No checks found</EmptyState>
+          <EmptyState>{copy.noChecks}</EmptyState>
         ) : (
           <ul className="divide-y divide-line-subtle">
             {checks.map((check) => (
               <li key={check.id} className="flex flex-col gap-1 py-2.5 sm:flex-row sm:items-center sm:gap-3">
                 <Badge tone={check.status === 'pass' ? 'success' : check.severity === 'warning' ? 'warning' : 'danger'}>
-                  {check.status}
+                  {displayRunStatus(check.status, runStatusLabels)}
                 </Badge>
                 <span className="min-w-0 flex-1 text-body font-medium text-ink">{check.name}</span>
                 <span className="text-caption text-ink-3">{check.detail}</span>
@@ -295,9 +288,9 @@ export default async function HealthPage() {
         )}
       </Card>
 
-      <Card title="PDF evidence" className="mt-5">
+      <Card title={copy.pdfEvidence} className="mt-5">
         {evidence.length === 0 ? (
-          <EmptyState>No PDF evidence extracted</EmptyState>
+          <EmptyState>{copy.noPdfEvidence}</EmptyState>
         ) : (
           <ul className="divide-y divide-line-subtle">
             {evidence.map((report) => {
@@ -305,13 +298,13 @@ export default async function HealthPage() {
               return (
                 <li key={report.id} className="flex flex-col gap-1 py-2.5 lg:flex-row lg:items-center lg:gap-3">
                   <Badge tone={report.category === 'us_gain_loss_pdf' ? 'info' : 'success'}>
-                    {report.category === 'us_gain_loss_pdf' ? 'Gain/Loss' : '1099'}
+                    {report.category === 'us_gain_loss_pdf' ? copy.gainLoss : '1099'}
                   </Badge>
                   <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">{report.filename}</span>
-                  <span className="text-caption tabular-nums text-ink-3">{fmtNumber(report.pages ?? 0)} pages</span>
-                  <span className="text-caption tabular-nums text-ink-3">{fmtNumber(report.row_count ?? 0)} rows</span>
+                  <span className="text-caption tabular-nums text-ink-3">{copy.pages(fmtNumber(report.pages ?? 0))}</span>
+                  <span className="text-caption tabular-nums text-ink-3">{copy.rows(fmtNumber(report.row_count ?? 0))}</span>
                   {metrics.tax_cost_usd != null ? (
-                    <span className="text-caption tabular-nums text-ink-3">${fmtNumber(metrics.tax_cost_usd, 2)} tax cost</span>
+                    <span className="text-caption tabular-nums text-ink-3">{copy.taxCost(`$${fmtNumber(metrics.tax_cost_usd, 2)}`)}</span>
                   ) : null}
                 </li>
               )
