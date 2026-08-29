@@ -28,11 +28,34 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # tests/fx-ledger.test.ts loads scripts/extract-fx-ledger.py, whose only
+      # third-party import this is. Without it those three tests fail on a
+      # missing module rather than on anything about the code — which is why
+      # they have been "pre-existing failures" on every machine that lacks it.
+      - name: Install Python dependencies for the extractor tests
+        run: python3 -m pip install --quiet pdfplumber
+
       - name: Seed synthetic sample data
         run: pnpm seed:sample
 
       - name: Typecheck
         run: pnpm typecheck
+
+      # Neither of these ran here before. The tests added during the GUI
+      # refactor — that every route has a name, that no heading's emphasis is a
+      # dead letter, that the utility-conflict guardrail still catches a planted
+      # conflict — were passing locally and never checked on a pull request.
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      # Static, so it needs no server: two Tailwind utilities setting the same
+      # property on one element, where the winner is emit order rather than the
+      # one that was written. See scripts/ui-guardrails.mjs.
+      - name: UI guardrails
+        run: pnpm ui:guardrails
 
       - name: Build
         run: pnpm build
