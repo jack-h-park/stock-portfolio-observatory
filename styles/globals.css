@@ -19,9 +19,16 @@
      #f06292 3.06:1, against the 4.5:1 that normal-size text needs. The h1
      emphasis is 22px at weight 500, which is not "large text" under WCAG, so it
      needs the full 4.5:1 — and the largest word on the page was the least
-     readable one. This keeps the purple-to-cool sweep with stops that pass:
-     4.57:1 and 5.67:1. */
-  --gradient-text: linear-gradient(90deg, #b439df 0%, #0B6E99 100%);
+     readable one. This keeps the purple-to-cool sweep with stops that pass.
+
+     The magenta end was #b439df, and that was checked the wrong way: both
+     endpoints against white, where it is 4.57:1. Text clipped to a gradient is
+     every colour between the stops, and the eyebrow and h1 sit on --bg-page and
+     --bg-surface rather than on white — where the magenta end measured 4.35:1
+     and 4.23:1. #B030DD takes the worst point of the whole ramp to 4.63:1 on
+     page, 4.51:1 on surface and 4.87:1 on card. Sample the interpolation, not
+     the stops, and sample it against the background it is actually painted on. */
+  --gradient-text: linear-gradient(90deg, #B030DD 0%, #0B6E99 100%);
 
   --ease-std: cubic-bezier(0.4, 0, 0.2, 1);
   --dur-1: 80ms;

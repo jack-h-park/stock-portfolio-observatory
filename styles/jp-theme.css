@@ -29,7 +29,16 @@
   --text-primary:   #37352F;
   --text-secondary: #6B6A65;
   /* 4.76:1 on white: safe for the 11–12px helper copy used throughout the dashboard. */
-  --text-tertiary:  #74736D;
+  /* Was #74736D — 4.40:1 on --bg-surface, just under WCAG AA (4.5:1). This
+     token carries almost every 11px label, hint and metric caption in the app,
+     so the smallest text was also the least legible; axe reported it on all 38
+     route-language combinations. #72716B is 4.53:1 on surface, 4.65 on page and
+     4.90 on card, so it clears AA on every background the app uses, and is
+     still a step lighter than --text-secondary.
+     jackhpark-pm-console made the same fix from #9B9A97 and chose #767570,
+     which is 4.6:1 against white but only 4.27:1 on this app's surface — it
+     measured against a background this app does not use for this text. */
+  --text-tertiary:  #72716B;
 
   /* 3.3 · Borders */
   --border-subtle:  rgba(55, 53, 47, 0.09);
