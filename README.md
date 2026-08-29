@@ -474,10 +474,12 @@ brokerage export besides. One scheduler that can speak beats two that cannot.
 Two things launchd did better, kept here so they are not rediscovered as bugs:
 
 - `script_timeout_seconds` (profile-wide, `cron:` in the trader config) caps a run
-  at 1800s. A full refresh took 24s across 5 steps in July and 429s across 15 in
-  late August, so the headroom is ~4x and shrinking. Raising it is a profile-wide
-  change and would blunt wedge detection for `trading-review`, so the ceiling is
-  left alone and the growth is the thing to watch.
+  at 1800s. A full refresh took 24s across 5 steps on 2026-07-27; on 2026-08-28 it
+  took 348s and 429s across 14 on two consecutive runs (the spread is mostly
+  LibreOffice, which varies 39-60s on its own). So the ceiling is ~4-5x the
+  observed range, against a pipeline that grew 14x in a month. Raising it is a
+  profile-wide change and would blunt wedge detection for `trading-review`, so the
+  ceiling is left alone and the growth is the thing to watch.
 - The plist set `LowPriorityIO` and `ProcessType: Background` for what is a
   multi-minute IO-heavy job. Hermes cron has no equivalent.
 
