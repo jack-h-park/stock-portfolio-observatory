@@ -45,19 +45,25 @@ hermes() { "$PY" -m hermes_cli.main "$@"; }
 
 # Job table: "<name>|<schedule>|<wrapper>"
 #
-# observatory-health is the one to enable. It reads the summary the launchd refresh
+# observatory-health is the one that watches the OUTPUT. It reads the summary the refresh
 # publishes and speaks only when the situation changes — including when the summary
 # stops being written at all, which is the failure no job monitor can see.
 #
-# Daily, and every day rather than weekdays: the launchd refresh runs on its own
+# Daily, and every day rather than weekdays: the refresh runs on its own six-hourly
 # interval regardless of the calendar, so a weekend failure would otherwise stay
 # invisible until Monday. 09:00 puts it before the 08:00 briefing's next run, so a
 # problem is known before the day's figures go out.
 #
-# observatory-refresh is SUPERSEDED — the refresh runs under launchd
-# (`make install-refresh-service`). It is still installed so the wrapper is on the
-# host if the schedule ever moves back, but do not resume it alongside launchd:
-# two schedulers write the same database and the same data/refresh-runs.json.
+# observatory-refresh runs the refresh itself, six-hourly. It spent 2026-07-27 to
+# 2026-08-29 paused while launchd owned the schedule; it is back because launchd
+# delivers nothing on failure, and a refresh that failed for three days straight
+# was only noticed on observatory-health's next daily pass. This wrapper reports on
+# the failing run itself, and names the validation shortfall and any missing
+# brokerage export with it.
+#
+# Only one scheduler may own this: two would write the same database and the same
+# data/refresh-runs.json. If the launchd service is ever reinstalled
+# (`make install-refresh-service`), pause this job in the same breath.
 JOBS=(
   "observatory-health|0 9 * * *|observatory-health-cron.sh"
   "observatory-refresh|0 14 * * 1-5|observatory-refresh-cron.sh"

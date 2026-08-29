@@ -433,12 +433,12 @@ those are warnings about a symptom whose cause is on the other machine.
 
 ### Scheduled refresh
 
-On the private host this runs itself, under **launchd, every 6 hours**:
+On the private host this runs itself, as a **Hermes cron on the `trader` profile,
+every 6 hours** (`0 */6 * * *`, `observatory-refresh` -> `observatory-refresh-cron.sh`):
 
 ```bash
-make install-refresh-service   # com.jackpark.stock-observatory.refresh
-make refresh-status            # state, run count, last exit code
-make uninstall-refresh-service
+hermes -p trader cron list --all          # --all, or a paused job is hidden
+hermes -p trader cron runs observatory-refresh
 ```
 
 The production host (`hermes-runner@imac-hermes`) should deploy this change with a full `pnpm refresh` after the application build. The ingest recreates the SQLite schema compatibly and the following history-backfill step rewrites the monthly snapshots with the unified coverage formula; restarting only the web process leaves the old trend rows in place until that refresh completes.
@@ -447,15 +447,41 @@ Six-hourly rather than once after the US close, because the snapshot has more th
 one reader now and they do not share a clock: `/health` and `/review` are opened at
 any hour, the daily briefing publishes at 08:00, and the trading review runs at
 13:30. A single afternoon refresh left the 08:00 reader looking at figures from the
-previous afternoon. The interval is `StartInterval`, so it is elapsed time and not
-a wall-clock slot — runs drift, which is fine for a snapshot nothing else is
-sequenced against.
+previous afternoon. Every day rather than weekdays: crypto trades through the
+weekend, and `fetch:crypto-prices` is one of the steps.
 
-`RunAtLoad` also refreshes on boot, so a host that was asleep does not serve stale
-figures until the next interval comes round.
+**This ran under launchd until 2026-08-29** (`com.jackpark.stock-observatory.refresh`,
+`StartInterval` 21600 + `RunAtLoad`), and the reasons for moving it back are worth
+recording, because the reasons for moving it *out* did not survive checking:
 
-launchd records an exit code and delivers nothing, so the alerting is a separate
-job — see below.
+- *"Hermes cron cannot do a six-hourly interval."* It can — `gateway-health` has
+  been running `*/30 * * * *` the whole time.
+- *"`RunAtLoad` covers a host that was asleep."* Hermes cron covers it too: a
+  recurring job past its catch-up grace window skips the accumulated slots but
+  still executes once immediately (`cron/jobs.py`, `_compute_grace_seconds`).
+- *"launchd survives the gateway dying."* The gateway plist carries
+  `KeepAlive` with `ThrottleInterval` 30, so it comes back on its own — and a dead
+  gateway takes the 08:00 briefing and the 13:30 trading review with it, so a
+  freshly refreshed database would have had no reader anyway.
+
+What decided it was alerting. launchd records an exit code and **delivers nothing**,
+so a failed refresh was only ever noticed by `observatory-health` on its next daily
+pass. From 2026-08-26 `extract:fx-ledger` failed on every run for three days while
+the briefing published prices frozen mid-session; the wrapper below would have said
+so on the first failing run, and it names the validation shortfall and any missing
+brokerage export besides. One scheduler that can speak beats two that cannot.
+
+Two things launchd did better, kept here so they are not rediscovered as bugs:
+
+- `script_timeout_seconds` (profile-wide, `cron:` in the trader config) caps a run
+  at 1800s. A full refresh took 24s across 5 steps on 2026-07-27; on 2026-08-28 it
+  took 348s and 429s across 14 on two consecutive runs (the spread is mostly
+  LibreOffice, which varies 39-60s on its own). So the ceiling is ~4-5x the
+  observed range, against a pipeline that grew 14x in a month. Raising it is a
+  profile-wide change and would blunt wedge detection for `trading-review`, so the
+  ceiling is left alone and the growth is the thing to watch.
+- The plist set `LowPriorityIO` and `ProcessType: Background` for what is a
+  multi-minute IO-heavy job. Hermes cron has no equivalent.
 
 ### Health alerts
 
