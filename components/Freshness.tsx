@@ -20,7 +20,14 @@ export function FreshnessBadge({ status, language = 'en' }: { status: FreshnessS
   )
 }
 
-export function FreshnessRows({ items, language = 'en' }: { items: FreshnessItem[]; language?: Language }) {
+/**
+ * `language` is required rather than defaulting to English. It used to default,
+ * and /health's freshness-issues card simply omitted it — so that one card sat
+ * in English on an otherwise Korean page and nothing complained. A default that
+ * silently picks a language turns a missing prop into a rendering bug; this way
+ * it is a compile error.
+ */
+export function FreshnessRows({ items, language }: { items: FreshnessItem[]; language: Language }) {
   const copy = getUiCopy(language).common
   return (
     <ul className="divide-y divide-line-subtle">
