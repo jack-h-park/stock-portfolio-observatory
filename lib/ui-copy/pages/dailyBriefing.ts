@@ -3,7 +3,7 @@ import { defineCopy } from '@/lib/ui-copy/define'
 export const dailyBriefing = defineCopy({
   en: {
     eyebrow: 'Portfolio',
-    title: 'Daily Briefing',
+    title: "Today's Briefing",
     emphasis: 'Briefing',
     subtitle: 'Archived daily briefings, published each trading morning.',
     briefingDate: 'Briefing date',

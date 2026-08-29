@@ -3,8 +3,8 @@ import { defineCopy } from '@/lib/ui-copy/define'
 export const dataOps = defineCopy({
   en: {
     eyebrow: 'System & Advanced',
-    title: 'Operations',
-    emphasis: 'Operations',
+    title: 'Action Center',
+    emphasis: 'Center',
     subtitle: 'Review ticker mapping, missing valuations, source freshness, and validation items that need attention.',
     needsReview: (count: string) => `Operations review ${count}`,
     noPending: 'No pending work',
@@ -77,8 +77,8 @@ export const dataOps = defineCopy({
   },
   ko: {
     eyebrow: '시스템 · 고급',
-    title: '운영 작업',
-    emphasis: '운영',
+    title: '조치 센터',
+    emphasis: '센터',
     subtitle: '종목 매핑, 평가금액 누락, 원본 최신성, 검증 항목 중 확인이 필요한 작업을 봅니다.',
     needsReview: (count: string) => `운영 검토 대기 ${count}건`,
     noPending: '대기 작업 없음',
