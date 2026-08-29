@@ -58,6 +58,62 @@ function hours(ms) {
   return Math.round((ms / 3_600_000) * 10) / 10
 }
 
+/**
+ * How old the PRICES are, which is not how old the document is.
+ *
+ * `ingestedAt` is rewritten on every run, including a run that failed — `summary`
+ * is sequenced after the step loop, so it publishes even when the loop broke at
+ * step 5. The snapshots that a skipped step was meant to rewrite are left exactly
+ * as they were, which `write-briefing-summary.ts` already says out loud: "still
+ * recent, still reading fresh, so the failure is invisible from freshness alone".
+ *
+ * So the staleness check below, reading `ingestedAt`, can never fire while
+ * anything at all is still running. From 2026-08-26 extract:fx-ledger failed on
+ * every run and aborted the loop before fetch:us-prices; the summary stayed young
+ * the whole time and the briefing's own badge read "Data: 9h ago" while it
+ * published a TSLA price captured mid-session two days earlier. `pricesAsOf` is
+ * the field that actually moved, so it is the one to age.
+ *
+ * Oldest of the two markets wins: a frozen US feed is a frozen US feed whatever
+ * KR is doing.
+ */
+function priceAgeMs(doc) {
+  const stamps = Object.values(doc?.pricesAsOf ?? {})
+    .map((value) => Date.parse(value ?? ''))
+    .filter((value) => Number.isFinite(value))
+  return stamps.length ? Date.now() - Math.min(...stamps) : null
+}
+
+/**
+ * Day bucket for a fingerprint, so a fault that is getting worse can say so.
+ *
+ * The rule this file states — keep numbers that move on their own out of
+ * fingerprints — exists to stop an age in hours re-alerting every single run. A
+ * day boundary is not that: at a six-hourly cadence it changes once a day, which
+ * is the rate a worsening condition should be repeated at. Without it the first
+ * report is also the last, and "the refresh failed" reads the same on hour one as
+ * on day three, which is how a real outage stayed quiet after one message.
+ */
+function ageBucket(ms) {
+  return ms == null ? 'unknown' : `d${Math.floor(ms / 86_400_000)}`
+}
+
+/** "2.5h" under a day, "3d" beyond it — a reader needs the scale, not the precision. */
+function ageLabel(ms) {
+  if (ms == null) return 'unknown age'
+  return ms >= 86_400_000 ? `${Math.floor(ms / 86_400_000)}d` : `${hours(ms)}h`
+}
+
+/**
+ * What breaks downstream when prices stop moving. The old message ended at
+ * "figures are from the previous good data", which describes a fallback behaving
+ * correctly and reads as reassurance. Nothing in it said the frozen numbers are
+ * republished as current ones — the briefing prints them as the day's closes at
+ * 08:00 and the trading review reads them at 13:30 — so two consecutive alerts
+ * were accurate, and neither prompted anyone to look.
+ */
+const CONSUMERS = 'The 08:00 briefing and 13:30 trading review publish these as current figures.'
+
 // ── Read the artifact ────────────────────────────────────────────────────────
 // Each branch produces both a `fingerprint` (what "the same problem" means, for
 // the repeat check) and a `message`. Fingerprints deliberately exclude numbers
@@ -98,6 +154,8 @@ if (doc && (typeof doc.schemaVersion !== 'number' || doc.schemaVersion < 1)) {
   const stale = ageMs != null && ageMs > maxAgeHours * 3_600_000
   const issues = Array.isArray(doc.health?.issues) ? doc.health.issues : []
   const refreshStatus = doc.refresh?.status ?? 'unknown'
+  const pricesAgeMs = priceAgeMs(doc)
+  const pricesStale = pricesAgeMs != null && pricesAgeMs > maxAgeHours * 3_600_000
 
   if (ageMs == null) {
     fingerprint = 'no-timestamp'
@@ -108,8 +166,26 @@ if (doc && (typeof doc.schemaVersion !== 'number' || doc.schemaVersion < 1)) {
     fingerprint = 'stale'
     message = `⚠️ Observatory summary is ${hours(ageMs)}h old (limit ${maxAgeHours}h) — the refresh appears to have stopped.\nIt still reads "${refreshStatus}", but from ${doc.ingestedAt ?? doc.generatedAt}. Check: make refresh-status`
   } else if (refreshStatus !== 'success') {
-    fingerprint = `refresh-${refreshStatus}-${doc.refresh?.failedStep ?? 'unknown'}`
-    message = `⚠️ Observatory refresh ${refreshStatus}${doc.refresh?.failedStep ? ` at ${doc.refresh.failedStep}` : ''} — figures are from the previous good data.`
+    // The day bucket is what makes a second report possible. The fault string
+    // alone never changes while the fault persists, so this used to speak once
+    // and then hold its peace no matter how far the data drifted behind.
+    const frozenFor = priceAgeMs(doc)
+    fingerprint = `refresh-${refreshStatus}-${doc.refresh?.failedStep ?? 'unknown'}-${ageBucket(frozenFor)}`
+    const at = doc.refresh?.failedStep ? ` at ${doc.refresh.failedStep}` : ''
+    message =
+      `⚠️ Observatory refresh ${refreshStatus}${at} — prices frozen for ${ageLabel(frozenFor)}` +
+      `${doc.pricesAsOf?.US ? ` (US last priced ${doc.pricesAsOf.US.slice(0, 16).replace('T', ' ')}Z)` : ''}.\n` +
+      `${CONSUMERS} Check: make refresh-status`
+  } else if (pricesStale) {
+    // Prices can be stale while the run says success: an OPTIONAL step is allowed
+    // to fail without failing the run, and a price fetch that quietly returned
+    // nothing leaves the old snapshot in place. `refresh.status` cannot see either,
+    // and the document's own age cannot either, so without this the state is
+    // reachable and reported by nothing.
+    fingerprint = `prices-stale-${ageBucket(pricesAgeMs)}`
+    message =
+      `⚠️ Observatory prices are ${ageLabel(pricesAgeMs)} old (limit ${maxAgeHours}h) though the last refresh reported success.\n` +
+      `${CONSUMERS} Check: make refresh-status`
   } else if (issues.length) {
     // Keys, not details: a validation detail can carry a count that ticks with
     // every run, and re-alerting on "the same gap, slightly different" is exactly
