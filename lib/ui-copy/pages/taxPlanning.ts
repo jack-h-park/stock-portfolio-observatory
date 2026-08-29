@@ -3,7 +3,6 @@ import { defineCopy } from '@/lib/ui-copy/define'
 export const taxPlanning = defineCopy({
   en: {
     page: {
-      eyebrow: 'Tax',
       title: 'Tax Planning',
       emphasis: 'Planning',
       subtitle: 'Compare Korea and US stock sale timing across multiple years. Results are review estimates, not tax filing advice.',
@@ -164,7 +163,6 @@ export const taxPlanning = defineCopy({
       empty: 'No saved plans yet. Save the current calculation when it is ready for review.',
     },
     savedPlanDetail: {
-      eyebrow: 'Tax · Saved plan',
       subtitle: (date: string, revision: string | number) => `Immutable calculation snapshot from ${date} · revision ${revision}`,
       backToPlanner: 'Back to planner',
       executionOverview: 'Execution overview',
@@ -396,7 +394,6 @@ export const taxPlanning = defineCopy({
   },
   ko: {
     page: {
-      eyebrow: '세금',
       title: '세금 계획',
       emphasis: '계획',
       subtitle: '한국/미국 주식 매도 시점을 여러 해에 걸쳐 비교합니다. 결과는 검토용 추정치이며 세금 신고 조언이 아닙니다.',
@@ -557,7 +554,6 @@ export const taxPlanning = defineCopy({
       empty: '저장된 계획이 아직 없습니다. 검토 준비가 되면 현재 계산을 저장하세요.',
     },
     savedPlanDetail: {
-      eyebrow: '세금 · 저장된 계획',
       subtitle: (date: string, revision: string | number) => `${date} 기준 변경 불가능한 계산 snapshot · revision ${revision}`,
       backToPlanner: '플래너로 돌아가기',
       executionOverview: '실행 개요',

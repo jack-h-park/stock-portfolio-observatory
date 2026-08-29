@@ -12,7 +12,7 @@ import { positionHref } from '@/lib/position-url'
 import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { formatSort, parseSort, sortRows, type TableSort } from '@/lib/table-sort'
 import { priorityTone } from '@/lib/tone'
-import { routeMetadata } from '@/lib/page-names'
+import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow, KpiBand } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
@@ -46,7 +46,7 @@ export default async function ReconciliationPage({
   return (
     <>
       <PageHeader
-        eyebrow={copy.eyebrow}
+        eyebrow={routeSection('/reconciliation', language)}
         title={copy.title}
         emphasis={copy.emphasis}
         subtitle={copy.subtitle}

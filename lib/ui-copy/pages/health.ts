@@ -16,7 +16,6 @@ import { defineCopy } from '@/lib/ui-copy/define'
  */
 export const health = defineCopy({
   en: {
-    eyebrow: 'System',
     title: 'System Health',
     emphasis: 'Health',
     subtitle: (checkedAt: string) => `The latest data check ran at ${checkedAt}.`,
@@ -94,7 +93,6 @@ export const health = defineCopy({
     taxCost: (amount: string) => `${amount} tax cost`,
   },
   ko: {
-    eyebrow: '운영',
     title: '시스템 상태',
     emphasis: '상태',
     subtitle: (checkedAt: string) => `가장 최근 데이터 점검은 ${checkedAt}에 실행됐습니다.`,

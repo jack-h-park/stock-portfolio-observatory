@@ -9,7 +9,7 @@ import { fmtNumber } from '@/lib/format'
 import { formatUsd } from '@/lib/currency'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
-import { routeMetadata } from '@/lib/page-names'
+import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow, KpiBand } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
@@ -30,7 +30,7 @@ export default async function FxPage() {
   return (
     <>
       <PageHeader
-        eyebrow={copy.eyebrow}
+        eyebrow={routeSection('/fx', language)}
         title={copy.title}
         emphasis={copy.emphasis}
         subtitle={copy.subtitle(fmtNumber(data.summary.exchangeCount))}

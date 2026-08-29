@@ -12,7 +12,7 @@ import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
 import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { priorityTone } from '@/lib/tone'
-import { routeMetadata } from '@/lib/page-names'
+import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow, KpiBand } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
@@ -100,7 +100,7 @@ export default async function DataOpsPage() {
   return (
     <>
       <PageHeader
-        eyebrow={copy.eyebrow}
+        eyebrow={routeSection('/data-ops', language)}
         title={copy.title}
         emphasis={copy.emphasis}
         subtitle={copy.subtitle}

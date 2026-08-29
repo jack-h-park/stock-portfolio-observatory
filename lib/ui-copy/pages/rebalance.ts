@@ -2,7 +2,6 @@ import { defineCopy } from '@/lib/ui-copy/define'
 
 export const rebalance = defineCopy({
   en: {
-    eyebrow: 'Portfolio',
     title: 'Rebalancing',
     emphasis: 'Rebalancing',
     subtitle: (targets: string, cap: string) => `Policy baseline: ${targets} with ${cap}% single-position cap.`,
@@ -67,7 +66,6 @@ export const rebalance = defineCopy({
     },
   },
   ko: {
-    eyebrow: '포트폴리오',
     title: '리밸런싱',
     emphasis: '리밸런싱',
     subtitle: (targets: string, cap: string) => `정책 기준: ${targets}, 단일 종목 상한 ${cap}%.`,

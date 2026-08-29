@@ -15,6 +15,7 @@ import { bucketTone, signTone } from '@/lib/tone'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
 import { CardRow, KpiBand } from '@/components/layout'
+import { routeSection } from '@/lib/page-names'
 
 export const dynamic = 'force-dynamic'
 
@@ -191,7 +192,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
   return (
     <>
       <PageHeader
-        eyebrow={copy.eyebrow(detail.market)}
+        eyebrow={routeSection('/holdings', language)}
         title={detail.name}
         emphasis={detail.ticker}
         subtitle={`${fmtNumber(detail.totals.account_count)} accounts · ${fmtNumber(detail.lotTotals.lot_count)} open tax lots · ${fmtNumber(detail.transactions.length)} transactions`}

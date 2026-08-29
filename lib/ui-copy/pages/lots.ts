@@ -2,7 +2,6 @@ import { defineCopy } from '@/lib/ui-copy/define'
 
 export const lots = defineCopy({
   en: {
-    eyebrow: 'Tax',
     title: 'Tax Lots',
     emphasis: 'Lots',
     subtitle: 'Open tax lots with search, account filters, sorting, and ticker drilldown.',
@@ -28,7 +27,6 @@ export const lots = defineCopy({
     },
   },
   ko: {
-    eyebrow: '세금',
     title: '세금 계산 단위',
     emphasis: '단위',
     subtitle: '검색·계좌 필터·정렬·종목 드릴다운이 가능한 미결제 세금 단위입니다.',

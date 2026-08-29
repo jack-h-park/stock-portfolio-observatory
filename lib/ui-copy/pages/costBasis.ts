@@ -2,7 +2,6 @@ import { defineCopy } from '@/lib/ui-copy/define'
 
 export const costBasis = defineCopy({
   en: {
-    eyebrow: 'Records',
     title: 'Cost Basis',
     emphasis: 'Basis',
     subtitle: (rows: string, missing: string, estimated: string) =>
@@ -50,7 +49,6 @@ export const costBasis = defineCopy({
     },
   },
   ko: {
-    eyebrow: '상세 기록',
     title: '취득원가',
     emphasis: '원가',
     subtitle: (rows: string, missing: string, estimated: string) =>

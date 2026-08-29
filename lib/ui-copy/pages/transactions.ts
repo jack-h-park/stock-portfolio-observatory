@@ -2,7 +2,6 @@ import { defineCopy } from '@/lib/ui-copy/define'
 
 export const transactions = defineCopy({
   en: {
-    eyebrow: 'Portfolio',
     title: 'Transactions',
     emphasis: 'Transactions',
     subtitle: 'Most recent ledger rows from the normalized transaction TSV.',
@@ -26,7 +25,6 @@ export const transactions = defineCopy({
     },
   },
   ko: {
-    eyebrow: '포트폴리오',
     title: '거래 내역',
     emphasis: '내역',
     subtitle: '정규화된 거래 TSV에서 읽은 최근 원장 행입니다.',

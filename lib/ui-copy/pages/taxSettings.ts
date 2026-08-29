@@ -3,7 +3,6 @@ import { defineCopy } from '@/lib/ui-copy/define'
 export const taxSettings = defineCopy({
   en: {
     page: {
-      eyebrow: 'Tax',
       title: 'Tax Settings',
       emphasis: 'Settings',
       subtitle: 'Local assumptions for realization planning. This writes only to ignored data/tax-policy.json.',
@@ -11,9 +10,9 @@ export const taxSettings = defineCopy({
       openPlanner: 'Open planner',
     },
     hero: {
+      eyebrow: 'Tax settings headline',
       title: 'Policy Source',
       info: 'Shows whether the planner is using your local ignored tax-policy.json file or the example fallback assumptions.',
-      eyebrow: 'Tax settings headline',
       local: 'Local',
       example: 'Example',
       localHint: 'Using local planning assumptions',
@@ -134,7 +133,6 @@ export const taxSettings = defineCopy({
   },
   ko: {
     page: {
-      eyebrow: '세금',
       title: '세금 설정',
       emphasis: '설정',
       subtitle: '매도 실현 계획에 쓰는 로컬 가정입니다. 저장 시 git에 포함되지 않는 data/tax-policy.json 파일에만 기록됩니다.',
@@ -142,9 +140,9 @@ export const taxSettings = defineCopy({
       openPlanner: '플래너 열기',
     },
     hero: {
+      eyebrow: '세금 설정 핵심',
       title: '정책 출처',
       info: '플래너가 로컬 tax-policy.json 설정을 쓰는지, 예시 기본값을 쓰는지 보여줍니다.',
-      eyebrow: '세금 설정 핵심',
       local: '로컬',
       example: '예시',
       localHint: '로컬 계획 가정을 사용 중',

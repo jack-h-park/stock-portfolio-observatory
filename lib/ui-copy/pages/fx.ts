@@ -2,7 +2,7 @@ import { defineCopy } from '@/lib/ui-copy/define'
 
 export const fx = defineCopy({
   en: {
-    eyebrow: 'Detailed Records', title: 'FX Exchange & Gain', emphasis: 'Gain',
+    title: 'FX Exchange & Gain', emphasis: 'Gain',
     subtitle: (count: string) => `${count} net KRW/USD exchanges from Toss Securities and Hana Bank.`,
     tossMatched: 'Toss→Hana matched',
     qualityOk: 'FX ledger current', qualityGap: (count: string) => `${count} transfer gap(s)`,
@@ -22,7 +22,7 @@ export const fx = defineCopy({
     estimateNote: 'Hana annual PDF rows use the first published daily TT-send spread with a user-confirmed 90% preference. They remain marked estimated because transaction times are absent.',
   },
   ko: {
-    eyebrow: '상세 기록', title: '환전 · 환차익', emphasis: '환차익',
+    title: '환전 · 환차익', emphasis: '환차익',
     subtitle: (count: string) => `토스증권과 하나은행의 원/달러 순환전 ${count}건입니다.`,
     tossMatched: '토스→하나 매칭액',
     qualityOk: 'FX 원장 최신', qualityGap: (count: string) => `이체 미연결 ${count}건`,

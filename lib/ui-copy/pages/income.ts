@@ -2,7 +2,6 @@ import { defineCopy } from '@/lib/ui-copy/define'
 
 export const income = defineCopy({
   en: {
-    eyebrow: 'Portfolio',
     title: 'Income',
     emphasis: 'Income',
     subtitle: (rows: string, month: string) => `${rows} income rows across KR and US sources. Latest month: ${month}.`,
@@ -63,7 +62,6 @@ export const income = defineCopy({
     },
   },
   ko: {
-    eyebrow: '포트폴리오',
     title: '수익 내역',
     emphasis: '내역',
     subtitle: (rows: string, month: string) => `한국/미국 원본의 수익 행 ${rows}건입니다. 최신 월: ${month}.`,

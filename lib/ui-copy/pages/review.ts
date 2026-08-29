@@ -2,7 +2,6 @@ import { defineCopy } from '@/lib/ui-copy/define'
 
 export const review = defineCopy({
   en: {
-    eyebrow: 'Portfolio',
     title: 'Portfolio Review',
     emphasis: 'Review',
     subtitle: 'A global review surface for concentration, winners, losers, short-term exposure, and operational readiness.',
@@ -40,7 +39,6 @@ export const review = defineCopy({
     },
   },
   ko: {
-    eyebrow: '포트폴리오',
     title: '포트폴리오 검토',
     emphasis: '검토',
     subtitle: '집중도, 수익/손실 종목, 단기 보유 비중, 운영 준비 상태를 한 화면에서 확인합니다.',

@@ -10,7 +10,7 @@ import { getGlossary } from '@/lib/glossary'
 import { signTone } from '@/lib/tone'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
-import { routeMetadata } from '@/lib/page-names'
+import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow, KpiBand } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
@@ -46,7 +46,7 @@ export default async function CryptoPremiumPage() {
   return (
     <>
       <PageHeader
-        eyebrow={copy.eyebrow}
+        eyebrow={routeSection('/crypto-premium', language)}
         title={copy.title}
         emphasis={copy.emphasis}
         subtitle={

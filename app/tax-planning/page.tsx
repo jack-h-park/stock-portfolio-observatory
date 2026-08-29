@@ -31,7 +31,7 @@ import { sameKrw } from './view-utils'
 import { Select } from '@/components/form'
 import { DataTable } from '@/components/DataTable'
 import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
-import { routeMetadata } from '@/lib/page-names'
+import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
@@ -138,7 +138,7 @@ export default async function TaxPlanningPage({
   return (
     <>
       <PageHeader
-        eyebrow={copy.page.eyebrow}
+        eyebrow={routeSection('/tax-planning', language)}
         title={copy.page.title}
         emphasis={copy.page.emphasis}
         subtitle={copy.page.subtitle}

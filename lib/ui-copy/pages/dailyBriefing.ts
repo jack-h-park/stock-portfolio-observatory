@@ -2,7 +2,6 @@ import { defineCopy } from '@/lib/ui-copy/define'
 
 export const dailyBriefing = defineCopy({
   en: {
-    eyebrow: 'Portfolio',
     title: "Today's Briefing",
     emphasis: 'Briefing',
     subtitle: 'Archived daily briefings, published each trading morning.',
@@ -55,7 +54,6 @@ export const dailyBriefing = defineCopy({
     },
   },
   ko: {
-    eyebrow: '포트폴리오',
     title: '오늘의 브리핑',
     emphasis: '브리핑',
     subtitle: '거래일 아침마다 발행되어 보관된 일일 브리핑입니다.',

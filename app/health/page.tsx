@@ -7,7 +7,7 @@ import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 
 type HealthCopy = ReturnType<typeof getPageCopy<'health'>>
-import { routeMetadata } from '@/lib/page-names'
+import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
@@ -102,7 +102,7 @@ export default async function HealthPage() {
   return (
     <>
       <PageHeader
-        eyebrow={copy.eyebrow}
+        eyebrow={routeSection('/health', language)}
         title={copy.title}
         emphasis={copy.emphasis}
         subtitle={copy.subtitle(fmtDateTime(meta.ingested_at))}

@@ -7,7 +7,7 @@ import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
-import { routeMetadata } from '@/lib/page-names'
+import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
@@ -26,7 +26,7 @@ export default async function DividendsPage() {
   return (
     <>
       <PageHeader
-        eyebrow={copy.eyebrow}
+        eyebrow={routeSection('/dividends', language)}
         title={copy.title}
         emphasis={copy.emphasis}
         subtitle={copy.subtitle(totalLabel, fmtNumber(rows.reduce((s, r) => s + r.count, 0)))}

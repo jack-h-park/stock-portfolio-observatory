@@ -2,7 +2,6 @@ import { defineCopy } from '@/lib/ui-copy/define'
 
 export const positionDetail = defineCopy({
   en: {
-    eyebrow: (market: string) => `${market} holding`,
     subtitle: (accounts: string, lots: string, transactions: string) =>
       `${accounts} accounts · ${lots} open tax lots · ${transactions} transactions`,
     backToHoldings: 'Back to holdings',
@@ -87,7 +86,6 @@ export const positionDetail = defineCopy({
     },
   },
   ko: {
-    eyebrow: (market: string) => `${market} 보유`,
     subtitle: (accounts: string, lots: string, transactions: string) =>
       `계좌 ${accounts}개 · 미결제 세금 단위 ${lots}개 · 거래 ${transactions}건`,
     backToHoldings: '보유종목으로 돌아가기',

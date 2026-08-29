@@ -24,7 +24,7 @@ import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
 import { signClass, signTone } from '@/lib/tone'
 import { getPageCopy } from '@/lib/ui-copy'
-import { routeMetadata } from '@/lib/page-names'
+import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow, KpiBand } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
@@ -128,7 +128,7 @@ export default async function OverviewPage({
   if (!dbAvailable()) {
     return (
       <>
-        <PageHeader eyebrow={copy.appEyebrow} title={copy.title} emphasis={copy.emphasis} />
+        <PageHeader eyebrow={routeSection('/', language)} title={copy.title} emphasis={copy.emphasis} />
         <Card title={copy.dbMissingTitle}>
           <p className="text-body text-ink-2">
             {copy.dbMissingHint(config.stockDbPath)}
@@ -282,7 +282,7 @@ export default async function OverviewPage({
   return (
     <>
       <PageHeader
-        eyebrow={copy.eyebrow}
+        eyebrow={routeSection('/', language)}
         title={copy.title}
         emphasis={copy.emphasis}
         subtitle={copy.subtitle(fmtDateTime(meta.ingested_at), fxLabel)}
