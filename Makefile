@@ -122,6 +122,13 @@ install-service: require-tools build
 	launchctl load $(PLIST_DST)
 	@echo "installed: $(PLIST_DST) -> http://localhost:$(PORT) (pnpm: $(PNPM_BIN))"
 
+# The six-hourly refresh moved back to Hermes cron on 2026-08-29 (see README,
+# "Scheduled refresh"): launchd delivers nothing when a run fails, and one did for
+# three days unnoticed. This target is the way back if that judgement changes.
+#
+# Only one scheduler may own the refresh — both write the same SQLite database and
+# the same data/refresh-runs.json. Installing this means pausing the cron job in the
+# same breath:  hermes -p trader cron pause observatory-refresh
 install-refresh-service: require-tools
 	mkdir -p $(HOME)/Library/LaunchAgents logs
 	sed -e "s|__WORKDIR__|$(CURDIR)|g" -e "s|__HOME__|$(HOME)|g" \
