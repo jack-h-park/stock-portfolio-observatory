@@ -3,8 +3,8 @@ import { defineCopy } from '@/lib/ui-copy/define'
 export const dataMap = defineCopy({
   en: {
     eyebrow: 'System',
-    title: 'Data Map',
-    emphasis: 'Map',
+    title: 'Source & Retention',
+    emphasis: 'Retention',
     subtitle: (dir: string, ingestedAt: string) => `Source inventory for ${dir}. Last ingest: ${ingestedAt}.`,
     reviewItems: (count: string) => `${count} source issue(s)`,
     allMapped: 'No source issues',
@@ -49,8 +49,8 @@ export const dataMap = defineCopy({
   },
   ko: {
     eyebrow: '시스템',
-    title: '데이터 원본',
-    emphasis: '원본',
+    title: '원본 · 보존',
+    emphasis: '보존',
     subtitle: (dir: string, ingestedAt: string) => `${dir}의 원본 인벤토리입니다. 마지막 ingest: ${ingestedAt}.`,
     reviewItems: (count: string) => `원본 이슈 ${count}건`,
     allMapped: '원본 이슈 없음',

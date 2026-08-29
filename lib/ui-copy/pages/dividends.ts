@@ -16,7 +16,7 @@ export const dividends = defineCopy({
   ko: {
     eyebrow: '상세 기록',
     title: '배당 내역',
-    emphasis: '배당',
+    emphasis: '내역',
     subtitle: (total: string, rows: string) => `배당 ${rows}건, 합계 ${total}.`,
     openIncome: '수익 검토 열기',
     trendCard: '연간 배당 수익',

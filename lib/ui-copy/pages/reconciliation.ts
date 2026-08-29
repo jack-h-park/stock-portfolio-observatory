@@ -66,8 +66,8 @@ export const reconciliation = defineCopy({
   },
   ko: {
     eyebrow: '시스템',
-    title: '데이터 일치 확인',
-    emphasis: '일치 확인',
+    title: '정합성 확인',
+    emphasis: '확인',
     subtitle: '마지막 ingest 기준 보유종목, 세금 단위, 평가금액, 원본 상태 사이의 실제 차이를 확인합니다.',
     reviewItems: (count: string) => `확정 불일치 ${count}건`,
     reconciled: '일치 확인 완료',

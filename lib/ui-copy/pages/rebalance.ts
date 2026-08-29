@@ -3,8 +3,8 @@ import { defineCopy } from '@/lib/ui-copy/define'
 export const rebalance = defineCopy({
   en: {
     eyebrow: 'Portfolio',
-    title: 'Rebalance',
-    emphasis: 'Rebalance',
+    title: 'Rebalancing',
+    emphasis: 'Rebalancing',
     subtitle: (targets: string, cap: string) => `Policy baseline: ${targets} with ${cap}% single-position cap.`,
     freshnessIssues: (count: number) => `${count} freshness issue(s)`,
     inputsReady: 'Inputs ready',

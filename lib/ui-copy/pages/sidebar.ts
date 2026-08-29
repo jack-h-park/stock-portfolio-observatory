@@ -37,7 +37,7 @@ export const sidebar = defineCopy({
           { href: '/cost-basis', label: 'Cost Basis' },
           { href: '/dividends', label: 'Dividends' },
           { href: '/transactions', label: 'Transactions' },
-          { href: '/fx', label: 'FX Exchange' },
+          { href: '/fx', label: 'FX Exchange & Gain' },
           { href: '/crypto-premium', label: 'Korea Premium' },
         ],
       },
