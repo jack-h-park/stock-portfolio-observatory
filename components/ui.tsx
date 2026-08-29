@@ -446,7 +446,16 @@ export function Table({
       {children}
     </table>
   )
-  return scroll ? <div className="-mx-4 overflow-x-auto px-4">{table}</div> : table
+  // tabIndex makes the scroller reachable: a table wider than its card can only
+  // be scrolled sideways with a pointer otherwise, so a keyboard user cannot
+  // read the right-hand columns at all. axe reports this on six pages.
+  // No role="region" — a region has to be named, and the surrounding Card
+  // already carries the heading that would name it.
+  return scroll ? (
+    <div tabIndex={0} className="-mx-4 overflow-x-auto px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/40">
+      {table}
+    </div>
+  ) : table
 }
 
 export function Thead({ children }: { children: ReactNode }) {
