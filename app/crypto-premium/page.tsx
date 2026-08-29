@@ -11,6 +11,7 @@ import { signTone } from '@/lib/tone'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata } from '@/lib/page-names'
+import { CardRow, KpiBand } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/crypto-premium')
@@ -66,7 +67,7 @@ export default async function CryptoPremiumPage() {
         <EmptyState>{copy.noPairs}</EmptyState>
       ) : (
         <>
-          <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+          <CardRow columns="hero">
             <MetricHeroCard
               title={copy.weightedPremium}
               info="KRW-venue crypto premium weighted by the value of held KRW-venue positions. Use this as the headline premium exposure signal."
@@ -74,7 +75,7 @@ export default async function CryptoPremiumPage() {
               value={weighted == null ? 'n/a' : `${weighted >= 0 ? '+' : ''}${fmtNumber(weighted, 2)}%`}
               hint={copy.weightedHint}
             >
-              <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+              <KpiBand>
                 <MetricField
                   label={copy.premiumBearingValue}
                   value={money(premium.exposure.heldValueKrw)}
@@ -94,7 +95,7 @@ export default async function CryptoPremiumPage() {
                   hint={`${premium.symbols.length} with history`}
                   valueClassName="text-title"
                 />
-              </div>
+              </KpiBand>
             </MetricHeroCard>
 
             <Card title={copy.readOrder} info={copy.readOrderInfo}>
@@ -120,9 +121,9 @@ export default async function CryptoPremiumPage() {
                 </div>
               </div>
             </Card>
-          </div>
+          </CardRow>
 
-          <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
+          <CardRow columns={3}>
             <Card title={copy.byCoin} className="xl:col-span-2">
               <DataTable
                 rows={premium.spot}
@@ -180,7 +181,7 @@ export default async function CryptoPremiumPage() {
                 </p>
               </div>
             </Card>
-          </div>
+          </CardRow>
 
           <Card
             title={copy.history}

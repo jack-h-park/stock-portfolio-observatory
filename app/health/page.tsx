@@ -7,6 +7,7 @@ import { getLanguage } from '@/lib/i18n-server'
 import { getUiCopy } from '@/lib/ui-copy'
 import Link from 'next/link'
 import { routeMetadata } from '@/lib/page-names'
+import { CardRow } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/health')
@@ -107,7 +108,7 @@ export default async function HealthPage() {
         action={issueCount ? <Badge tone={errors.length || operational.summary.missing ? 'danger' : 'warning'}>Needs review {issueCount}</Badge> : <Badge tone="success">All checks passed</Badge>}
       />
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
+      <CardRow columns={3}>
         <Card title="Account coverage" info="How far each brokerage account's source data reaches. This is separate from file integrity." accent={accountCoverage.actionNeeded > 0} className="xl:col-span-3" action={<Link href="/data-ops#account-coverage" className="text-caption font-medium text-info hover:underline">Open updates</Link>}>
           <div className="grid grid-cols-3 gap-3 text-caption">
             <div><div className="text-caption text-ink-3">Action needed</div><div className="font-medium tabular-nums text-danger">{fmtNumber(accountCoverage.actionNeeded)}</div></div>
@@ -171,7 +172,7 @@ export default async function HealthPage() {
             </ul>
           )}
         </Card>
-      </div>
+      </CardRow>
 
       <Card
         title="Refresh History"
@@ -247,7 +248,7 @@ export default async function HealthPage() {
         )}
       </Card>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <CardRow>
         <Card title="FX snapshot">
           {fx ? (
             <div className="space-y-2 text-body text-ink-2">
@@ -266,7 +267,7 @@ export default async function HealthPage() {
           )}
         </Card>
 
-      </div>
+      </CardRow>
 
       <Card title="Freshness issues" accent={operational.staleItems.length > 0}>
         {operational.staleItems.length === 0 ? (

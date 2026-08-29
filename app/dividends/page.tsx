@@ -8,6 +8,7 @@ import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata } from '@/lib/page-names'
+import { CardRow } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/dividends')
@@ -31,7 +32,7 @@ export default async function DividendsPage() {
         subtitle={copy.subtitle(totalLabel, fmtNumber(rows.reduce((s, r) => s + r.count, 0)))}
         action={<Button href="/income" variant="solid">{copy.openIncome}</Button>}
       />
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <CardRow spacing="none">
         <Card title={copy.trendCard}>
           <TrendBarChart
             data={rows.map((r) => ({ year: `${r.currency} ${r.year}`, currency: r.currency, amount: dividendChartAmount(r.currency, r.amount) }))}
@@ -56,7 +57,7 @@ export default async function DividendsPage() {
             ))}
           </ul>
         </Card>
-      </div>
+      </CardRow>
     </>
   )
 }

@@ -12,6 +12,7 @@ import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata } from '@/lib/page-names'
+import { CardRow, KpiBand } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/income')
@@ -45,7 +46,7 @@ export default async function IncomePage() {
         action={income.totals.tickerless_count ? <Badge tone="warning">{copy.tickerlessRows(fmtNumber(income.totals.tickerless_count))}</Badge> : <Badge tone="success">{copy.tickerMapped}</Badge>}
       />
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+      <CardRow columns="hero">
         <MetricHeroCard
           title={copy.trailing12mIncome}
           info={copy.trailing12mInfo}
@@ -53,7 +54,7 @@ export default async function IncomePage() {
           value={money(income.totals.trailing_12m_base_income)}
           hint={copy.baseIncomeHint}
         >
-          <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+          <KpiBand>
             <MetricField
               label={copy.ytdIncome}
               value={money(income.totals.ytd_base_income)}
@@ -75,7 +76,7 @@ export default async function IncomePage() {
               hint={copy.yieldOnCostHint}
               valueClassName="text-title"
             />
-          </div>
+          </KpiBand>
         </MetricHeroCard>
 
         <Card title={copy.incomeCoverage} info={copy.incomeCoverageInfo}>
@@ -102,9 +103,9 @@ export default async function IncomePage() {
             </div>
           </div>
         </Card>
-      </div>
+      </CardRow>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
+      <CardRow columns={3}>
         <Card title={copy.incomeMix}>
           <div className="grid gap-3 text-caption">
             <div className="flex items-center justify-between">
@@ -153,9 +154,9 @@ export default async function IncomePage() {
             </div>
           </div>
         </Card>
-      </div>
+      </CardRow>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <CardRow>
         <Card title={copy.monthlyIncomeTrend}>
           <TrendBarChart
             data={income.byMonth.map((row) => ({ month: row.month.slice(2), income: Math.round(displayBaseValue(row.base_income) / chartDivisor) }))}
@@ -182,9 +183,9 @@ export default async function IncomePage() {
             ]}
           />
         </Card>
-      </div>
+      </CardRow>
 
-      <div className="mb-5 grid grid-cols-1 gap-5">
+      <CardRow columns={1}>
         <Card title={copy.topIncomePositions}>
           <DataTable
             rows={income.byPosition}
@@ -231,7 +232,7 @@ export default async function IncomePage() {
             />
           )}
         </Card>
-      </div>
+      </CardRow>
     </>
   )
 }

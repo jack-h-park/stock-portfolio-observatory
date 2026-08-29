@@ -19,6 +19,7 @@ import { Select } from '@/components/form'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata } from '@/lib/page-names'
+import { CardRow, KpiBand } from '@/components/layout'
 
 type PageCopy = ReturnType<typeof getPageCopy<'dailyBriefing'>>
 
@@ -293,7 +294,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
               </Card>
             )}
 
-            <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+            <CardRow columns="hero">
               <MetricHeroCard
                 title={session ? copy.sessionPl : copy.portfolioValue}
                 info={copy.sessionPlInfo}
@@ -305,7 +306,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                     : `${totals.positions} positions`
                 }
               >
-                <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+                <KpiBand>
                   <MetricField
                     label={copy.sessionReturn}
                     value={session ? fmtPct(session.totals!.plPct, { signed: true }) : '—'}
@@ -327,7 +328,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                     tone={signTone(totals.gl)}
                     valueClassName="text-title"
                   />
-                </div>
+                </KpiBand>
               </MetricHeroCard>
 
               <Card title={copy.readOrder} info={copy.readOrderInfo}>
@@ -353,17 +354,17 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                   </div>
                 </div>
               </Card>
-            </div>
+            </CardRow>
 
             {session && !session.marketClosed && (
-              <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+              <CardRow>
                 <Card title={copy.gainers} info={`Ranked by price change since the previous snapshot, among positions worth at least ${amount(m.moverMinCost, m)}.`}>
                   <SessionMoverList movers={session.gainers} notes={doc.narrative.moverNotes} direction="up" market={m} />
                 </Card>
                 <Card title={copy.decliners} info={`Ranked by price change since the previous snapshot, among positions worth at least ${amount(m.moverMinCost, m)}.`}>
                   <SessionMoverList movers={session.losers} notes={doc.narrative.moverNotes} direction="down" market={m} />
                 </Card>
-              </div>
+              </CardRow>
             )}
 
             {session && session.activity.length > 0 && (
@@ -388,14 +389,14 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
 
             <Band title={`${m.flag} ${m.label} — standing vs cost`} subtitle="cumulative since purchase — moves slowly" />
 
-            <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+            <CardRow>
               <Card title={copy.bestVsCost} info={`Ranked by unrealized gain versus cost basis, among positions of at least ${amount(m.moverMinCost, m)}. Cumulative since purchase — not a one-day move.`}>
                 <MoverList movers={m.aggregates!.gainers} notes={doc.narrative.moverNotes} market={m} copy={copy} />
               </Card>
               <Card title={copy.worstVsCost} info={`Ranked by unrealized loss versus cost basis, among positions of at least ${amount(m.moverMinCost, m)}. Cumulative since purchase — not a one-day move.`}>
                 <MoverList movers={m.aggregates!.losers} notes={doc.narrative.moverNotes} market={m} copy={copy} />
               </Card>
-            </div>
+            </CardRow>
 
             <Card title={copy.largestPositions} className="mb-5" info="Ranked by market value, not cost — a position down 60% is no longer a large exposure whatever was paid for it.">
               <Table scroll>

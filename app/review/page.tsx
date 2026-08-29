@@ -13,6 +13,7 @@ import { positionHref } from '@/lib/position-url'
 import { getPageCopy } from '@/lib/ui-copy'
 import { signTone } from '@/lib/tone'
 import { routeMetadata } from '@/lib/page-names'
+import { CardRow } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/review')
@@ -130,7 +131,7 @@ export default async function ReviewPage() {
 
       <p className="mb-5 rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{copy.readOrder}</p>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
+      <CardRow columns={3}>
         <Card title={copy.marketSummary}>
           <ul className="divide-y divide-line-subtle">
             {review.byMarket.map((row) => (
@@ -173,25 +174,25 @@ export default async function ReviewPage() {
             <FreshnessRows items={operational.staleItems.slice(0, 5)} language={language} />
           )}
         </Card>
-      </div>
+      </CardRow>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <CardRow>
         <Card title={copy.largestPositions}>
           <PositionTable rows={review.largestPositions} mode="size" copy={copy} money={money} />
         </Card>
         <Card title={copy.topGains}>
           <PositionTable rows={review.topGainers} mode="gain" copy={copy} money={money} />
         </Card>
-      </div>
+      </CardRow>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <CardRow>
         <Card title={copy.topLosses}>
           <PositionTable rows={review.topLosers} mode="loss" copy={copy} money={money} />
         </Card>
         <Card title={copy.shortTermHeavy}>
           <PositionTable rows={review.shortTermHeavy} mode="term" copy={copy} money={money} />
         </Card>
-      </div>
+      </CardRow>
 
       <Card title={copy.missingMarketValue} accent={review.noMarketValue.length > 0}>
         <PositionTable rows={review.noMarketValue} mode="missing" copy={copy} money={money} />

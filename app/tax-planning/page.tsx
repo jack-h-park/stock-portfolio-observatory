@@ -33,6 +33,7 @@ import { Select } from '@/components/form'
 import { DataTable } from '@/components/DataTable'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata } from '@/lib/page-names'
+import { CardRow } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/tax-planning')
@@ -387,14 +388,14 @@ export default async function TaxPlanningPage({
       )}
 
       {hasPlanningTarget && (
-        <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <CardRow>
         {multiYearPlan.scenarios.slice(0, 4).map((scenarioRow) => (
           <ScenarioTimeline key={scenarioRow.key} scenario={scenarioRow} copy={copy} />
         ))}
-        </div>
+        </CardRow>
       )}
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <CardRow>
         <Card title={copy.page.selectedSingleYearTaxSplit} info={copy.page.singleYearTaxSplitInfo}>
           <div className="space-y-2 text-caption text-ink-2">
             <div className="flex items-center justify-between gap-3"><span>{copy.page.federalShortTerm}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.usFederalShortTermTaxKrw)}</span></div>
@@ -423,7 +424,7 @@ export default async function TaxPlanningPage({
             </ul>
           )}
         </Card>
-      </div>
+      </CardRow>
 
       <Card title={copy.page.recommendedSaleLotSequence} className="mb-5" accent>
         <CandidateTable rows={plan.recommended} copy={copy} money={money} />

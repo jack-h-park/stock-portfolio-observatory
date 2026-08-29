@@ -9,6 +9,7 @@ import { formatSort, parseSort, sortRows, type TableSort } from '@/lib/table-sor
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata } from '@/lib/page-names'
+import { CardRow, KpiBand } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/data-map')
@@ -63,7 +64,7 @@ export default async function DataMapPage({
         }
       />
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]">
+      <CardRow columns="hero">
         <MetricHeroCard
           title={copy.itemsToReview}
           info={copy.itemsToReviewInfo}
@@ -71,7 +72,7 @@ export default async function DataMapPage({
           value={fmtNumber(reviewCount)}
           hint={reviewCount ? copy.issueHint : copy.cleanHint}
         >
-          <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-3">
+          <KpiBand>
             <MetricField
               label={copy.unused}
               value={fmtNumber(inventory.summary.unused)}
@@ -94,7 +95,7 @@ export default async function DataMapPage({
               tone={inventory.summary.missing ? 'danger' : 'success'}
               valueClassName="text-title"
             />
-          </div>
+          </KpiBand>
         </MetricHeroCard>
 
         <Card title={copy.inventoryCoverage} info={copy.inventoryCoverageInfo}>
@@ -120,7 +121,7 @@ export default async function DataMapPage({
             </div>
           </div>
         </Card>
-      </div>
+      </CardRow>
 
       <Card title={copy.reviewQueue} accent={actionItems.length > 0}>
         <div className="border-b border-line-subtle bg-surface px-4 py-3 text-label leading-relaxed text-ink-3">
