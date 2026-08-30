@@ -22,6 +22,12 @@
 #   inbox/   — a staging area, filed then emptied      → never pushed
 #   outputs/ — written there by every refresh          → never touched
 #   briefing-archive/ — written there by the briefing  → never touched
+#   .push-sources-last-success — a heartbeat this script writes on the far
+#     side after every successful source push, read by the ingest's
+#     `push_sources_recently_synced` check. Exists because --delete is absent
+#     (below): a push that silently stops leaves old files in place, and
+#     "at least one file matches" cannot tell a healthy sync from one that
+#     died last week. This timestamp is the only thing that can.
 #
 # Config is a late addition and a different root: it lives in the repo's data/
 # directory, not the data directory. It is here because leaving it out had a
@@ -151,6 +157,19 @@ rsync -a --human-readable --itemize-changes $DRY \
   --exclude '~$*' \
   "${present[@]}" \
   "$HOST:$REMOTE_DIR/"
+
+# Heartbeat: a marker the ingest can check for staleness, independent of
+# whether any source file actually changed. --delete is deliberately absent
+# above, so a push that has silently stopped working leaves every
+# previously-synced file in place — "at least one file matches" keeps passing
+# forever, and a broken push looks identical to a healthy one from the far
+# side. This timestamp is the only signal that tells them apart. Non-fatal:
+# the push itself already succeeded by the time this runs, and one failed
+# heartbeat write must not be reported as a failed push.
+if [ -z "$DRY" ]; then
+  ssh "$HOST" "date -u +%Y-%m-%dT%H:%M:%SZ > $REMOTE_DIR/.push-sources-last-success" \
+    || echo "note: heartbeat write failed (the push itself still succeeded)" >&2
+fi
 
 # Config, second because a failure here must not cost the source push that
 # already succeeded. Same one-way rule, two differences:

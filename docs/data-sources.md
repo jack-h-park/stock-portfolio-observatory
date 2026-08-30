@@ -341,6 +341,28 @@ Re-filing these through the inbox later is safe either way: the content hash is
 compared against the whole destination directory, so a document already there
 under any name is a skip, never a duplicate.
 
+### Telling a healthy push from a dead one
+
+The same missing `--delete` that makes the rename procedure above necessary has
+a second consequence: if `push-sources.sh` stops working entirely — the laptop
+loses network, the launchd job gets disabled, the SSH key expires — every file
+it already synced stays exactly where it is on the refresh host. Both
+`expected_us_source_files_present` and `source_file_dates_plausible` keep
+reading "all good" forever, because both only look at *whether* a file
+matching the pattern exists, never at *when* it last arrived. A push that has
+been dead for a month and one that ran an hour ago look identical to either
+check.
+
+`push_sources_recently_synced` is the fix: `push-sources.sh` writes
+`$STOCK_DATA_DIR/.push-sources-last-success` (a bare UTC timestamp) after every
+successful source rsync, and the ingest fails the check — `warning` severity,
+same as the two above — when that file is missing or older than 6 hours (the
+push runs hourly; 6h absorbs a laptop asleep overnight or one missed tick
+without paging anyone for nothing). It is deliberately not folded into either
+existing check: those ask "does the right file exist," this asks "is the
+pipeline that delivers it still alive," and a filename can answer the first
+question long after the answer to the second has become no.
+
 Note that `source_file_dates_plausible` would not catch a wrong name here —
 `scripts/source-files.mjs` has no `kr-statements` specs, so the check covers the
 US and crypto directories only. A wrong period on a Korean statement is caught by

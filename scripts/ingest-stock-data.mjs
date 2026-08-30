@@ -5069,6 +5069,43 @@ check(
   'warning'
 )
 
+// push-sources.sh's own heartbeat (see that script for why: --delete is
+// deliberately absent from its rsync, so a push that silently stops working
+// leaves every previously-synced file in place, and the two checks above —
+// "at least one file matches" and "every declared period is plausible" — both
+// keep passing forever. Neither can tell a sync that ran an hour ago from one
+// that has been broken for a month; this timestamp, written independent of
+// file content, is what does.
+const pushSourcesHeartbeatPath = path.join(dataDir, '.push-sources-last-success')
+let pushSourcesAgeHours = null
+let pushSourcesHeartbeatDetail = `no heartbeat file at ${pushSourcesHeartbeatPath} yet`
+try {
+  const stamp = fs.readFileSync(pushSourcesHeartbeatPath, 'utf8').trim()
+  const at = new Date(stamp)
+  if (Number.isNaN(at.getTime())) {
+    pushSourcesHeartbeatDetail = `unreadable timestamp in ${pushSourcesHeartbeatPath}: '${stamp}'`
+  } else {
+    pushSourcesAgeHours = (Date.now() - at.getTime()) / 3600000
+    pushSourcesHeartbeatDetail = `last successful push-sources.sh run was ${pushSourcesAgeHours.toFixed(1)}h ago`
+  }
+} catch {
+  // File absent — either push-sources.sh has not run since this check was
+  // added, or this host never receives a push at all. Either way, 'warning'
+  // (not 'error'): a host with no push-sources.sh source (e.g. a dev sample
+  // dir) should not fail its ingest over a file it was never going to have.
+}
+// Hourly cadence (StartInterval 3600 in push-sources.sh's launchd plist) plus
+// enough slack that a laptop asleep overnight or one missed tick does not
+// page anyone for nothing. 6h is long enough to absorb that and short enough
+// that a genuinely broken push is caught the same day it broke, not weeks
+// later when someone happens to notice the dashboard looks stale.
+check(
+  'push_sources_recently_synced',
+  pushSourcesAgeHours != null && pushSourcesAgeHours <= 6,
+  pushSourcesHeartbeatDetail,
+  'warning'
+)
+
 // --- Crypto ---------------------------------------------------------------
 //
 // The crypto position is a sum of transactions with no holdings export behind
