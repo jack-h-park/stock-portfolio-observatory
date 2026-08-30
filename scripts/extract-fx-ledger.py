@@ -38,6 +38,7 @@ OUT_PATH = Path(os.environ.get("STOCK_FX_LEDGER_PATH", OUT_DIR / "fx-ledger.json
 CACHE_PATH = Path(os.environ.get("STOCK_HANA_FX_CACHE_PATH", OUT_DIR / "hana-usd-reference-rates.json"))
 OVERRIDES_PATH = Path(os.environ.get("STOCK_FX_TRANSFER_OVERRIDES_PATH", ROOT / "data/fx-transfer-overrides.json"))
 OBSERVATIONS_PATH = Path(os.environ.get("STOCK_FX_RATE_OBSERVATIONS_PATH", ROOT / "data/fx-rate-observations.json"))
+SCREENSHOT_EVIDENCE_PATH = Path(os.environ.get("STOCK_HANA_FX_SCREENSHOT_EVIDENCE_PATH", ROOT / "data/fx-hana-screenshot-evidence.json"))
 HANA_URL = "https://www.hanabank.com/cms/rate/wpfxd651_01i_01.do"
 HANA_PAGE = "https://www.hanabank.com/cont/mall/mall15/mall1501/index.jsp"
 PREFERENCE = 0.90
@@ -196,6 +197,37 @@ def parse_hana_xls():
     return rows, sources, findings
 
 
+def parse_hana_screenshot_evidence():
+    """Load reviewed OCR from Hana FX Market mobile captures.
+
+    The screenshots contain the actual applied rate and timestamp. Cancellations
+    and expired reservations are retained in the evidence file but are not
+    emitted as exchange lots because no USD was acquired.
+    """
+    if not SCREENSHOT_EVIDENCE_PATH.exists():
+        return [], [], []
+    payload = json.loads(SCREENSHOT_EVIDENCE_PATH.read_text(encoding="utf-8"))
+    rows, screenshots = [], set()
+    for item in payload.get("rows", []):
+        screenshots.add(item.get("sourceScreenshot"))
+        if item.get("status") != "거래완료":
+            continue
+        usd = float(item.get("usdAmount") or 0)
+        if usd <= 0:
+            continue
+        source_name = f"hana-fx-mobile-screenshot:{item.get('sourceScreenshot')}"
+        rows.append({
+            "date": item["date"], "time": item.get("time"), "kind": "원화대가",
+            "memo": "FX마켓 살래요", "branch": "모바일 캡처", "deposit": usd,
+            "withdrawal": 0, "balance": None, "applied_rate": float(item["appliedRate"]),
+            "source": source_name, "source_path": str(SCREENSHOT_EVIDENCE_PATH), "page": None,
+        })
+    source = {"filename": SCREENSHOT_EVIDENCE_PATH.name, "path": str(SCREENSHOT_EVIDENCE_PATH),
+              "sha256": sha256(SCREENSHOT_EVIDENCE_PATH), "rows": len(rows),
+              "screenshots": sorted(screenshots), "method": payload.get("ocrReview")}
+    return rows, [source], []
+
+
 def movement_key(row):
     return (row["date"], row["kind"], round(row["deposit"], 2), round(row["withdrawal"], 2))
 
@@ -218,6 +250,25 @@ def merge_hana_rows(pdf_rows, xls_rows):
             row["source"] = f"{original['source']} + {row['source']}"
             row["source_path"] = original["source_path"]
             row["page"] = original["page"]
+        merged.append(row)
+    merged.extend(row for matches in pending.values() for row in matches)
+    return sorted(merged, key=lambda row: (row["date"], row.get("time") or "", row["deposit"] - row["withdrawal"]))
+
+
+def merge_hana_screenshot_rows(rows, screenshot_rows):
+    """Replace PDF estimates with timestamped screenshot actuals where movements match."""
+    pending = {}
+    for row in rows:
+        pending.setdefault(movement_key(row), []).append(row)
+    merged = []
+    for row in screenshot_rows:
+        key = movement_key(row)
+        matches = pending.get(key, [])
+        if matches:
+            original = matches.pop(0)
+            row["source"] = f"{original['source']} + {row['source']}"
+            row["source_path"] = f"{original['source_path']} + {row['source_path']}"
+            row["page"] = original.get("page")
         merged.append(row)
     merged.extend(row for matches in pending.values() for row in matches)
     return sorted(merged, key=lambda row: (row["date"], row.get("time") or "", row["deposit"] - row["withdrawal"]))
@@ -399,6 +450,8 @@ def main():
     pdf_rows, pdf_sources = parse_hana_pdfs()
     xls_rows, xls_sources, findings = parse_hana_xls()
     hana_rows = merge_hana_rows(pdf_rows, xls_rows)
+    screenshot_rows, screenshot_sources, screenshot_findings = parse_hana_screenshot_evidence()
+    hana_rows = merge_hana_screenshot_rows(hana_rows, screenshot_rows)
     exchange_days = [r["date"] for r in hana_rows if (r["kind"] == "원화대가" and "FX마켓" in (r.get("memo") or "")) or r["kind"] == "외화지폐"]
     rates, rate_findings = reference_rates(exchange_days)
     toss, toss_sources, toss_findings = toss_events()
@@ -411,8 +464,8 @@ def main():
     document = {"generatedAt": datetime.now(timezone.utc).isoformat(), "policy": {
         "hanaPreferenceRate": PREFERENCE, "hanaEstimateMethod": "first published daily TT-send spread",
         "transferRealizesFxGain": False, "mirae9346Coverage": "missing"
-    }, "events": events, "balances": balances, "sources": pdf_sources + xls_sources + toss_sources,
-        "findings": findings + rate_findings + toss_findings}
+    }, "events": events, "balances": balances, "sources": pdf_sources + xls_sources + screenshot_sources + toss_sources,
+        "findings": findings + screenshot_findings + rate_findings + toss_findings}
     OUT_PATH.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Wrote {OUT_PATH} ({len(events)} events; {len(document['findings'])} findings)")
     return 0
