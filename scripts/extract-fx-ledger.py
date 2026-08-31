@@ -23,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 import unicodedata
+from datetime import date as date_type
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
@@ -256,21 +257,21 @@ def merge_hana_rows(pdf_rows, xls_rows):
 
 
 def merge_hana_screenshot_rows(rows, screenshot_rows):
-    """Replace PDF estimates with timestamped screenshot actuals where movements match."""
-    pending = {}
-    for row in rows:
-        pending.setdefault(movement_key(row), []).append(row)
+    """Replace PDF estimates with screenshot actuals, tolerating bank posting-date shifts."""
+    pending = list(rows)
     merged = []
-    for row in screenshot_rows:
-        key = movement_key(row)
-        matches = pending.get(key, [])
+    for row in sorted(screenshot_rows, key=lambda item: (item["date"], item.get("time") or "")):
+        exact = [candidate for candidate in pending if movement_key(candidate) == movement_key(row)]
+        matches = exact or [candidate for candidate in pending if round(candidate["deposit"], 2) == round(row["deposit"], 2) and candidate["kind"] == row["kind"]]
         if matches:
-            original = matches.pop(0)
+            target_day = date_type.fromisoformat(row["date"])
+            original = min(matches, key=lambda candidate: abs((date_type.fromisoformat(candidate["date"]) - target_day).days))
+            pending.remove(original)
             row["source"] = f"{original['source']} + {row['source']}"
             row["source_path"] = f"{original['source_path']} + {row['source_path']}"
             row["page"] = original.get("page")
         merged.append(row)
-    merged.extend(row for matches in pending.values() for row in matches)
+    merged.extend(pending)
     return sorted(merged, key=lambda row: (row["date"], row.get("time") or "", row["deposit"] - row["withdrawal"]))
 
 
