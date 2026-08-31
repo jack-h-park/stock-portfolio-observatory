@@ -6,7 +6,7 @@ import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getFxDashboard } from '@/lib/adapters/portfolio-db'
 import { fmtNumber } from '@/lib/format'
-import { formatUsd } from '@/lib/currency'
+import { formatKrw, formatUsd } from '@/lib/currency'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata, routeSection } from '@/lib/page-names'
@@ -26,6 +26,10 @@ export default async function FxPage() {
   const missingTransfers = data.transfers.filter((event) => event.match_status === 'destination_account_missing')
   const eventLabel = (event: any) => event.event_type === 'TRANSFER' ? (event.direction === 'IN' ? 'Transfer in' : 'Transfer out') : event.event_type === 'EXCHANGE_CANCEL' ? 'Cancellation' : 'Buy USD'
   const rateBadge = (status: string) => status === 'actual' ? <Badge tone="success">{language === 'ko' ? '실제' : 'Actual'}</Badge> : status === 'estimated' ? <Badge tone="warning">{language === 'ko' ? '추정' : 'Estimated'}</Badge> : <Badge tone="neutral">n/a</Badge>
+  const dual = (krw: number | null | undefined, usd: number | null | undefined) => `${formatKrw(krw)} / ${formatUsd(usd)}`
+  const exchangeTotal = data.exchangeBreakdown.reduce((total, row) => ({ ...total, exchangeCount: total.exchangeCount + row.exchangeCount, usdBought: total.usdBought + row.usdBought, krwSpent: total.krwSpent + row.krwSpent, unrealizedKrw: (total.unrealizedKrw ?? 0) + (row.unrealizedKrw ?? 0) }), { institution: language === 'ko' ? '전체 합계' : 'Total', rateStatus: 'total', exchangeCount: 0, usdBought: 0, krwSpent: 0, weightedAverageRate: null as number | null, unrealizedKrw: 0 as number | null })
+  exchangeTotal.weightedAverageRate = exchangeTotal.usdBought ? exchangeTotal.krwSpent / exchangeTotal.usdBought : null
+  const exchangeRows = [...data.exchangeBreakdown, exchangeTotal]
 
   return (
     <>
@@ -38,7 +42,7 @@ export default async function FxPage() {
       />
 
       <CardRow columns="hero">
-        <MetricHeroCard title={copy.deployed} eyebrow="KRW → USD" value={money(data.summary.krwSpent)} hint={`${copy.acquired}: ${money(data.summary.usdBought, 'USD')}`}>
+        <MetricHeroCard title={copy.deployed} eyebrow="KRW → USD" value={dual(data.summary.krwSpent, data.summary.usdBought)} hint={`${copy.acquired}: ${formatUsd(data.summary.usdBought)}`}>
           <KpiBand>
             <MetricField label={copy.avg} value={data.summary.weightedAverageRate == null ? 'n/a' : `₩${fmtNumber(data.summary.weightedAverageRate, 2)}`} hint="KRW per USD" valueClassName="text-title" />
             <MetricField label={copy.savings} value={money(data.summary.spreadSavingsKrw)} hint={copy.savingsHint} tone="success" valueClassName="text-title" />
@@ -58,14 +62,14 @@ export default async function FxPage() {
       </CardRow>
 
       <Card title={language === 'ko' ? '환전 주체별 미실현 손익' : 'Unrealized FX by exchange source'} className="mb-5" info={language === 'ko' ? '하나은행 직접 환전과 토스증권 환전을 분리한 화면입니다. 전체 송금 손익과 혼동하지 않도록 원화 원가와 평균환율을 함께 표시합니다.' : 'Separates direct Hana exchanges from Toss exchanges so they are not confused with the full remittance result.'}>
-        <DataTable rows={data.exchangeBreakdown} getRowKey={(row) => `${row.institution}-${row.rateStatus}`} columns={[
+        <DataTable rows={exchangeRows} getRowKey={(row) => `${row.institution}-${row.rateStatus}`} columns={[
           { key: 'institution', label: language === 'ko' ? '환전기관' : 'Exchange source', render: (r) => r.institution === 'Hana Bank' ? '하나은행' : r.institution === 'Toss Securities' ? '토스증권' : r.institution },
           { key: 'rateStatus', label: language === 'ko' ? '환율 근거' : 'Rate basis', render: (r) => rateBadge(r.rateStatus) },
           { key: 'exchangeCount', label: language === 'ko' ? '건수' : 'Rows', align: 'right', render: (r) => fmtNumber(r.exchangeCount) },
           { key: 'usdBought', label: language === 'ko' ? '환전 USD' : 'USD exchanged', align: 'right', render: (r) => money(r.usdBought, 'USD') },
-          { key: 'krwSpent', label: language === 'ko' ? '원화 원가' : 'KRW cost', align: 'right', render: (r) => money(r.krwSpent) },
+          { key: 'krwSpent', label: language === 'ko' ? '원화 원가 / USD 환산' : 'KRW cost / USD equivalent', align: 'right', render: (r) => dual(r.krwSpent, r.usdBought) },
           { key: 'weightedAverageRate', label: language === 'ko' ? '평균 환율' : 'Avg. rate', align: 'right', render: (r) => r.weightedAverageRate == null ? 'n/a' : `₩${fmtNumber(r.weightedAverageRate, 2)}` },
-          { key: 'unrealizedKrw', label: language === 'ko' ? '현재 환율 기준 손익' : 'Unrealized P/L', align: 'right', render: (r) => r.unrealizedKrw == null ? 'n/a' : money(r.unrealizedKrw) },
+          { key: 'unrealizedKrw', label: language === 'ko' ? '현재 환율 기준 손익 (₩ / $)' : 'Unrealized P/L (₩ / $)', align: 'right', render: (r) => r.unrealizedKrw == null ? 'n/a' : dual(r.unrealizedKrw, r.unrealizedKrw / (data.summary.currentUsdKrw || 1)) },
         ]} />
         <p className="mt-3 text-label leading-relaxed text-ink-3">{language === 'ko' ? '예: 하나은행 직접 환전 실제확인분은 평균 ₩1,387.19/USD, 현재 환율 ₩1,377.15/USD 기준 약 -₩1.53M입니다. 전체 송금 기준 손익은 아래 별도 카드에서 계산합니다.' : 'Example: confirmed direct Hana exchanges average ₩1,387.19/USD, or about -₩1.53M at the current rate. The full remittance result below is a separate calculation.'}</p>
       </Card>
@@ -75,11 +79,11 @@ export default async function FxPage() {
           <MetricField label={language === 'ko' ? '하나은행 USD 출금 합계' : 'Hana outbound USD total'} value={formatUsd(data.summary.hanaOutboundUsd)} hint={`${fmtNumber(data.summary.hanaOutboundTransferCount)} ${language === 'ko' ? '건' : 'rows'}`} valueClassName="text-metric" />
           <MetricField label={copy.knownMirae} value={formatUsd(data.summary.hanaKnownMiraeUsd)} hint={language === 'ko' ? '미래에셋으로 표시된 2건' : 'Two rows marked Mirae Asset'} valueClassName="text-title" />
           <MetricField label={copy.destinationUnknown} value={formatUsd(data.summary.hanaUnknownDestinationUsd)} hint={language === 'ko' ? '미국 계좌 입금과 후속 대조 필요' : 'Requires later US-account reconciliation'} tone="warning" valueClassName="text-title" />
-          <MetricField label={copy.remittanceCost} value={money(data.summary.hanaOutboundCostKrw)} hint={data.summary.hanaOutboundEstimatedCostRate == null ? 'n/a' : `₩${fmtNumber(data.summary.hanaOutboundEstimatedCostRate, 2)} / USD`} valueClassName="text-title" />
-          <MetricField label={copy.remittanceValue} value={money(data.summary.hanaOutboundValueKrw)} hint={data.summary.currentUsdKrwAsOf ?? 'n/a'} valueClassName="text-title" />
-          <MetricField label={copy.remittanceGl} value={money(data.summary.hanaOutboundUnrealizedKrw)} hint={language === 'ko' ? '입금일 환율 가정 포함' : 'Includes deposit-date rate assumptions'} tone={data.summary.hanaOutboundUnrealizedKrw >= 0 ? 'success' : 'warning'} valueClassName="text-title" />
-          <MetricField label={copy.confirmedGl} value={money(data.summary.hanaOutboundConfirmedUnrealizedKrw)} hint={language === 'ko' ? '실제 적용환율이 기록된 원가만' : 'Only rows with an actual applied rate'} tone={data.summary.hanaOutboundConfirmedUnrealizedKrw >= 0 ? 'success' : 'warning'} valueClassName="text-title" />
-          <MetricField label={copy.estimatedGl} value={money(data.summary.hanaOutboundEstimatedUnrealizedKrw)} hint={language === 'ko' ? '과거 추정환율·입금일 환율 가정' : 'Historical and deposit-date assumptions'} tone="warning" valueClassName="text-title" />
+          <MetricField label={copy.remittanceCost} value={dual(data.summary.hanaOutboundCostKrw, data.summary.hanaOutboundUsd)} hint={data.summary.hanaOutboundEstimatedCostRate == null ? 'n/a' : `₩${fmtNumber(data.summary.hanaOutboundEstimatedCostRate, 2)} / USD`} valueClassName="text-title" />
+          <MetricField label={copy.remittanceValue} value={dual(data.summary.hanaOutboundValueKrw, data.summary.hanaOutboundUsd)} hint={data.summary.currentUsdKrwAsOf ?? 'n/a'} valueClassName="text-title" />
+          <MetricField label={copy.remittanceGl} value={dual(data.summary.hanaOutboundUnrealizedKrw, data.summary.hanaOutboundUnrealizedKrw / (data.summary.currentUsdKrw || 1))} hint={language === 'ko' ? '원화 / 달러 병행, 입금일 환율 가정 포함' : 'KRW / USD; includes deposit-date assumptions'} tone={data.summary.hanaOutboundUnrealizedKrw >= 0 ? 'success' : 'warning'} valueClassName="text-title" />
+          <MetricField label={copy.confirmedGl} value={dual(data.summary.hanaOutboundConfirmedUnrealizedKrw, data.summary.hanaOutboundConfirmedUnrealizedKrw / (data.summary.currentUsdKrw || 1))} hint={language === 'ko' ? '실제 적용환율이 기록된 원가만' : 'Only rows with an actual applied rate'} tone={data.summary.hanaOutboundConfirmedUnrealizedKrw >= 0 ? 'success' : 'warning'} valueClassName="text-title" />
+          <MetricField label={copy.estimatedGl} value={dual(data.summary.hanaOutboundEstimatedUnrealizedKrw, data.summary.hanaOutboundEstimatedUnrealizedKrw / (data.summary.currentUsdKrw || 1))} hint={language === 'ko' ? '과거 추정환율·입금일 환율 가정' : 'Historical and deposit-date assumptions'} tone="warning" valueClassName="text-title" />
           <MetricField label={copy.tossMatched} value={formatUsd(data.summary.hanaTossMatchedUsd)} hint={language === 'ko' ? `미매칭 ${formatUsd(data.summary.hanaTossUnmatchedUsd)}` : `${formatUsd(data.summary.hanaTossUnmatchedUsd)} unmatched`} valueClassName="text-title" />
         </div>
       </Card>
