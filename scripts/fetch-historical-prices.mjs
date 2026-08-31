@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
 import { loadLocalEnv } from './env.mjs'
+import { withoutUnsettledBar } from './settled-bars.mjs'
 
 loadLocalEnv()
 
@@ -49,7 +50,7 @@ function rowsFromYahoo(result, market, ticker, symbol) {
   const quote = result?.indicators?.quote?.[0]?.close ?? []
   const adjusted = result?.indicators?.adjclose?.[0]?.adjclose ?? []
   const currency = String(result?.meta?.currency ?? (market === 'KR' ? 'KRW' : 'USD'))
-  return timestamps
+  const rows = timestamps
     .map((timestamp, index) => ({
       market,
       ticker,
@@ -61,6 +62,7 @@ function rowsFromYahoo(result, market, ticker, symbol) {
       source: 'Yahoo Finance chart API',
     }))
     .filter((row) => Number.isFinite(row.close) && row.close > 0)
+  return withoutUnsettledBar(rows, result?.meta)
 }
 
 async function fetchTicker(ticker, market, quoteMarket, quoteTicker, startDate, endDate) {
