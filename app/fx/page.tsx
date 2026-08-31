@@ -29,7 +29,12 @@ export default async function FxPage() {
   const dual = (krw: number | null | undefined, usd: number | null | undefined) => `${formatKrw(krw)} / ${formatUsd(usd)}`
   const exchangeTotal = data.exchangeBreakdown.reduce((total, row) => ({ ...total, exchangeCount: total.exchangeCount + row.exchangeCount, usdBought: total.usdBought + row.usdBought, krwSpent: total.krwSpent + row.krwSpent, unrealizedKrw: (total.unrealizedKrw ?? 0) + (row.unrealizedKrw ?? 0) }), { institution: language === 'ko' ? '전체 합계' : 'Total', rateStatus: 'total', exchangeCount: 0, usdBought: 0, krwSpent: 0, weightedAverageRate: null as number | null, unrealizedKrw: 0 as number | null })
   exchangeTotal.weightedAverageRate = exchangeTotal.usdBought ? exchangeTotal.krwSpent / exchangeTotal.usdBought : null
-  const exchangeRows = [...data.exchangeBreakdown, exchangeTotal]
+  const exchangeRows = [
+    ...data.exchangeBreakdown,
+    { institution: language === 'ko' ? '토스→하나 미매칭 입금' : 'Toss → Hana unmatched inbound', rateStatus: 'inbound_estimated', exchangeCount: null, usdBought: data.summary.hanaTossUnmatchedUsd, krwSpent: null, weightedAverageRate: null, unrealizedKrw: null, rowType: 'inbound' },
+    { institution: language === 'ko' ? '미래에셋·기타 계좌 입금' : 'Mirae Asset / other inbound', rateStatus: 'inbound_estimated', exchangeCount: null, usdBought: data.summary.hanaOtherInboundUsd, krwSpent: null, weightedAverageRate: null, unrealizedKrw: null, rowType: 'inbound' },
+    { ...exchangeTotal, institution: language === 'ko' ? '환전 합계' : 'Exchange total' },
+  ]
 
   return (
     <>
@@ -64,12 +69,12 @@ export default async function FxPage() {
       <Card title={language === 'ko' ? '환전 주체별 미실현 손익' : 'Unrealized FX by exchange source'} className="mb-5" info={language === 'ko' ? '하나은행 직접 환전과 토스증권 환전을 분리한 화면입니다. 전체 송금 손익과 혼동하지 않도록 원화 원가와 평균환율을 함께 표시합니다.' : 'Separates direct Hana exchanges from Toss exchanges so they are not confused with the full remittance result.'}>
         <DataTable rows={exchangeRows} getRowKey={(row) => `${row.institution}-${row.rateStatus}`} columns={[
           { key: 'institution', label: language === 'ko' ? '환전기관' : 'Exchange source', render: (r) => r.institution === 'Hana Bank' ? '하나은행' : r.institution === 'Toss Securities' ? '토스증권' : r.institution },
-          { key: 'rateStatus', label: language === 'ko' ? '환율 근거' : 'Rate basis', render: (r) => rateBadge(r.rateStatus) },
-          { key: 'exchangeCount', label: language === 'ko' ? '건수' : 'Rows', align: 'right', render: (r) => fmtNumber(r.exchangeCount) },
+          { key: 'rateStatus', label: language === 'ko' ? '환율 근거' : 'Rate basis', render: (r) => r.rowType === 'inbound' ? <Badge tone="warning">{language === 'ko' ? '입금·추정' : 'Inbound · estimated'}</Badge> : rateBadge(r.rateStatus) },
+          { key: 'exchangeCount', label: language === 'ko' ? '건수' : 'Rows', align: 'right', render: (r) => r.exchangeCount == null ? '—' : fmtNumber(r.exchangeCount) },
           { key: 'usdBought', label: language === 'ko' ? '환전 USD' : 'USD exchanged', align: 'right', render: (r) => money(r.usdBought, 'USD') },
-          { key: 'krwSpent', label: language === 'ko' ? '원화 원가 / USD 환산' : 'KRW cost / USD equivalent', align: 'right', render: (r) => dual(r.krwSpent, r.usdBought) },
-          { key: 'weightedAverageRate', label: language === 'ko' ? '평균 환율' : 'Avg. rate', align: 'right', render: (r) => r.weightedAverageRate == null ? 'n/a' : `₩${fmtNumber(r.weightedAverageRate, 2)}` },
-          { key: 'unrealizedKrw', label: language === 'ko' ? '현재 환율 기준 손익 (₩ / $)' : 'Unrealized P/L (₩ / $)', align: 'right', render: (r) => r.unrealizedKrw == null ? 'n/a' : dual(r.unrealizedKrw, r.unrealizedKrw / (data.summary.currentUsdKrw || 1)) },
+          { key: 'krwSpent', label: language === 'ko' ? '원화 원가 / USD 환산' : 'KRW cost / USD equivalent', align: 'right', render: (r) => r.rowType === 'inbound' ? '—' : dual(r.krwSpent, r.usdBought) },
+          { key: 'weightedAverageRate', label: language === 'ko' ? '평균 환율' : 'Avg. rate', align: 'right', render: (r) => r.weightedAverageRate == null ? '—' : `₩${fmtNumber(r.weightedAverageRate, 2)}` },
+          { key: 'unrealizedKrw', label: language === 'ko' ? '현재 환율 기준 손익 (₩ / $)' : 'Unrealized P/L (₩ / $)', align: 'right', render: (r) => r.rowType === 'inbound' ? (language === 'ko' ? '전체 송금 손익에 추정 반영' : 'Included in estimated remittance P/L') : r.unrealizedKrw == null ? '—' : dual(r.unrealizedKrw, r.unrealizedKrw / (data.summary.currentUsdKrw || 1)) },
         ]} />
         <p className="mt-3 text-label leading-relaxed text-ink-3">{language === 'ko' ? '예: 하나은행 직접 환전 실제확인분은 평균 ₩1,387.19/USD, 현재 환율 ₩1,377.15/USD 기준 약 -₩1.53M입니다. 전체 송금 기준 손익은 아래 별도 카드에서 계산합니다.' : 'Example: confirmed direct Hana exchanges average ₩1,387.19/USD, or about -₩1.53M at the current rate. The full remittance result below is a separate calculation.'}</p>
       </Card>
