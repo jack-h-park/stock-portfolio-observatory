@@ -57,6 +57,19 @@ export default async function FxPage() {
         </Card>
       </CardRow>
 
+      <Card title={language === 'ko' ? '환전 주체별 미실현 손익' : 'Unrealized FX by exchange source'} className="mb-5" info={language === 'ko' ? '하나은행 직접 환전과 토스증권 환전을 분리한 화면입니다. 전체 송금 손익과 혼동하지 않도록 원화 원가와 평균환율을 함께 표시합니다.' : 'Separates direct Hana exchanges from Toss exchanges so they are not confused with the full remittance result.'}>
+        <DataTable rows={data.exchangeBreakdown} getRowKey={(row) => `${row.institution}-${row.rateStatus}`} columns={[
+          { key: 'institution', label: language === 'ko' ? '환전기관' : 'Exchange source', render: (r) => r.institution === 'Hana Bank' ? '하나은행' : r.institution === 'Toss Securities' ? '토스증권' : r.institution },
+          { key: 'rateStatus', label: language === 'ko' ? '환율 근거' : 'Rate basis', render: (r) => rateBadge(r.rateStatus) },
+          { key: 'exchangeCount', label: language === 'ko' ? '건수' : 'Rows', align: 'right', render: (r) => fmtNumber(r.exchangeCount) },
+          { key: 'usdBought', label: language === 'ko' ? '환전 USD' : 'USD exchanged', align: 'right', render: (r) => money(r.usdBought, 'USD') },
+          { key: 'krwSpent', label: language === 'ko' ? '원화 원가' : 'KRW cost', align: 'right', render: (r) => money(r.krwSpent) },
+          { key: 'weightedAverageRate', label: language === 'ko' ? '평균 환율' : 'Avg. rate', align: 'right', render: (r) => r.weightedAverageRate == null ? 'n/a' : `₩${fmtNumber(r.weightedAverageRate, 2)}` },
+          { key: 'unrealizedKrw', label: language === 'ko' ? '현재 환율 기준 손익' : 'Unrealized P/L', align: 'right', render: (r) => r.unrealizedKrw == null ? 'n/a' : money(r.unrealizedKrw) },
+        ]} />
+        <p className="mt-3 text-label leading-relaxed text-ink-3">{language === 'ko' ? '예: 하나은행 직접 환전 실제확인분은 평균 ₩1,387.19/USD, 현재 환율 ₩1,377.15/USD 기준 약 -₩1.53M입니다. 전체 송금 기준 손익은 아래 별도 카드에서 계산합니다.' : 'Example: confirmed direct Hana exchanges average ₩1,387.19/USD, or about -₩1.53M at the current rate. The full remittance result below is a separate calculation.'}</p>
+      </Card>
+
       <Card title={copy.hanaOutbound} className="mb-5" info={copy.hanaOutboundHint}>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MetricField label={language === 'ko' ? '하나은행 USD 출금 합계' : 'Hana outbound USD total'} value={formatUsd(data.summary.hanaOutboundUsd)} hint={`${fmtNumber(data.summary.hanaOutboundTransferCount)} ${language === 'ko' ? '건' : 'rows'}`} valueClassName="text-metric" />

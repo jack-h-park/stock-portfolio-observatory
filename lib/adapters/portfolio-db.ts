@@ -143,6 +143,15 @@ export type FxDashboard = {
     latestBalanceUsd: number | null
     latestBalanceDate: string | null
   }>
+  exchangeBreakdown: Array<{
+    institution: string
+    rateStatus: string
+    exchangeCount: number
+    usdBought: number
+    krwSpent: number
+    weightedAverageRate: number | null
+    unrealizedKrw: number | null
+  }>
   monthly: Array<{ month: string; usdBought: number; krwSpent: number; averageRate: number | null; spreadSavingsKrw: number }>
   transfers: FxEvent[]
   recent: FxEvent[]
@@ -2915,6 +2924,7 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
 
     const institutions = new Map<string, FxDashboard['institutions'][number]>()
     const monthly = new Map<string, FxDashboard['monthly'][number]>()
+    const exchangeBreakdown = new Map<string, FxDashboard['exchangeBreakdown'][number]>()
     let usdBought = 0
     let krwSpent = 0
     let spreadSavingsKrw = 0
@@ -3012,6 +3022,14 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
         actualCount += sign
         institution.actualCount += sign
       }
+      if (event.event_type === 'EXCHANGE' && (event.rate_status === 'actual' || event.rate_status === 'estimated')) {
+        const key = `${event.institution}|${event.rate_status}`
+        const breakdown = exchangeBreakdown.get(key) ?? { institution: event.institution, rateStatus: event.rate_status, exchangeCount: 0, usdBought: 0, krwSpent: 0, weightedAverageRate: null, unrealizedKrw: null }
+        breakdown.exchangeCount += sign
+        breakdown.usdBought += sign * event.usd_amount
+        breakdown.krwSpent += sign * (event.krw_amount ?? 0)
+        exchangeBreakdown.set(key, breakdown)
+      }
       if (event.realized_fx_gl_krw != null) {
         realizedEventCount += 1
         realizedFxGlKrw += event.realized_fx_gl_krw
@@ -3040,6 +3058,10 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
       }
     }
     for (const item of monthly.values()) item.averageRate = item.usdBought ? item.krwSpent / item.usdBought : null
+    for (const item of exchangeBreakdown.values()) {
+      item.weightedAverageRate = item.usdBought ? item.krwSpent / item.usdBought : null
+      item.unrealizedKrw = currentRate && item.usdBought ? item.usdBought * currentRate.rate - item.krwSpent : null
+    }
 
     const hanaOutboundCostRate = hanaSourceUsd ? hanaSourceCostKrw / hanaSourceUsd : null
     const hanaOutboundCostKrw = hanaOutboundUsd && hanaSourceUsd ? hanaOutboundUsd * hanaOutboundCostRate! : 0
@@ -3079,6 +3101,7 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
         currentUsdKrwAsOf: currentRate?.as_of_date ?? null,
       },
       institutions: [...institutions.values()].sort((a, b) => b.krwSpent - a.krwSpent),
+      exchangeBreakdown: [...exchangeBreakdown.values()].sort((a, b) => a.institution.localeCompare(b.institution) || a.rateStatus.localeCompare(b.rateStatus)),
       monthly: [...monthly.values()].sort((a, b) => a.month.localeCompare(b.month)),
       transfers: events.filter((event) => event.event_type === 'TRANSFER').sort((a, b) => b.date.localeCompare(a.date)),
       recent: events.slice(-recentLimit).reverse(),
