@@ -128,6 +128,7 @@ export type FxDashboard = {
     hanaOutboundEstimatedUnrealizedKrw: number
     hanaTossMatchedUsd: number
     hanaTossUnmatchedUsd: number
+    hanaOtherInboundUsd: number
     currentUsdKrw: number | null
     currentUsdKrwAsOf: string | null
   }
@@ -2943,6 +2944,7 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
     let hanaConfirmedSourceCostKrw = 0
     let hanaTossMatchedUsd = 0
     let hanaTossUnmatchedUsd = 0
+    let hanaOtherInboundUsd = 0
     let realizedEventCount = 0
     let realizedFxGlKrw = 0
 
@@ -2996,7 +2998,7 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
             }
             hanaTossMatchedUsd += matchedUsd
             hanaTossUnmatchedUsd += Math.max(0, event.usd_amount - matchedUsd)
-          }
+          } else hanaOtherInboundUsd += event.usd_amount
           const assumedRate = historicalRateByDate.get(event.date) ?? currentRate?.rate ?? null
           const estimatedUsd = event.usd_amount - matchedUsd
           hanaSourceUsd += event.usd_amount
@@ -3097,6 +3099,7 @@ export function getFxDashboard(recentLimit = 120): FxDashboard {
         hanaOutboundEstimatedUnrealizedKrw,
         hanaTossMatchedUsd,
         hanaTossUnmatchedUsd,
+        hanaOtherInboundUsd,
         currentUsdKrw: currentRate?.rate ?? null,
         currentUsdKrwAsOf: currentRate?.as_of_date ?? null,
       },
