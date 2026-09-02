@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
 import { loadLocalEnv } from './env.mjs'
-import { withoutUnsettledBar } from './settled-bars.mjs'
+import { withoutUnsettledBar, newestSettledSession } from './settled-bars.mjs'
 
 loadLocalEnv()
 
@@ -11,11 +11,32 @@ const pricesPath = process.env.STOCK_HISTORICAL_PRICES_PATH || path.join(process
 const fxPath = process.env.STOCK_HISTORICAL_FX_RATES_PATH || path.join(process.cwd(), 'data/historical-fx-rates.json')
 const manualMappingsPath = process.env.STOCK_MANUAL_MAPPINGS_PATH || path.join(process.cwd(), 'data/manual-mappings.json')
 const tossSnapshotPath = process.env.STOCK_TOSS_SNAPSHOT_PATH || path.join(process.cwd(), 'data/toss-snapshot.json')
+// Skip the refetch when the file already covers the newest session it could —
+// measured in sessions, not in hours.
+//
+// This was `ageMs < 20h`, which asks how recently we WROTE rather than what we
+// wrote. The refresh runs six-hourly, so of every four runs three were skipped
+// on file age alone, and whether a settled close ever landed came down to which
+// run happened to fall outside the window. On 2026-09-02 the one run that did
+// refetch fired at 06:07 PT, before the open; the file it produced ended at
+// 08-31, and the next three runs skipped it as "current" — so the trading review
+// that afternoon worked from a table with no 09-01 close in it at all.
+//
+// A calendar-day comparison is enough and stays honest over weekends and
+// holidays: on a Saturday the newest weekday is still Friday, the file already
+// has it, and the run correctly does nothing.
 if (!process.env.FORCE_HISTORICAL_PRICES && fs.existsSync(pricesPath)) {
-  const ageMs = Date.now() - fs.statSync(pricesPath).mtimeMs
   const existing = JSON.parse(fs.readFileSync(pricesPath, 'utf8'))
-  if (ageMs < 20 * 60 * 60 * 1000 && Number(existing.valuationVersion || 0) >= 2) {
-    console.log(`Historical prices are current (${Math.round(ageMs / 3600000)}h old); skipping full refetch.`)
+  // NOT existing.endDate — that is the end of the range we ASKED for, which the
+  // writer sets to tomorrow. Reading it here would clear every comparison below
+  // and skip forever. What matters is the newest row that actually came back.
+  let covered = ''
+  for (const row of existing.prices ?? []) {
+    if (row?.price_date > covered) covered = row.price_date
+  }
+  const newestPossible = newestSettledSession()
+  if (covered >= newestPossible && Number(existing.valuationVersion || 0) >= 2) {
+    console.log(`Historical prices already cover ${covered} (newest settled ${newestPossible}); skipping full refetch.`)
     process.exit(0)
   }
 }

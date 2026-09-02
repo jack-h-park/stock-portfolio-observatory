@@ -34,9 +34,49 @@ function withoutUnsettledBar(rows, meta) {
   if (rows.length === 0) return rows
   const lastTrade = Number(meta?.regularMarketTime)
   const bell = Number(meta?.currentTradingPeriod?.regular?.end)
-  if (!Number.isFinite(lastTrade) || !Number.isFinite(bell)) return rows
+  const openBell = Number(meta?.currentTradingPeriod?.regular?.start)
+  if (!Number.isFinite(lastTrade) || !Number.isFinite(bell) || !Number.isFinite(openBell)) return rows
   if (lastTrade >= bell) return rows
+
+  // The session named by currentTradingPeriod is open — but that does NOT make
+  // the last bar its bar. Before the opening bell there is no bar for today yet,
+  // so the last bar is YESTERDAY, already settled, and dropping it throws away a
+  // real close.
+  //
+  // That is not hypothetical: the first version of this checked only
+  // `lastTrade < bell`, and the 2026-09-02 06:07 PT refresh — 09:07 ET, twenty
+  // minutes before the open — dropped the settled 2026-09-01 close on every
+  // symbol. The table then had no 09-01 row at all, which the trading review's
+  // shadow check reported the same afternoon as "no settled close stored".
+  //
+  // So drop the last bar only when it IS the open session's bar. Bar timestamps
+  // and the session start are both the opening bell, so their UTC dates agree
+  // for US (13:30Z) and KR (00:00Z) alike.
+  const openSessionDate = new Date(openBell * 1000).toISOString().slice(0, 10)
+  if (rows[rows.length - 1].price_date !== openSessionDate) return rows
   return rows.slice(0, -1)
 }
 
-export { withoutUnsettledBar }
+/**
+ * The newest session that could possibly have a settled close, as a UTC date.
+ *
+ * Used to decide whether a stored price file is still current. The check it
+ * replaced asked how recently the file had been WRITTEN — under 20 hours meant
+ * skip — which on a six-hourly refresh skipped three runs in four and made
+ * coverage depend on which run happened to fall outside the window. On
+ * 2026-09-02 the one run that refetched fired pre-open and produced a file
+ * ending 08-31; the next three skipped it as current, and that afternoon's
+ * trading review had no 09-01 close to work from.
+ *
+ * Before the US close (20:00 UTC) nothing today has settled, so the answer is
+ * the previous session. Weekends walk back to Friday, which is what makes a
+ * Saturday run correctly decide it has nothing to do.
+ */
+function newestSettledSession(now = new Date()) {
+  const d = new Date(now.getTime())
+  if (d.getUTCHours() < 20) d.setUTCDate(d.getUTCDate() - 1)
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() - 1)
+  return d.toISOString().slice(0, 10)
+}
+
+export { withoutUnsettledBar, newestSettledSession }
