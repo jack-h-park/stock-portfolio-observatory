@@ -680,3 +680,7 @@ pnpm build
 ```
 
 The workflow intentionally uses synthetic sample data only.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
