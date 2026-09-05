@@ -12,6 +12,17 @@ out/
 .env.local
 .env.*.local
 
+# Copies of the files above. The rules match exact names, so a copy inherits
+# none of them: workspace-governance's secret-rotate leaves a .bak-YYYYMMDD
+# beside the original for a ~7-day soak so a bad rotation can be undone. This
+# repository is public and .env.local holds live credentials, so that copy
+# would land untracked-but-unignored — one `git add -A` from being committed.
+.env*.bak
+.env*.bak-*
+.env*.backup*
+.env*.orig
+.env*.save
+
 # Logs and local caches
 *.log
 .playwright-cli/
