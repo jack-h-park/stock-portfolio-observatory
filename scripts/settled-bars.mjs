@@ -79,4 +79,38 @@ function newestSettledSession(now = new Date()) {
   return d.toISOString().slice(0, 10)
 }
 
-export { withoutUnsettledBar, newestSettledSession }
+/**
+ * The newest US session the stored rows actually cover.
+ *
+ * Counting rows per date rather than taking the maximum date, because one
+ * instrument's calendar is not the market's. SPAXX is a Fidelity cash sweep
+ * pinned at $1.00 — the ingest already knows it as a cash equivalent — and Yahoo
+ * gives it a bar ahead of the equity session. On 2026-09-09 the stored file held
+ * 73 US rows for 09-03, 73 for 09-04, and exactly ONE for 09-09: that SPAXX row.
+ * Taking the maximum read the file as current through 09-09, so the refresh
+ * skipped on every six-hourly run and the 09-08 session — the first back from
+ * Labor Day — never landed. The trading review reported it as "no settled close
+ * stored" two days running.
+ *
+ * A quorum rather than a ticker blocklist: any future constant-NAV instrument
+ * behaves the same way, and a real session brings dozens of rows against its one.
+ *
+ * US-only, deliberately, because it is paired with newestSettledSession(), which
+ * is the US calendar. A KR-only staleness will not trigger a refetch on its own —
+ * a known gap, tolerable because the refetch is whole-file, so any trigger
+ * refreshes every market.
+ */
+function coveredSession(rows, quorum = 5) {
+  const perDate = new Map()
+  for (const row of rows ?? []) {
+    if (row?.market !== 'US' || !row.price_date) continue
+    perDate.set(row.price_date, (perDate.get(row.price_date) ?? 0) + 1)
+  }
+  let covered = ''
+  for (const [date, count] of perDate) {
+    if (count >= quorum && date > covered) covered = date
+  }
+  return covered
+}
+
+export { withoutUnsettledBar, newestSettledSession, coveredSession }

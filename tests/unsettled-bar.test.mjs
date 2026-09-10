@@ -73,3 +73,36 @@ test('newest settled session: weekends walk back to Friday', () => {
   assert.equal(newestSettledSession(new Date('2026-09-07T12:00:00Z')), '2026-09-04') // Sun
   assert.equal(newestSettledSession(new Date('2026-09-08T12:00:00Z')), '2026-09-07') // Mon pre-open
 })
+
+import { coveredSession } from '../scripts/settled-bars.mjs'
+
+// The stored file on 2026-09-09, in shape: two full sessions and one stray row.
+const us = (price_date, ticker) => ({ market: 'US', ticker, price_date, close: 1 })
+const session = (date, n) => Array.from({ length: n }, (_, i) => us(date, `T${i}`))
+const REAL = [...session('2026-09-03', 73), ...session('2026-09-04', 73),
+              us('2026-09-09', 'SPAXX')]
+
+test('coverage ignores a lone cash-sweep row', () => {
+  // Taking the maximum date read this file as current through 09-09, so the
+  // six-hourly refresh skipped every run and the 09-08 session never landed.
+  assert.equal(coveredSession(REAL), '2026-09-04',
+    'one SPAXX row must not stand in for a settled equity session')
+})
+
+test('coverage takes a real session as soon as it arrives', () => {
+  assert.equal(coveredSession([...REAL, ...session('2026-09-08', 73)]), '2026-09-08')
+})
+
+test('coverage ignores non-US rows', () => {
+  // Paired with newestSettledSession(), which is the US calendar; KR trades on
+  // days the US does not (Labor Day), and counting it here would skip a US gap.
+  const withKr = [...REAL, ...Array.from({ length: 50 },
+    (_, i) => ({ market: 'KR', ticker: `K${i}`, price_date: '2026-09-09', close: 1 }))]
+  assert.equal(coveredSession(withKr), '2026-09-04')
+})
+
+test('coverage is empty when nothing reaches quorum', () => {
+  assert.equal(coveredSession([us('2026-09-09', 'SPAXX')]), '')
+  assert.equal(coveredSession([]), '')
+  assert.equal(coveredSession(undefined), '')
+})
