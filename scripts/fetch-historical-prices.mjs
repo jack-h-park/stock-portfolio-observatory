@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
 import { loadLocalEnv } from './env.mjs'
-import { withoutUnsettledBar, newestSettledSession } from './settled-bars.mjs'
+import { withoutUnsettledBar, newestSettledSession, coveredSession } from './settled-bars.mjs'
 
 loadLocalEnv()
 
@@ -29,11 +29,9 @@ if (!process.env.FORCE_HISTORICAL_PRICES && fs.existsSync(pricesPath)) {
   const existing = JSON.parse(fs.readFileSync(pricesPath, 'utf8'))
   // NOT existing.endDate — that is the end of the range we ASKED for, which the
   // writer sets to tomorrow. Reading it here would clear every comparison below
-  // and skip forever. What matters is the newest row that actually came back.
-  let covered = ''
-  for (const row of existing.prices ?? []) {
-    if (row?.price_date > covered) covered = row.price_date
-  }
+  // and skip forever. And not the maximum price_date either: one SPAXX row can
+  // carry a date the equity session has not reached. See coveredSession().
+  const covered = coveredSession(existing.prices)
   const newestPossible = newestSettledSession()
   if (covered >= newestPossible && Number(existing.valuationVersion || 0) >= 2) {
     console.log(`Historical prices already cover ${covered} (newest settled ${newestPossible}); skipping full refetch.`)
