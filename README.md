@@ -489,8 +489,8 @@ Two things launchd did better, kept here so they are not rediscovered as bugs:
 the refresh publishes and speaks only when the situation changes.
 
 ```bash
-OBSERVATORY_REPO=$PWD deploy/hermes/install-cron.sh telegram:<chat-id>
-hermes --profile trader cron resume observatory-health
+OBSERVATORY_REPO=$PWD deploy/hermes/install-cron.sh telegram:<chat-id>   # or set TRADER_CRON_DELIVER and pass no argument
+hermes --profile trader cron resume observatory-health   # jobs are created paused
 node scripts/summary-health.mjs        # run it by hand; prints nothing when unchanged
 ```
 
@@ -516,13 +516,14 @@ whether silence means fixed or forgotten. State lives in
 Every day rather than weekdays: the refresh runs on its own interval regardless of
 the calendar, so a weekend failure would otherwise stay invisible until Monday.
 
-#### Superseded: refresh under Hermes cron
+#### One scheduler
 
-`deploy/hermes/` also installs `observatory-refresh` (weekdays 14:00), which runs
-`pnpm refresh` itself. It is **no longer the scheduler** and is left paused; the
-wrapper stays on the host in case the schedule ever moves back. Do not resume it
-alongside launchd — two schedulers on one `pnpm refresh` write the same database
-and the same `data/refresh-runs.json`.
+`deploy/hermes/install-cron.sh` installs `observatory-refresh` on `0 */6 * * *`, the
+schedule described under *Scheduled refresh*, created paused like every job it
+declares. Only one scheduler may own `pnpm refresh`: if the launchd refresh service is
+ever reinstalled (`make install-refresh-service`), keep this job paused. Two
+schedulers on one `pnpm refresh` write the same database and the same
+`data/refresh-runs.json`.
 
 **Pin `STOCK_PYTHON_BIN` to an absolute path.** A bare `python3` resolves through
 `PATH`, and the scheduler does not hand the job the `PATH` an interactive shell
