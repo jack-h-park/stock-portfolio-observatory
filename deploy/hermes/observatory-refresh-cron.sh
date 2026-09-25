@@ -24,11 +24,28 @@ STAMP="$(date '+%Y-%m-%d %H:%M:%S')"
 
 # Hermes cron runs with a minimal PATH and does not source a login shell; pnpm
 # and node live in the user prefix on this host.
-for _d in "$HOME/.local/bin" /opt/homebrew/bin /usr/local/bin; do
+# Each directory is put in FRONT of PATH, so the LAST one listed wins. The app
+# toolchain directory is last on purpose: where it exists it holds the node the
+# app is built and tested against together with its pnpm, and it has to beat any
+# other node that happens to sit in the user prefix (a newer runtime installed
+# for another tool would otherwise be picked, and native modules built for the
+# app's node refuse to load under it). Where the directory does not exist it is a
+# no-op.
+for _d in "$HOME/.local/bin" /opt/homebrew/bin /usr/local/bin "$HOME/.local/app-toolchain/bin"; do
   [ -d "$_d" ] && case ":$PATH:" in *":$_d:"*) ;; *) PATH="$_d:$PATH";; esac
 done
 export PATH="$PATH:/usr/bin:/bin:/usr/sbin:/sbin"
 unset _d
+
+# The extract steps import pdfplumber and openpyxl, and a bare python3 is whatever
+# PATH finds first, which on a scheduler is not the interpreter that has them.
+# Prefer a dedicated virtualenv at a fixed location when one exists. An explicit
+# STOCK_PYTHON_BIN in the environment still wins; the app's own .env.local does
+# not reach this shell, so it cannot override this default, and the wrapper is
+# the only place a scheduled run can be steered.
+if [ -z "${STOCK_PYTHON_BIN:-}" ] && [ -x "$HOME/.local/share/stock-observatory/venv/bin/python" ]; then
+  export STOCK_PYTHON_BIN="$HOME/.local/share/stock-observatory/venv/bin/python"
+fi
 
 if [ ! -f "$REPO/package.json" ]; then
   echo "⚠️ Observatory refresh: repo not found at $REPO"

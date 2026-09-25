@@ -16,7 +16,10 @@ PORT        := 3101
 # found when a human is at an interactive shell. Resolve both explicitly, from
 # the same candidate directories as deploy/hermes/observatory-refresh-cron.sh,
 # and use the resolved paths in the recipes as well as in the plists.
-TOOL_DIRS := $(HOME)/.local/bin /opt/homebrew/bin /usr/local/bin
+# The app toolchain directory, where it exists, comes first: it holds the node
+# this app is built against and its pnpm, and must beat a different node in the
+# user prefix.
+TOOL_DIRS := $(HOME)/.local/app-toolchain/bin $(HOME)/.local/bin /opt/homebrew/bin /usr/local/bin
 find-tool = $(firstword $(shell command -v $(1) 2>/dev/null) \
                        $(wildcard $(foreach d,$(TOOL_DIRS),$(d)/$(1))))
 PNPM_BIN := $(call find-tool,pnpm)
