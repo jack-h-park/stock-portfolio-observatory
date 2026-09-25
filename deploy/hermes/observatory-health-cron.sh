@@ -22,7 +22,14 @@ REPO="${OBSERVATORY_REPO:-$HOME/workspace/code/core/jackhpark-stock-observatory}
 
 # Hermes cron runs with a minimal PATH and does not source a login shell; node
 # lives in the user prefix on this host.
-for _d in "$HOME/.local/bin" /opt/homebrew/bin /usr/local/bin; do
+# Each directory is put in FRONT of PATH, so the LAST one listed wins. The app
+# toolchain directory is last on purpose: where it exists it holds the node the
+# app is built and tested against together with its pnpm, and it has to beat any
+# other node that happens to sit in the user prefix (a newer runtime installed
+# for another tool would otherwise be picked, and native modules built for the
+# app's node refuse to load under it). Where the directory does not exist it is a
+# no-op.
+for _d in "$HOME/.local/bin" /opt/homebrew/bin /usr/local/bin "$HOME/.local/app-toolchain/bin"; do
   [ -d "$_d" ] && case ":$PATH:" in *":$_d:"*) ;; *) PATH="$_d:$PATH";; esac
 done
 export PATH="$PATH:/usr/bin:/bin:/usr/sbin:/sbin"
