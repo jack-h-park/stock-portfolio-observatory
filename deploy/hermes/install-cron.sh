@@ -1,17 +1,25 @@
 #!/usr/bin/env bash
-# install-cron.sh — declare the Observatory refresh Hermes cron job under the
-# `trader` profile (iMac only). Versioned, reproducible source for the job; the
-# job itself lives in the trader profile's runtime cron store once created.
+# install-cron.sh — declare the Observatory Hermes cron jobs under the `trader`
+# profile (ops host only). Versioned, reproducible source for the jobs; the jobs
+# themselves live in the trader profile's runtime cron store once created.
 #
-#   observatory-refresh  14:00 weekdays — pnpm refresh (FX, prices, evidence, ingest)
-#
-# 14:00 local is after the 13:00 PDT US close, so the snapshot it takes reflects
-# a completed session rather than mid-day prices. Market holidays are not
-# special-cased: re-fetching returns the same closing prices, which is the
-# correct state, not a stale one.
+#   observatory-refresh  every 6 hours — pnpm refresh (FX, prices, evidence, ingest)
+#   observatory-health   daily 09:00    — reads the summary the refresh publishes
 #
 # Mirrors the briefing's tools/hermes/install-cron.sh, and shares that profile's
 # TELEGRAM_BOT_TOKEN. Pass "local" to install without Telegram delivery.
+#
+# The delivery target is required and has no default: the first argument, or
+# TRADER_CRON_DELIVER when there is none, as `telegram:<chat_id>[:<thread_id>]`.
+# This repo is public; a chat id is not a credential, but it is private
+# infrastructure, and a default written into the script delivers to the wrong place
+# as soon as the job moves to another host.
+#
+# Every job is created PAUSED: installing is not enabling. Enable each in the
+# maintenance window with `cron resume`.
+#
+# Which host may run this is decided by the role marker ~/.hermes/role (`ops`), not
+# by the account name: the ops account has a different name on different hosts.
 #
 # Idempotent: re-running refreshes the wrapper and creates the job only if it is
 # missing, so a live schedule is never disturbed.
@@ -20,20 +28,35 @@
 # directory, not the file in this repo. `git pull` alone does not update it —
 # re-run this script after changing the wrapper, or the change never executes.
 #
-# Usage (on iMac, as hermes-runner):
+# Usage (on the ops host):
 #   OBSERVATORY_REPO=~/workspace/code/core/jackhpark-stock-observatory \
-#     deploy/hermes/install-cron.sh [telegram:8907907309|local]
+#     deploy/hermes/install-cron.sh telegram:<chat>[:<thread>]|local
+#   (or export TRADER_CRON_DELIVER and pass no argument)
 # Then enable it:
 #   ~/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main \
 #     --profile trader cron resume observatory-refresh
 set -euo pipefail
 
-if [[ "$(whoami)" != "hermes-runner" ]]; then
-  echo "install-cron.sh is iMac-only (expects user hermes-runner); got $(whoami)." >&2
+# Refuse to run anywhere but the host that declares itself the ops host. The
+# declaration is ~/.hermes/role containing `ops` — the marker the control plane's
+# own installers read — and not the account name. A marker cannot be created by
+# cloning the repo, which is also why an account-name test was the wrong guard for
+# a machine that has the repos but must not run the crons.
+ROLE_FILE="${HERMES_REAL_HOME:-$HOME}/.hermes/role"
+ROLE=""
+[[ -r "$ROLE_FILE" ]] && ROLE="$(tr -d '[:space:]' < "$ROLE_FILE")"
+if [[ "$ROLE" != "ops" ]]; then
+  echo "install-cron.sh is ops-host-only: $ROLE_FILE must contain 'ops' (found '${ROLE:-<missing>}')." >&2
+  echo "  Declare it once, on the host that runs operations: printf 'ops\\n' > ~/.hermes/role" >&2
   exit 1
 fi
 
-DELIVER="${1:-telegram:8907907309}"
+DELIVER="${1:-${TRADER_CRON_DELIVER:-}}"
+if [[ -z "$DELIVER" ]]; then
+  echo "no delivery target: pass one as the first argument or set TRADER_CRON_DELIVER." >&2
+  echo "  telegram:<chat_id>[:<thread_id>] | local" >&2
+  exit 2
+fi
 PROFILE="trader"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -66,10 +89,17 @@ hermes() { "$PY" -m hermes_cli.main "$@"; }
 # (`make install-refresh-service`), pause this job in the same breath.
 JOBS=(
   "observatory-health|0 9 * * *|observatory-health-cron.sh"
-  "observatory-refresh|0 14 * * 1-5|observatory-refresh-cron.sh"
+  "observatory-refresh|0 */6 * * *|observatory-refresh-cron.sh"
 )
 
 mkdir -p "$SCRIPTS_DIR"
+
+# `cron create` and `cron pause` exit 0 even when they did nothing, so the state is
+# read back rather than assumed. `cron list` hides paused jobs; --all does not.
+job_state() {
+  hermes --profile "$PROFILE" cron list --all 2>/dev/null \
+    | awk -v n="$1" '/^ +[0-9a-f]+ \[/ {st=$2} $1 == "Name:" && $2 == n {print st; exit}' || true
+}
 
 for spec in "${JOBS[@]}"; do
   IFS='|' read -r JOB_NAME SCHEDULE WRAPPER <<<"$spec"
@@ -78,7 +108,7 @@ for spec in "${JOBS[@]}"; do
   install -m 0755 "$HERE/$WRAPPER" "$SCRIPTS_DIR/$WRAPPER"
   echo "installed wrapper -> $SCRIPTS_DIR/$WRAPPER"
 
-  if hermes --profile "$PROFILE" cron list --all 2>/dev/null | grep -q "Name:  *$JOB_NAME"; then
+  if [[ -n "$(job_state "$JOB_NAME")" ]]; then
     echo "job '$JOB_NAME' already exists — leaving its schedule untouched"
   else
     # `schedule` is positional; there is no --schedule flag.
@@ -88,7 +118,14 @@ for spec in "${JOBS[@]}"; do
       --script "$WRAPPER" \
       --deliver "$DELIVER" \
       "$SCHEDULE"
-    echo "created job '$JOB_NAME' ($SCHEDULE, deliver=$DELIVER)"
+    hermes --profile "$PROFILE" cron pause "$JOB_NAME"
+    STATE="$(job_state "$JOB_NAME")"
+    if [[ "$STATE" != "[paused]" ]]; then
+      echo "job '$JOB_NAME' is not paused after create (state: ${STATE:-<not found>})." >&2
+      echo "  Check it, and pause it before a gateway starts: $PY -m hermes_cli.main --profile $PROFILE cron pause $JOB_NAME" >&2
+      exit 1
+    fi
+    echo "created job '$JOB_NAME' ($SCHEDULE, deliver=$DELIVER) PAUSED"
     echo "enable it with: hermes --profile $PROFILE cron resume $JOB_NAME"
   fi
 done
