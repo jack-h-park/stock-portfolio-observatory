@@ -70,7 +70,7 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 LOCAL_DIR="${STOCK_DATA_DIR:-$HOME/workspace/data/stock-management}"
-HOST="${STOCK_PROD_HOST:-hermes-runner@imac-hermes}"
+HOST="${STOCK_PROD_HOST:-ops-host}"
 REMOTE_DIR="${STOCK_PROD_DATA_DIR:-workspace/data/stock-management}"
 REMOTE_REPO_DIR="${STOCK_PROD_REPO_DIR:-workspace/code/core/jackhpark-stock-observatory}"
 DRY=""
