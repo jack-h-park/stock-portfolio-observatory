@@ -76,6 +76,7 @@ export const overview = defineCopy({
     chartAxisReturn: 'Percentage points',
     chartAxisKrw: 'KRW million',
     chartAxisUsd: 'USD million',
+    onRightAxis: (label: string) => `${label} (right axis)`,
     trendRangeSummary: (start: string, end: string, valued: number, total: number, gaps: number) =>
       `${start} to ${end} · ${valued} valued / ${total} total snapshot(s)${gaps ? ` · ${gaps} gap(s)` : ''}`,
     snapshotsOnce: 'Snapshots are recorded once per ingest date.',
@@ -179,6 +180,7 @@ export const overview = defineCopy({
     chartAxisReturn: '퍼센트포인트',
     chartAxisKrw: '백만 원',
     chartAxisUsd: '백만 달러',
+    onRightAxis: (label: string) => `${label} (오른쪽 축)`,
     trendRangeSummary: (start: string, end: string, valued: number, total: number, gaps: number) =>
       `${start}부터 ${end}까지 · 가격 확인 ${valued}개 / 전체 ${total}개 스냅샷${gaps ? ` · 공백 ${gaps}개` : ''}`,
     snapshotsOnce: '스냅샷은 ingest 날짜마다 한 번 기록됩니다.',

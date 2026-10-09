@@ -572,7 +572,12 @@ export default async function OverviewPage({
           ) : (
             <PortfolioMultiTrendChart
               data={combinedTrendData}
-              series={combinedMetrics.map((metric) => ({ dataKey: metric.key, name: copy.metricLabels[metric.key], color: metric.color }))}
+              series={combinedMetrics.map((metric) => metric.key === 'realized_gl'
+                ? { dataKey: metric.key, name: copy.onRightAxis(copy.metricLabels[metric.key]), color: metric.color, axis: 'right' as const }
+                : { dataKey: metric.key, name: copy.metricLabels[metric.key], color: metric.color })}
+              valuePrefix={displayPrefix}
+              axisLabel={displayAxisLabel}
+              rightAxisLabel={`${copy.metricLabels.realized_gl} · ${displayAxisLabel}`}
             />
           )
         ) : valuedTrendData.length === 0 ? (

@@ -229,27 +229,47 @@ export function PortfolioMultiTrendChart({
   valuePrefix = '₩',
   valueSuffix = 'M',
   axisLabel = 'KRW million',
+  rightAxisLabel,
 }: {
   data: { date: string; [key: string]: number | string | null }[]
-  series: { dataKey: string; name: string; color: string }[]
+  // `axis: 'right'` puts a series on its own scale, for one far smaller than
+  // the rest that would otherwise draw as a flat line along the bottom.
+  series: { dataKey: string; name: string; color: string; axis?: 'left' | 'right' }[]
   height?: number
   valuePrefix?: string
   valueSuffix?: string
   axisLabel?: string
+  rightAxisLabel?: string
 }) {
   const formatValue = (value: number) => `${valuePrefix}${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}${valueSuffix}`
+  const rightSeries = series.filter((item) => item.axis === 'right')
+  // Ticks take the series color when one series owns the axis, so the scale
+  // reads as belonging to that line rather than to the chart.
+  const rightTick = rightSeries.length === 1 ? { ...AXIS, fill: rightSeries[0].color } : AXIS
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
+      <LineChart data={data} margin={{ top: 8, right: rightSeries.length ? -18 : 8, bottom: 0, left: -18 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
         <XAxis dataKey="date" tick={AXIS} tickLine={false} axisLine={{ stroke: 'var(--border-default)' }} />
         <YAxis
+          yAxisId="left"
           tick={AXIS}
           tickLine={false}
           axisLine={false}
           tickFormatter={formatValue}
           label={{ value: axisLabel, angle: -90, position: 'insideLeft', style: AXIS }}
         />
+        {rightSeries.length > 0 && (
+          <YAxis
+            yAxisId="right"
+            orientation="right"
+            tick={rightTick}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={formatValue}
+            label={rightAxisLabel ? { value: rightAxisLabel, angle: 90, position: 'insideRight', style: rightTick } : undefined}
+          />
+        )}
         <Tooltip
           contentStyle={TOOLTIP_SURFACE}
           formatter={(value: number, name: string) => [formatValue(value), name]}
@@ -258,6 +278,7 @@ export function PortfolioMultiTrendChart({
         {series.map((item) => (
           <Line
             key={item.dataKey}
+            yAxisId={item.axis ?? 'left'}
             type="linear"
             dataKey={item.dataKey}
             name={item.name}
