@@ -210,13 +210,15 @@ test('the holdings specs resolve a filed Fidelity export', () => {
 // `merrill-transactions-20261009.csv` it would have outranked the full history
 // under `pick: 'latest'` and replaced it — the 2026-08-11 Chase failure again.
 //
-// The export ends on a `Total <window>` row that is not a transaction.
+// The same export also spells its symbol column `Symbol/ CUSIP` (with the
+// space) under the `Settlement date` header, and ends on a `Total <window>` row
+// that is not a transaction.
 const MERRILL_WINDOW = [
   '"Exported on: 10/09/2026 01:15 PM ET"',
   '',
   '"Selected account(s): CMA-Edge 00X-00000"',
   '',
-  '"Settlement date","Description","Type","Symbol/CUSIP","Quantity","Price","Amount"',
+  '"Settlement date","Description","Type","Symbol/ CUSIP","Quantity","Price","Amount"',
   '"10/05/2026","Dividend JPMORGAN EQUITY PREMIUM INCOME ETF HOLDING 122.5084 PAY DATE 10/05/2026","Dividends/ Interest","JEPI","--","--","+$44.92"',
   '"08/28/2026","Purchase JPMORGAN EQUITY PREMIUM INCOME ETF","Trades/Securities","JEPI","4","$57.00","-$228.00"',
   '"08/05/2026","Dividend JPMORGAN EQUITY PREMIUM INCOME ETF HOLDING 118.0000 PAY DATE 08/05/2026","Dividends/ Interest","JEPI","--","--","+$43.10"',

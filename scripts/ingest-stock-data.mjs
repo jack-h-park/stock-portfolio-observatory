@@ -2514,11 +2514,15 @@ for (const source of usTransactionFiles) {
   }
   if (source.brokerage === 'Merrill') {
     const rawRows = parseCsv(fs.readFileSync(source.filename, 'utf8'))
+    // Merrill respells the symbol column between exports — `Symbol/CUSIP` on
+    // 2026-08-11, `Symbol/ CUSIP` on 2026-10-09 — independently of which date
+    // column leads. Pairing each spelling with one layout read the 2026-10-09
+    // window as a file with no header: found, matched, and zero rows.
     const headerIndex = rawRows.findIndex((r) => {
       const cells = r.map((c) => c.trim())
       return (
-        (cells.includes('Trade Date') && cells.includes('Symbol/ CUSIP')) ||
-        (cells.includes('Settlement date') && cells.includes('Symbol/CUSIP'))
+        (cells.includes('Trade Date') || cells.includes('Settlement date')) &&
+        (cells.includes('Symbol/ CUSIP') || cells.includes('Symbol/CUSIP'))
       )
     })
     const header = headerIndex >= 0 ? rawRows[headerIndex].map((h) => h.trim()) : []
