@@ -17,6 +17,9 @@ export const config = {
   stockUsPricesPath: env('STOCK_US_PRICES_PATH', repoPath('data/us-prices.json')),
   stockUsPdfEvidencePath: env('STOCK_US_PDF_EVIDENCE_PATH', repoPath('data/us-pdf-evidence.json')),
   stockRobinhoodSnapshotPath: env('STOCK_ROBINHOOD_SNAPSHOT_PATH', repoPath('data/robinhood-snapshot.json')),
+  // Where extract-kr-statements.py writes its TSVs and `as-of.json`, the period
+  // end each 거래내역서 declares per account. Same variable the ingest reads.
+  stockKrStatementsDir: env('STOCK_KR_STATEMENTS_DIR', repoPath('data/kr-statements')),
   stockCryptoActivityPath: env('STOCK_CRYPTO_ACTIVITY_PATH', repoPath('data/crypto-activity.json')),
   stockCryptoPricesPath: env('STOCK_CRYPTO_PRICES_PATH', repoPath('data/crypto-prices.json')),
   stockManualMappingsPath: env('STOCK_MANUAL_MAPPINGS_PATH', repoPath('data/manual-mappings.json')),

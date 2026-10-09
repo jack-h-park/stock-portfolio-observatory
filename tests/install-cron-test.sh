@@ -12,7 +12,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALLER="$HERE/../deploy/hermes/install-cron.sh"
-JOBS=(observatory-health observatory-refresh)
+JOBS=(observatory-health observatory-refresh observatory-coverage)
 FAIL=0
 ACCOUNT="$(id -un)"   # expanded up front: a substitution inside a check's arguments would clobber $?
 
