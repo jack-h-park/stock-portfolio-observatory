@@ -614,6 +614,19 @@ def tax_term(days):
     return "Long-term" if days > LONG_TERM_DAYS else "Short-term"
 
 
+def booked_won(row):
+    """The won amount the certificate booked for a foreign-currency trade, or None.
+
+    `amount_of` fills Amount (KRW) only where the line carried its own 환율, so
+    this is the broker's own conversion on the trade date. Without it the ingest
+    converts with its historical table, at a date it has to be told.
+    """
+    value = row.get("Amount (KRW)")
+    if value in ("", None) or float(row.get("Native Amount") or 0) <= 0:
+        return None
+    return float(value)
+
+
 def build_lots(transactions, as_of_by_account):
     """Replay every transaction in order, consuming lots first-in-first-out.
 
@@ -673,6 +686,16 @@ def build_lots(transactions, as_of_by_account):
     }
     applied_splits = set()
 
+    # 소수해외대체입고 moves fractional shares in with no cash leg, and with no
+    # amount the certificate leaves the currency at KRW while 단가 is in dollars:
+    # a $7.29 BRK.B lot was costed at ₩7 and sold at "₩7", a gain of zero. Such a
+    # lot takes the currency the same account's priced trades in that ticker are
+    # booked in, when they agree on one.
+    booked_currencies = {}
+    for r in transactions:
+        if r["Ticker"] and float(r["Native Amount"] or 0) > 0:
+            booked_currencies.setdefault((r["Account"], r["Ticker"]), set()).add(r["Currency"])
+
     for r in sorted(transactions, key=lambda x: (x["Date"], x["Source"], int(x["Page"]))):
         ticker, qty = r["Ticker"], float(r["Quantity"] or 0)
 
@@ -730,6 +753,8 @@ def build_lots(transactions, as_of_by_account):
                 for lot in held:
                     lot["qty"] *= factor
                     lot["unit"] /= factor
+                    if lot["won_unit"] is not None:
+                        lot["won_unit"] /= factor
                 carried.append(
                     f"{r['Date']} {r['Account']} {ticker}: {len(held)} lot(s) restated "
                     f"x{round(factor, 6)} ({r['Raw Type']}), acquisition dates kept"
@@ -761,9 +786,19 @@ def build_lots(transactions, as_of_by_account):
 
         if kind in OPENING_TYPES:
             cost = lot_cost(qty, unit, float(r["Native Amount"] or 0))
+            currency = r["Currency"]
+            if currency == "KRW" and float(r["Native Amount"] or 0) <= 0 and "해외" in nfc(r["Raw Type"]):
+                foreign = booked_currencies.get(key, set()) - {"KRW"}
+                if len(foreign) == 1:
+                    currency = next(iter(foreign))
+            won = booked_won(r) if currency != "KRW" else None
             open_lots.setdefault(key, []).append({
                 "acquired": r["Date"], "qty": qty, "unit": cost / qty if qty else 0,
-                "currency": r["Currency"], "source": r["Source"], "name": r["Name"],
+                # Won per share as booked on the buy, carried so the cost is in
+                # won at the acquisition date rather than at whichever date the
+                # ingest would otherwise convert on (the sale).
+                "won_unit": won / qty if won is not None and qty else None,
+                "currency": currency, "source": r["Source"], "name": r["Name"],
             })
         elif kind in CLOSING_TYPES:
             remaining = qty
@@ -771,12 +806,22 @@ def build_lots(transactions, as_of_by_account):
             # Same reason as the cost side: the booked consideration beats
             # quantity × price, so a bond's 단가 convention cannot distort proceeds.
             sale_unit = lot_cost(qty, unit, float(r["Native Amount"] or 0)) / qty if qty else 0
+            if r["Currency"] == "KRW":
+                sale_won_unit = sale_unit
+            else:
+                sale_won = booked_won(r)
+                sale_won_unit = sale_won / qty if sale_won is not None and qty else None
             while remaining > 1e-9 and held:
                 lot = held[0]
                 take = min(lot["qty"], remaining)
                 if kind == "SELL":
                     cost = take * lot["unit"]
                     proceeds = take * sale_unit
+                    if lot["currency"] == "KRW":
+                        cost_won, proceeds_won = cost, proceeds
+                    else:
+                        cost_won = take * lot["won_unit"] if lot["won_unit"] is not None else None
+                        proceeds_won = take * sale_won_unit if sale_won_unit is not None else None
                     days = days_between(lot["acquired"], r["Date"])
                     realized.append({
                         "Account": r["Account"], "Ticker": ticker, "Name": lot["name"] or r["Name"],
@@ -784,9 +829,12 @@ def build_lots(transactions, as_of_by_account):
                         "Quantity Sold": round(take, 8),
                         "Currency": lot["currency"],
                         "Native Cost Basis": round(cost, 4), "Native Proceeds": round(proceeds, 4),
-                        "Cost Basis (KRW)": round(cost, 2) if lot["currency"] == "KRW" else "",
-                        "Proceeds (KRW)": round(proceeds, 2) if lot["currency"] == "KRW" else "",
-                        "Realized G/L (KRW)": round(proceeds - cost, 2) if lot["currency"] == "KRW" else "",
+                        "Cost Basis (KRW)": round(cost_won, 2) if cost_won is not None else "",
+                        "Proceeds (KRW)": round(proceeds_won, 2) if proceeds_won is not None else "",
+                        "Realized G/L (KRW)": (
+                            round(proceeds_won - cost_won, 2)
+                            if cost_won is not None and proceeds_won is not None else ""
+                        ),
                         "Holding Days": days, "Tax Term": tax_term(days), "Source": r["Source"],
                     })
                 lot["qty"] -= take
@@ -810,13 +858,14 @@ def build_lots(transactions, as_of_by_account):
             as_of = as_of_by_account[account]
             days = days_between(lot["acquired"], as_of)
             cost = lot["qty"] * lot["unit"]
+            won_unit = lot["unit"] if lot["currency"] == "KRW" else lot["won_unit"]
             taxlots.append({
                 "Account": account, "Ticker": ticker, "Name": lot["name"],
                 "Acquired Date": lot["acquired"], "Open Quantity": round(lot["qty"], 8),
                 "Currency": lot["currency"],
                 "Native Cost Basis": round(cost, 4), "Native Unit Cost": round(lot["unit"], 4),
-                "Cost Basis (KRW)": round(cost, 2) if lot["currency"] == "KRW" else "",
-                "Unit Cost": round(lot["unit"], 2) if lot["currency"] == "KRW" else "",
+                "Cost Basis (KRW)": round(lot["qty"] * won_unit, 2) if won_unit is not None else "",
+                "Unit Cost": round(won_unit, 2) if won_unit is not None else "",
                 "Holding Days": days, "As Of Date": as_of,
                 "Tax Term": tax_term(days), "Source": lot["source"],
             })

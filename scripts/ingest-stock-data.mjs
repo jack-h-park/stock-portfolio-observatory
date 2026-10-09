@@ -1053,11 +1053,16 @@ function usdOn(nativeAmount, currency, date) {
   return rate ? nativeAmount / rate : null
 }
 
-/** Won amount for a Korea row: the parser's figure when it had one, else converted. */
-function krAmount(row, krwKey, nativeKey = 'Native Amount') {
+/**
+ * Won amount for a Korea row: the parser's figure when it had one, else converted
+ * at `date`. A lot's cost must pass its acquisition date: defaulting to the sale
+ * date costed a 2021 dollar purchase at the 2025 rate, and an open lot, which has
+ * neither date, at today's.
+ */
+function krAmount(row, krwKey, nativeKey = 'Native Amount', date = text(row.Date) || text(row['Sold Date'])) {
   const explicit = number(row[krwKey])
   if (explicit != null) return explicit
-  return krwOn(number(row[nativeKey]), text(row.Currency), text(row.Date) || text(row['Sold Date']))
+  return krwOn(number(row[nativeKey]), text(row.Currency), date)
 }
 
 insertMany(
@@ -1307,7 +1312,7 @@ if (tossSnapshot?.accounts?.length) {
 
 const taxLotRows = datasets.taxlots.rows.map((r) => {
   const currency = text(r.Currency) || 'KRW'
-  const costKrw = krAmount(r, 'Cost Basis (KRW)', 'Native Cost Basis') ?? 0
+  const costKrw = krAmount(r, 'Cost Basis (KRW)', 'Native Cost Basis', text(r['Acquired Date'])) ?? 0
   const quantity = number(r['Open Quantity']) ?? 0
   return {
     market: 'KR',
@@ -1433,8 +1438,8 @@ if (lotDerivedHoldingAccounts.size) {
 
 const realizedRows = datasets.realized.rows.map((r) => {
   const currency = text(r.Currency) || 'KRW'
-  const cost = krAmount(r, 'Cost Basis (KRW)', 'Native Cost Basis')
-  const proceeds = krAmount(r, 'Proceeds (KRW)', 'Native Proceeds')
+  const cost = krAmount(r, 'Cost Basis (KRW)', 'Native Cost Basis', text(r['Acquired Date']))
+  const proceeds = krAmount(r, 'Proceeds (KRW)', 'Native Proceeds', text(r['Sold Date']))
   return {
     market: 'KR',
     currency,
