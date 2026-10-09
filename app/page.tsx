@@ -36,10 +36,12 @@ const TREND_RANGES = [
   { key: '180', label: '6M', days: 180 },
   { key: 'ytd', label: 'YTD', days: 'ytd' },
   { key: '365', label: '1Y', days: 365 },
+  { key: '730', label: '2Y', days: 730 },
   { key: '1095', label: '3Y', days: 1095 },
   { key: '1825', label: '5Y', days: 1825 },
   { key: 'all', label: 'All', days: 3650 },
 ] as const
+const DEFAULT_TREND_RANGE = TREND_RANGES.find((range) => range.key === '730')!
 
 function trendRangeDays(days: number | 'ytd') {
   if (days !== 'ytd') return days
@@ -57,6 +59,7 @@ const TREND_METRICS = [
   { key: 'market_value', label: 'Market value', color: 'var(--brand-blue)' },
   { key: 'cost_basis', label: 'Cost basis', color: 'var(--brand-purple)' },
   { key: 'unrealized_gl', label: 'Unrealized G/L', color: 'var(--accent-success)' },
+  { key: 'realized_gl', label: 'Realized G/L', color: 'var(--brand-pink)' },
   { key: 'return_pct', label: 'Return %', color: 'var(--accent-warning)' },
 ] as const
 
@@ -72,24 +75,28 @@ const TREND_FIELDS = {
     market_value: 'global_base_market_value',
     cost_basis: 'global_base_cost',
     unrealized_gl: 'global_base_unrealized_gl',
+    realized_gl: 'global_realized_gl',
     return_pct: 'global_base_return_pct',
   },
   KR: {
     market_value: 'kr_market_value',
     cost_basis: 'kr_cost_basis',
     unrealized_gl: 'kr_unrealized_gl',
+    realized_gl: 'kr_realized_gl',
     return_pct: 'kr_return_pct',
   },
   US: {
     market_value: 'us_market_value_base',
     cost_basis: 'us_cost_basis_base',
     unrealized_gl: 'us_unrealized_gl_base',
+    realized_gl: 'us_realized_gl_base',
     return_pct: 'us_return_pct',
   },
   CRYPTO: {
     market_value: 'crypto_market_value_base',
     cost_basis: 'crypto_cost_basis_base',
     unrealized_gl: 'crypto_unrealized_gl_base',
+    realized_gl: 'crypto_realized_gl_base',
     return_pct: 'crypto_return_pct',
   },
 } as const
@@ -102,6 +109,8 @@ const TREND_COVERAGE_FIELDS = {
 } as const
 
 const MIN_TREND_COST_COVERAGE = 0.9
+// Metrics that need no market price, so a thinly priced snapshot still plots them.
+const PRICE_FREE_TREND_METRICS: readonly TrendMetricKey[] = ['cost_basis', 'realized_gl']
 const HEALTHY_TREND_COST_COVERAGE = 0.95
 
 type TrendMetricKey = (typeof TREND_METRICS)[number]['key']
@@ -140,7 +149,7 @@ export default async function OverviewPage({
 
   const meta = getMeta()
   const params = await searchParams
-  const selectedRange = TREND_RANGES.find((range) => range.key === params.trend) ?? TREND_RANGES[TREND_RANGES.length - 1]
+  const selectedRange = TREND_RANGES.find((range) => range.key === params.trend) ?? DEFAULT_TREND_RANGE
   const selectedScope = TREND_SCOPES.find((scope) => scope.key === params.scope)?.key ?? 'global'
   const legacyMetricMap: Record<string, TrendMetricKey> = {
     global_base_market_value: 'market_value',
@@ -154,7 +163,7 @@ export default async function OverviewPage({
   const selectedField = TREND_FIELDS[selectedScope][selectedMetric.key]
   const selectedCoverageField = TREND_COVERAGE_FIELDS[selectedScope]
   const selectedScopeLabel = copy.scopeLabels[selectedScope]
-  const selectedView: TrendViewKey = params.view === 'combined' ? 'combined' : 'single'
+  const selectedView: TrendViewKey = params.view === 'single' ? 'single' : 'combined'
   const combinedMetrics = TREND_METRICS.filter((metric) => metric.key !== 'return_pct')
   const overview = getOverview()
   const portfolioSnapshots = getPortfolioSnapshots(trendRangeDays(selectedRange.days))
@@ -248,7 +257,7 @@ export default async function OverviewPage({
     .map((snapshot) => ({
       date: snapshot.snapshot_date,
       value: snapshot[selectedField as TrendFieldKey] == null || (
-        selectedMetric.key !== 'cost_basis' && Number(snapshot[selectedCoverageField]) < MIN_TREND_COST_COVERAGE
+        !PRICE_FREE_TREND_METRICS.includes(selectedMetric.key) && Number(snapshot[selectedCoverageField]) < MIN_TREND_COST_COVERAGE
       )
         ? null
         : selectedMetric.key === 'return_pct'
@@ -262,6 +271,7 @@ export default async function OverviewPage({
       market_value: snapshot[TREND_FIELDS[selectedScope].market_value as TrendFieldKey] == null || Number(snapshot[selectedCoverageField]) < MIN_TREND_COST_COVERAGE ? null : displayBaseMillions(Number(snapshot[TREND_FIELDS[selectedScope].market_value as TrendFieldKey])),
       cost_basis: snapshot[TREND_FIELDS[selectedScope].cost_basis as TrendFieldKey] == null ? null : displayBaseMillions(Number(snapshot[TREND_FIELDS[selectedScope].cost_basis as TrendFieldKey])),
       unrealized_gl: snapshot[TREND_FIELDS[selectedScope].unrealized_gl as TrendFieldKey] == null || Number(snapshot[selectedCoverageField]) < MIN_TREND_COST_COVERAGE ? null : displayBaseMillions(Number(snapshot[TREND_FIELDS[selectedScope].unrealized_gl as TrendFieldKey])),
+      realized_gl: snapshot[TREND_FIELDS[selectedScope].realized_gl as TrendFieldKey] == null ? null : displayBaseMillions(Number(snapshot[TREND_FIELDS[selectedScope].realized_gl as TrendFieldKey])),
     }))
   const valuedTrendData = trendData.filter((point): point is typeof point & { value: number } => typeof point.value === 'number')
   const firstTrendPoint = valuedTrendData[0]
@@ -562,7 +572,12 @@ export default async function OverviewPage({
           ) : (
             <PortfolioMultiTrendChart
               data={combinedTrendData}
-              series={combinedMetrics.map((metric) => ({ dataKey: metric.key, name: copy.metricLabels[metric.key], color: metric.color }))}
+              series={combinedMetrics.map((metric) => metric.key === 'realized_gl'
+                ? { dataKey: metric.key, name: copy.onRightAxis(copy.metricLabels[metric.key]), color: metric.color, axis: 'right' as const }
+                : { dataKey: metric.key, name: copy.metricLabels[metric.key], color: metric.color })}
+              valuePrefix={displayPrefix}
+              axisLabel={displayAxisLabel}
+              rightAxisLabel={`${copy.metricLabels.realized_gl} · ${displayAxisLabel}`}
             />
           )
         ) : valuedTrendData.length === 0 ? (

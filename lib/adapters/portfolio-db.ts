@@ -816,6 +816,13 @@ export type PortfolioSnapshot = {
   kr_return_pct: number | null
   us_return_pct: number | null
   crypto_return_pct: number | null
+  // Cumulative realized G/L in KRW as of the snapshot date. Not stored on the
+  // snapshot row: derived from realized_lots when the series is read, so every
+  // past snapshot picks up a lot the ingest learns about later.
+  global_realized_gl: number | null
+  kr_realized_gl: number | null
+  us_realized_gl_base: number | null
+  crypto_realized_gl_base: number | null
   krw_cost: number
   usd_cost: number
   dividends_krw: number
@@ -836,7 +843,7 @@ export function getPortfolioSnapshots(days = 3650): PortfolioSnapshot[] {
     )
     const optional = (name: string, fallback = 'null') => columns.has(name) ? name : `${fallback} as ${name}`
     const costCoverage = columns.has('priced_base_cost') ? 'market_value_coverage' : 'null as market_value_coverage'
-    return conn
+    const snapshots = conn
       .prepare(
         `select snapshot_date, captured_at, global_base_cost, global_base_market_value,
           global_base_unrealized_gl, global_base_return_pct, ${costCoverage},
@@ -854,9 +861,55 @@ export function getPortfolioSnapshots(days = 3650): PortfolioSnapshot[] {
          order by snapshot_date`
       )
       .all(`-${Math.max(1, Math.floor(days))} days`) as PortfolioSnapshot[]
+    return withCumulativeRealized(conn, snapshots)
   } finally {
     conn.close()
   }
+}
+
+const REALIZED_MARKET_FIELDS = {
+  KR: 'kr_realized_gl',
+  US: 'us_realized_gl_base',
+  CRYPTO: 'crypto_realized_gl_base',
+} as const
+
+// Running sum of realized_gl_krw over every lot sold on or before each snapshot
+// date, per market. The sum starts at the first sale ever, not at the start of
+// the requested window, so a 2Y chart opens at the balance already realized.
+// A replay row that a 1099-B filing replaced carries superseded_by and is
+// skipped: counting both would realize the same sale twice.
+function withCumulativeRealized(conn: Database.Database, snapshots: PortfolioSnapshot[]): PortfolioSnapshot[] {
+  const empty = { global_realized_gl: null, kr_realized_gl: null, us_realized_gl_base: null, crypto_realized_gl_base: null }
+  const table = conn
+    .prepare("select 1 from sqlite_master where type = 'table' and name = 'realized_lots'")
+    .get()
+  const columns = table
+    ? new Set((conn.prepare('pragma table_info(realized_lots)').all() as { name: string }[]).map((column) => column.name))
+    : new Set<string>()
+  if (!columns.has('sold_date') || !columns.has('realized_gl_krw')) return snapshots.map((snapshot) => ({ ...snapshot, ...empty }))
+  const notSuperseded = columns.has('superseded_by') ? "and coalesce(superseded_by, '') = ''" : ''
+  const sales = conn
+    .prepare(
+      `select market, substr(sold_date, 1, 10) as sold_date, sum(realized_gl_krw) as amount
+       from realized_lots
+       where sold_date is not null and sold_date != '' and realized_gl_krw is not null ${notSuperseded}
+       group by market, substr(sold_date, 1, 10)
+       order by sold_date`
+    )
+    .all() as { market: string; sold_date: string; amount: number }[]
+  const running = { KR: 0, US: 0, CRYPTO: 0 }
+  let next = 0
+  return snapshots.map((snapshot) => {
+    while (next < sales.length && sales[next].sold_date <= snapshot.snapshot_date) {
+      const market = sales[next].market as keyof typeof running
+      if (market in running) running[market] += sales[next].amount
+      next += 1
+    }
+    const realized = Object.fromEntries(
+      Object.entries(REALIZED_MARKET_FIELDS).map(([market, field]) => [field, running[market as keyof typeof running]])
+    ) as Pick<PortfolioSnapshot, (typeof REALIZED_MARKET_FIELDS)[keyof typeof REALIZED_MARKET_FIELDS]>
+    return { ...snapshot, ...realized, global_realized_gl: running.KR + running.US + running.CRYPTO }
+  })
 }
 
 export function getHoldings(limit = 200): Holding[] {
