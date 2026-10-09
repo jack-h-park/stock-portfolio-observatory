@@ -335,8 +335,15 @@ function normalizeUsTransactionType(value, action = '') {
   return text(value || action).toUpperCase()
 }
 
+// Merrill respells its slashed labels between exports — `Symbol/CUSIP` and
+// `Trades/Securities` on 2026-08-11, `Symbol/ CUSIP` and `Trades/ Securities` on
+// 2026-10-09 — so they are compared with the space around the slash removed.
+function closeSlashes(value) {
+  return text(value).replace(/\s*\/\s*/g, '/')
+}
+
 function normalizeMerrillTransactionType(description, type = '') {
-  const explicit = text(type).toLowerCase()
+  const explicit = closeSlashes(type).toLowerCase()
   const desc = text(description).toLowerCase()
   // Structure before vocabulary. Merrill names the security inside the
   // description, so `Security Transfer In SCHWAB US DIVIDEND EQTY` matched the
@@ -2514,14 +2521,14 @@ for (const source of usTransactionFiles) {
   }
   if (source.brokerage === 'Merrill') {
     const rawRows = parseCsv(fs.readFileSync(source.filename, 'utf8'))
+    // The symbol column's spelling is independent of which date column leads.
+    // Pairing each spelling with one layout read the 2026-10-09 export as a
+    // file with no header: found, matched, and zero rows.
     const headerIndex = rawRows.findIndex((r) => {
-      const cells = r.map((c) => c.trim())
-      return (
-        (cells.includes('Trade Date') && cells.includes('Symbol/ CUSIP')) ||
-        (cells.includes('Settlement date') && cells.includes('Symbol/CUSIP'))
-      )
+      const cells = r.map(closeSlashes)
+      return (cells.includes('Trade Date') || cells.includes('Settlement date')) && cells.includes('Symbol/CUSIP')
     })
-    const header = headerIndex >= 0 ? rawRows[headerIndex].map((h) => h.trim()) : []
+    const header = headerIndex >= 0 ? rawRows[headerIndex].map(closeSlashes) : []
     const rows = headerIndex >= 0
       ? rawRows.slice(headerIndex + 1)
         .filter((r) => r.some((c) => c.trim().length > 0))
@@ -2532,7 +2539,6 @@ for (const source of usTransactionFiles) {
       ? accountLine.join(' ').split(':').slice(1).join(':').trim()
       : ''
     const dateColumn = header.includes('Trade Date') ? 'Trade Date' : 'Settlement date'
-    const symbolColumn = header.includes('Symbol/ CUSIP') ? 'Symbol/ CUSIP' : 'Symbol/CUSIP'
     for (const r of rows) {
       if (!text(r[dateColumn]).match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) continue
       const type = normalizeMerrillTransactionType(r.Description, r.Type)
@@ -2548,7 +2554,7 @@ for (const source of usTransactionFiles) {
         account: `${source.brokerage} ${text(r.Account || accountFromMetadata)}`.trim(),
         type,
         raw_type: text(r.Type) || text(r.Description).split(/\s+/).slice(0, 4).join(' '),
-        ticker: normalizeTicker(r[symbolColumn]),
+        ticker: normalizeTicker(r['Symbol/CUSIP']),
         name: text(r.Description),
         quantity: number(r.Quantity),
         native_amount: amount,
@@ -2718,6 +2724,12 @@ const usOverlapOnlyInEarlier = []
     if (f.coverage?.end) declared.set(path.basename(f.filename), f.coverage)
   }
   const takenAt = (span) => declared.get(span.source)?.end ?? span.last
+  // A window is named for its last ROW, so two downloads with no trade between
+  // them end on the same day and neither is provably the later one. Reading
+  // that as "neither is later" skipped the pair, and every row the two shared
+  // was counted twice. Either direction resolves to the same union, so the tie
+  // is broken by name, which only has to be deterministic.
+  const isLater = (a, b) => takenAt(a) > takenAt(b) || (takenAt(a) === takenAt(b) && a.source > b.source)
   // The days a file ANSWERS FOR, which is the window it asked for widened by
   // anything that actually came back outside it. A day inside this and absent
   // from the rows is a day the export says had no trades — which is the whole
@@ -2744,7 +2756,7 @@ const usOverlapOnlyInEarlier = []
       for (const later of group) {
         // "Later" is the export whose window ends later: it was taken after the
         // other and covers the shared days at least as completely.
-        if (earlier === later || !(takenAt(later) > takenAt(earlier))) continue
+        if (earlier === later || !isLater(later, earlier)) continue
         const a = answersFor(earlier)
         const b = answersFor(later)
         const from = a.first > b.first ? a.first : b.first

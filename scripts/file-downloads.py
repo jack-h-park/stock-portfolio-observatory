@@ -223,10 +223,12 @@ def period_from_rows(row_dates, downloaded):
 
     A window states only what was observed. It cannot supersede anything, so a
     short download can no longer silently replace a long one; what it can do is
-    OVERLAP one, and `us_transaction_periods_do_not_overlap` fails on that using
-    the row dates rather than these names. The cost is that a year-to-date
-    re-download now sits beside the file it repeats instead of replacing it, and
-    has to be retired by hand — which that check names outright.
+    OVERLAP one, and the ingest resolves that on the row dates rather than
+    these names: on a day two exports both hold, the one taken later is kept and
+    the other's copies are read once. `us_transaction_overlaps_resolved` reports
+    on it, and warns when the earlier export holds a row the later one does not.
+    The cost is that a year-to-date re-download now sits beside the file it
+    repeats instead of replacing it.
     """
     if not row_dates:
         return compact(downloaded)
@@ -1070,8 +1072,14 @@ def detect_fidelity_positions(doc):
 def detect_merrill(doc):
     """Merrill CSVs → us-holdings/merrill-holdings-… or us-transactions/merrill-transactions-…
 
-    Both start `Exported on: 07/15/2026 08:53 PM ET`, which is the as-of, and
-    differ in the table header further down.
+    Both start `Exported on: 07/15/2026 08:53 PM ET` and differ in the table
+    header further down. For holdings that line is the as-of. For transactions
+    it is only when the window was taken: Merrill lets you pick any window and
+    the file does not say which, so a transactions export is named for the rows
+    it holds — the same rule as Chase and Fidelity, and for the same reason.
+    Every Merrill export filed before 2026-10 happened to be the full history;
+    the 2026-10-09 one covered Aug–Oct, and named for its export date it would
+    have replaced that history under `pick: 'latest'`.
     """
     if doc.suffix != ".csv" or not doc.lines:
         return None
@@ -1089,10 +1097,36 @@ def detect_merrill(doc):
         )
     head = csv_head(doc, 12)
     evidence = [f"Exported on {iso(exported)}"]
+    # The newer layout respells its own symbol column between exports:
+    # `Symbol/CUSIP` on 2026-08-11, `Symbol/ CUSIP` on 2026-10-09. Any space
+    # around the slash is accepted, the same way the ingest reads it.
     if ('"Trade Date"' in head and '"Settlement Date"' in head) or (
-        '"Settlement date"' in head and '"Description"' in head and '"Symbol/CUSIP"' in head
+        '"Settlement date"' in head
+        and '"Description"' in head
+        and re.search(r'"Symbol\s*/\s*CUSIP"', head)
     ):
-        return Plan(DIR_US_TRANSACTIONS, f"merrill-transactions-{compact(exported)}.csv", evidence)
+        # The date is the first cell in both layouts (`Trade Date` in the older
+        # one, `Settlement date` in the newer), and the ingest reads the same
+        # column. The `Total Aug 2026 - Oct 2026` footer starts with a quote and
+        # a letter, so it is not a row.
+        rows = []
+        for line in doc.lines:
+            found = re.match(r'^"(\d{1,2}/\d{1,2}/\d{4})"', line)
+            if found:
+                rows.append(parse_mdy(found.group(1)))
+        if not rows:
+            # period_from_rows would fall back to the export date — an as-of
+            # newer than the full history, which `pick: 'latest'` would read in
+            # its place. An empty export is nothing to file.
+            return Refusal(
+                "Merrill transactions export",
+                f"exported {iso(exported)} but has no dated rows, so there is "
+                "nothing in it to file",
+                "delete it, or re-export a window that holds activity",
+            )
+        period = period_from_rows(rows, exported)
+        evidence.append(f"rows {iso(min(rows))} … {iso(max(rows))}")
+        return Plan(DIR_US_TRANSACTIONS, f"merrill-transactions-{period}.csv", evidence)
     # `Symbol` in the older layouts, `Positions` in the 2026-08 one. The table
     # underneath is the same; only its heading was renamed.
     if '"Symbol ' in head or '"Positions"' in head:

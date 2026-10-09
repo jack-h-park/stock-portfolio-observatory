@@ -130,8 +130,10 @@ const US_TRANSACTION_SPECS = [
   // checks down with it.
   //
   // A window names what it covers, coexists with its neighbours, and is read
-  // alongside them. The risk it trades for is OVERLAP rather than staleness, so
-  // `us_transaction_periods_do_not_overlap` asserts on the dates the rows
+  // alongside them. The risk it trades for is OVERLAP rather than staleness, and
+  // overlap is resolved where the rows are read: on a day two exports both hold,
+  // the one taken later is kept and the other's copies are read once.
+  // `us_transaction_overlaps_resolved` reports on that, using the dates the rows
   // themselves carry — the same trade the crypto statements already make.
   {
     brokerage: 'Chase',
@@ -158,11 +160,22 @@ const US_TRANSACTION_SPECS = [
     broker: 'fidelity', doctype: 'transactions', period: RANGE, ext: 'csv',
     pick: 'all', optional: true, since: '20251001',
   },
+  // Every Merrill export up to 2026-10 was the full history, named for the day
+  // it was taken, and those stay readable as as-ofs. New downloads are named for
+  // the rows they hold, like Chase and Fidelity above — the 2026-10-09 export
+  // covered only Aug–Oct, and as `merrill-transactions-20261009.csv` it would
+  // have outranked the full history under 'latest' and replaced it.
   {
     brokerage: 'Merrill',
     subdir: DIR_US_TRANSACTIONS,
     broker: 'merrill', doctype: 'transactions', period: ASOF, ext: 'csv',
     pick: 'latest', since: '20260301',
+  },
+  {
+    brokerage: 'Merrill',
+    subdir: DIR_US_TRANSACTIONS,
+    broker: 'merrill', doctype: 'transactions', period: RANGE, ext: 'csv',
+    pick: 'all', optional: true, since: '20260301',
   },
   {
     brokerage: 'Robinhood',
@@ -178,6 +191,17 @@ const US_TRANSACTION_SPECS = [
     broker: 'robinhood', doctype: 'transactions', accounts: 'midterm', period: RANGE, ext: 'csv',
     account: 'Mid-term',
     pick: 'all', since: '20240601',
+  },
+  // The other strategy accounts in the window shape, for the reason Chase has
+  // one. Optional where Mid-term's is not: Mid-term's range file is its
+  // 2024–2025 history and must be there, while these accounts have only ever
+  // been downloaded year-to-date and are not missing anything without one.
+  {
+    brokerage: 'Robinhood',
+    subdir: DIR_US_TRANSACTIONS,
+    broker: 'robinhood', doctype: 'transactions', accounts: 'agentic|longterm', period: RANGE, ext: 'csv',
+    account: (m) => ROBINHOOD_STRATEGIES[m.groups.account.toLowerCase()],
+    pick: 'all', optional: true, since: '20240601',
   },
 ]
 
