@@ -127,3 +127,28 @@ test('a Merrill window beside the full history is read alongside it, and the sea
   assert.match(overlap?.detail ?? '', /1 re-covered row\(s\) read once/)
   assert.equal(check('dividend_rows_match_transactions')?.status, 'pass')
 })
+
+test('two Merrill windows ending on the same day still read their shared days once', () => {
+  // A window is named by its last ROW, not by when it was taken, so two
+  // downloads with no trade between them end on the same day. Neither is then
+  // "the later one", and the seam has to be resolved anyway — otherwise every
+  // row they share is counted twice.
+  const { transactions, check } = ingest({
+    'merrill-transactions-20260805-20261005.csv': window([
+      ['10/05/2026', DIVIDEND, 'Dividends/ Interest', '--', '+$44.92'],
+      ['09/15/2026', BUY, 'Trades/Securities', '4', '-$228.00'],
+      ['08/05/2026', DIVIDEND, 'Dividends/ Interest', '--', '+$43.10'],
+    ]),
+    'merrill-transactions-20260915-20261005.csv': window([
+      ['10/05/2026', DIVIDEND, 'Dividends/ Interest', '--', '+$44.92'],
+      ['09/15/2026', BUY, 'Trades/Securities', '4', '-$228.00'],
+    ]),
+  })
+
+  assert.deepEqual(
+    transactions.map((t) => `${t.date} ${t.native_amount}`),
+    ['2026-08-05 43.1', '2026-09-15 -228', '2026-10-05 44.92']
+  )
+  assert.equal(check('us_transaction_overlaps_resolved')?.status, 'pass')
+  assert.equal(check('dividend_rows_match_transactions')?.status, 'pass')
+})

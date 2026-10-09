@@ -2722,6 +2722,12 @@ const usOverlapOnlyInEarlier = []
     if (f.coverage?.end) declared.set(path.basename(f.filename), f.coverage)
   }
   const takenAt = (span) => declared.get(span.source)?.end ?? span.last
+  // A window is named for its last ROW, so two downloads with no trade between
+  // them end on the same day and neither is provably the later one. Reading
+  // that as "neither is later" skipped the pair, and every row the two shared
+  // was counted twice. Either direction resolves to the same union, so the tie
+  // is broken by name, which only has to be deterministic.
+  const isLater = (a, b) => takenAt(a) > takenAt(b) || (takenAt(a) === takenAt(b) && a.source > b.source)
   // The days a file ANSWERS FOR, which is the window it asked for widened by
   // anything that actually came back outside it. A day inside this and absent
   // from the rows is a day the export says had no trades — which is the whole
@@ -2748,7 +2754,7 @@ const usOverlapOnlyInEarlier = []
       for (const later of group) {
         // "Later" is the export whose window ends later: it was taken after the
         // other and covers the shared days at least as completely.
-        if (earlier === later || !(takenAt(later) > takenAt(earlier))) continue
+        if (earlier === later || !isLater(later, earlier)) continue
         const a = answersFor(earlier)
         const b = answersFor(later)
         const from = a.first > b.first ? a.first : b.first
