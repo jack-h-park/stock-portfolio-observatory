@@ -1098,11 +1098,12 @@ def detect_merrill(doc):
     head = csv_head(doc, 12)
     evidence = [f"Exported on {iso(exported)}"]
     # The newer layout respells its own symbol column between exports:
-    # `Symbol/CUSIP` on 2026-08-11, `Symbol/ CUSIP` on 2026-10-09.
+    # `Symbol/CUSIP` on 2026-08-11, `Symbol/ CUSIP` on 2026-10-09. Any space
+    # around the slash is accepted, the same way the ingest reads it.
     if ('"Trade Date"' in head and '"Settlement Date"' in head) or (
         '"Settlement date"' in head
         and '"Description"' in head
-        and ('"Symbol/CUSIP"' in head or '"Symbol/ CUSIP"' in head)
+        and re.search(r'"Symbol\s*/\s*CUSIP"', head)
     ):
         # The date is the first cell in both layouts (`Trade Date` in the older
         # one, `Settlement date` in the newer), and the ingest reads the same

@@ -39,8 +39,14 @@ function fullHistory(rows: [date: string, description: string, type: string, qua
   ].join('\r\n')
 }
 
-/** The 2026-10-09 window layout: `Settlement date`, `Symbol/ CUSIP`, a `Total` footer. */
-function window(rows: [date: string, description: string, type: string, quantity: string, amount: string][]) {
+/**
+ * The 2026-10-09 layout: `Settlement date`, `Symbol/ CUSIP`, a `Total` footer —
+ * and a Type column respelled to match, `Trades/ Securities` with a space.
+ */
+function window(
+  rows: [date: string, description: string, type: string, quantity: string, amount: string][],
+  footer = 'Total Aug 2026 - Oct 2026'
+) {
   return [
     '"Exported on: 10/09/2026 01:15 PM ET"',
     '',
@@ -51,7 +57,7 @@ function window(rows: [date: string, description: string, type: string, quantity
       ([date, description, type, quantity, amount]) =>
         `"${date}","${description}","${type}","JEPI","${quantity}","$57.00","${amount}"`
     ),
-    '"Total Aug 2026 - Oct 2026","","","","","","$0.00"',
+    `"${footer}","","","","","","$0.00"`,
   ].join('\r\n')
 }
 
@@ -86,7 +92,7 @@ test('a Merrill window in the new header layout is read, footer and all', () => 
   const { transactions } = ingest({
     'merrill-transactions-20260805-20261005.csv': window([
       ['10/05/2026', DIVIDEND, 'Dividends/ Interest', '--', '+$44.92'],
-      ['08/28/2026', BUY, 'Trades/Securities', '4', '-$228.00'],
+      ['08/28/2026', BUY, 'Trades/ Securities', '4', '-$228.00'],
     ]),
   })
 
@@ -108,7 +114,7 @@ test('a Merrill window beside the full history is read alongside it, and the sea
     // The window starts on 08-05, which the as-of already holds.
     'merrill-transactions-20260805-20261005.csv': window([
       ['10/05/2026', DIVIDEND, 'Dividends/ Interest', '--', '+$44.92'],
-      ['08/28/2026', BUY, 'Trades/Securities', '4', '-$228.00'],
+      ['08/28/2026', BUY, 'Trades/ Securities', '4', '-$228.00'],
       ['08/05/2026', DIVIDEND, 'Dividends/ Interest', '--', '+$43.10'],
     ]),
   })
@@ -136,12 +142,12 @@ test('two Merrill windows ending on the same day still read their shared days on
   const { transactions, check } = ingest({
     'merrill-transactions-20260805-20261005.csv': window([
       ['10/05/2026', DIVIDEND, 'Dividends/ Interest', '--', '+$44.92'],
-      ['09/15/2026', BUY, 'Trades/Securities', '4', '-$228.00'],
+      ['09/15/2026', BUY, 'Trades/ Securities', '4', '-$228.00'],
       ['08/05/2026', DIVIDEND, 'Dividends/ Interest', '--', '+$43.10'],
     ]),
     'merrill-transactions-20260915-20261005.csv': window([
       ['10/05/2026', DIVIDEND, 'Dividends/ Interest', '--', '+$44.92'],
-      ['09/15/2026', BUY, 'Trades/Securities', '4', '-$228.00'],
+      ['09/15/2026', BUY, 'Trades/ Securities', '4', '-$228.00'],
     ]),
   })
 
@@ -151,4 +157,28 @@ test('two Merrill windows ending on the same day still read their shared days on
   )
   assert.equal(check('us_transaction_overlaps_resolved')?.status, 'pass')
   assert.equal(check('dividend_rows_match_transactions')?.status, 'pass')
+})
+
+test('the respelled `Trades/ Securities` type still defers to the description', () => {
+  // `Trades/Securities` is a bucket covering purchases, sales, reinvestments
+  // and transfers alike, so the description decides. Spelled with a space it
+  // was taken for a specific type instead, and a purchase — whose description
+  // says neither "buy" nor "bought" — came out typed `TRADES/ SECURITIES`,
+  // outside every quantity the replay counts.
+  const { transactions } = ingest({
+    'merrill-transactions-20260330-20261005.csv': window(
+      [
+        ['10/05/2026', 'Reinvestment Share(s) JPMORGAN EQUITY PREMIUM INCOME ETF REINV SHRS 0.7800', 'Trades/ Securities', '0.78', '-$44.92'],
+        ['10/05/2026', 'Reinvestment Program JPMORGAN EQUITY PREMIUM INCOME ETF', 'Other', '--', '-$44.92'],
+        ['06/22/2026', 'Fractional Share Sale JPMORGAN EQUITY PREMIUM INCOME ETF SALE PRICE $57.00000 QTY SOLD .0067', 'Trades/ Securities', '-0.0067', '+$0.38'],
+        ['03/30/2026', BUY, 'Trades/ Securities', '100', '-$5,700.00'],
+      ],
+      'Total Mar 2026 - Oct 2026'
+    ),
+  })
+
+  assert.deepEqual(
+    transactions.map((t) => `${t.date} ${t.type}`),
+    ['2026-03-30 BUY', '2026-06-22 SELL', '2026-10-05 REINVEST', '2026-10-05 REINVEST']
+  )
 })
