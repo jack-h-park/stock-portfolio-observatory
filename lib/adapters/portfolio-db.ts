@@ -2055,6 +2055,14 @@ export function getAccountCoverage(): AccountCoverageSummary {
       .prepare(`select market, coalesce(brokerage, 'Unknown') as brokerage, account, max(date) as covered_through
                 from transactions group by market, brokerage, account`)
       .all() as { market: string; brokerage: string; account: string; covered_through: string | null }[]
+    // The period end each Korean 거래내역서 declares, per account, written by
+    // extract-kr-statements.py beside its TSVs. This is what a KR account's
+    // statement actually covers. The newest open tax lot, used here before, is
+    // not: 삼성증권 never holds an open lot (every vest moves straight to Toss),
+    // so its coverage read as its last vest, weeks before the statement's own
+    // end; and 토스증권's lots include fills bridged from the Open API, so its
+    // "statement" date ran ahead of the statement.
+    const krStatementAsOf: Record<string, string> = readJson(path.join(config.stockKrStatementsDir, 'as-of.json'))?.accounts ?? {}
     const statementRows = conn
       .prepare(`select market, coalesce(brokerage, 'Unknown') as brokerage, account, max(as_of_date) as covered_through
                 from tax_lots group by market, brokerage, account`)
@@ -2095,7 +2103,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
       const account = [...(accountNames.get(key) ?? new Set())].join(' / ') || rawAccount || brokerage
       let coveredThrough = isoDate(holding?.covered_through ?? transaction?.covered_through)
       let apiCoveredThrough: string | null = null
-      const statementCoveredThrough = isoDate(statement?.covered_through)
+      const statementCoveredThrough = isoDate(market === 'KR' ? krStatementAsOf[account] ?? statement?.covered_through : statement?.covered_through)
       let maxLagDays = market === 'US' ? 14 : market === 'CRYPTO' ? 35 : 35
       let method: AccountCoverage['method'] = 'inbox'
       let requiredArtifact = '최근 거래내역서'
@@ -2155,7 +2163,10 @@ export function getAccountCoverage(): AccountCoverageSummary {
           .filter(Boolean)
           .sort()
           .at(-1) ?? null
-        coveredThrough = statementCoveredThrough ?? apiCoveredThrough
+        // The API fills the days after the statement, so the account is as current
+        // as the newer of the two. The download range below still starts from the
+        // statement, since a 거래내역서 is what a download would replace.
+        coveredThrough = [statementCoveredThrough, apiCoveredThrough].filter(Boolean).sort().at(-1) ?? null
       } else if (market === 'KR' && brokerLower.includes('삼성')) {
         requiredArtifact = '삼성증권 주식보상 계좌거래내역서'
         maxLagDays = 120
@@ -2170,7 +2181,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
       const lagDays = calendarAgeDays(coveredThrough)
       // Ask for one day before the last covered date so the next export has a
       // deliberate overlap and cannot hide an edge-of-window transaction.
-      const downloadFrom = subtractCalendarDays(coveredThrough, 1)
+      const downloadFrom = subtractCalendarDays(method === 'mixed' ? statementCoveredThrough ?? coveredThrough : coveredThrough, 1)
       const apiLagDays = calendarAgeDays(apiCoveredThrough)
       const statementLagDays = calendarAgeDays(statementCoveredThrough)
       const overdueDays = lagDays == null ? null : Math.max(0, lagDays - maxLagDays)

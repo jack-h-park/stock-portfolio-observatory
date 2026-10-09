@@ -29,6 +29,7 @@ import path from 'node:path'
 import { config } from '@/config'
 import {
   dbAvailable,
+  getAccountCoverage,
   getMarketBreakdown,
   getMeta,
   getOperationalHealth,
@@ -95,6 +96,20 @@ const review = getPortfolioReview()
 const rebalance = getRebalanceReview()
 const markets = getMarketBreakdown()
 const lastRun = getRefreshRuns(1)[0] ?? null
+const coverage = getAccountCoverage()
+
+/**
+ * An account label with any account-number-like token cut to its last four.
+ *
+ * Labels are what the dashboard shows, and some carry a full brokerage account
+ * number. This file is read by other jobs and quoted into chat messages, so it
+ * keeps only what tells two accounts apart.
+ */
+const maskAccount = (label: string) =>
+  label
+    .split(' ')
+    .map((token) => (token.length > 4 && (token.match(/\d/g) ?? []).length >= 3 ? `••${token.slice(-4)}` : token))
+    .join(' ')
 
 // The FX row the ingest actually converted with, read back from the database
 // rather than the snapshot file, so the summary reports the rate baked into these
@@ -229,6 +244,30 @@ const summary = {
     : null,
 
   health: { issues },
+
+  // How far each account's source data reaches, and what to download next. The
+  // same rows as the account table on /data-ops. Statements are fetched by hand,
+  // so this is the one part of the data that only goes stale when nobody acts:
+  // a weekly reminder reads it, rather than a person remembering to look.
+  accountCoverage: {
+    actionNeeded: coverage.actionNeeded,
+    dueSoon: coverage.dueSoon,
+    current: coverage.current,
+    rows: coverage.rows.map((row) => ({
+      market: row.market,
+      brokerage: row.brokerage,
+      account: maskAccount(row.account),
+      status: row.status,
+      coveredThrough: row.coveredThrough,
+      downloadFrom: row.downloadFrom,
+      lagDays: row.lagDays,
+      maxLagDays: row.maxLagDays,
+      overdueDays: row.overdueDays,
+      method: row.method,
+      requiredArtifact: row.requiredArtifact,
+      destination: row.destination,
+    })),
+  },
 
   // The reason this artifact exists. Only this app holds an FX snapshot, so only
   // this app can state the portfolio as one number; every consumer either repeats

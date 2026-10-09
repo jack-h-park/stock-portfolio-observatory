@@ -87,9 +87,15 @@ hermes() { "$PY" -m hermes_cli.main "$@"; }
 # Only one scheduler may own this: two would write the same database and the same
 # data/refresh-runs.json. If the launchd service is ever reinstalled
 # (`make install-refresh-service`), pause this job in the same breath.
+#
+# observatory-coverage is the weekly list of broker statements to download, read
+# from the summary's accountCoverage block. Saturday morning, when there is time
+# to log in to a broker; weekly rather than on change, because a statement that
+# was not downloaded does not clear itself.
 JOBS=(
   "observatory-health|0 9 * * *|observatory-health-cron.sh"
   "observatory-refresh|0 */6 * * *|observatory-refresh-cron.sh"
+  "observatory-coverage|0 10 * * 6|observatory-coverage-cron.sh"
 )
 
 mkdir -p "$SCRIPTS_DIR"
