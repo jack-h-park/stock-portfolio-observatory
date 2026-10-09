@@ -129,6 +129,11 @@ export function fmtDurationDays(days: number | null | undefined, language: Langu
  */
 export function fmtDate(value: string | null | undefined) {
   if (!value) return 'n/a'
+  // A date-only value is already the answer. Parsed, it becomes UTC midnight,
+  // and read back in the server's local time west of UTC it is the day before:
+  // /data-ops showed every account's coverage date one day early. Same reason
+  // fmtDateShort pins date-only values to UTC.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return value
   const pad = (n: number) => String(n).padStart(2, '0')
