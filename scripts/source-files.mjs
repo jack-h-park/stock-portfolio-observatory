@@ -192,6 +192,17 @@ const US_TRANSACTION_SPECS = [
     account: 'Mid-term',
     pick: 'all', since: '20240601',
   },
+  // The other strategy accounts in the window shape, for the reason Chase has
+  // one. Optional where Mid-term's is not: Mid-term's range file is its
+  // 2024–2025 history and must be there, while these accounts have only ever
+  // been downloaded year-to-date and are not missing anything without one.
+  {
+    brokerage: 'Robinhood',
+    subdir: DIR_US_TRANSACTIONS,
+    broker: 'robinhood', doctype: 'transactions', accounts: 'agentic|longterm', period: RANGE, ext: 'csv',
+    account: (m) => ROBINHOOD_STRATEGIES[m.groups.account.toLowerCase()],
+    pick: 'all', optional: true, since: '20240601',
+  },
 ]
 
 // Crypto sources. All are 'all': every file covers a period the others do not,

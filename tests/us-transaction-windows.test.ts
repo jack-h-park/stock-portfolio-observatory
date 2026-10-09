@@ -200,3 +200,47 @@ test('a dividend on a re-covered day is dropped from BOTH tables it lives in', (
   assert.equal(check('us_transaction_overlaps_resolved')?.status, 'pass')
   assert.equal(check('dividend_rows_match_transactions')?.status, 'pass')
 })
+
+// Robinhood. The strategy accounts were read as as-ofs only, `pick: 'latest'`
+// per account, so a short window downloaded after a long year-to-date would
+// replace it — the Chase failure, one account at a time. Robinhood's export
+// names no account and the filer leaves it for a person to name, so the window
+// shape here is a spec the hand-named file can use, not a filer rule.
+const ROBINHOOD_HEADER =
+  '"Activity Date","Process Date","Settle Date","Instrument","Description","Trans Code","Quantity","Price","Amount"'
+
+function robinhoodBuy(date: string, ticker: string, quantity: string, amount: string) {
+  return `"${date}","${date}","${date}","${ticker}","${ticker} SHARES","Buy","${quantity}","$50.00","(${amount})"`
+}
+
+test('a Robinhood strategy window sits beside its year-to-date, and the seam day is read once', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'us-windows-rh-'))
+  mkdirSync(path.join(dir, 'us-transactions'), { recursive: true })
+  const write = (name: string, rows: string[]) =>
+    writeFileSync(path.join(dir, 'us-transactions', name), [ROBINHOOD_HEADER, ...rows].join('\n') + '\n', 'utf8')
+  write('robinhood-transactions-agentic-20260825.csv', [
+    robinhoodBuy('8/25/2026', 'SCHD', '6', '$300.00'),
+    robinhoodBuy('6/2/2026', 'JEPQ', '10', '$500.00'),
+  ])
+  write('robinhood-transactions-agentic-20260825-20261005.csv', [
+    robinhoodBuy('10/5/2026', 'VOO', '1', '$700.00'),
+    robinhoodBuy('8/25/2026', 'SCHD', '6', '$300.00'),
+  ])
+  writeSheetPayloads(dir)
+
+  const db = new Database(runIngest(dir, { allowFailure: true }), { readonly: true })
+  const rows = db
+    .prepare("select date, ticker, account from transactions where brokerage = 'Robinhood' and market = 'US' order by date")
+    .all() as { date: string; ticker: string; account: string }[]
+
+  // The June purchase is the year-to-date's alone: the window did not replace it.
+  assert.deepEqual(
+    rows.map((r) => `${r.date} ${r.ticker}`),
+    ['2026-06-02 JEPQ', '2026-08-25 SCHD', '2026-10-05 VOO']
+  )
+  assert.equal(new Set(rows.map((r) => r.account)).size, 1)
+  const overlap = db.prepare("select status from validation_checks where name = 'us_transaction_overlaps_resolved'").get() as
+    | { status: string }
+    | undefined
+  assert.equal(overlap?.status, 'pass')
+})
