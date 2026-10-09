@@ -352,17 +352,33 @@ function warningForLot(lot: TaxPlanningLot, policy: TaxPolicy, proceedsKrw: numb
   return warnings
 }
 
-function netCapitalGainBuckets(netShortGainKrw: number, netLongGainKrw: number) {
-  if (netShortGainKrw > 0 && netLongGainKrw < 0) {
-    return { taxableShortKrw: Math.max(netShortGainKrw + netLongGainKrw, 0), taxableLongKrw: 0 }
+function netCapitalGainBuckets(netShortGain: number, netLongGain: number) {
+  if (netShortGain > 0 && netLongGain < 0) {
+    return { taxableShort: Math.max(netShortGain + netLongGain, 0), taxableLong: 0 }
   }
-  if (netShortGainKrw < 0 && netLongGainKrw > 0) {
-    return { taxableShortKrw: 0, taxableLongKrw: Math.max(netShortGainKrw + netLongGainKrw, 0) }
+  if (netShortGain < 0 && netLongGain > 0) {
+    return { taxableShort: 0, taxableLong: Math.max(netShortGain + netLongGain, 0) }
   }
   return {
-    taxableShortKrw: Math.max(netShortGainKrw, 0),
-    taxableLongKrw: Math.max(netLongGainKrw, 0),
+    taxableShort: Math.max(netShortGain, 0),
+    taxableLong: Math.max(netLongGain, 0),
   }
+}
+
+// The IRS measures a USD lot's gain in USD (proceeds USD minus cost USD), so it must not absorb
+// USD/KRW movement since acquisition the way gainKrw does. Non-USD lots carry no acquisition-date
+// USD basis here, so their US gain falls back to the KRW gain at the planning rate.
+function usGainUsd(row: TaxPlanCandidate, usdKrwRate: number) {
+  if (row.currency === 'USD' && row.gainNative != null) return Number(row.gainNative)
+  return Number(row.gainKrw ?? 0) / usdKrwRate
+}
+
+// The same US gain expressed in KRW at the lot's current rate, for per-lot screening figures.
+function usGainKrw(row: TaxPlanCandidate) {
+  if (row.currency === 'USD' && row.gainNative != null && Number(row.proceedsNative ?? 0) > 0) {
+    return Number(row.gainNative) * (Number(row.proceedsKrw ?? 0) / Number(row.proceedsNative))
+  }
+  return Number(row.gainKrw ?? 0)
 }
 
 function candidateUsdKrwRate(candidates: TaxPlanCandidate[], policy: TaxPolicy) {
@@ -397,6 +413,7 @@ export function summarizeTaxCandidates({
   const netShortGainKrw = sumGain(shortRows)
   const netLongGainKrw = sumGain(longRows)
   const usdKrwRate = candidateUsdKrwRate(priced, policy)
+  const sumUsGainUsd = (rows: TaxPlanCandidate[]) => rows.reduce((sum, row) => sum + usGainUsd(row, usdKrwRate), 0)
   const inputYear = assumptionNumber(policy, 'US', 'taxInputYear', new Date().getFullYear())
   const yearInput = year === inputYear
   const filingStatus = assumptionString(policy, 'US', 'filingStatus', 'MFJ')
@@ -409,8 +426,8 @@ export function summarizeTaxCandidates({
     filingStatus,
     stateCode,
     ordinaryIncomeUsd,
-    shortGainUsd: netShortGainKrw / usdKrwRate,
-    longGainUsd: netLongGainKrw / usdKrwRate,
+    shortGainUsd: sumUsGainUsd(shortRows),
+    longGainUsd: sumUsGainUsd(longRows),
     ytdShortGainUsd: yearInput ? assumptionNumber(policy, 'US', 'ytdRealizedShortGainLossUsd', 0) : 0,
     ytdLongGainUsd: yearInput ? assumptionNumber(policy, 'US', 'ytdRealizedLongGainLossUsd', 0) : 0,
     shortLossCarryoverUsd: yearInput ? assumptionNumber(policy, 'US', 'shortTermCapitalLossCarryoverUsd', 0) : 0,
@@ -429,13 +446,14 @@ export function summarizeTaxCandidates({
     : 0
 
   const usMarketRows = priced.filter((row) => row.market === 'US')
-  const usMarketNetShortGainKrw = sumGain(usMarketRows.filter((row) => row.holdingBucket === 'short'))
-  const usMarketNetLongGainKrw = sumGain(usMarketRows.filter((row) => row.holdingBucket === 'long'))
-  const usMarketTaxable = netCapitalGainBuckets(usMarketNetShortGainKrw, usMarketNetLongGainKrw)
+  const usMarketTaxable = netCapitalGainBuckets(
+    sumUsGainUsd(usMarketRows.filter((row) => row.holdingBucket === 'short')),
+    sumUsGainUsd(usMarketRows.filter((row) => row.holdingBucket === 'long'))
+  )
   const usMarketEstimate = estimateUsCapitalGainTax({
     ...engineInput,
-    shortGainUsd: usMarketTaxable.taxableShortKrw / usdKrwRate,
-    longGainUsd: usMarketTaxable.taxableLongKrw / usdKrwRate,
+    shortGainUsd: usMarketTaxable.taxableShort,
+    longGainUsd: usMarketTaxable.taxableLong,
     ytdShortGainUsd: 0,
     ytdLongGainUsd: 0,
     shortLossCarryoverUsd: 0,
@@ -445,7 +463,8 @@ export function summarizeTaxCandidates({
     ? usMarketEstimate.federalRegularTaxUsd * usdKrwRate
     : 0
 
-  const krNetTaxableGainKrw = sumGain(priced.filter((row) => krTaxable(row, policy)))
+  const krTaxableRows = priced.filter((row) => krTaxable(row, policy))
+  const krNetTaxableGainKrw = sumGain(krTaxableRows)
   const krDeductionKrw = assumptionNumber(policy, 'KR', 'stockBasicDeductionKrw', 2500000)
   const krTaxRatePct = assumptionNumber(policy, 'KR', 'foreignStockFlatRatePct', 22)
   const krRate = pctRate(krTaxRatePct)
@@ -472,7 +491,7 @@ export function summarizeTaxCandidates({
     ...engineInput,
     foreignSourceIncomeUsd:
       creditMode === 'estimated-us-ftc'
-        ? (krNetTaxableGainBeforeDeductionKrw / usdKrwRate) * (ftcForeignSourceGainPct / 100)
+        ? Math.max(sumUsGainUsd(krTaxableRows), 0) * (ftcForeignSourceGainPct / 100)
         : 0,
     foreignTaxPaidUsd: creditMode === 'estimated-us-ftc' ? krTaxKrw / usdKrwRate : 0,
     foreignTaxCreditCarryoverUsd:
@@ -565,9 +584,11 @@ export function buildTaxPlan({
     const gainKrw = normalizedProceedsKrw == null ? null : normalizedProceedsKrw - Number(lot.cost_basis_krw ?? 0)
     const holdingBucket = isLongTerm(lot) ? 'long' : 'short'
 
-    const usApplies = isScenarioEnabled(scenario, 'US') && gainKrw != null && gainKrw > 0
+    // US gain in KRW at the current rate: a USD lot's gain is measured in USD (see usGainUsd).
+    const lotUsGainKrw = lot.currency === 'USD' && gainNative != null ? gainNative * fxRateToBase : gainKrw
+    const usApplies = isScenarioEnabled(scenario, 'US') && lotUsGainKrw != null && lotUsGainKrw > 0
     const usRate = pctRate((holdingBucket === 'long' ? usLongRatePct : usShortRatePct) + usStateRatePct + usNiitRatePct)
-    const usTaxKrw = usApplies ? gainKrw * usRate : 0
+    const usTaxKrw = usApplies ? lotUsGainKrw * usRate : 0
     const usTaxUsd = usApplies && lot.currency === 'USD' && gainNative != null ? gainNative * usRate : 0
     const krApplies = isScenarioEnabled(scenario, 'KR') && krTaxable(lot, policy) && gainKrw != null && gainKrw > 0
     const krTaxKrw = krApplies ? gainKrw * pctRate(krForeignStockRatePct) : 0
@@ -1031,8 +1052,12 @@ function annotateWashSaleRisk(
 ) {
   const beforeDays = assumptionNumber(policy, 'US', 'washSaleWindowDaysBefore', 30)
   const afterDays = assumptionNumber(policy, 'US', 'washSaleWindowDaysAfter', 30)
+  const candidateMap = new Map(candidates.map((candidate) => [candidate.id, candidate]))
   return instructions.map((instruction) => {
-    if (instruction.gainKrw >= 0) return instruction
+    // Wash-sale rules disallow a US loss, so the sign that matters is the USD gain's.
+    const candidate = candidateMap.get(instruction.lotId)
+    const usGain = candidate ? usGainKrw(candidate) : instruction.gainKrw
+    if (usGain >= 0) return instruction
     const scenario = scenarioFromTaxYearProfile(annualProfileForYear(policy, instruction.year))
     if (!isScenarioEnabled(scenario, 'US')) return instruction
     const saleTime = parseDateOnly(instruction.plannedDate).getTime()
@@ -1353,7 +1378,7 @@ export function buildMonthlySalePlanSet({
           .sort()[0] ?? null,
       estimatedFederalTaxAvoidedKrw: waiting.reduce(
         (sum, candidate) =>
-          sum + Math.max(Number(candidate.gainKrw), 0) * pctRate(Math.max(usShortRate - usLongRate, 0)),
+          sum + Math.max(usGainKrw(candidate), 0) * pctRate(Math.max(usShortRate - usLongRate, 0)),
         0
       ),
     },

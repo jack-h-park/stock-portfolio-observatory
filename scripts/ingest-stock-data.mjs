@@ -5292,11 +5292,34 @@ const ytdSalesDetail = `${usSalesThisYear.length} US sale(s) in ${taxYear} total
 // disagreement that was really a scope mismatch — KRW 740,800 of Korean gains
 // read as a $573 discrepancy in a figure that was right.
 //
-// Non-USD rows convert at their own trade date, not today's rate: a gain is
-// realized in dollars on the day it is realized, and this portfolio's Korean
-// sales sit six months back.
+// Non-USD rows are measured the way the IRS measures a security bought and sold
+// in a foreign currency: basis is the won cost at the USD/KRW rate on the
+// acquisition date, amount realized is the won proceeds at the rate on the sale
+// date. Converting the won GAIN at one rate instead folds the currency's move
+// between the two dates into the wrong side: lots bought near 1,450 and sold
+// near 1,350 read as a smaller dollar gain than the one realized, and a small
+// won loss can be a dollar gain. USD rows keep their native dollar gain.
 const realizedForTaxYear = realizedRows.filter((r) => r.tax_year === taxYear && !r.superseded_by)
-const realizedUsdOf = (r) => usdOn(Number(r.native_realized_gl) || 0, text(r.currency), text(r.sold_date))
+// Only the historical table: falling back to today's rate for an acquisition
+// that predates it would bring back the single-rate error for exactly that lot.
+// Such a lot is counted as unconvertible and named in the detail instead.
+function historicalUsdKrwOn(date) {
+  if (!date) return null
+  let best = null
+  for (const entry of historicalFxDates) {
+    if (entry.date > date) break
+    best = entry
+  }
+  return best?.rate ?? null
+}
+const realizedUsdOf = (r) => {
+  if (text(r.currency) === 'USD') return usdOn(Number(r.native_realized_gl) || 0, 'USD', text(r.sold_date))
+  if (r.cost_basis_krw == null || r.proceeds_krw == null) return null
+  const proceedsUsd = usdOn(Number(r.proceeds_krw), 'KRW', text(r.sold_date))
+  const acquiredRate = historicalUsdKrwOn(text(r.acquired_date))
+  if (proceedsUsd == null || !acquiredRate) return null
+  return proceedsUsd - Number(r.cost_basis_krw) / acquiredRate
+}
 const unconvertible = realizedForTaxYear.filter((r) => realizedUsdOf(r) == null)
 const sumUsd = (term) =>
   realizedForTaxYear
@@ -5352,7 +5375,7 @@ check(
       : `${ytdSalesDetail}; worldwide ${computedBasis} gives ${computedShortUsd.toFixed(2)} short / ` +
         `${computedLongUsd.toFixed(2)} long (${computedByMarket.join(', ')}) but ytdRealized*Usd is ` +
         `${assumedShortUsd} / ${assumedLongUsd}` +
-        `${unconvertible.length ? `; ${unconvertible.length} lot(s) had no FX for their trade date` : ''}` +
+        `${unconvertible.length ? `; ${unconvertible.length} lot(s) had no FX for their acquisition or sale date` : ''}` +
         `${taxPolicy ? '' : ` (no policy file at ${path.basename(taxPolicyPath)})`}`,
   'warning'
 )

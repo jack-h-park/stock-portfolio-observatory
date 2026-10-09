@@ -227,8 +227,8 @@ test('US foreign tax credit is capped by the federal tax attributable to foreign
 test('loss instructions flag same-ticker open-lot acquisitions inside the wash-sale window', () => {
   const planSet = buildMonthlySalePlanSet({
     lots: [
-      lot({ id: 1, acquired_date: '2026-07-01', native_market_value: 8_000, cost_basis_krw: 10_000_000 }),
-      lot({ id: 2, acquired_date: '2026-07-10', native_market_value: 7_000, cost_basis_krw: 10_000_000 }),
+      lot({ id: 1, acquired_date: '2026-07-01', native_market_value: 8_000, native_unrealized_gl: -2_000, cost_basis_krw: 10_000_000 }),
+      lot({ id: 2, acquired_date: '2026-07-10', native_market_value: 7_000, native_unrealized_gl: -3_000, cost_basis_krw: 10_000_000 }),
     ],
     policy: policy(),
     selectedStrategy: 'ACCELERATE_LOSSES',
@@ -300,4 +300,79 @@ test('saved plans preserve the snapshot while execution state advances separatel
   assert.equal(savedTaxPlanProgress(reloaded).executed, 1)
   assert.equal(savedTaxPlanProgress(reloaded).completionPct, 100)
   assert.equal((JSON.parse(readFileSync(filePath, 'utf8')) as { version: number }).version, 1)
+})
+
+// A lot bought at USD/KRW 1,400 and valued at 1,000: the USD gain and the KRW gain have opposite signs.
+function fxReversalLot(overrides: Partial<TaxPlanningLot> = {}): TaxPlanningLot {
+  return lot({
+    tax_term: 'short',
+    holding_days: 100,
+    fx_rate_to_base: 1000,
+    native_cost_basis: 10_000,
+    native_market_value: 12_000,
+    native_unrealized_gl: 2_000,
+    cost_basis_krw: 14_000_000,
+    ...overrides,
+  })
+}
+
+test('US estimate follows the USD gain when the KRW gain has the opposite sign', () => {
+  const currentPolicy = policy()
+  const plan = buildTaxPlan({ lots: [fxReversalLot()], policy: currentPolicy, scenario: 'US_ONLY', objective: 'raise-cash' })
+  const [candidate] = plan.candidates
+  assert.equal(candidate.gainKrw, -2_000_000)
+  assert.equal(candidate.gainNative, 2_000)
+  assert.ok(candidate.usTaxKrw > 0)
+  assert.equal(candidate.usTaxKrw, candidate.usTaxUsd * 1000)
+
+  const aggregate = summarizeTaxCandidates({ candidates: plan.candidates, policy: currentPolicy, scenario: 'US_ONLY', year: 2026 })
+  const expected = estimateUsCapitalGainTax({
+    year: 2026,
+    filingStatus: 'MFJ',
+    stateCode: 'NONE',
+    ordinaryIncomeUsd: 336_000,
+    shortGainUsd: 2_000,
+    longGainUsd: 0,
+    federalBracketInflationPct: 2.5,
+    fallbackStateRatePct: 0,
+    niitRatePct: 0,
+  })
+  assert.ok(expected.taxBeforeForeignTaxCreditUsd > 0)
+  assert.equal(aggregate.usTaxKrw, expected.taxBeforeForeignTaxCreditUsd * 1000)
+  assert.equal(aggregate.netShortGainKrw, -2_000_000)
+})
+
+test('a USD loss with a KRW gain owes Korea tax but no US tax and earns no US-source credit', () => {
+  const currentPolicy = policy({ creditMode: 'estimated-us-source' })
+  // Bought at 500, valued at 1,000: USD -1,000, KRW +4,000,000.
+  const gainLot = fxReversalLot({ native_market_value: 9_000, native_unrealized_gl: -1_000, cost_basis_krw: 5_000_000 })
+  const gainPlan = buildTaxPlan({ lots: [gainLot], policy: currentPolicy, scenario: 'US_AND_KR', objective: 'raise-cash' })
+  const [candidate] = gainPlan.candidates
+  assert.equal(candidate.gainKrw, 4_000_000)
+  assert.equal(candidate.usTaxKrw, 0)
+
+  const aggregate = summarizeTaxCandidates({ candidates: gainPlan.candidates, policy: currentPolicy, scenario: 'US_AND_KR', year: 2026 })
+  assert.equal(aggregate.usTaxKrw, 0)
+  assert.equal(aggregate.usFederalTaxOnUsMarketGainKrw, 0)
+  assert.equal(aggregate.krTaxKrw, (4_000_000 - 2_500_000) * 0.22)
+  assert.equal(aggregate.estimatedCrossBorderTaxCreditKrw, 0)
+  assert.equal(aggregate.combinedTaxAfterCreditsKrw, aggregate.krTaxKrw)
+})
+
+test('master plan years and wash-sale flags read the USD gain of a USD lot', () => {
+  // Both lots show a KRW loss but a USD gain, so neither is a US loss sale.
+  const planSet = buildMonthlySalePlanSet({
+    lots: [
+      fxReversalLot({ id: 1, acquired_date: '2026-07-01' }),
+      fxReversalLot({ id: 2, acquired_date: '2026-07-10' }),
+    ],
+    policy: policy(),
+    selectedStrategy: 'ACCELERATE_LOSSES',
+    asOfDate: '2026-07-20',
+  })
+  const instructions = planSet.selectedPlan.instructions
+  assert.ok(instructions.length > 0)
+  assert.ok(instructions.every((instruction) => instruction.gainKrw < 0))
+  assert.ok(instructions.every((instruction) => !instruction.washSaleRisk))
+  assert.ok(planSet.selectedPlan.years.every((year) => year.usGrossTaxKrw > 0))
 })
