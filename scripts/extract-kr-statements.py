@@ -224,7 +224,11 @@ def clean_name(value):
 
 
 def clean_ticker(value):
-    return re.sub(r"^A", "", nfc(str(value or "")).strip())
+    # 종목번호 prefixes a Korean short code with `A` (`A005930`, `A0001A0`). A
+    # foreign listing is printed as its own symbol, so stripping every leading A
+    # turned AAPL into APL and split one Apple position across two tickers. Only
+    # an A in front of a six-character code that starts with a digit is a prefix.
+    return re.sub(r"^A(?=\d[0-9A-Z]{5}$)", "", nfc(str(value or "")).strip())
 
 
 def open_pdf(path):
