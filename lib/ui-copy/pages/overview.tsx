@@ -57,7 +57,7 @@ export const overview = defineCopy({
     dbMissingTitle: 'Portfolio DB not found',
     dbMissingHint: (path: string) => <>Run <code className="font-mono text-caption">pnpm ingest</code> to generate <code className="font-mono text-caption">{path}</code>.</>,
     snapshotTrend: (scope: string) => `${scope} snapshot trend`,
-    combinedTrendSummary: (scope: string) => `${scope} · Market value, cost basis, and unrealized G/L · KRW millions`,
+    combinedTrendSummary: (scope: string) => `${scope} · Market value, cost basis, unrealized and realized G/L · KRW millions`,
     trendUnit: (metric: string, unit: string) => `${metric} · ${unit}`,
     percentagePoints: 'percentage points',
     krwMillions: 'KRW millions',
@@ -79,7 +79,7 @@ export const overview = defineCopy({
     trendRangeSummary: (start: string, end: string, valued: number, total: number, gaps: number) =>
       `${start} to ${end} · ${valued} valued / ${total} total snapshot(s)${gaps ? ` · ${gaps} gap(s)` : ''}`,
     snapshotsOnce: 'Snapshots are recorded once per ingest date.',
-    trendExplanation: 'Cost basis, holdings, and dividends are reconstructed from tax-lot and transaction dates. Foreign-currency quotes are converted using FX snapshots, then displayed in the selected currency. Valuation points below 90% cost-basis coverage remain visible as chart gaps; 90–95% coverage is marked partial. Cost-basis history itself does not require a market price.',
+    trendExplanation: 'Cost basis, holdings, and dividends are reconstructed from tax-lot and transaction dates. Foreign-currency quotes are converted using FX snapshots, then displayed in the selected currency. Valuation points below 90% cost-basis coverage remain visible as chart gaps; 90–95% coverage is marked partial. Cost-basis history itself does not require a market price. Realized G/L is the running total of every sale up to each date, counted from the first sale rather than from the start of the selected range; a sale the broker filed on Form 1099-B replaces the replayed estimate of it.',
     topHoldingsByCost: 'Top holdings by base cost',
     topHoldingsNote: 'Bar values use the selected display currency after applying the configured FX snapshot.',
     dividendTrend: 'Dividend trend',
@@ -94,6 +94,7 @@ export const overview = defineCopy({
       market_value: 'Market value',
       cost_basis: 'Cost basis',
       unrealized_gl: 'Unrealized G/L',
+      realized_gl: 'Realized G/L',
       return_pct: 'Return %',
     },
     scopeLabels: {
@@ -159,7 +160,7 @@ export const overview = defineCopy({
     dbMissingTitle: '포트폴리오 DB를 찾을 수 없습니다',
     dbMissingHint: (path: string) => <><code className="font-mono text-caption">pnpm ingest</code>를 실행해 <code className="font-mono text-caption">{path}</code>를 생성하세요.</>,
     snapshotTrend: (scope: string) => `${scope} 스냅샷 추이`,
-    combinedTrendSummary: (scope: string) => `${scope} · 평가금액, 취득원가, 평가손익 · 백만 원 단위`,
+    combinedTrendSummary: (scope: string) => `${scope} · 평가금액, 취득원가, 평가손익, 실현손익 · 백만 원 단위`,
     trendUnit: (metric: string, unit: string) => `${metric} · ${unit}`,
     percentagePoints: '퍼센트포인트',
     krwMillions: '백만 원 단위',
@@ -181,7 +182,7 @@ export const overview = defineCopy({
     trendRangeSummary: (start: string, end: string, valued: number, total: number, gaps: number) =>
       `${start}부터 ${end}까지 · 가격 확인 ${valued}개 / 전체 ${total}개 스냅샷${gaps ? ` · 공백 ${gaps}개` : ''}`,
     snapshotsOnce: '스냅샷은 ingest 날짜마다 한 번 기록됩니다.',
-    trendExplanation: '취득원가, 보유수량, 배당은 세금 단위와 거래일 기준으로 재구성됩니다. 외화 가격은 환율 스냅샷으로 환산한 뒤 선택 표시 통화로 표시됩니다. 취득원가 기준 가격 확인률이 90% 미만인 평가 지점은 차트 공백으로 남기고, 90~95%는 부분 평가로 표시합니다. 취득원가 이력 자체에는 시장 가격이 필요하지 않습니다.',
+    trendExplanation: '취득원가, 보유수량, 배당은 세금 단위와 거래일 기준으로 재구성됩니다. 외화 가격은 환율 스냅샷으로 환산한 뒤 선택 표시 통화로 표시됩니다. 취득원가 기준 가격 확인률이 90% 미만인 평가 지점은 차트 공백으로 남기고, 90~95%는 부분 평가로 표시합니다. 취득원가 이력 자체에는 시장 가격이 필요하지 않습니다. 실현손익은 각 날짜까지 발생한 모든 매도의 누적 합계이며, 선택한 기간의 시작이 아니라 첫 매도부터 누적합니다. 브로커가 Form 1099-B로 신고한 매도는 자체 재계산 값 대신 신고 값을 사용합니다.',
     topHoldingsByCost: '취득원가 상위 보유종목',
     topHoldingsNote: '막대 값은 설정된 환율 스냅샷을 적용한 선택 표시 통화 단위입니다.',
     dividendTrend: '배당 추이',
@@ -196,6 +197,7 @@ export const overview = defineCopy({
       market_value: '평가금액',
       cost_basis: '취득원가',
       unrealized_gl: '평가손익',
+      realized_gl: '실현손익',
       return_pct: '수익률 %',
     },
     scopeLabels: {
