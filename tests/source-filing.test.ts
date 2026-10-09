@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { readUsHoldingTickers, resolveUsHoldingFiles } from '../scripts/source-files.mjs'
+import { readUsHoldingTickers, resolveUsHoldingFiles, resolveUsTransactionFiles } from '../scripts/source-files.mjs'
 
 // Two US holdings sources arrived that the filer would not claim, and both
 // failures were silent in the way this project keeps rediscovering: the Merrill
@@ -201,4 +201,90 @@ test('the holdings specs resolve a filed Fidelity export', () => {
   assert.equal(fidelity.length, 1)
   assert.equal(path.basename(fidelity[0].filename), 'fidelity-holdings-20260731.csv')
   assert.ok(!missing.some((m: string) => m.includes('fidelity')))
+})
+
+// Merrill transactions. Every Merrill activity export filed so far was the full
+// history, 2026-03-30 to the day it was taken, so naming them for the export
+// date as an as-of did no harm. Merrill also lets you pick a window, and the
+// 2026-10-09 export was one: Aug–Oct only. Filed as
+// `merrill-transactions-20261009.csv` it would have outranked the full history
+// under `pick: 'latest'` and replaced it — the 2026-08-11 Chase failure again.
+//
+// The export ends on a `Total <window>` row that is not a transaction.
+const MERRILL_WINDOW = [
+  '"Exported on: 10/09/2026 01:15 PM ET"',
+  '',
+  '"Selected account(s): CMA-Edge 00X-00000"',
+  '',
+  '"Settlement date","Description","Type","Symbol/CUSIP","Quantity","Price","Amount"',
+  '"10/05/2026","Dividend JPMORGAN EQUITY PREMIUM INCOME ETF HOLDING 122.5084 PAY DATE 10/05/2026","Dividends/ Interest","JEPI","--","--","+$44.92"',
+  '"08/28/2026","Purchase JPMORGAN EQUITY PREMIUM INCOME ETF","Trades/Securities","JEPI","4","$57.00","-$228.00"',
+  '"08/05/2026","Dividend JPMORGAN EQUITY PREMIUM INCOME ETF HOLDING 118.0000 PAY DATE 08/05/2026","Dividends/ Interest","JEPI","--","--","+$43.10"',
+  '"Total Aug 2026 - Oct 2026","","","","","","-$139.98"',
+].join('\r\n')
+
+// The older layout: `Trade Date` first, and the whole history.
+const MERRILL_FULL_HISTORY = [
+  'Exported on: 07/16/2026 01:11 PM ET',
+  '',
+  'Selected account(s):CMA-Edge 00X-00000',
+  '',
+  '"Trade Date" ,"Settlement Date" ,"Account" ,"Description" ,"Type" ,"Symbol/ CUSIP" ,"Quantity" ,"Price" ,"Amount" ," " ',
+  ',',
+  '"07/15/2026" ,"07/15/2026" ,"CMA-Edge 00X-00000" ,"Dividend JPMORGAN EQUITY PREMIUM INCOME ETF" ,"Dividends/ Interest" ,"JEPI" ,"" ,"" ,"$41.00" ,"" ',
+  '"03/30/2026" ,"03/31/2026" ,"CMA-Edge 00X-00000" ,"Purchase JPMORGAN EQUITY PREMIUM INCOME ETF" ,"Trades/Securities" ,"JEPI" ,"100" ,"$57.00" ,"-$5,700.00" ,"" ',
+  ',',
+].join('\r\n')
+
+test('a Merrill window export is named for the rows it holds, so it cannot supersede the full history', () => {
+  const { stdout } = fileDownloads({ 'ExportData_2026-10-09_13-15-06_ET.csv': MERRILL_WINDOW })
+  // Not `merrill-transactions-20261009.csv`: the `Total Aug 2026 - Oct 2026`
+  // footer is not a row, and the export date is not what the file covers.
+  assert.match(stdout, /→ us-transactions\/merrill-transactions-20260805-20261005\.csv/)
+  assert.match(stdout, /rows 2026-08-05 … 2026-10-05/)
+  assert.doesNotMatch(stdout, /merrill-transactions-20261009/)
+})
+
+test('a full-history Merrill export is named for its rows too, in the older layout', () => {
+  const { stdout } = fileDownloads({ 'ExportData16072026131100.csv': MERRILL_FULL_HISTORY })
+  assert.match(stdout, /→ us-transactions\/merrill-transactions-20260330-20260715\.csv/)
+})
+
+test('a Merrill transactions export with no rows is refused, not filed as an as-of', () => {
+  // Named by the export date it would be an as-of newer than the full history,
+  // and `pick: 'latest'` would read an empty file in its place.
+  const empty = MERRILL_WINDOW.split('\r\n')
+    .filter((line) => !/^"\d{2}\/\d{2}\/\d{4}"/.test(line))
+    .join('\r\n')
+  const { stdout } = fileDownloads({ 'ExportData_2026-10-09_13-15-06_ET.csv': empty })
+  assert.doesNotMatch(stdout, /→ us-transactions\/merrill-transactions/)
+  assert.match(stdout, /no dated rows/)
+})
+
+test('a Merrill window coexists with the full-history as-of instead of replacing it', () => {
+  const dataDir = mkdtempSync(path.join(tmpdir(), 'stock-sources-'))
+  mkdirSync(path.join(dataDir, 'us-transactions'), { recursive: true })
+  for (const name of [
+    'merrill-transactions-20260731.csv',
+    'merrill-transactions-20260811.csv',
+    'merrill-transactions-20260805-20261005.csv',
+  ]) {
+    writeFileSync(path.join(dataDir, 'us-transactions', name), 'x', 'utf8')
+  }
+  const { files, missing } = resolveUsTransactionFiles(dataDir)
+  const merrill = files
+    .filter((f: { brokerage: string }) => f.brokerage === 'Merrill')
+    .map((f: { filename: string }) => path.basename(f.filename))
+    .sort()
+  // The newest as-of still supersedes the older as-of; the window sits beside it.
+  assert.deepEqual(merrill, ['merrill-transactions-20260805-20261005.csv', 'merrill-transactions-20260811.csv'])
+  assert.ok(!missing.some((m: string) => m.includes('merrill')))
+})
+
+test('a Merrill account with no window export is not reported as missing one', () => {
+  const dataDir = mkdtempSync(path.join(tmpdir(), 'stock-sources-'))
+  mkdirSync(path.join(dataDir, 'us-transactions'), { recursive: true })
+  writeFileSync(path.join(dataDir, 'us-transactions', 'merrill-transactions-20260811.csv'), 'x', 'utf8')
+  const { missing } = resolveUsTransactionFiles(dataDir)
+  assert.ok(!missing.some((m: string) => m.includes('merrill')))
 })
