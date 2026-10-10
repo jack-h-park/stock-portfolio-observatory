@@ -1577,6 +1577,11 @@ if (tossSnapshot?.accounts?.length) {
   // taxLotRows in place keeps one lot ledger rather than a second one that would
   // then have to be reconciled against the first.
   const openLots = new Map()
+  // Lots a sale in the window consumed in full. Removed once the window is
+  // walked, so tax_lots keeps meaning "open lots" the way the statement's own
+  // taxlots.tsv does — a lot left at zero beside no holding is what /health
+  // reads as a lot-only break.
+  const tossClosedLots = new Set()
   for (const lot of taxLotRows) {
     if (lot.account !== tossAccountLabel || !(lot.open_quantity > 0)) continue
     if (!openLots.has(lot.ticker)) openLots.set(lot.ticker, [])
@@ -1706,6 +1711,7 @@ if (tossSnapshot?.accounts?.length) {
       lot.cost_basis_krw = (lot.cost_basis_krw ?? 0) - costKrw
       lot.native_cost_basis = (lot.native_cost_basis ?? 0) - nativeCost
       remaining -= taken
+      if (lot.open_quantity <= 1e-9) tossClosedLots.add(lot)
     }
     if (remaining > 1e-6) {
       // A sale with no lot behind it means the shares arrived some way the order
@@ -1713,6 +1719,11 @@ if (tossSnapshot?.accounts?.length) {
       // silently selling from nothing would book the whole proceeds as gain.
       tossOrderNotes.push(`${date} ${ticker}: sold ${quantity} with only ${quantity - remaining} in open lots`)
     }
+  }
+
+  // In place: taxLotRows is the one lot ledger, and every later reader holds it.
+  for (let i = taxLotRows.length - 1; i >= 0; i--) {
+    if (tossClosedLots.has(taxLotRows[i])) taxLotRows.splice(i, 1)
   }
 
   if (tossBridgedFills) {

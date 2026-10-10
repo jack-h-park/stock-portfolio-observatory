@@ -991,35 +991,6 @@ def load_toss_snapshot(report):
     return None
 
 
-def check_lots_against_snapshot(taxlots, snapshot, report):
-    """Name any open Toss lot the broker's own API does not hold.
-
-    The statements end before the snapshot does, so a lot can legitimately
-    outlive its position — but it can also be a position that quietly stopped
-    existing. This project has been caught by that once already, with a matured
-    bond the lot walk kept holding a year past redemption, so the case gets a
-    name rather than a silent row in taxlots.tsv.
-    """
-    if not snapshot:
-        return
-    held = {
-        item.get("symbol")
-        for account in snapshot.get("accounts", [])
-        for item in (account.get("holdings") or {}).get("items") or []
-    }
-    if not held:
-        return
-    for lot in taxlots:
-        if nfc(lot["Account"]) != TOSS_ACCOUNT or lot["Ticker"] in held:
-            continue
-        report(
-            "open-lot-not-held",
-            f"{lot['Ticker']} ({lot['Name']}) {lot['Open Quantity']} unit(s) acquired "
-            f"{lot['Acquired Date']} at cost {lot['Cost Basis (KRW)']} — open in the statements, "
-            f"absent from /api/v1/holdings",
-        )
-
-
 def toss_transactions(statements_dir, snapshot, report):
     """Toss 거래내역서 rows in the shared TRANSACTION_COLUMNS shape.
 
@@ -1346,7 +1317,12 @@ def main():
     taxlots, realized, lot_notes, lot_carried = build_lots(transactions, as_of_map)
     for line in lot_carried:
         print(f"[kr-statement] {line}", file=sys.stderr)
-    check_lots_against_snapshot(taxlots, toss_snapshot, report)
+    # Toss lots are not compared with the snapshot here. These lots stop at the
+    # newest statement, and the ingest then closes them with the API orders
+    # filled after it; judged before that step, every position sold since the
+    # statement read as an open lot the broker no longer holds (118 rows for six
+    # positions, five of them correctly sold). The ingest makes the comparison
+    # after the bridge, per position: `toss_holdings_lots_provenance`.
 
     write_tsv(OUT_DIR / "transactions.tsv", TRANSACTION_COLUMNS, transactions)
     write_tsv(OUT_DIR / "dividends.tsv", DIVIDEND_COLUMNS, dividends)
