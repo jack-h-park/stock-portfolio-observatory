@@ -113,6 +113,11 @@ export function Field({
         <input
           name={name}
           type={type}
+          // A number input with no step validates against step 1, counted from
+          // its default value: a field showing 1061.2 accepts 1062.2 and refuses
+          // 1243.12, and the browser cancels the submit without a word. Amounts
+          // here are cents and rates are decimals, so any value is valid.
+          step={type === 'number' ? 'any' : undefined}
           defaultValue={defaultValue ?? ''}
           className="min-w-0 flex-1 bg-transparent px-3 py-2 text-body text-ink outline-none"
         />
