@@ -155,3 +155,152 @@ print(json.dumps({"eod": m.end_of_day(t), "breaks": m.continuity_breaks(t), "seq
   assert.deepEqual(r.breaks, [])
   assert.deepEqual(r.seq, [0, 1, 2, 3, 4])
 })
+
+// --- 토스뱅크 and the Fidelity CMA -------------------------------------------------
+
+const TOSS_HEADER = ['거래 일시', '적요', '거래 유형', '거래 기관', '계좌번호', '거래 금액', '거래 후 잔액', '메모']
+
+/** Write an openpyxl workbook shaped like a 토스뱅크 export; `rows` are newest first. */
+function writeTossWorkbook(file: string, last4: string, rows: Array<[string, string, number, number | null]>) {
+  const script = [
+    'import json, sys, openpyxl',
+    'file, last4, rows, header = sys.argv[1], sys.argv[2], json.loads(sys.argv[3]), json.loads(sys.argv[4])',
+    'wb = openpyxl.Workbook(); ws = wb.active; ws.title = "토스뱅크 거래내역"',
+    '# the real export puts everything one column in: column A is empty',
+    'ws.append([None, "토스뱅크 거래내역"]); ws.append([None, "성명", "Example Holder"]); ws.append([None, "계좌번호", f"****-****-{last4}"])',
+    'ws.append([None, "조회기간", "2026.01.01 - 2026.10.10"])',
+    'for _ in range(4): ws.append([])',
+    'ws.append([None] + header)',
+    'for r in rows: ws.append([None, r[0], r[1], "입금", "", "", r[2], r[3], ""])',
+    'wb.save(file)',
+  ].join('\n')
+  execFileSync('python3', ['-c', script, file, last4, JSON.stringify(rows), JSON.stringify(TOSS_HEADER)])
+}
+
+function extract(dir: string, map: object | null = null) {
+  const out = path.join(dir, 'out.json')
+  const mapPath = path.join(dir, 'map.json')
+  if (map) writeFileSync(mapPath, JSON.stringify(map))
+  execFileSync('python3', ['scripts/extract-bank-statements.py'], {
+    cwd: ROOT,
+    env: { ...process.env, STOCK_DATA_DIR: dir, STOCK_BANK_BALANCES_PATH: out, STOCK_ACCOUNT_MAP_PATH: map ? mapPath : path.join(dir, 'none.json') },
+    encoding: 'utf8',
+  })
+  return JSON.parse(readFileSync(out, 'utf8'))
+}
+
+test('토스뱅크 rows, newest first with float cells, read in order with signed amounts and end-of-day balances', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'toss-rows-'))
+  mkdirSync(path.join(dir, 'bank-statements'))
+  writeTossWorkbook(path.join(dir, 'bank-statements', 'tossbank-0000-20260101-20261010.xlsx'), '0000', [
+    ['2026.09.02 18:00:00', 'late', -300.0, 500.0],
+    ['2026.09.02 09:30:00', 'early', -200.0, 800.0],
+    ['2026.09.01 12:00:00', 'pay', 1000.0, 1000.0],
+  ])
+  const doc = extract(dir)
+  assert.equal(doc.accounts.length, 1)
+  const a = doc.accounts[0]
+  assert.deepEqual([a.institution, a.account, a.kind, a.currency], ['tossbank', 'tossbank 0000', 'checking', 'KRW'])
+  assert.deepEqual(a.balances, [{ date: '2026-09-01', balance: 1000 }, { date: '2026-09-02', balance: 500 }])
+  assert.deepEqual(a.continuityBreaks, [])
+})
+
+test('토스뱅크 same-second rows keep their file order, and a gap is a continuity break', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'toss-gap-'))
+  mkdirSync(path.join(dir, 'bank-statements'))
+  writeTossWorkbook(path.join(dir, 'bank-statements', 'tossbank-0000-a-b.xlsx'), '0000', [
+    ['2026.09.03 10:00:00', 'c', -50.0, 300.0],
+    ['2026.09.02 10:00:00', 'b2', -100.0, 450.0],
+    ['2026.09.02 10:00:00', 'b1', -450.0, 550.0],
+    ['2026.09.01 10:00:00', 'a', 1000.0, 1000.0],
+  ])
+  const a = extract(dir).accounts[0]
+  // 09-02 is consistent only if the same-second rows are read b1 then b2; 09-03 is the real gap.
+  assert.equal(a.continuityBreaks.length, 1)
+  assert.match(a.continuityBreaks[0], /2026-09-03/)
+})
+
+test('a 토스뱅크 row with no balance gets previous balance plus amount, so the next row is not a false break', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'toss-blank-'))
+  mkdirSync(path.join(dir, 'bank-statements'))
+  writeTossWorkbook(path.join(dir, 'bank-statements', 'tossbank-0000-a-b.xlsx'), '0000', [
+    ['2026.09.03 10:00:00', 'after', -100.0, 1000.0],
+    ['2026.09.02 10:00:00', 'promo', 100.0, null],
+    ['2026.09.01 10:00:00', 'pay', 1000.0, 1000.0],
+  ])
+  const doc = extract(dir)
+  const a = doc.accounts[0]
+  // 09-01: 1000; the blank row makes 1100; the next row's -100 lands on 1000 as printed.
+  assert.deepEqual(a.balances, [{ date: '2026-09-01', balance: 1000 }, { date: '2026-09-02', balance: 1100 }, { date: '2026-09-03', balance: 1000 }])
+  assert.deepEqual(a.continuityBreaks, [])
+  assert.equal(doc.findings.length, 1)
+  assert.match(doc.findings[0], /tossbank-0000-a-b\.xlsx: 1 row\(s\) printed no balance/)
+})
+
+test('two 토스뱅크 last4 values give two accounts, and the map overrides kind and alias by last4', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'toss-two-'))
+  mkdirSync(path.join(dir, 'bank-statements'))
+  writeTossWorkbook(path.join(dir, 'bank-statements', 'tossbank-0000-a-b.xlsx'), '0000', [['2026.09.01 10:00:00', 'a', 10.0, 10.0]])
+  writeTossWorkbook(path.join(dir, 'bank-statements', 'tossbank-1111-a-b.xlsx'), '1111', [['2026.09.01 10:00:00', 'a', 20.0, 20.0]])
+  const doc = extract(dir, { bankAccounts: [{ institution: 'tossbank', last4: '1111', kind: 'savings', alias: 'Toss savings' }] })
+  const byAlias = Object.fromEntries(doc.accounts.map((a: any) => [a.account, a]))
+  assert.deepEqual(Object.keys(byAlias).sort(), ['Toss savings', 'tossbank 0000'])
+  assert.equal(byAlias['Toss savings'].kind, 'savings')
+  assert.equal(byAlias['tossbank 0000'].kind, 'checking')
+  assert.deepEqual(byAlias['Toss savings'].balances, [{ date: '2026-09-01', balance: 20 }])
+})
+
+test('_alias also matches on last4 for any institution, and falls back to institution plus last4 for an unknown last4', () => {
+  const r = py(`
+rules = {"bankAccounts": [{"institution": "chase", "last4": "0000", "kind": "checking", "alias": "Chase main"},
+                           {"institution": "tossbank", "last4": "1111", "kind": "savings", "alias": "Toss s"}]}
+print(json.dumps([m._alias(rules, "chase", "checking"), m._alias(rules, "chase", "checking", "0000"),
+                  m._alias(rules, "chase", "checking", "9999"), m._alias(rules, "tossbank", "checking", "1111"),
+                  m._alias(rules, "tossbank", "checking", "2222")]))`)
+  assert.deepEqual(r, ['Chase main', 'Chase main', 'chase 9999', 'Toss s', 'tossbank 2222'])
+})
+
+const CMA_HEAD = ['', '', 'Run Date,Action,Symbol,Description,Type,Price ($),Quantity,Commission ($),Fees ($),Accrued Interest ($),Amount ($),Cash Balance ($),Settlement Date']
+const CMA_FOOT = ['', '"The data and information in this spreadsheet is provided to you solely for your use."', '', 'Date downloaded 10/09/2026 10:00 am']
+
+test('a Fidelity CMA dividend and its core-fund reinvestment do not read as a continuity break', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'cma-'))
+  mkdirSync(path.join(dir, 'bank-statements'))
+  const csv = [
+    ...CMA_HEAD,
+    '09/30/2026,"DEBIT CARD PURCHASE EXAMPLE SHOP",,"EXAMPLE",Cash,,0,,,,-10.00,"1051.93",',
+    '09/30/2026," REINVESTMENT FIDELITY GOVERNMENT MONEY MARKET (SPAXX) (Cash)",SPAXX,"FIDELITY GOVERNMENT MONEY MARKET",Cash,1.000,61.930,,,,-61.93,"1061.93",09/30/2026',
+    '09/30/2026," DIVIDEND RECEIVED FIDELITY GOVERNMENT MONEY MARKET (SPAXX) (Cash)",SPAXX,"FIDELITY GOVERNMENT MONEY MARKET",Cash,,0.000,,,,61.93,"1061.93",',
+    '09/01/2026," Electronic Funds Transfer Received (Cash)",,"EXAMPLE",Cash,,0.000,,,,1000.00,"1000.00",',
+    ...CMA_FOOT,
+  ].join('\n')
+  writeFileSync(path.join(dir, 'bank-statements', 'fidelity-cma-20260901-20260930.csv'), csv)
+  const doc = extract(dir, { bankAccounts: [{ institution: 'fidelity', kind: 'cma', accountId: 'Z00000001', currency: 'USD', alias: 'Fidelity CMA' }] })
+  assert.equal(doc.accounts.length, 1)
+  const a = doc.accounts[0]
+  assert.deepEqual([a.institution, a.account, a.kind, a.currency], ['fidelity', 'Fidelity CMA', 'cma', 'USD'])
+  assert.deepEqual(a.continuityBreaks, [])
+  assert.deepEqual(a.balances, [{ date: '2026-09-01', balance: 1000 }, { date: '2026-09-30', balance: 1051.93 }])
+  assert.deepEqual(doc.findings, [])
+})
+
+test('a Fidelity CMA reinvestment into a non-core fund keeps its amount, because only core money-market funds are zeroed', () => {
+  const r = py(`
+text = "\\n".join(["", "", "Run Date,Action,Symbol,Description,Type,Price ($),Quantity,Commission ($),Fees ($),Accrued Interest ($),Amount ($),Cash Balance ($),Settlement Date",
+ '09/30/2026," REINVESTMENT EXAMPLE FUND (EXMPL) (Cash)",EXMPL,"EXAMPLE",Cash,1.0,5.0,,,,-5.00,"95.00",',
+ '09/01/2026," DEPOSIT (Cash)",,"EXAMPLE",Cash,,0,,,,100.00,"100.00",'])
+t = m.parse_fidelity_cma(text)
+print(json.dumps({"amounts": [x["amount"] for x in t], "breaks": m.continuity_breaks(t)}))`)
+  assert.deepEqual(r.amounts, [100, -5])
+  assert.deepEqual(r.breaks, [])
+})
+
+test('a 토스뱅크 workbook with no header row is a finding that says so, and the other accounts are kept', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'toss-nohdr-'))
+  mkdirSync(path.join(dir, 'bank-statements'))
+  execFileSync('python3', ['-c', 'import sys, openpyxl; wb = openpyxl.Workbook(); wb.active.append([None, "nothing here"]); wb.save(sys.argv[1])', path.join(dir, 'bank-statements', 'tossbank-0000-a-b.xlsx')])
+  const doc = extract(dir)
+  assert.equal(doc.findings.length, 1)
+  assert.match(doc.findings[0], /tossbank-0000-a-b\.xlsx: could not be parsed \(ValueError: no header row with 거래 일시/)
+  assert.doesNotMatch(doc.findings[0], /StopIteration/)
+})

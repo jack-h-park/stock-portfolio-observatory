@@ -4,11 +4,13 @@
 Balances, not spending: each statement is reduced to one end-of-day balance per
 account per day. Statements that print a running balance are read as printed and
 checked for continuity; Robinhood's export prints none, so its history is walked
-from one anchor balance kept in the gitignored account map.
+from one anchor balance kept in the gitignored account map. 토스뱅크 workbooks are
+one account per last4 in the file name; a Fidelity cash management account's
+balance includes its core money-market position (see FIDELITY_CORE_FUNDS).
 """
 from __future__ import annotations
 
-import csv, io, importlib.util, json, os, re, subprocess, tempfile
+import csv, io, importlib.util, json, os, re, subprocess, tempfile, unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -95,6 +97,91 @@ def parse_mg_rows(rows):
     return [{"date": d, "seq": i, "description": "", "amount": a, "balance": b} for i, (d, _t, a, b) in enumerate(parsed)]
 
 
+# Core money-market funds a Fidelity cash account sweeps into. A row that reinvests
+# into one of them moves money between the cash and the core position, but the
+# `Cash Balance ($)` column INCLUDES the core position, so the balance does not
+# change. Its Amount must count as 0 or "previous + amount = balance" reports a
+# false break on every dividend.
+FIDELITY_CORE_FUNDS = {"SPAXX", "FDRXX", "FZFXX", "SPRXX", "FCASH"}
+
+
+def parse_fidelity_cma(text):
+    """Fidelity cash management account history: header row by name, newest first, footer skipped."""
+    rows = _csv_rows(text)
+    header_at = next(i for i, r in enumerate(rows) if r and r[0].strip() == "Run Date")
+    header = [c.strip() for c in rows[header_at]]
+    col = {name: header.index(name) for name in ("Run Date", "Action", "Symbol", "Description", "Amount ($)", "Cash Balance ($)")}
+
+    def cell(r, name):
+        return r[col[name]] if len(r) > col[name] else ""
+
+    body = [r for r in rows[header_at + 1:] if _mdy(cell(r, "Run Date"))]  # drops blank lines, disclaimer and `Date downloaded`
+    out = []
+    for i, r in enumerate(reversed(body)):  # the file is newest first
+        action = cell(r, "Action").strip().upper()
+        core_reinvestment = action.startswith("REINVESTMENT") and cell(r, "Symbol").strip().upper() in FIDELITY_CORE_FUNDS
+        amount = 0.0 if core_reinvestment else (_num(cell(r, "Amount ($)")) or 0.0)
+        out.append({"date": _mdy(cell(r, "Run Date")), "seq": i, "description": f"{action} {cell(r, 'Description').strip()}",
+                    "amount": amount, "balance": _num(cell(r, "Cash Balance ($)"))})
+    return out
+
+
+def _cell_text(value):
+    return unicodedata.normalize("NFC", str(value if value is not None else "")).strip()
+
+
+def _cell_num(value):
+    """A 토스뱅크 money cell: a number (`52957.0`) or text."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    return _num(_cell_text(value))
+
+
+def parse_tossbank(path, findings=None):
+    """토스뱅크 거래내역 workbook (already decrypted): header row by cells, newest first, signed amounts."""
+    import openpyxl
+
+    # read_only=True reports a single row for these workbooks, so the sheet is loaded whole.
+    book = openpyxl.load_workbook(path, read_only=False, data_only=True)
+    rows = [list(r) for r in book.worksheets[0].iter_rows(values_only=True)]
+    wanted = ("거래 일시", "거래 금액", "거래 후 잔액")
+    header_at = next((i for i, r in enumerate(rows) if all(w in [_cell_text(c) for c in r] for w in wanted)), None)
+    if header_at is None:
+        raise ValueError("no header row with 거래 일시, 거래 금액 and 거래 후 잔액 was found")
+    header = [_cell_text(c) for c in rows[header_at]]
+    col = {name: header.index(name) for name in wanted}
+    kind_col, memo_col = header.index("적요") if "적요" in header else None, header.index("메모") if "메모" in header else None
+    parsed = []
+    for r in reversed(rows[header_at + 1:]):  # newest first; reversing keeps file order for equal timestamps
+        when = r[col["거래 일시"]] if len(r) > col["거래 일시"] else None
+        if hasattr(when, "strftime"):
+            stamp = when.strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            m = re.fullmatch(r"(\d{4})\.(\d{2})\.(\d{2})(?:\s+(\d{1,2}:\d{2}(?::\d{2})?))?", _cell_text(when))
+            if not m:
+                continue
+            stamp = f"{m.group(1)}-{m.group(2)}-{m.group(3)} {_clock(m.group(4) or '00:00:00')}"
+        parsed.append((stamp, _cell_num(r[col["거래 금액"]]) or 0.0, _cell_num(r[col["거래 후 잔액"]]),
+                       _cell_text(r[kind_col]) if kind_col is not None and len(r) > kind_col else "",
+                       _cell_text(r[memo_col]) if memo_col is not None and len(r) > memo_col else ""))
+    parsed.sort(key=lambda t: t[0])  # stable: equal timestamps stay in chronological file order
+    out = [{"date": s[:10], "seq": i, "description": f"{desc} {memo}".strip(), "amount": a, "balance": b}
+           for i, (s, a, b, desc, memo) in enumerate(parsed)]
+    # Some rows (promotions, interest, a few deposits) print no `거래 후 잔액`. Leaving them blank would
+    # drop their amount from the next row's continuity check, which then reports a false break, and
+    # would leave a stale end-of-day balance when the blank row is the day's last. A blank takes the
+    # previous printed balance plus its own amount; the next row's printed balance still checks it.
+    filled, previous = 0, None
+    for txn in out:
+        if txn["balance"] is None and previous is not None:
+            txn["balance"] = round(previous + txn["amount"], 2)
+            filled += 1
+        previous = txn["balance"]
+    if filled and findings is not None:
+        findings.append(f"{Path(path).name}: {filled} row(s) printed no balance; each was taken as the previous balance plus its amount")
+    return out
+
+
 def merge_txns(groups):
     """Combine statements chronologically, counting each transaction once per download.
 
@@ -179,20 +266,38 @@ def _xls_rows(source, findings):
 
 
 FAMILIES = [
-    # (filename prefix, institution, kind, currency, parser)
-    ("chase-checking-", "chase", "checking", "USD", lambda p, f: parse_chase(p.read_text(encoding="utf-8-sig"))),
-    ("boa-checking-", "boa", "checking", "USD", lambda p, f: parse_boa(p.read_text(encoding="utf-8-sig"))),
-    ("robinhood-bank-checking-", "robinhood-bank", "checking", "USD", lambda p, f: parse_robinhood_bank(p.read_text(encoding="utf-8-sig"))),
-    ("robinhood-bank-savings-", "robinhood-bank", "savings", "USD", lambda p, f: parse_robinhood_bank(p.read_text(encoding="utf-8-sig"))),
-    ("mg-deposit-", "mg", "deposit", "KRW", lambda p, f: parse_mg_rows(_xls_rows(p, f))),
+    # (filename prefix, institution, kind, currency, parser, account-key regex or None)
+    # A key regex splits one prefix into one account per captured key (the last4 in the file name).
+    ("chase-checking-", "chase", "checking", "USD", lambda p, f: parse_chase(p.read_text(encoding="utf-8-sig")), None),
+    ("boa-checking-", "boa", "checking", "USD", lambda p, f: parse_boa(p.read_text(encoding="utf-8-sig")), None),
+    ("robinhood-bank-checking-", "robinhood-bank", "checking", "USD", lambda p, f: parse_robinhood_bank(p.read_text(encoding="utf-8-sig")), None),
+    ("robinhood-bank-savings-", "robinhood-bank", "savings", "USD", lambda p, f: parse_robinhood_bank(p.read_text(encoding="utf-8-sig")), None),
+    ("mg-deposit-", "mg", "deposit", "KRW", lambda p, f: parse_mg_rows(_xls_rows(p, f)), None),
+    ("tossbank-", "tossbank", "checking", "KRW", lambda p, f: parse_tossbank(p, f), r"^tossbank-(\d{4})-"),
+    ("fidelity-cma-", "fidelity", "cma", "USD", lambda p, f: parse_fidelity_cma(p.read_text(encoding="utf-8-sig")), None),
 ]
 
 
-def _alias(account_map, institution, kind):
+def _alias_rule(account_map, institution, kind, last4=None):
+    """The map's bankAccounts entry for an account, or None.
+
+    With a last4 the entry must carry that last4 (any institution); without one it is
+    matched on institution and kind, as before.
+    """
     for rule in account_map.get("bankAccounts", []):
-        if rule.get("institution") == institution and rule.get("kind") == kind:
-            return rule.get("alias") or f"{institution} {kind}"
-    return f"{institution} {kind}"
+        if rule.get("institution") != institution:
+            continue
+        if last4 is not None:
+            if str(rule.get("last4") or "") == last4:
+                return rule
+        elif rule.get("kind") == kind:
+            return rule
+    return None
+
+
+def _alias(account_map, institution, kind, last4=None):
+    rule = _alias_rule(account_map, institution, kind, last4)
+    return (rule or {}).get("alias") or (f"{institution} {last4}" if last4 else f"{institution} {kind}")
 
 
 def _derive(alias, txns, account_map, findings):
@@ -212,33 +317,46 @@ def _derive(alias, txns, account_map, findings):
 def main():
     account_map = json.loads(MAP_PATH.read_text(encoding="utf-8")) if MAP_PATH.exists() else {}
     findings, accounts = [], []
-    for prefix, institution, kind, currency, parse in FAMILIES:
+    for prefix, institution, kind, currency, parse, key_pattern in FAMILIES:
         files = sorted(SOURCE_DIR.glob(f"{prefix}*")) if SOURCE_DIR.exists() else []
         if not files:
             continue
-        parsed = []
+        by_account = {}
         for path in files:
-            try:
-                rows = parse(path, findings)
-            except Exception as error:  # one bad file must not cost every account
-                findings.append(f"{path.name}: could not be parsed ({type(error).__name__}: {error})")
+            key = None
+            if key_pattern:
+                found = re.match(key_pattern, path.name)
+                if not found:
+                    findings.append(f"{path.name}: name carries no account key; skipped")
+                    continue
+                key = found.group(1)
+            by_account.setdefault(key, []).append(path)
+        for key, paths in sorted(by_account.items(), key=lambda item: str(item[0])):
+            parsed = []
+            for path in paths:
+                try:
+                    rows = parse(path, findings)
+                except Exception as error:  # one bad file must not cost every account
+                    findings.append(f"{path.name}: could not be parsed ({type(error).__name__}: {error})")
+                    continue
+                if not rows:
+                    findings.append(f"{path.name}: parsed to zero rows")
+                    continue
+                parsed.append((min(t["date"] for t in rows), path.name, rows))
+            parsed.sort(key=lambda item: (item[0], item[1]))
+            txns = merge_txns([rows for _, _, rows in parsed])
+            rule = _alias_rule(account_map, institution, kind, key)
+            account_kind = (rule or {}).get("kind") or kind
+            alias = _alias(account_map, institution, kind, key)
+            if not txns:
                 continue
-            if not rows:
-                findings.append(f"{path.name}: parsed to zero rows")
-                continue
-            parsed.append((min(t["date"] for t in rows), path.name, rows))
-        parsed.sort(key=lambda item: (item[0], item[1]))
-        txns = merge_txns([rows for _, _, rows in parsed])
-        alias = _alias(account_map, institution, kind)
-        if not txns:
-            continue
-        derived = all(t["balance"] is None for t in txns)
-        balances = _derive(alias, txns, account_map, findings) if derived else end_of_day(txns)
-        accounts.append({
-            "institution": institution, "account": alias, "kind": kind, "currency": currency, "owner": "self",
-            "derived": derived, "sources": [name for _, name, _ in parsed], "balances": balances,
-            "continuityBreaks": [] if derived else continuity_breaks(txns),
-        })
+            derived = all(t["balance"] is None for t in txns)
+            balances = _derive(alias, txns, account_map, findings) if derived else end_of_day(txns)
+            accounts.append({
+                "institution": institution, "account": alias, "kind": account_kind, "currency": currency, "owner": "self",
+                "derived": derived, "sources": [name for _, name, _ in parsed], "balances": balances,
+                "continuityBreaks": [] if derived else continuity_breaks(txns),
+            })
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     document = {"generatedAt": datetime.now(timezone.utc).isoformat(), "accounts": accounts, "findings": findings}
     OUT_PATH.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

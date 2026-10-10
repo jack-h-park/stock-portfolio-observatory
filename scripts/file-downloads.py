@@ -54,6 +54,8 @@ Run with --dry-run first; it prints the same plan and moves nothing.
 """
 
 import hashlib
+import io
+import json
 import os
 import re
 import shutil
@@ -91,6 +93,9 @@ load_local_env()
 DATA_DIR = Path(os.environ.get("STOCK_DATA_DIR", Path.cwd() / "private-data"))
 INBOX_DIR = DATA_DIR / "inbox"
 PDF_PASSWORD = os.environ.get("STOCK_PDF_PASSWORD", "")
+# The gitignored account map. It lives in the repo's data/, not in STOCK_DATA_DIR,
+# so a relative STOCK_ACCOUNT_MAP_PATH resolves against the repo, as the other tools do.
+ACCOUNT_MAP_PATH = REPO_ROOT / os.environ.get("STOCK_ACCOUNT_MAP_PATH", "data/accounts.local.json")
 
 # The directories docs/data-sources.md names. Keep in step with
 # scripts/push-sources.sh, which pushes exactly these.
@@ -942,37 +947,118 @@ def detect_chase(doc):
     return None
 
 
+FIDELITY_HISTORY_NAME = re.compile(r"^History_for_Account_([A-Z0-9]+)(-\d+)?\.csv$")
+
+
+def mapped_cma_ids():
+    """(ids, problem): Fidelity account IDs the account map declares as a CMA.
+
+    No map is normal (CI, a fresh checkout) and means no CMAs. A map that exists
+    but cannot be read is a `problem` instead of an empty set, because an empty
+    set would quietly send a CMA to the brokerage folder.
+    """
+    if not ACCOUNT_MAP_PATH.exists():
+        return set(), None
+    try:
+        raw = json.loads(ACCOUNT_MAP_PATH.read_text(encoding="utf-8"))
+        entries = raw.get("bankAccounts", []) if isinstance(raw, dict) else []
+    except (OSError, ValueError) as error:
+        return set(), f"the account map {ACCOUNT_MAP_PATH.name} could not be read ({type(error).__name__})"
+    return {str(e["accountId"]) for e in entries
+            if isinstance(e, dict) and e.get("institution") == "fidelity" and e.get("kind") == "cma" and e.get("accountId")}, None
+
+
+def fidelity_history_has_header(doc):
+    return doc.suffix == ".csv" and "Run Date,Action,Symbol,Description" in csv_head(doc, 8)
+
+
+def fidelity_downloaded(doc):
+    for line in reversed(doc.lines[-12:]):
+        if "Date downloaded" in line:
+            return parse_mdy(line)
+    return None
+
+
+def fidelity_row_dates(doc):
+    rows = []
+    for line in doc.lines:
+        found = re.match(r"^(\d{1,2}/\d{1,2}/\d{4}),", line)
+        if found:
+            rows.append(parse_mdy(found.group(1)))
+    return rows
+
+
+def cma_detector_owns(doc):
+    """True when detect_fidelity_cma answers for this file, with a Plan or with a Refusal.
+
+    That is a CMA-shaped name whose ID the map declares as a CMA, or whose map cannot
+    be read: then only the CMA detector's refusal (which names the map problem) may
+    stand, never a brokerage plan and never a double claim.
+    """
+    found = FIDELITY_HISTORY_NAME.match(nfc(doc.path.name))
+    if not found:
+        return False
+    ids, problem = mapped_cma_ids()
+    return bool(problem) or found.group(1) in ids
+
+
 def detect_fidelity(doc):
     """Fidelity transactions CSV → us-transactions/fidelity-transactions-<period>.csv
 
     Fidelity is the well-behaved one: it prints `Date downloaded 07/23/2026` in
     its own footer, so nothing here depends on the filesystem.
+
+    A mapped CMA's history has the same shape and goes to detect_fidelity_cma
+    instead; this detector steps aside for it so the two never both claim a file.
     """
-    if doc.suffix != ".csv":
+    if not fidelity_history_has_header(doc):
         return None
-    if "Run Date,Action,Symbol,Description" not in csv_head(doc, 8):
+    if cma_detector_owns(doc):
         return None
-    downloaded = None
-    for line in reversed(doc.lines[-12:]):
-        if "Date downloaded" in line:
-            downloaded = parse_mdy(line)
-            break
+    downloaded = fidelity_downloaded(doc)
     if not downloaded:
         return Refusal(
             "Fidelity transactions export",
             "the footer has no `Date downloaded MM/DD/YYYY`, which is what says "
             "whether this is a complete year or a year-to-date snapshot",
         )
-    rows = []
-    for line in doc.lines:
-        found = re.match(r"^(\d{1,2}/\d{1,2}/\d{4}),", line)
-        if found:
-            rows.append(parse_mdy(found.group(1)))
+    rows = fidelity_row_dates(doc)
     if not rows:
         return refuse_empty_export("Fidelity transactions export", downloaded, "downloaded")
     period = period_from_rows(rows, downloaded)
     evidence = [f"Date downloaded {iso(downloaded)}", f"rows {iso(min(rows))} … {iso(max(rows))}"]
+    if FIDELITY_HISTORY_NAME.match(nfc(doc.path.name)) and not ACCOUNT_MAP_PATH.exists():
+        evidence.append("no account map: filed as brokerage; declare a CMA in data/accounts.local.json if this is one")
     return Plan(DIR_US_TRANSACTIONS, f"fidelity-transactions-{period}.csv", evidence)
+
+
+def detect_fidelity_cma(doc):
+    """Fidelity cash management account history → bank-statements/fidelity-cma-<from>-<to>.csv
+
+    The second detector that believes a file NAME, and for a different reason from
+    detect_tossbank. A CMA history and a brokerage history have identical content
+    (same header, same columns, no account number anywhere), so nothing inside the
+    file can tell them apart. The name `History_for_Account_<ID>.csv` is Fidelity's
+    own, generated at download and not typed by a person, and the ID is checked
+    against the account map, which is where the owner declares which IDs are CMAs.
+    An unmapped ID, or no map at all, leaves the file to detect_fidelity.
+
+    The period is the span of the rows, as for the other deposit exports: a window
+    states only what was observed.
+    """
+    found = FIDELITY_HISTORY_NAME.match(nfc(doc.path.name))
+    if not found or not fidelity_history_has_header(doc):
+        return None
+    ids, problem = mapped_cma_ids()
+    if problem:
+        return Refusal("Fidelity transactions export", problem, "fix the JSON, or move the file aside")
+    if found.group(1) not in ids:
+        return None
+    rows = fidelity_row_dates(doc)
+    if not rows:
+        return refuse_empty_export("Fidelity CMA export", fidelity_downloaded(doc) or doc.downloaded, "downloaded")
+    evidence = ["file name is Fidelity's own and its ID is a CMA in the account map", f"rows {iso(min(rows))} … {iso(max(rows))}"]
+    return Plan(DIR_BANK, f"fidelity-cma-{compact(min(rows))}-{compact(max(rows))}.csv", evidence)
 
 
 # Merrill's site exports positions under two different layouts, and which one
@@ -1299,8 +1385,56 @@ def detect_mg_deposit(doc):
                 [f"조회기간 {iso(start)} … {iso(stop)}"])
 
 
+def read_tossbank_identity(raw, password):
+    """(last4, start, stop) read from a 토스뱅크 workbook, decrypted in memory and never written.
+
+    Raises ValueError with a reason the refusal can show: which thing was wrong.
+    """
+    import msoffcrypto
+
+    try:
+        office = msoffcrypto.OfficeFile(io.BytesIO(raw))
+        office.load_key(password=password)
+        plain = io.BytesIO()
+        office.decrypt(plain)
+    except Exception as error:
+        if type(error).__name__ == "InvalidKeyError":
+            raise ValueError("the password is wrong (STOCK_TOSSBANK_PASSWORD did not open it)")
+        raise ValueError(f"it could not be decrypted ({type(error).__name__})")
+    try:
+        import warnings
+
+        import openpyxl
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            # read_only=True reports a single row for these workbooks.
+            sheet = openpyxl.load_workbook(plain, read_only=False, data_only=True).worksheets[0]
+        top = [[nfc(str(c)).strip() if c is not None else "" for c in row] for row in sheet.iter_rows(max_row=10, values_only=True)]
+    except Exception as error:
+        raise ValueError(f"it has an unexpected layout (not readable as a workbook: {type(error).__name__})")
+
+    def labelled(label):
+        # The real export starts every row with an empty column A, so the label is
+        # not in the first cell; take the first non-empty cell after it wherever it is.
+        for row in top:
+            if label in row:
+                after = [c for c in row[row.index(label) + 1:] if c]
+                return after[0] if after else None
+        return None
+
+    number, window = labelled("계좌번호"), labelled("조회기간")
+    last4 = re.search(r"(\d{4})\s*$", number or "")
+    span = re.search(r"(\d{4})\.(\d{2})\.(\d{2})\s*[-~]\s*(\d{4})\.(\d{2})\.(\d{2})", window or "")
+    if not last4 or not span:
+        missing = " and ".join(n for n, ok in (("계좌번호 with visible last 4 digits", last4), ("조회기간", span)) if not ok)
+        raise ValueError(f"it has an unexpected layout (no {missing} in the first rows)")
+    g = [int(x) for x in span.groups()]
+    return last4.group(1), date(g[0], g[1], g[2]), date(g[3], g[4], g[5])
+
+
 def detect_tossbank(doc):
-    """토스뱅크 거래내역 (.xlsx, password-protected) → bank-statements/tossbank-<download>.xlsx, decrypted.
+    """토스뱅크 거래내역 (.xlsx, password-protected) → bank-statements/tossbank-<last4>-<from>-<to>.xlsx, decrypted.
 
     This is the one detector that reads the file NAME, which every other
     detector refuses to believe. The workbook is encrypted, so its contents
@@ -1308,14 +1442,21 @@ def detect_tossbank(doc):
     left that it is ours. The encryption check keeps a plain workbook that
     merely carries the word from being claimed. The password is read here, at
     run time, because load_local_env() has populated the environment by then.
+
+    The name says nothing of WHICH account: two exports downloaded the same day
+    are different accounts. So the workbook is decrypted in memory (nothing is
+    written) just far enough to read the masked account number's last 4 digits
+    and the 조회기간 from its header block, and those name the file.
     """
     if doc.suffix != ".xlsx":
         return None
-    raw = doc.path.read_bytes()[: 1 << 20]
-    if not (raw.startswith(bytes.fromhex("d0cf11e0a1b11ae1")) and "EncryptedPackage".encode("utf-16-le") in raw):
+    with doc.path.open("rb") as handle:
+        head = handle.read(1 << 20)
+    if not (head.startswith(bytes.fromhex("d0cf11e0a1b11ae1")) and "EncryptedPackage".encode("utf-16-le") in head):
         return None
     if "토스뱅크" not in nfc(doc.path.name):
         return None  # an encrypted workbook from somewhere else is not ours to claim
+    raw = doc.path.read_bytes()  # ours: now the whole file is needed to decrypt
     password = os.environ.get("STOCK_TOSSBANK_PASSWORD", "")
     if not password:
         return Refusal(
@@ -1328,8 +1469,12 @@ def detect_tossbank(doc):
     except ImportError:
         return Refusal("토스뱅크 export", "it is encrypted and msoffcrypto is not installed on this machine",
                        "pip install msoffcrypto-tool")
-    return Plan(DIR_BANK, f"tossbank-{compact(doc.downloaded)}.xlsx",
-                ["password-protected; filed decrypted", f"download {iso(doc.downloaded)}"],
+    try:
+        last4, start, stop = read_tossbank_identity(raw, password)
+    except ValueError as error:
+        return Refusal("토스뱅크 export", str(error), "check STOCK_TOSSBANK_PASSWORD, or open the file and look at its first rows")
+    return Plan(DIR_BANK, f"tossbank-{last4}-{compact(start)}-{compact(stop)}.xlsx",
+                ["password-protected; filed decrypted", f"account ending {last4}", f"조회기간 {iso(start)} … {iso(stop)}"],
                 transform="tossbank-decrypt")
 
 
@@ -1346,6 +1491,7 @@ DETECTORS = [
     ("빗썸 기간별 거래 내역 (.xlsx)", detect_bithumb_activity),
     ("Chase holdings / transactions CSV", detect_chase),
     ("Fidelity transactions CSV", detect_fidelity),
+    ("Fidelity CMA history CSV", detect_fidelity_cma),
     ("Fidelity positions CSV", detect_fidelity_positions),
     ("Merrill holdings / transactions CSV", detect_merrill),
     ("Robinhood transactions CSV", detect_robinhood_transactions),
