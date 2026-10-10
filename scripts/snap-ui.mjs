@@ -30,6 +30,7 @@ import { setTimeout as sleep } from 'node:timers/promises'
 
 const ROUTES = [
   '/',
+  '/net-worth',
   '/daily-briefing',
   '/holdings',
   '/review',

@@ -14,7 +14,7 @@ export const accounts = defineCopy({
     lastDate: 'Latest record',
     lastDateHint: 'Newest date in any table, any account',
     scopeNote:
-      'Only brokerage and crypto accounts are collected. Korean pension savings, IRP and bank deposit accounts are not in the data.',
+      'Brokerage, crypto and bank deposit accounts are collected. Korean pension savings and IRP accounts arrive in a later phase.',
     tableTitle: 'Account coverage',
     tableInfo:
       'First and last date per table. Tax lots run from the oldest open acquisition to the snapshot that listed them. A holdings date is when positions were last read, not how far statements reach.',
@@ -27,6 +27,7 @@ export const accounts = defineCopy({
       holdings: 'Holdings as of',
       lots: 'Tax lots',
       realized: 'Realized',
+      balances: 'Balances',
     },
     legend: { transactions: 'Transactions', dividends: 'Dividends', holdings: 'Holdings snapshot' },
     timelineLabel: (name: string, start: string, end: string) => `${name}: records from ${start} to ${end}`,
@@ -48,7 +49,7 @@ export const accounts = defineCopy({
     firstDateHint: '모든 계좌·모든 자료 중 가장 이른 날짜',
     lastDate: '가장 최근 자료',
     lastDateHint: '모든 계좌·모든 자료 중 가장 늦은 날짜',
-    scopeNote: '증권·코인 계좌만 수집합니다. 연금저축, IRP, 은행 예금 계좌는 데이터에 없습니다.',
+    scopeNote: '증권, 코인, 은행 예금 계좌를 수집합니다. 연금저축과 IRP 계좌는 이후 단계에서 추가됩니다.',
     tableTitle: '계좌별 데이터 범위',
     tableInfo:
       '자료별 첫 날짜와 마지막 날짜입니다. Tax lot은 남아 있는 lot 중 가장 오래된 취득일부터 그 lot을 읽은 시점까지입니다. 보유 기준일은 보유내역을 마지막으로 읽은 날이며, 거래내역서가 그 날짜까지 있다는 뜻은 아닙니다.',
@@ -61,6 +62,7 @@ export const accounts = defineCopy({
       holdings: '보유 기준일',
       lots: 'Tax lot',
       realized: '실현손익',
+      balances: '예금 잔고',
     },
     legend: { transactions: '거래내역', dividends: '배당·분배', holdings: '보유 스냅샷' },
     timelineLabel: (name: string, start: string, end: string) => `${name}: ${start}부터 ${end}까지의 자료`,

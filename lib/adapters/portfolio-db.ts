@@ -2531,6 +2531,19 @@ export function getAccountDataRanges(): AccountDataRange[] {
         })
       }
     }
+    const hasBalances = conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'cash_balances'").get()
+    const balanceSpans = hasBalances
+      ? (conn
+          .prepare(
+            `select 'CASH' as market, institution as brokerage, account, max(kind) as account_type,
+                    min(as_of_date) as start, max(as_of_date) as end, count(*) as count
+               from cash_balances group by institution, account`
+          )
+          .all() as { market: string; brokerage: string; account: string; account_type: string | null; start: string | null; end: string | null; count: number }[])
+      : []
+    for (const row of balanceSpans) {
+      rows.push({ kind: 'balances', market: row.market, brokerage: row.brokerage, account: row.account, accountType: row.account_type, start: isoDate(row.start), end: isoDate(row.end), count: row.count })
+    }
     return groupAccountRanges(rows)
   } finally {
     conn.close()

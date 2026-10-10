@@ -8,7 +8,7 @@
  * rule can be tested on its own.
  */
 
-export type RangeKind = 'transactions' | 'dividends' | 'holdings' | 'lots' | 'realized'
+export type RangeKind = 'transactions' | 'dividends' | 'holdings' | 'lots' | 'realized' | 'balances'
 
 /** One table's span for one account name, as the query returns it. */
 export type RangeRow = {
@@ -45,7 +45,7 @@ export type AccountRangeSummary = {
   lastDate: string | null
 }
 
-const MARKET_ORDER = ['KR', 'US', 'CRYPTO']
+const MARKET_ORDER = ['KR', 'US', 'CRYPTO', 'CASH']
 
 function minDate(a: string | null, b: string | null) {
   if (!a) return b

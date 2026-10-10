@@ -17,6 +17,7 @@ export const sidebar = defineCopy({
         label: 'Core Workflows',
         items: [
           { href: '/', label: 'Portfolio Overview' },
+          { href: '/net-worth', label: 'Net Worth' },
           { href: '/daily-briefing', label: "Today's Briefing" },
           { href: '/holdings', label: 'Holdings' },
           { href: '/review', label: 'Portfolio Review' },
@@ -72,6 +73,7 @@ export const sidebar = defineCopy({
         label: '핵심 업무',
         items: [
           { href: '/', label: '포트폴리오 개요' },
+          { href: '/net-worth', label: '순자산' },
           { href: '/daily-briefing', label: '오늘의 브리핑' },
           { href: '/holdings', label: '보유종목' },
           { href: '/review', label: '포트폴리오 검토' },

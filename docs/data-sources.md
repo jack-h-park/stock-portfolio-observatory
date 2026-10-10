@@ -25,6 +25,31 @@ rebuilding the pipeline did.
 | Robinhood transactions | `us-transactions/robinhood-transactions-*.csv` | manual download | broker |
 | US realized gains | **nothing** | — | **see gaps** |
 | KR/US prices, FX | Yahoo / Frankfurter | every refresh | market |
+| Bank deposits (checking, savings, CMA, deposit) | statements filed in `bank-statements/` under `STOCK_DATA_DIR` → `pnpm extract:bank-statements`, with anchor balances from the account map | manual download, then `extract:bank-statements`; loaded every refresh | bank |
+
+### Bank deposits
+
+Deposit statements live in `bank-statements/` under `STOCK_DATA_DIR` and follow
+the same naming grammar as the other source files:
+
+| Source | File name |
+| --- | --- |
+| Chase checking | `chase-checking-<from>-<to>.csv` |
+| Bank of America checking | `boa-checking-<from>-<to>.csv` |
+| Robinhood bank | `robinhood-bank-<checking\|savings>-<from>-<to>.csv` |
+| Mirae Asset deposit | `mg-deposit-<from>-<to>.xls` |
+| Toss Bank | `tossbank-<YYYYMMDD>.xlsx`, filed decrypted and not yet parsed |
+
+Three environment variables point at private, gitignored files and secrets.
+None of their contents belong in the repo:
+
+| Variable | Holds |
+| --- | --- |
+| `STOCK_ACCOUNT_MAP_PATH` | the account map: account numbers, institution aliases, wrappers and anchor balances (`data/accounts.local.json`) |
+| `STOCK_BANK_BALANCES_PATH` | the extracted deposit balances (`bank-balances.json`) that the refresh loads into `cash_balances` |
+| `STOCK_TOSSBANK_PASSWORD` | the password for Toss Bank's encrypted workbook; read on the laptop only, never on the refresh host |
+
+The result shows on `/net-worth` and as a Balances column on `/accounts`.
 
 **An RSU account can hold nothing, and that is why it was missed.** 삼성증권's
 주식보상 account is where RSUs vest, and its position can sit at zero — vested

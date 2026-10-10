@@ -19,6 +19,7 @@ import { positionDetail } from '@/lib/ui-copy/pages/positionDetail'
 import { dailyBriefing } from '@/lib/ui-copy/pages/dailyBriefing'
 import { health } from '@/lib/ui-copy/pages/health'
 import { accounts } from '@/lib/ui-copy/pages/accounts'
+import { netWorth } from '@/lib/ui-copy/pages/netWorth'
 
 export const PAGE_COPY = {
   taxSettings,
@@ -42,4 +43,5 @@ export const PAGE_COPY = {
   dailyBriefing,
   health,
   accounts,
+  netWorth,
 }

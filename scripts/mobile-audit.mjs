@@ -13,7 +13,7 @@
  * Point it at a sample-data server, never at real holdings.
  */
 const ROUTES = [
-  '/', '/daily-briefing', '/holdings', '/review', '/rebalance', '/income',
+  '/', '/net-worth', '/daily-briefing', '/holdings', '/review', '/rebalance', '/income',
   '/tax-planning', '/tax-settings', '/lots', '/cost-basis', '/dividends',
   '/transactions', '/fx', '/crypto-premium', '/accounts', '/health', '/data-ops',
   '/reconciliation', '/data-map', '/positions/KR/005930',
