@@ -61,8 +61,11 @@ export function treasuryRateFor(year: number, rates: TreasuryRate[]): { krwPerUs
 
 /**
  * Cash institutions in the United States. A cash account anywhere else is
- * foreign. Brokerage accounts are split by market instead: US-market accounts
- * (Robinhood, Fidelity, Chase, Merrill) are domestic, KR-market ones foreign.
+ * foreign. Brokerage accounts are split by brokerage: Robinhood, Fidelity,
+ * Chase and Merrill are domestic; every other broker is foreign, whatever the
+ * market of its lots (a Korean broker's US-stock lots count). Crypto exchanges
+ * are left out of this table, and brokerage rows value securities only, not the
+ * account's uninvested cash, which is one reason they are marked understated.
  */
 export const US_CASH_INSTITUTIONS: readonly string[] = ['chase', 'boa', 'robinhood-bank', 'fidelity']
 

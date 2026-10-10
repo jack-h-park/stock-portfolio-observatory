@@ -24,6 +24,7 @@
 // module-initialisation time, so the environment has to be complete before the
 // imports below are evaluated. See that file for why the ordering lives there.
 
+import { isSupplementarySource } from '../lib/supplementary'
 import fs from 'node:fs'
 import path from 'node:path'
 import { config } from '@/config'
@@ -121,11 +122,6 @@ const conversionRate = getOverview().fxRates.find((r: any) => r.from_currency !=
 
 const snapshotAt = (key: string) => health.snapshots.find((item) => item.key === key)?.observedAt ?? null
 
-// The supplementary inputs the ingest fingerprints: the bank statements file,
-// the pension evidence and each pension snapshot CSV (`pension:<file>`), and the
-// gold price file.
-const SUPPLEMENTARY_SOURCE_KEYS = new Set(['source:bank_balances', 'source:pension_evidence', 'source:gold_prices'])
-const isSupplementarySource = (key: string) => SUPPLEMENTARY_SOURCE_KEYS.has(key) || key.startsWith('source:pension:')
 
 const issues: SummaryIssue[] = [
   // A failed refresh belongs in this list even though nothing on /health may look

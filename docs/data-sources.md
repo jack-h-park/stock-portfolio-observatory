@@ -362,8 +362,9 @@ checks passing` line. The Overview badge, `health.issues` in the summary and the
 daily refresh alert read the stock scope; `/health` labels each check's scope.
 The exit code is unchanged: any failing `error` check in either scope.
 
-**Cadences.** The weekly reminder lists a supplementary row once it is past its
-maximum lag, in a "보조 자산" section that is silent while everything is current:
+**Cadences.** The weekly reminder lists a supplementary row once it is due soon
+(a few days before its maximum lag) or past it, dating each account by the later
+of its last row and its newest statement's period end, in a "보조 자산" section that is silent while everything is current:
 
 | Source | Maximum lag |
 | --- | --- |

@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { periodEndFromSource } from '@/lib/supplementary'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import Database from 'better-sqlite3'
@@ -1211,8 +1212,8 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
  * An account with nothing in or before the year, or a zero maximum, is left out.
  * A USD account no rate of any kind can convert stays in, with a null won figure.
  * Rows are identified by `institution|account`; for pensions and gold the
- * institution is the account name before its parenthesis, as the ingest derives
- * `brokerage`.
+ * institution is the account name before its parenthesis. This can differ from
+ * the institution `/pension` shows, which comes from the account map entry.
  */
 export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
   const rate = treasuryRateFor(year, treasuryRates.rates)
@@ -3192,11 +3193,18 @@ const SUPPLEMENTARY_MAX_LAG_DAYS: Record<SupplementaryCoverageKind, number> = {
  * download schedule of their own, so like the broker statements they go stale
  * only when nobody files the next export, and nothing said so.
  */
+/** The latest ISO date among the given ones, ignoring nulls. */
+function latestOf(...dates: (string | null | undefined)[]): string | null {
+  return dates.filter((d): d is string => Boolean(d)).sort().at(-1) ?? null
+}
+
 export function getSupplementaryCoverage(): SupplementaryCoverage {
   const conn = db()
   try {
     const hasTable = (name: string) =>
       Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(name))
+    const hasColumn = (table: string, column: string) =>
+      (conn.prepare(`pragma table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column)
     const rows: SupplementaryCoverageRow[] = []
     const push = (kind: SupplementaryCoverageKind, label: string, latest: string | null, action: string) => {
       const latestDate = isoDate(latest)
@@ -3208,13 +3216,18 @@ export function getSupplementaryCoverage(): SupplementaryCoverage {
     if (hasTable('cash_balances')) {
       const cash = conn
         .prepare(
-          `select institution, account, max(case when kind = 'cma' then 1 else 0 end) as isCma, max(as_of_date) as latest
+          `select institution, account, max(case when kind = 'cma' then 1 else 0 end) as isCma, max(as_of_date) as latest,
+                  ${hasColumn('cash_balances', 'source') ? 'group_concat(distinct source)' : 'null'} as sources
              from cash_balances group by institution, account order by institution, account`
         )
-        .all() as { institution: string; account: string; isCma: number; latest: string | null }[]
+        .all() as { institution: string; account: string; isCma: number; latest: string | null; sources: string | null }[]
       for (const row of cash) {
         const label = `${row.institution} ${row.account}`
-        push(row.isCma ? 'cma' : 'deposit', label, row.latest, `${label} 거래내역을 ${isoDate(row.latest)}부터 받아 inbox에 넣으세요`)
+        // A quiet account has no balance row near its statement's end, so the
+        // statement's own period end counts too; otherwise a fresh download of a
+        // dormant account would never clear the reminder.
+        const latest = latestOf(row.latest, ...String(row.sources ?? '').split(',').map(periodEndFromSource))
+        push(row.isCma ? 'cma' : 'deposit', label, latest, `${label} 거래내역을 ${isoDate(latest)}부터 받아 inbox에 넣으세요`)
       }
     }
 
@@ -3244,10 +3257,16 @@ export function getSupplementaryCoverage(): SupplementaryCoverage {
     // Gold: how far each account's 금현물 statement reaches, and how old the price is.
     if (hasTable('transactions_all')) {
       const gold = conn
-        .prepare(`select account, max(date) as latest from transactions_all where ${GOLD_ROW_SQL} group by account order by account`)
-        .all() as { account: string; latest: string | null }[]
+        .prepare(
+          `select account, max(date) as latest, ${hasColumn('transactions_all', 'source') ? 'group_concat(distinct source)' : 'null'} as sources
+             from transactions_all where ${GOLD_ROW_SQL} group by account order by account`
+        )
+        .all() as { account: string; latest: string | null; sources: string | null }[]
       for (const row of gold) {
-        push('gold', row.account, row.latest, `${row.account} 금현물 거래내역증명서를 ${isoDate(row.latest)}부터 새로 받아 inbox에 넣으세요`)
+        // The certificate's period end, not the last purchase: months without a
+        // trade must not keep the reminder open after a fresh certificate is filed.
+        const latest = latestOf(row.latest, ...String(row.sources ?? '').split(',').map(periodEndFromSource))
+        push('gold', row.account, latest, `${row.account} 금현물 거래내역증명서를 ${isoDate(latest)}부터 새로 받아 inbox에 넣으세요`)
       }
     }
     const holdsGold = hasTable('holdings_all') && Boolean(conn.prepare(`select 1 from holdings_all where ${GOLD_ROW_SQL} limit 1`).get())

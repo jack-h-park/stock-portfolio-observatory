@@ -150,7 +150,7 @@ sidebar (see Amendments).
     (see Amendments). The headline stays the stock total.
   - Holdings is unchanged; pension positions are listed on `/pension` only.
 
-### `/net-worth` (new, under Core Workflows)
+### `/net-worth` (new, under All assets)
 
 - Total assets and the allocation by asset class.
 - Account balance table: institution, account, kind, as-of date, balance, KRW

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { isSupplementarySource } from '@/lib/supplementary'
 import { FreshnessInline } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, Label, MetricField, MetricHeroCard, TextLink, marketTone } from '@/components/ui'
@@ -132,7 +133,8 @@ export default async function OverviewPage({
   const txTypes = getTransactionTypes()
   const operational = getOperationalHealth()
   const usdKrw = overview.fxRates.find((r: any) => r.from_currency === 'USD' && r.to_currency === 'KRW')
-  const operationalIssues = operational.staleItems.length
+  // Supplementary inputs (deposits, pensions, gold) report in the weekly reminder, not on the stock badge.
+  const operationalIssues = operational.staleItems.filter((item) => !isSupplementarySource(item.key)).length
   const fxLabel = usdKrw ? `USD/KRW ${fmtNumber(usdKrw.rate, 2)} (${usdKrw.as_of_date})` : null
 
   const termClassifiedValue = overview.totals.term_classified_base_value ?? 0
