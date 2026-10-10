@@ -67,7 +67,7 @@ function normalizeBankBalances(raw) {
   }
   if (!isObject(raw)) {
     problems.push('top level is not an object')
-    return { doc: { accounts: [], findings: [], notes: [] }, problems }
+    return { doc: { accounts: [], estimatedAccounts: [], findings: [], notes: [] }, problems }
   }
   let rawAccounts = raw.accounts
   if (!Array.isArray(rawAccounts)) {
@@ -111,23 +111,42 @@ function normalizeBankBalances(raw) {
       continuityBreaks: strings(a.continuityBreaks, `${label}.continuityBreaks`),
     })
   })
+  // Balances estimated for accounts no statement covers (a 파킹통장, a matured
+  // 예적금, a closed CMA). Kept apart from `accounts`: only the total-assets trend
+  // reads them, never the FBAR maxima or the freshness checks.
+  const estimatedAccounts = []
+  const rawEstimates = raw.estimatedAccounts === undefined ? [] : raw.estimatedAccounts
+  if (!Array.isArray(rawEstimates)) problems.push('estimatedAccounts is not an array')
+  ;(Array.isArray(rawEstimates) ? rawEstimates : []).forEach((a, i) => {
+    const label = `estimatedAccounts[${i}]`
+    if (!isObject(a) || typeof a.institution !== 'string' || typeof a.account !== 'string' || a.currency !== 'KRW' || !Array.isArray(a.balances)) {
+      problems.push(`${label} is not an object with string institution and account, currency KRW and a balances array`)
+      return
+    }
+    const balances = a.balances.filter((b, j) => {
+      const ok = isObject(b) && typeof b.date === 'string' && typeof b.balance === 'number' && Number.isFinite(b.balance)
+      if (!ok) problems.push(`${label}.balances[${j}] lacks a string date and a finite balance`)
+      return ok
+    })
+    estimatedAccounts.push({ institution: a.institution, account: a.account, currency: a.currency, anchored: Boolean(a.anchored), balances })
+  })
   const findings = raw.findings === null ? [] : strings(raw.findings, 'findings')
   if (raw.findings === null) problems.push('findings is null')
   // Informational lines from the extractor (for example a 토스뱅크 balance that was
   // computed because the statement printed none). Shown, never counted as a fault.
   const notes = raw.notes === null ? [] : strings(raw.notes, 'notes')
-  return { doc: { accounts, findings, notes }, problems }
+  return { doc: { accounts, estimatedAccounts, findings, notes }, problems }
 }
 let bankBalancesProblems = []
 const bankBalances = (() => {
-  if (!fs.existsSync(bankBalancesPath)) return { accounts: [], findings: [], notes: [] }
+  if (!fs.existsSync(bankBalancesPath)) return { accounts: [], estimatedAccounts: [], findings: [], notes: [] }
   try {
     const { doc, problems } = normalizeBankBalances(JSON.parse(fs.readFileSync(bankBalancesPath, 'utf8')))
     bankBalancesProblems = problems
     return doc
   } catch (error) {
     bankBalancesProblems = [error instanceof Error ? error.message : String(error)]
-    return { accounts: [], findings: [], notes: [] }
+    return { accounts: [], estimatedAccounts: [], findings: [], notes: [] }
   }
 })()
 const fxLedgerPath =
@@ -883,6 +902,16 @@ create table cash_balances (
   balance real not null,
   source text not null,
   derived integer not null default 0
+);
+
+create table cash_estimates (
+  id integer primary key,
+  institution text not null,
+  account text not null,
+  currency text not null,
+  as_of_date text not null,
+  balance real not null,
+  anchored integer not null default 0
 );
 
 create table fx_account_balances (
@@ -4873,6 +4902,14 @@ insertMany(db, 'fx_events', fxLedger.events ?? [], [
   'note',
 ])
 insertMany(db, 'cash_balances', cashRows, ['institution', 'account', 'owner', 'kind', 'currency', 'as_of_date', 'balance', 'source', 'derived'])
+insertMany(
+  db,
+  'cash_estimates',
+  bankBalances.estimatedAccounts.flatMap((a) =>
+    a.balances.map((b) => ({ institution: a.institution, account: a.account, currency: a.currency, as_of_date: b.date, balance: b.balance, anchored: a.anchored ? 1 : 0 }))
+  ),
+  ['institution', 'account', 'currency', 'as_of_date', 'balance', 'anchored']
+)
 insertMany(db, 'fx_account_balances', fxLedger.balances ?? [], [
   'institution',
   'account',

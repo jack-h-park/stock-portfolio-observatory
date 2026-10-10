@@ -81,10 +81,16 @@ def parse_robinhood_bank(text):
 
 
 def parse_mg_rows(rows):
-    """Rows of the converted 새마을금고 sheet: header 거래일자, 거래시간, …, 출금액, 입금액, 잔액."""
+    """Rows of the converted 새마을금고 sheet: header 거래일자, 거래시간, …, 거래내용/메모, 출금액, 입금액, 잔액.
+
+    The 거래내용/메모 cell (`인터넷신규`, `예적금만기 자동이체`, `전자OPI`, a sender's
+    name) is kept as the description: estimate_closed_accounts reads it to follow
+    money into a 예적금 the export does not list.
+    """
     header_at = next(i for i, r in enumerate(rows) if "거래일자" in [c.strip() for c in r])
     header = [c.strip() for c in rows[header_at]]
     col = {name: header.index(name) for name in ("거래일자", "거래시간", "출금액", "입금액", "잔액")}
+    memo_col = header.index("거래내용/메모") if "거래내용/메모" in header else None
     parsed = []
     for r in rows[header_at + 1:]:
         day = (r[col["거래일자"]] if len(r) > col["거래일자"] else "").strip().replace(".", "-")
@@ -92,9 +98,11 @@ def parse_mg_rows(rows):
             continue
         out_amt = _num(r[col["출금액"]]) or 0.0
         in_amt = _num(r[col["입금액"]]) or 0.0
-        parsed.append((day, _clock(r[col["거래시간"]]), in_amt - out_amt, _num(r[col["잔액"]])))
+        memo = r[memo_col].strip() if memo_col is not None and len(r) > memo_col else ""
+        parsed.append((day, _clock(r[col["거래시간"]]), in_amt - out_amt, _num(r[col["잔액"]]), memo))
     parsed.sort(key=lambda t: (t[0], t[1]))
-    return [{"date": d, "seq": i, "description": "", "amount": a, "balance": b} for i, (d, _t, a, b) in enumerate(parsed)]
+    return [{"date": d, "seq": i, "description": memo, "amount": a, "balance": b}
+            for i, (d, _t, a, b, memo) in enumerate(parsed)]
 
 
 # Core money-market funds a Fidelity cash account sweeps into. A row that reinvests
@@ -151,6 +159,11 @@ def parse_tossbank(path, findings=None, notes=None):
     header = [_cell_text(c) for c in rows[header_at]]
     col = {name: header.index(name) for name in wanted}
     kind_col, memo_col = header.index("적요") if "적요" in header else None, header.index("메모") if "메모" in header else None
+    # The counterparty's bank and account number. An outgoing transfer prints both;
+    # an incoming one prints the bank only. Kept as the last four digits.
+    inst_col = header.index("거래 기관") if "거래 기관" in header else None
+    acct_col = header.index("계좌번호") if "계좌번호" in header else None
+    cell = lambda r, c: _cell_text(r[c]) if c is not None and len(r) > c else ""
     parsed = []
     for r in reversed(rows[header_at + 1:]):  # newest first; reversing keeps file order for equal timestamps
         when = r[col["거래 일시"]] if len(r) > col["거래 일시"] else None
@@ -162,11 +175,11 @@ def parse_tossbank(path, findings=None, notes=None):
                 continue
             stamp = f"{m.group(1)}-{m.group(2)}-{m.group(3)} {_clock(m.group(4) or '00:00:00')}"
         parsed.append((stamp, _cell_num(r[col["거래 금액"]]) or 0.0, _cell_num(r[col["거래 후 잔액"]]),
-                       _cell_text(r[kind_col]) if kind_col is not None and len(r) > kind_col else "",
-                       _cell_text(r[memo_col]) if memo_col is not None and len(r) > memo_col else ""))
+                       cell(r, kind_col), cell(r, memo_col), cell(r, inst_col), re.sub(r"\D", "", cell(r, acct_col))[-4:]))
     parsed.sort(key=lambda t: t[0])  # stable: equal timestamps stay in chronological file order
-    out = [{"date": s[:10], "seq": i, "description": f"{desc} {memo}".strip(), "amount": a, "balance": b}
-           for i, (s, a, b, desc, memo) in enumerate(parsed)]
+    out = [{"date": s[:10], "seq": i, "description": f"{desc} {memo}".strip(), "amount": a, "balance": b,
+            "counterparty": desc, "counterpartyInstitution": inst, "counterpartyLast4": last4}
+           for i, (s, a, b, desc, memo, inst, last4) in enumerate(parsed)]
     # Some rows (promotions, interest, a few deposits) print no `거래 후 잔액`. Leaving them blank would
     # drop their amount from the next row's continuity check, which then reports a false break, and
     # would leave a stale end-of-day balance when the blank row is the day's last. A blank takes the
@@ -441,9 +454,195 @@ def _derive(alias, txns, account_map, findings):
     return walk_from_anchor(txns, str(anchor["date"]), balance)
 
 
+# --- Accounts no statement covers ---------------------------------------------
+#
+# Money that leaves a statement account for one we hold no statement for (a 파킹통장,
+# a 예적금 since matured, a closed CMA) drops out of the deposit total until it comes
+# back, so the total-assets trend dips for no real reason. These estimates follow
+# that money from the statements we do hold. They never enter cash_balances: the
+# FBAR maxima and the freshness checks read that table, and these are estimates.
+
+KR_DIR = DATA_DIR / "kr-statements"
+# 미래에셋 종합/ISA transfers, read only to pair a CMA or 토스뱅크 transfer with its other leg.
+MIRAE_TRANSFER_GLOBS = ("mirae-general-transactions-*.pdf", "mirae-isa-transactions-*.pdf")
+# A counterparty bank, as 토스뱅크 prints it, whose statements this extractor reads.
+STATEMENT_BANKS = {"MG새마을금고": "mg", "미래에셋증권": "mirae", "토스뱅크": "tossbank"}
+PAIR_DAYS = 3
+MIN_ESTIMATE_KRW = 1_000_000
+ESTIMATE_ALIASES = {
+    "tossbank-parking": "토스뱅크 파킹통장",
+    "tossbank-savings": "토스뱅크 예적금",
+    "mg-savings": "새마을금고 예적금",
+    "mirae-other": "미래에셋 기타 계좌",
+}
+
+
+def parse_mirae_transfers(path):
+    """The transfer rows of a 미래에셋 종합/ISA 거래내역증명서: 입출금, 이체, 계좌대체. Trades are skipped."""
+    kr = _kr_statements_module()
+    pdf = kr.open_pdf(str(path))
+    if pdf is None:
+        raise ValueError("could not be opened (set STOCK_PDF_PASSWORD)")
+    with pdf:
+        records = list(kr.records(pdf, path.name))
+    out = []
+    for seq, (_page, a, b, _c) in enumerate(records):
+        kind = a[1].strip()
+        if not re.search(r"대체|이체|송금|입금|출금", kind) or re.search(r"매수|매도|배당|이자|세금|선환전|외화|해외", kind):
+            continue
+        cash = kr.number(b[6]) if b[6].strip() else kr.number(a[6])
+        direction = _cma_direction(kind)
+        if cash and direction:
+            out.append({"date": a[0].strip().replace("/", "-"), "seq": seq, "description": kind, "amount": direction * cash})
+    return out
+
+
+def _bucket(flow):
+    """Where an unpaired transfer went, as a bucket key, or None for money that is not a balance (interest)."""
+    memo, bank = flow["memo"], flow["counterpartyInstitution"]
+    if flow["statement"] == "tossbank":
+        if memo == "파킹통장":
+            return "tossbank-parking"
+        if re.search(r"예금|적금", memo) and bank in ("토스뱅크", ""):
+            return "tossbank-savings"
+        if "이자" in memo:
+            return None
+        if bank == "미래에셋증권":
+            return "mirae-other"
+        return f"counterparty:{memo}|{bank}"
+    if flow["statement"] == "mg":
+        if memo == "인터넷신규" or memo.startswith("예적금만기"):
+            return "mg-savings"
+        return f"counterparty:{memo}|새마을금고 내역"
+    if "대체" in memo:  # 미래에셋: a 계좌대체 to or from an account other than the ones on file
+        return "mirae-other"
+    return f"counterparty:{memo}|미래에셋증권"
+
+
+def _days(a, b):
+    return abs((datetime.strptime(a, "%Y-%m-%d") - datetime.strptime(b, "%Y-%m-%d")).days)
+
+
+def pair_transfers(flows):
+    """Mark transfers between two statements we hold, so neither leg counts as money leaving.
+
+    A 토스뱅크 row that names a bank we hold statements for pairs with the nearest
+    opposite row of equal size in that bank's statements within PAIR_DAYS days; a
+    미래에셋 CMA 계좌대체 pairs with a 종합/ISA 계좌대체 of the same day.
+    """
+    def pair(left, right, days):
+        for a in [f for f in flows if not f["paired"] and left(f)]:
+            best = None
+            for b in flows:
+                if b is a or b["paired"] or not right(b) or b["source"] == a["source"]:
+                    continue
+                if abs(a["amount"] + b["amount"]) < 1 and _days(a["date"], b["date"]) <= days:
+                    gap = _days(a["date"], b["date"])
+                    if best is None or gap < best[0]:
+                        best = (gap, b)
+            if best:
+                a["paired"] = best[1]["paired"] = True
+
+    for bank, code in STATEMENT_BANKS.items():
+        pair(lambda f, bank=bank: f["statement"] == "tossbank" and f["counterpartyInstitution"] == bank,
+             lambda f, code=code: f["statement"] == code, PAIR_DAYS)
+    pair(lambda f: f["source"] == "mirae-cma" and "대체" in f["memo"],
+         lambda f: f["source"] == "mirae-brokerage" and "대체" in f["memo"], 0)
+    return flows
+
+
+def held_outside(points):
+    """Per day, the money outside the statements that later comes back.
+
+    `points` are (date, outflow) in order; an outflow leaving a statement account
+    is positive. The running total is clipped at zero, so money that arrives with
+    no earlier outflow (salary, a sale, an inheritance) is not counted before it
+    arrived. A day's value is the running total less the lowest it falls to later:
+    money that never comes back (spending) counts for nothing.
+    """
+    running, by_day = 0.0, {}
+    for date, outflow in points:
+        running = max(0.0, running + outflow)
+        by_day[date] = running
+    days = sorted(by_day)
+    out, floor = {}, float("inf")
+    for date in reversed(days):
+        floor = min(floor, by_day[date])
+        out[date] = round(by_day[date] - floor, 2)
+    return [(d, out[d]) for d in days]
+
+
+def anchored(series, points, anchor):
+    """Raise the days up to an anchor to the balance walked back from it.
+
+    The walk takes the anchor balance and undoes each later outflow, clipped at
+    zero. It is a floor: money that left for somewhere unseen before the anchor
+    still counts, while held_outside alone would drop it.
+    """
+    date, balance = str(anchor["date"]), float(anchor["balance"])
+    datetime.strptime(date, "%Y-%m-%d")
+    by_day = {}
+    for day, outflow in points:
+        if day <= date:
+            by_day[day] = by_day.get(day, 0.0) + outflow
+    walk, running = {date: balance}, balance
+    for day in sorted(by_day, reverse=True):
+        walk.setdefault(day, round(running, 2))  # `running` is the balance at the end of `day`
+        running = max(0.0, running - by_day[day])
+    merged = dict(series)
+    for day, value in walk.items():
+        merged[day] = max(merged.get(day, 0.0), value)
+    # A day after the anchor keeps its own value; without one the series would
+    # carry the anchor forward to the next flow.
+    return sorted(merged.items())
+
+
+def estimate_closed_accounts(statements, transfers, account_map, findings):
+    """Estimated balances of accounts held outside the statements, from the statements' own transfers.
+
+    `statements` are (statement, source, txns) for the KRW statement accounts;
+    `transfers` are 미래에셋 종합/ISA transfer rows, used only to pair legs.
+    """
+    flows = []
+    for statement, source, txns in statements + [("mirae", "mirae-brokerage", transfers)]:
+        for t in txns:
+            flows.append({"statement": statement, "source": source, "date": t["date"], "seq": t["seq"],
+                          "amount": t["amount"], "memo": t.get("counterparty") or t.get("description", ""),
+                          "counterpartyInstitution": t.get("counterpartyInstitution", ""), "paired": False})
+    pair_transfers(flows)
+    buckets = {}
+    for f in sorted((f for f in flows if not f["paired"]), key=lambda f: (f["date"], f["seq"])):
+        key = _bucket(f)
+        if key:
+            buckets.setdefault(key, []).append((f["date"], -f["amount"]))
+    anchors = {a.get("alias"): a for a in account_map.get("anchors", [])}
+    out = []
+    for key, points in sorted(buckets.items()):
+        alias = ESTIMATE_ALIASES.get(key) or key.split(":", 1)[1].replace("|", " · ")
+        series = held_outside(points)
+        if alias in anchors:
+            try:
+                series = anchored(series, points, anchors[alias])
+            except (KeyError, TypeError, ValueError) as error:
+                findings.append(f"{alias}: the estimate's anchor cannot be read ({type(error).__name__}: {error}); not anchored")
+        if max((v for _d, v in series), default=0.0) < MIN_ESTIMATE_KRW:
+            continue
+        balances, last = [], None
+        for day, value in series:
+            if value != last:
+                balances.append({"date": day, "balance": value})
+                last = value
+        institution = {"tossbank-parking": "tossbank", "tossbank-savings": "tossbank", "mg-savings": "mg",
+                       "mirae-other": "mirae"}.get(key, "counterparty")
+        out.append({"institution": institution, "account": alias,
+                    "currency": "KRW", "anchored": alias in anchors, "balances": balances})
+    return out
+
+
 def main():
     account_map = json.loads(MAP_PATH.read_text(encoding="utf-8")) if MAP_PATH.exists() else {}
     findings, notes, accounts = [], [], []
+    krw_statements = []
     for prefix, institution, kind, currency, parse, key_pattern in FAMILIES:
         files = sorted(SOURCE_DIR.glob(f"{prefix}*")) if SOURCE_DIR.exists() else []
         if not files:
@@ -479,6 +678,8 @@ def main():
             alias = _alias(account_map, institution, kind, key)
             if not txns:
                 continue
+            if currency == "KRW" and institution in ("tossbank", "mg", "mirae"):
+                krw_statements.append((institution, "mirae-cma" if institution == "mirae" else f"{institution}-{key or kind}", txns))
             derived = all(t["balance"] is None for t in txns)
             balances = _derive(alias, txns, account_map, findings) if derived else end_of_day(txns)
             accounts.append({
@@ -486,10 +687,22 @@ def main():
                 "derived": derived, "sources": [name for _, name, _ in parsed], "balances": balances,
                 "continuityBreaks": [] if derived else continuity_breaks(txns),
             })
+    transfers = []
+    for glob in MIRAE_TRANSFER_GLOBS:
+        parsed = []
+        for path in sorted(KR_DIR.glob(glob)) if KR_DIR.exists() else []:
+            try:
+                parsed.append(parse_mirae_transfers(path))
+            except Exception as error:  # an unread certificate only weakens the pairing
+                findings.append(f"{path.name}: transfers could not be read for the estimates ({type(error).__name__}: {error})")
+        transfers += merge_txns([[{**t, "balance": None} for t in rows] for rows in parsed])
+    estimated = estimate_closed_accounts(krw_statements, transfers, account_map, findings)
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    document = {"generatedAt": datetime.now(timezone.utc).isoformat(), "accounts": accounts, "findings": findings, "notes": notes}
+    document = {"generatedAt": datetime.now(timezone.utc).isoformat(), "accounts": accounts,
+                "estimatedAccounts": estimated, "findings": findings, "notes": notes}
     OUT_PATH.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"bank balances: {len(accounts)} account(s), {len(findings)} finding(s), {len(notes)} note(s) → {OUT_PATH}")
+    print(f"bank balances: {len(accounts)} account(s), {len(estimated)} estimated, {len(findings)} finding(s), "
+          f"{len(notes)} note(s) → {OUT_PATH}")
 
 
 if __name__ == "__main__":

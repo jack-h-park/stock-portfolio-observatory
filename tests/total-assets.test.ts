@@ -130,6 +130,10 @@ test('the ingest stores pension points and gold prices; the adapter series ends 
   )
   insert.run('2026-01-31', '2026-01-31T00:00:00Z', 500_000, 500_000)
   insert.run('2026-03-31', '2026-03-31T00:00:00Z', 600_000, 600_000)
+  // An estimated parking account, away over January only: cash on 01-31, none by 03-31.
+  const estimate = db.prepare("insert into cash_estimates (institution, account, currency, as_of_date, balance) values ('tossbank', 'Parking', 'KRW', ?, ?)")
+  estimate.run('2026-01-10', 300_000)
+  estimate.run('2026-02-10', 0)
   db.close()
 
   config.stockDbPath = dbPath
@@ -145,6 +149,10 @@ test('the ingest stores pension points and gold prices; the adapter series ends 
 
   const [jan, mar] = series.points
   assert.equal(jan.stocks, 500_000)
+  assert.equal(jan.cash, 300_000)
+  assert.ok(!mar.cash, 'the estimate has come back by 03-31')
+  // The estimate never reaches the card: today has no estimated cash.
+  assert.equal(last.cash, netWorth.byClass.cash)
   // Only the year-end certificates stand before 2026-10-08.
   assert.equal(jan.pensions, 2_000_000 + 1_050_000)
   assert.equal(mar.pensions, 2_000_000 + 1_050_000)
