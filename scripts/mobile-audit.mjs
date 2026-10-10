@@ -15,7 +15,7 @@
 const ROUTES = [
   '/', '/daily-briefing', '/holdings', '/review', '/rebalance', '/income',
   '/tax-planning', '/tax-settings', '/lots', '/cost-basis', '/dividends',
-  '/transactions', '/fx', '/crypto-premium', '/health', '/data-ops',
+  '/transactions', '/fx', '/crypto-premium', '/accounts', '/health', '/data-ops',
   '/reconciliation', '/data-map', '/positions/KR/005930',
 ]
 const MIN_TARGET = 24

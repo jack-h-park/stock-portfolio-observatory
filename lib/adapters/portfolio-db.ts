@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import Database from 'better-sqlite3'
 import { config } from '@/config'
 import type { TaxPlanningLot } from '@/lib/tax-planning'
+import { groupAccountRanges, type AccountDataRange, type RangeKind, type RangeRow } from '@/lib/account-ranges'
 
 export type Holding = {
   id: number
@@ -2417,6 +2418,49 @@ export function getAccountCoverage(): AccountCoverageSummary {
       current: rows.filter((row) => row.status === 'current').length,
       generatedAt: new Date().toISOString(),
     }
+  } finally {
+    conn.close()
+  }
+}
+
+/**
+ * Every account in the database, with the first and last date each table
+ * reaches for it. Tax lots span from the oldest open acquisition to the
+ * snapshot that listed them; the other tables span their own date column.
+ */
+export function getAccountDataRanges(): AccountDataRange[] {
+  const conn = db()
+  try {
+    const spans: { kind: RangeKind; table: string; start: string; end: string; type: string }[] = [
+      { kind: 'transactions', table: 'transactions', start: 'date', end: 'date', type: 'account_type' },
+      { kind: 'dividends', table: 'dividends', start: 'date', end: 'date', type: 'account_type' },
+      { kind: 'holdings', table: 'holdings', start: 'as_of_date', end: 'as_of_date', type: 'account_type' },
+      { kind: 'lots', table: 'tax_lots', start: 'acquired_date', end: 'as_of_date', type: 'account_type' },
+      { kind: 'realized', table: 'realized_lots', start: 'sold_date', end: 'sold_date', type: 'null' },
+    ]
+    const rows: RangeRow[] = []
+    for (const span of spans) {
+      const found = conn
+        .prepare(
+          `select market, coalesce(brokerage, 'Unknown') as brokerage, account, max(${span.type}) as account_type,
+                  min(${span.start}) as start, max(${span.end}) as end, count(*) as count
+             from ${span.table} group by market, brokerage, account`
+        )
+        .all() as { market: string; brokerage: string; account: string; account_type: string | null; start: string | null; end: string | null; count: number }[]
+      for (const row of found) {
+        rows.push({
+          kind: span.kind,
+          market: row.market,
+          brokerage: row.brokerage,
+          account: row.account,
+          accountType: row.account_type || null,
+          start: isoDate(row.start),
+          end: isoDate(row.end),
+          count: row.count,
+        })
+      }
+    }
+    return groupAccountRanges(rows)
   } finally {
     conn.close()
   }

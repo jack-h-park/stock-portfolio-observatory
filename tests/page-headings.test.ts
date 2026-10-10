@@ -23,6 +23,7 @@ const COPY_FOR: Partial<Record<RouteHref, keyof typeof PAGE_COPY>> = {
   '/transactions': 'transactions',
   '/fx': 'fx',
   '/crypto-premium': 'cryptoPremium',
+  '/accounts': 'accounts',
   '/health': 'health',
   '/data-ops': 'dataOps',
   '/reconciliation': 'reconciliation',
