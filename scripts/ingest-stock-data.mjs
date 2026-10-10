@@ -34,6 +34,8 @@ const refreshRunsPath = process.env.STOCK_REFRESH_RUNS_PATH || path.join(process
 const taxPolicyPath = process.env.STOCK_TAX_POLICY_PATH || path.join(process.cwd(), 'data/tax-policy.json')
 const accountMapPath = process.env.STOCK_ACCOUNT_MAP_PATH || path.join(process.cwd(), 'data/accounts.local.json')
 const accountMap = loadAccountMap(accountMapPath)
+const bankBalancesPath = process.env.STOCK_BANK_BALANCES_PATH || path.join(process.cwd(), 'data/bank-balances.json')
+const bankBalances = fs.existsSync(bankBalancesPath) ? JSON.parse(fs.readFileSync(bankBalancesPath, 'utf8')) : { accounts: [], findings: [] }
 const fxLedgerPath =
   process.env.STOCK_FX_LEDGER_PATH || path.join(outDir, 'fx-ledger.json')
 
@@ -531,6 +533,36 @@ const usPdfEvidence = loadUsPdfEvidence()
 const cryptoActivity = loadCryptoActivity()
 const cryptoPriceConfig = loadCryptoPrices()
 const fxLedger = loadFxLedger()
+// Deposits for the All-assets view. The Hana USD account is a deposit too, so it
+// is copied here from the FX ledger; fx_account_balances stays for /fx, which
+// reads it, until a later phase moves that page over. Built here, ahead of the
+// source_files registration that counts it.
+const cashRows = [
+  ...(bankBalances.accounts ?? []).flatMap((account) =>
+    (account.balances ?? []).map((b) => ({
+      institution: account.institution,
+      account: account.account,
+      owner: account.owner || 'self',
+      kind: account.kind,
+      currency: account.currency,
+      as_of_date: b.date,
+      balance: b.balance,
+      source: (account.sources ?? []).join(', ') || path.basename(bankBalancesPath),
+      derived: account.derived ? 1 : 0,
+    }))
+  ),
+  ...(fxLedger.balances ?? []).map((b) => ({
+    institution: b.institution,
+    account: b.account,
+    owner: 'self',
+    kind: 'deposit',
+    currency: 'USD',
+    as_of_date: b.as_of_date,
+    balance: b.balance_usd,
+    source: b.source,
+    derived: 0,
+  })),
+]
 const manualMappings = loadManualMappings()
 // Loaded before the first normalizeTicker call: every ticker in this ingest,
 // from any source, is read through the rename table so the old and new symbol
@@ -710,6 +742,18 @@ create table fx_events (
   note text
 );
 
+create table cash_balances (
+  id integer primary key,
+  institution text not null,
+  account text not null,
+  owner text not null default 'self',
+  kind text not null,
+  currency text not null,
+  as_of_date text not null,
+  balance real not null,
+  source text not null,
+  derived integer not null default 0
+);
 create table fx_account_balances (
   id integer primary key,
   institution text not null,
@@ -1180,6 +1224,12 @@ if (fs.existsSync(accountMapPath)) {
   db.prepare(
     'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
   ).run('account_map', fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, Object.keys(accountMap.accounts).length)
+}
+if (fs.existsSync(bankBalancesPath)) {
+  const fp = fingerprint(bankBalancesPath)
+  db.prepare(
+    'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run('bank_balances', fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, cashRows.length)
 }
 if (fs.existsSync(cryptoActivityPath)) {
   const fp = fingerprint(cryptoActivityPath)
@@ -4268,6 +4318,7 @@ insertMany(db, 'fx_events', fxLedger.events ?? [], [
   'page',
   'note',
 ])
+insertMany(db, 'cash_balances', cashRows, ['institution', 'account', 'owner', 'kind', 'currency', 'as_of_date', 'balance', 'source', 'derived'])
 insertMany(db, 'fx_account_balances', fxLedger.balances ?? [], [
   'institution',
   'account',
@@ -4372,6 +4423,22 @@ const observedPreference = fxObservedPreference
     (fxObservedPreference.applied_rate - fxObservedPreference.reference_base_rate) /
       (fxObservedPreference.reference_customer_rate - fxObservedPreference.reference_base_rate)
   : null
+const continuityBreaks = (bankBalances.accounts ?? []).flatMap((a) => (a.continuityBreaks ?? []).map((b) => `${a.account} ${b}`))
+check(
+  'cash_balance_continuity',
+  continuityBreaks.length === 0,
+  continuityBreaks.length === 0 ? 'every running-balance statement is continuous' : `${continuityBreaks.length} break(s): ${continuityBreaks.slice(0, 5).join('; ')}`,
+  'warning'
+)
+// The two anchor messages scripts/extract-bank-statements.py emits; a parse
+// failure is a different finding and is not judged here.
+const anchorFindings = (bankBalances.findings ?? []).filter((f) => f.includes('no anchor balance') || f.includes('anchor is unusable'))
+check(
+  'cash_anchor_present',
+  anchorFindings.length === 0,
+  anchorFindings.length === 0 ? 'every account without a balance column has a usable anchor' : anchorFindings.join('; '),
+  'warning'
+)
 check('fx_ledger_present', fxEvents.length > 0, `${fxEvents.length} normalized FX event(s)`, 'warning')
 check(
   'fx_estimates_have_provenance',

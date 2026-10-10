@@ -153,6 +153,7 @@ create table historical_prices (id integer primary key, market text not null, ti
 -- reporting it as covered. Columns mirror the ingest DDL exactly.
 create table fx_events (id integer primary key, institution text not null, account text not null, date text not null, time text, event_type text not null, direction text not null, usd_amount real not null, krw_amount real, applied_rate real, rate_status text not null, preference_rate real, reference_base_rate real, reference_customer_rate real, reference_source text, spread_cost_krw real, spread_savings_krw real, realized_fx_gl_krw real, counterparty text, match_status text not null, confidence text not null, method text not null, balance_usd real, source text not null, source_path text, page integer, note text);
 create table fx_account_balances (id integer primary key, institution text not null, account text not null, as_of_date text not null, balance_usd real not null, source text not null);
+create table cash_balances (id integer primary key, institution text not null, account text not null, owner text not null default 'self', kind text not null, currency text not null, as_of_date text not null, balance real not null, source text not null, derived integer not null default 0);
 create table historical_fx_rates (id integer primary key, price_date text not null unique, rate real not null, source text);
 `)
 
@@ -240,6 +241,12 @@ insertMany(
     { institution: 'Toss Securities', account: 'Sample US Account', as_of_date: '2025-12-20', balance_usd: 500, source: 'Synthetic sample' },
   ],
   ['institution', 'account', 'as_of_date', 'balance_usd', 'source']
+)
+insertMany(
+  db,
+  'cash_balances',
+  [{ institution: 'Sample Bank', account: 'Sample KRW Savings', owner: 'self', kind: 'savings', currency: 'KRW', as_of_date: '2026-01-01', balance: 5000000, source: 'Synthetic sample', derived: 0 }],
+  ['institution', 'account', 'owner', 'kind', 'currency', 'as_of_date', 'balance', 'source', 'derived']
 )
 // Two closes so the rate trend chart has a line rather than a point.
 insertMany(

@@ -92,3 +92,47 @@ test('wrapper_assigned fails, as a warning, on a wrapper the map misspells', () 
   assert.match(check.detail, /irpp/)
   assert.match(check.detail, /1 row/)
 })
+
+test('bank balances and the Hana USD balances land in cash_balances; findings become warnings', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'cash-src-'))
+  const file = path.join(dir, 'bank-balances.json')
+  writeFileSync(file, JSON.stringify({
+    accounts: [
+      { institution: 'chase', account: 'Chase checking', kind: 'checking', currency: 'USD', owner: 'self', derived: false,
+        sources: ['chase-checking-x.csv'], balances: [{ date: '2026-10-01', balance: 945 }], continuityBreaks: ['2026-09-20: gap'] },
+    ],
+    findings: ['Robinhood checking: no anchor balance in the account map; balances not derived'],
+  }))
+  const db = ingest({ STOCK_BANK_BALANCES_PATH: file })
+  const rows = db.prepare('select account, kind, currency, as_of_date, balance, derived from cash_balances').all()
+  assert.deepEqual(rows, [{ account: 'Chase checking', kind: 'checking', currency: 'USD', as_of_date: '2026-10-01', balance: 945, derived: 0 }])
+  const checks = Object.fromEntries((db.prepare("select name, status, severity from validation_checks where name like 'cash_%'").all() as any[]).map((c) => [c.name, c]))
+  assert.equal(checks.cash_balance_continuity.status, 'fail')
+  assert.equal(checks.cash_balance_continuity.severity, 'warning')
+  assert.equal(checks.cash_anchor_present.status, 'fail')
+})
+
+test('an unusable anchor also fails cash_anchor_present, but a parse failure does not', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'cash-src-'))
+  const file = path.join(dir, 'bank-balances.json')
+  writeFileSync(file, JSON.stringify({
+    accounts: [],
+    findings: ['Chase checking: anchor is unusable (ValueError: bad date); balances not derived'],
+  }))
+  assert.equal(
+    (ingest({ STOCK_BANK_BALANCES_PATH: file }).prepare("select status from validation_checks where name = 'cash_anchor_present'").get() as any).status,
+    'fail'
+  )
+  writeFileSync(file, JSON.stringify({ accounts: [], findings: ['x.csv could not be parsed'] }))
+  assert.equal(
+    (ingest({ STOCK_BANK_BALANCES_PATH: file }).prepare("select status from validation_checks where name = 'cash_anchor_present'").get() as any).status,
+    'pass'
+  )
+})
+
+test('no bank-balances file is an empty table and passing checks', () => {
+  const db = ingest()
+  assert.equal((db.prepare('select count(*) as n from cash_balances').get() as any).n, 0)
+  const statuses = (db.prepare("select status from validation_checks where name like 'cash_%'").all() as any[]).map((c) => c.status)
+  assert.deepEqual(statuses, ['pass', 'pass'])
+})
