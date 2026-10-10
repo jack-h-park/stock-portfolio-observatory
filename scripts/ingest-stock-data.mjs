@@ -35,7 +35,23 @@ const taxPolicyPath = process.env.STOCK_TAX_POLICY_PATH || path.join(process.cwd
 const accountMapPath = process.env.STOCK_ACCOUNT_MAP_PATH || path.join(process.cwd(), 'data/accounts.local.json')
 const accountMap = loadAccountMap(accountMapPath)
 const bankBalancesPath = process.env.STOCK_BANK_BALANCES_PATH || path.join(process.cwd(), 'data/bank-balances.json')
-const bankBalances = fs.existsSync(bankBalancesPath) ? JSON.parse(fs.readFileSync(bankBalancesPath, 'utf8')) : { accounts: [], findings: [] }
+// A bad deposit file must never abort the required stock ingest: it is read
+// defensively and the problem is reported by the cash_balances_readable check.
+let bankBalancesError = null
+const bankBalances = (() => {
+  const empty = { accounts: [], findings: [] }
+  if (!fs.existsSync(bankBalancesPath)) return empty
+  try {
+    const doc = JSON.parse(fs.readFileSync(bankBalancesPath, 'utf8'))
+    if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('top level is not an object')
+    if (!Array.isArray(doc.accounts)) throw new Error('accounts is not an array')
+    if (doc.findings !== undefined && !Array.isArray(doc.findings)) throw new Error('findings is not an array')
+    return { ...doc, findings: doc.findings ?? [] }
+  } catch (error) {
+    bankBalancesError = error instanceof Error ? error.message : String(error)
+    return empty
+  }
+})()
 const fxLedgerPath =
   process.env.STOCK_FX_LEDGER_PATH || path.join(outDir, 'fx-ledger.json')
 
@@ -538,8 +554,8 @@ const fxLedger = loadFxLedger()
 // reads it, until a later phase moves that page over. Built here, ahead of the
 // source_files registration that counts it.
 const cashRows = [
-  ...(bankBalances.accounts ?? []).flatMap((account) =>
-    (account.balances ?? []).map((b) => ({
+  ...(bankBalances.accounts ?? []).filter((account) => Array.isArray(account?.balances)).flatMap((account) =>
+    account.balances.map((b) => ({
       institution: account.institution,
       account: account.account,
       owner: account.owner || 'self',
@@ -754,6 +770,7 @@ create table cash_balances (
   source text not null,
   derived integer not null default 0
 );
+
 create table fx_account_balances (
   id integer primary key,
   institution text not null,
@@ -4423,7 +4440,15 @@ const observedPreference = fxObservedPreference
     (fxObservedPreference.applied_rate - fxObservedPreference.reference_base_rate) /
       (fxObservedPreference.reference_customer_rate - fxObservedPreference.reference_base_rate)
   : null
-const continuityBreaks = (bankBalances.accounts ?? []).flatMap((a) => (a.continuityBreaks ?? []).map((b) => `${a.account} ${b}`))
+check(
+  'cash_balances_readable',
+  bankBalancesError === null,
+  bankBalancesError !== null
+    ? `${bankBalancesPath} could not be used: ${bankBalancesError}`
+    : fs.existsSync(bankBalancesPath) ? 'bank balances file read' : 'no bank balances file',
+  'warning'
+)
+const continuityBreaks = (bankBalances.accounts ?? []).filter((a) => Array.isArray(a?.balances) && Array.isArray(a.continuityBreaks)).flatMap((a) => a.continuityBreaks.map((b) => `${a.account} ${b}`))
 check(
   'cash_balance_continuity',
   continuityBreaks.length === 0,

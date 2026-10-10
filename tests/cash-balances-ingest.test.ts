@@ -134,5 +134,44 @@ test('no bank-balances file is an empty table and passing checks', () => {
   const db = ingest()
   assert.equal((db.prepare('select count(*) as n from cash_balances').get() as any).n, 0)
   const statuses = (db.prepare("select status from validation_checks where name like 'cash_%'").all() as any[]).map((c) => c.status)
-  assert.deepEqual(statuses, ['pass', 'pass'])
+  assert.deepEqual(statuses, ['pass', 'pass', 'pass'])
+})
+
+for (const [label, content] of [
+  ['truncated JSON', '{"accounts": [{"institution": "chase"'],
+  ['accounts that is not an array', JSON.stringify({ accounts: 'x', findings: [] })],
+] as const) {
+  test(`a bank-balances file with ${label} does not abort the ingest`, () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'cash-bad-'))
+    const file = path.join(dir, 'bank-balances.json')
+    writeFileSync(file, content)
+    const db = ingest({ STOCK_BANK_BALANCES_PATH: file })
+    assert.equal((db.prepare('select count(*) as n from cash_balances').get() as any).n, 0)
+    const check = db.prepare("select status, severity, detail from validation_checks where name = 'cash_balances_readable'").get() as any
+    assert.equal(check.status, 'fail')
+    assert.equal(check.severity, 'warning')
+    assert.match(check.detail, /bank-balances\.json/)
+  })
+}
+
+test('an account whose balances is not an array is skipped', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'cash-bad-'))
+  const file = path.join(dir, 'bank-balances.json')
+  writeFileSync(file, JSON.stringify({ accounts: [{ institution: 'x', account: 'Bad', kind: 'checking', currency: 'USD', balances: 'nope' }], findings: [] }))
+  const db = ingest({ STOCK_BANK_BALANCES_PATH: file })
+  assert.equal((db.prepare('select count(*) as n from cash_balances').get() as any).n, 0)
+})
+
+test('the FX ledger balances are copied into cash_balances as USD deposits', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'cash-fx-'))
+  const file = path.join(dir, 'fx-ledger.json')
+  writeFileSync(file, JSON.stringify({
+    events: [],
+    sources: [],
+    findings: [],
+    balances: [{ institution: 'Sample Bank', account: 'Sample FX Account', as_of_date: '2026-02-03', balance_usd: 1234.5, source: 'invented.pdf' }],
+  }))
+  const db = ingest({ STOCK_FX_LEDGER_PATH: file })
+  const row = db.prepare("select institution, account, owner, kind, currency, as_of_date, balance, derived from cash_balances").get() as any
+  assert.deepEqual(row, { institution: 'Sample Bank', account: 'Sample FX Account', owner: 'self', kind: 'deposit', currency: 'USD', as_of_date: '2026-02-03', balance: 1234.5, derived: 0 })
 })
