@@ -3166,17 +3166,31 @@ let robinhoodSnapshotHasOrders = false
 // on orders rather than on a CSV.
 const robinhoodBridgedSales = []
 
-// The CSV's `Activity Date` is the US trading date, and execution timestamps
-// are UTC. An extended-hours fill at 20:30 ET is 00:30 UTC the next day; taking
-// the UTC date puts it a day late — past the cutoff comparison, and on
-// December 31 into the wrong tax year.
+// The CSV's `Activity Date` is the TRADING SESSION a fill belongs to, and
+// execution timestamps are UTC. Robinhood's overnight session opens at 20:00 ET
+// as the next trading day's, so a fill at 21:00 ET on a Sunday is dated Monday.
+// Checked against 29 real extended-hours fills, every one consistent
+// (docs/robinhood-orders-bridge.md, verification item 2).
+//
+// Eastern time plus four hours puts 20:00 ET on the next date and leaves
+// pre-market, regular, after-hours and the post-midnight overnight hours on
+// their own. The two simpler readings are each a day off somewhere: the plain
+// Eastern date for every overnight fill, the UTC date for a winter after-hours
+// fill between 19:00 and 20:00 ET. A day off moves a fill across the cutoff
+// comparison, and on December 31 into the wrong tax year.
+//
+// Not yet seen: an overnight fill on the eve of a market holiday, where the
+// next trading day is not the next calendar day.
 const easternDateFormat = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
 })
-function easternDate(timestamp) {
+const OVERNIGHT_SESSION_SHIFT_MS = 4 * 60 * 60 * 1000
+function sessionDate(timestamp) {
   const ms = Date.parse(text(timestamp))
   if (Number.isNaN(ms)) return ''
-  const parts = Object.fromEntries(easternDateFormat.formatToParts(ms).map((p) => [p.type, p.value]))
+  const parts = Object.fromEntries(
+    easternDateFormat.formatToParts(ms + OVERNIGHT_SESSION_SHIFT_MS).map((p) => [p.type, p.value])
+  )
   return `${parts.year}-${parts.month}-${parts.day}`
 }
 
@@ -3285,7 +3299,7 @@ if (robinhoodSnapshot?.accounts?.length) {
       // moved shares, and the executions are what say so.
       for (const exec of order.executions ?? []) {
         const timestamp = text(firstOf(exec, ['timestamp', 'executed_at', 'created_at']))
-        const date = easternDate(timestamp)
+        const date = sessionDate(timestamp)
         const quantity = number(firstOf(exec, ['quantity', 'filled_quantity']))
         const price = number(firstOf(exec, ['price', 'effective_price']))
         if (!date || !(quantity > 0) || price == null) {
