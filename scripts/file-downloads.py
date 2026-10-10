@@ -1268,11 +1268,6 @@ def detect_robinhood_bank(doc):
                 [f"rows {iso(min(days))} … {iso(max(days))}", f"kind {kind} from the row descriptions"])
 
 
-def _utf16_contains(path, *needles):
-    raw = path.read_bytes()
-    return all(needle.encode("utf-16-le") in raw for needle in needles)
-
-
 def detect_mg_deposit(doc):
     """새마을금고 거래내역조회 (.xls) → bank-statements/mg-deposit-<from>-<to>.xls
 
@@ -1281,10 +1276,12 @@ def detect_mg_deposit(doc):
     """
     if doc.suffix != ".xls":
         return None
-    if not _utf16_contains(doc.path, "거래내역조회", "통장(상품)명"):
+    raw = doc.path.read_bytes()
+    if not raw.startswith(bytes.fromhex("d0cf11e0a1b11ae1")):
+        return None
+    if not all(n.encode("utf-16-le") in raw for n in ("거래내역조회", "통장(상품)명")):
         return None
     # Decode at both byte alignments: the UTF-16 run can start on an odd offset.
-    raw = doc.path.read_bytes()
     pattern = r"조회기간\s*:\s*(\d{4})\.(\d{2})\.(\d{2})\s*~\s*(\d{4})\.(\d{2})\.(\d{2})"
     period = None
     for offset in (0, 1):
@@ -1435,6 +1432,28 @@ def inbox_files():
     )
 
 
+def decrypt_tossbank(source, destination):
+    """Decrypt into a temp file beside the destination, then swap it into place.
+
+    Nothing is left at the destination unless decryption finished, and the
+    source is removed only after that. Any exception removes the temp file.
+    """
+    import msoffcrypto
+
+    temp = destination.with_name(f".{destination.name}.part")
+    try:
+        with source.open("rb") as handle:
+            office = msoffcrypto.OfficeFile(handle)
+            office.load_key(password=os.environ["STOCK_TOSSBANK_PASSWORD"])
+            with temp.open("wb") as out:
+                office.decrypt(out)
+        os.replace(temp, destination)
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        raise
+    source.unlink()
+
+
 def main(argv):
     dry_run = "--dry-run" in argv or "-n" in argv
     unknown = [a for a in argv if a not in ("--dry-run", "-n", "-h", "--help")]
@@ -1497,26 +1516,31 @@ def main(argv):
             continue
         filed.append((path, destination, shown, plan))
 
+    failed = []
     if filed:
         print("\nfiled")
-        for path, destination, shown, plan in filed:
+        for path, destination, shown, plan in list(filed):
+            if not dry_run:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if plan.transform == "tossbank-decrypt":
+                    try:
+                        decrypt_tossbank(path, destination)
+                    except Exception as error:  # wrong password, corrupt file, missing module
+                        failed.append((path, shown, f"{type(error).__name__}: {error}"))
+                        filed.remove((path, destination, shown, plan))
+                        continue
+                else:
+                    shutil.move(str(path), str(destination))
             print(f"  {path.name} → {shown}")
             for note in plan.evidence:
                 print(f"      {note}")
             if docs[path].encrypted:
                 print("      opened with STOCK_PDF_PASSWORD")
-            if not dry_run:
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                if plan.transform == "tossbank-decrypt":
-                    import msoffcrypto
-                    with path.open("rb") as handle:
-                        office = msoffcrypto.OfficeFile(handle)
-                        office.load_key(password=os.environ["STOCK_TOSSBANK_PASSWORD"])
-                        with destination.open("wb") as out:
-                            office.decrypt(out)
-                    path.unlink()
-                    continue
-                shutil.move(str(path), str(destination))
+
+    if failed:
+        print("\nFAILED — left in the inbox, nothing written")
+        for path, shown, why in failed:
+            print(f"  {path.name} → {shown}: {why}")
 
     if skipped:
         print("\nalready filed — left alone")
@@ -1547,11 +1571,11 @@ def main(argv):
             print(f"      no detector claimed it; looked for: "
                   f"{', '.join(label for label, _ in DETECTORS)}")
 
-    remaining = len(skipped) + len(conflicts) + len(refusals) + len(unidentified)
+    remaining = len(skipped) + len(conflicts) + len(refusals) + len(unidentified) + len(failed)
     print(
         f"\n{len(filed)} filed{' (dry run — nothing moved)' if dry_run and filed else ''}, "
         f"{len(skipped)} already filed, {len(conflicts)} conflict(s), "
-        f"{len(refusals) + len(unidentified)} unidentified — "
+        f"{len(refusals) + len(unidentified)} unidentified, {len(failed)} failed — "
         f"{remaining + (len(filed) if dry_run else 0)} file(s) still in the inbox"
     )
     # Always 0 unless the run itself failed. An unidentified file is a message

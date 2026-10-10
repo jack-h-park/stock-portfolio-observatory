@@ -1,20 +1,20 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..')
 
-function fileDownloads(files: Record<string, string | Buffer>) {
-  const dataDir = mkdtempSync(path.join(tmpdir(), 'bank-inbox-'))
+function fileDownloads(files: Record<string, string | Buffer>, opts: { dryRun?: boolean; password?: string; dataDir?: string } = {}) {
+  const dataDir = opts.dataDir ?? mkdtempSync(path.join(tmpdir(), 'bank-inbox-'))
   mkdirSync(path.join(dataDir, 'inbox'), { recursive: true })
   for (const [name, body] of Object.entries(files)) writeFileSync(path.join(dataDir, 'inbox', name), body)
-  const result = spawnSync(process.env.STOCK_PYTHON_BIN || 'python3', ['scripts/file-downloads.py', '--dry-run'], {
+  const result = spawnSync(process.env.STOCK_PYTHON_BIN || 'python3', ['scripts/file-downloads.py', ...(opts.dryRun === false ? [] : ['--dry-run'])], {
     cwd: REPO_ROOT,
     encoding: 'utf8',
-    env: { ...process.env, STOCK_DATA_DIR: dataDir, STOCK_TOSSBANK_PASSWORD: '' },
+    env: { ...process.env, STOCK_DATA_DIR: dataDir, STOCK_TOSSBANK_PASSWORD: opts.password ?? '' },
   })
   assert.equal(result.status, 0, `filer exited ${result.status}: ${result.stderr}`)
   return result.stdout
@@ -60,7 +60,7 @@ test('Robinhood bank exports are told apart by what their rows say, and refused 
 test('a 새마을금고 거래내역조회 .xls files by its 조회기간', () => {
   const cfb = Buffer.concat([
     Buffer.from('d0cf11e0a1b11ae1', 'hex'),
-    Buffer.alloc(504),
+    Buffer.alloc(505), // odd length: the UTF-16 run starts on an odd offset
     Buffer.from('거래내역조회', 'utf16le'),
     Buffer.alloc(16),
     Buffer.from('통장(상품)명', 'utf16le'),
@@ -74,4 +74,54 @@ test('an encrypted 토스뱅크 export without a password is refused with the va
   // CFB magic + the EncryptedPackage stream name is enough for the detector; the body is not decrypted here.
   const cfb = Buffer.concat([Buffer.from('d0cf11e0a1b11ae1', 'hex'), Buffer.alloc(504), Buffer.from('EncryptedPackage', 'utf16le')])
   assert.match(fileDownloads({ '토스뱅크_거래내역.xlsx': cfb }), /STOCK_TOSSBANK_PASSWORD/)
+})
+
+// --- real-work path: needs msoffcrypto + openpyxl in the python the filer uses ---
+const PY = process.env.STOCK_PYTHON_BIN || 'python3'
+const HAVE_CRYPTO = spawnSync(PY, ['-c', 'import msoffcrypto, openpyxl']).status === 0
+const PASSWORD = 'dummy-test-password'
+
+function encryptedWorkbook(dir: string, password: string): Buffer {
+  const plain = path.join(dir, 'plain.xlsx')
+  const out = path.join(dir, 'enc.xlsx')
+  const script = [
+    'import sys, openpyxl',
+    'from msoffcrypto.format.ooxml import OOXMLFile',
+    'wb = openpyxl.Workbook(); wb.active["A1"] = "example"; wb.active["B1"] = 42; wb.save(sys.argv[1])',
+    'f = OOXMLFile(open(sys.argv[1], "rb"))',
+    'f.encrypt(sys.argv[3], open(sys.argv[2], "wb"))',
+  ].join('\n')
+  const r = spawnSync(PY, ['-c', script, plain, out, password], { encoding: 'utf8' })
+  assert.equal(r.status, 0, r.stderr)
+  return readFileSync(out)
+}
+
+test('토스뱅크 with a password set is planned as tossbank-<date>.xlsx', { skip: !HAVE_CRYPTO }, () => {
+  const scratch = mkdtempSync(path.join(tmpdir(), 'bank-enc-'))
+  const body = encryptedWorkbook(scratch, PASSWORD)
+  assert.match(fileDownloads({ '토스뱅크_거래내역.xlsx': body }, { password: PASSWORD }), /→ bank-statements\/tossbank-\d{8}\.xlsx/)
+})
+
+test('토스뱅크 decrypts into bank-statements with the right password and removes the source', { skip: !HAVE_CRYPTO }, () => {
+  const dataDir = mkdtempSync(path.join(tmpdir(), 'bank-inbox-'))
+  const body = encryptedWorkbook(dataDir, PASSWORD)
+  const out = fileDownloads({ '토스뱅크_거래내역.xlsx': body }, { dryRun: false, password: PASSWORD, dataDir })
+  const filed = readdirSync(path.join(dataDir, 'bank-statements'))
+  assert.equal(filed.length, 1, out)
+  assert.match(filed[0], /^tossbank-\d{8}\.xlsx$/)
+  assert.equal(existsSync(path.join(dataDir, 'inbox', '토스뱅크_거래내역.xlsx')), false)
+  const read = spawnSync(PY, ['-c', 'import sys, openpyxl; print(openpyxl.load_workbook(sys.argv[1]).active["A1"].value)', path.join(dataDir, 'bank-statements', filed[0])], { encoding: 'utf8' })
+  assert.equal(read.stdout.trim(), 'example', read.stderr)
+})
+
+test('토스뱅크 with a wrong password leaves nothing filed, keeps the source and says so', { skip: !HAVE_CRYPTO }, () => {
+  const dataDir = mkdtempSync(path.join(tmpdir(), 'bank-inbox-'))
+  const body = encryptedWorkbook(dataDir, PASSWORD)
+  const out = fileDownloads(
+    { '토스뱅크_거래내역.xlsx': body, 'Chase0000_Activity_20261009.csv': CHASE_CHECKING },
+    { dryRun: false, password: 'wrong-password', dataDir },
+  )
+  assert.deepEqual(readdirSync(path.join(dataDir, 'bank-statements')), ['chase-checking-20260915-20261001.csv'])
+  assert.equal(existsSync(path.join(dataDir, 'inbox', '토스뱅크_거래내역.xlsx')), true)
+  assert.match(out, /FAILED[\s\S]*토스뱅크_거래내역\.xlsx/)
 })
