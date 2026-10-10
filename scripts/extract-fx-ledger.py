@@ -98,9 +98,21 @@ def parse_hana_pdfs():
     return rows, sources
 
 
+# The LibreOffice installer for macOS does not put `soffice` on PATH, and the
+# cron runs with a minimal PATH anyway, so a host with only the app installed
+# found nothing and the Hana XLS rows dropped out of the FX ledger. Look where
+# the installer puts the binary before falling back to the Codex runtime shim,
+# which only exists on machines that have run Codex.
+MACOS_SOFFICE_PATHS = [
+    Path("/Applications/LibreOffice.app/Contents/MacOS/soffice"),
+    Path.home() / "Applications/LibreOffice.app/Contents/MacOS/soffice",
+]
+
+
 def soffice_binary():
     configured = os.environ.get("STOCK_SOFFICE_BIN")
     candidates = [configured, shutil.which("soffice"), shutil.which("libreoffice")]
+    candidates += [str(path) for path in MACOS_SOFFICE_PATHS]
     candidates += glob.glob(str(Path.home() / ".cache/codex-runtimes/**/override/soffice"), recursive=True)
     return next((item for item in candidates if item and Path(item).exists()), None)
 
