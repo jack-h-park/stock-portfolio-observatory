@@ -7,6 +7,7 @@ import Database from 'better-sqlite3'
 import { runIngest } from './ingest-harness'
 import { PAYLOAD_HEADERS } from './sheet-payloads'
 import { IRP, SAMSUNG_PENSION, writeScenario } from './pension-fixtures'
+import { pensionNameSlug, pensionProductId } from '../scripts/pension-ids.mjs'
 
 type Holding = {
   account: string
@@ -52,11 +53,11 @@ test('pension snapshots land in holdings_all, tagged, and never in the holdings 
   assert.equal(etf.base_market_value, 360000) // 10 x the fixture price, not the snapshot's 350000
   assert.equal(etf.base_cost, 300000)
   const fund = irp.find((h) => h.name === 'Example TDF fund')!
-  assert.equal(fund.ticker, 'PENSION:irp:2')
+  assert.equal(fund.ticker, `PENSION:irp:${pensionNameSlug('Example TDF fund')}`)
   assert.equal(fund.valuation_source, 'snapshot')
   assert.equal(fund.base_market_value, 1100000)
   const cash = irp.find((h) => h.name === 'Example cash sweep')!
-  assert.equal(cash.ticker, 'PENSION:irp:cash:3')
+  assert.equal(cash.ticker, `PENSION:irp:cash:${pensionNameSlug('Example cash sweep')}`)
   assert.equal(cash.valuation_source, 'snapshot')
   assert.equal(cash.base_market_value, 50000)
 
@@ -198,4 +199,31 @@ test('a sheet row for a pension account is dropped once its snapshot is inserted
   assert.equal(irp.find((h) => h.ticker === '069500')!.quantity, 10)
   const sheet = db.prepare(`select count(*) as n from holdings_all where account = ? and source_system like 'korea_sheet%'`).get(IRP) as { n: number }
   assert.equal(sheet.n, 0)
+})
+
+test('a pension fund id is a slug of its normalised name, so reordering the snapshot rows keeps every id', () => {
+  // The first 10 hex characters of sha1 over the NFC, whitespace-collapsed name.
+  assert.match(pensionNameSlug('Example TDF fund'), /^[0-9a-f]{10}$/)
+  assert.equal(pensionNameSlug('  Example   TDF\tfund '), pensionNameSlug('Example TDF fund'))
+  assert.equal(pensionNameSlug('\u1100\u1161'), pensionNameSlug('\uAC00')) // decomposed and composed 가
+  assert.equal(pensionProductId('irp', 'Example TDF fund', false), `PENSION:irp:${pensionNameSlug('Example TDF fund')}`)
+  assert.equal(pensionProductId('irp', 'Example cash sweep', true), `PENSION:irp:cash:${pensionNameSlug('Example cash sweep')}`)
+
+  const ids = (rows: { account: string; ticker: string; name: string }[]) =>
+    Object.fromEntries(rows.filter((h) => h.account === IRP).map((h) => [h.name, h.ticker]))
+  const before = ids(ingest().holdingsAll)
+  const reordered = ingest({
+    extra: (dir) =>
+      writeFileSync(
+        path.join(dir, 'pension', 'irp-holdings-20261008.csv'),
+        [
+          'type,name,ticker,quantity,cost_krw,value_krw',
+          'CASH,Example cash sweep,,,0,50000',
+          'FUND,Example TDF fund,,,1000000,1100000',
+          'ETF,Example 200 ETF,069500,10,300000,350000',
+        ].join('\n') + '\n',
+        'utf8'
+      ),
+  })
+  assert.deepEqual(ids(reordered.holdingsAll), before)
 })

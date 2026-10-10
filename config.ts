@@ -40,6 +40,9 @@ export const config = {
   stockTaxPolicyPath: env('STOCK_TAX_POLICY_PATH', repoPath('data/tax-policy.json')),
   stockTaxPolicyExamplePath: env('STOCK_TAX_POLICY_EXAMPLE_PATH', repoPath('data/tax-policy.example.json')),
   stockTaxPlansPath: env('STOCK_TAX_PLANS_PATH', repoPath('data/tax-plans.json')),
+  // The gitignored account map (scripts/account-map.mjs). Same variable the ingest
+  // reads; the app reads only its pension token list, for the reminder's rows.
+  stockAccountMapPath: env('STOCK_ACCOUNT_MAP_PATH', repoPath('data/accounts.local.json')),
 }
 
 export type AppConfig = typeof config

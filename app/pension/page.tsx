@@ -4,6 +4,8 @@ import { WrapperReviewCard } from '@/components/WrapperReviewCard'
 import { Badge, Card, EmptyState, MetricField, Signed } from '@/components/ui'
 import { CardRow } from '@/components/layout'
 import { dbAvailable, getMeta, getPensionAccounts, getWrapperReview, type PensionAccount, type PensionHolding } from '@/lib/adapters/portfolio-db'
+import { createMoneyFormatter } from '@/lib/currency'
+import { getCurrencyPreferences } from '@/lib/currency-server'
 import { fmtDate, fmtDateTime, fmtKrw, fmtPct } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { routeMetadata, routeSection } from '@/lib/page-names'
@@ -24,7 +26,11 @@ export default async function PensionPage() {
   const accounts = available ? getPensionAccounts() : []
   const wrapperReview = available ? getWrapperReview(policy) : []
   const years = contributionsAgainstLimits(accounts, policy)
-  const krw = (value: number | null) => (value == null ? copy.none : fmtKrw(value))
+  // Money in the display currency, as the Overview shows it.
+  const money = createMoneyFormatter(await getCurrencyPreferences())
+  const krw = (value: number | null) => (value == null ? copy.none : money(value))
+  // Statutory limits are fixed won amounts; converting them would make them drift with the rate.
+  const limitKrw = (value: number | null) => (value == null ? copy.none : fmtKrw(value))
 
   return (
     <>
@@ -47,11 +53,11 @@ export default async function PensionPage() {
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <MetricField
                     label={copy.value}
-                    value={fmtKrw(account.valueKrw)}
+                    value={money(account.valueKrw)}
                     hint={account.snapshotDate ? copy.snapshotAsOf(fmtDate(account.snapshotDate)) : undefined}
                     valueClassName="text-title"
                   />
-                  <MetricField label={copy.cost} value={fmtKrw(account.costKrw)} valueClassName="text-title" />
+                  <MetricField label={copy.cost} value={money(account.costKrw)} valueClassName="text-title" />
                   <MetricField
                     label={copy.return}
                     value={<Signed value={account.returnPct} format={(n) => fmtPct(n)} nullText={copy.none} />}
@@ -77,7 +83,7 @@ export default async function PensionPage() {
                   label: copy.columns.value,
                   align: 'right',
                   nowrap: true,
-                  render: (row: PensionHolding) => <span className="font-mono">{fmtKrw(row.valueKrw)}</span>,
+                  render: (row: PensionHolding) => <span className="font-mono">{money(row.valueKrw)}</span>,
                 },
                 {
                   key: 'asOf',
@@ -93,7 +99,7 @@ export default async function PensionPage() {
                     </span>
                   ),
                 },
-                { key: 'cost', label: copy.columns.cost, align: 'right', nowrap: true, render: (row: PensionHolding) => <span className="font-mono">{fmtKrw(row.costKrw)}</span> },
+                { key: 'cost', label: copy.columns.cost, align: 'right', nowrap: true, render: (row: PensionHolding) => <span className="font-mono">{money(row.costKrw)}</span> },
               ]}
             />
           </Card>
@@ -110,7 +116,7 @@ export default async function PensionPage() {
             getRowKey={(row: ContributionLimitRow) => String(row.year)}
             columns={[
               { key: 'year', label: copy.contributionColumns.year, render: (row: ContributionLimitRow) => <span className="tabular-nums text-ink">{row.year}</span> },
-              { key: 'irp', label: copy.contributionColumns.irp, align: 'right', nowrap: true, render: (row: ContributionLimitRow) => <span className="font-mono">{fmtKrw(row.irpOwnKrw)}</span> },
+              { key: 'irp', label: copy.contributionColumns.irp, align: 'right', nowrap: true, render: (row: ContributionLimitRow) => <span className="font-mono">{money(row.irpOwnKrw)}</span> },
               {
                 key: 'pensionSavings',
                 label: copy.contributionColumns.pensionSavings,
@@ -118,7 +124,7 @@ export default async function PensionPage() {
                 nowrap: true,
                 render: (row: ContributionLimitRow) => (
                   <span className="font-mono">
-                    {fmtKrw(row.pensionSavingsOwnKrw)}
+                    {money(row.pensionSavingsOwnKrw)}
                     {row.limit && row.pensionSavingsOwnKrw > row.limit.pensionSavingsLimitKrw ? (
                       <>
                         {' '}
@@ -134,7 +140,7 @@ export default async function PensionPage() {
                 align: 'right',
                 nowrap: true,
                 priority: 'secondary',
-                render: (row: ContributionLimitRow) => <span className="font-mono text-ink-3">{krw(row.limit?.pensionSavingsLimitKrw ?? null)}</span>,
+                render: (row: ContributionLimitRow) => <span className="font-mono text-ink-3">{limitKrw(row.limit?.pensionSavingsLimitKrw ?? null)}</span>,
               },
               {
                 key: 'combined',
@@ -143,7 +149,7 @@ export default async function PensionPage() {
                 nowrap: true,
                 render: (row: ContributionLimitRow) => (
                   <span className="font-mono">
-                    {fmtKrw(row.combinedOwnKrw)}
+                    {money(row.combinedOwnKrw)}
                     {row.limit && row.combinedOwnKrw > row.limit.combinedLimitKrw ? (
                       <>
                         {' '}
@@ -160,7 +166,7 @@ export default async function PensionPage() {
                 nowrap: true,
                 priority: 'secondary',
                 render: (row: ContributionLimitRow) =>
-                  row.limit ? <span className="font-mono text-ink-3">{fmtKrw(row.limit.combinedLimitKrw)}</span> : <span className="text-ink-3">{copy.noLimit}</span>,
+                  row.limit ? <span className="font-mono text-ink-3">{limitKrw(row.limit.combinedLimitKrw)}</span> : <span className="text-ink-3">{copy.noLimit}</span>,
               },
               { key: 'eligible', label: copy.contributionColumns.eligible, align: 'right', nowrap: true, render: (row: ContributionLimitRow) => <span className="font-mono">{krw(row.creditEligibleKrw)}</span> },
               {
@@ -170,7 +176,7 @@ export default async function PensionPage() {
                 nowrap: true,
                 priority: 'secondary',
                 render: (row: ContributionLimitRow) =>
-                  row.employerKrw == null ? <span className="text-ink-3">{copy.employerUnknown}</span> : <span className="font-mono">{fmtKrw(row.employerKrw)}</span>,
+                  row.employerKrw == null ? <span className="text-ink-3">{copy.employerUnknown}</span> : <span className="font-mono">{money(row.employerKrw)}</span>,
               },
             ]}
           />

@@ -19,6 +19,7 @@ export const accounts = defineCopy({
     nextDownloads: 'Next downloads',
     columns: {
       account: 'Account',
+      assetType: 'Asset type',
       timeline: 'Timeline',
       transactions: 'Transactions',
       dividends: 'Dividends',
@@ -27,6 +28,7 @@ export const accounts = defineCopy({
       realized: 'Realized',
       balances: 'Balances',
     },
+    assetTypes: { stock: 'Stocks', pension: 'Pension', gold: 'Gold', cash: 'Deposits' },
     legend: { transactions: 'Transactions', dividends: 'Dividends', holdings: 'Holdings snapshot' },
     timelineLabel: (name: string, start: string, end: string) => `${name}: records from ${start} to ${end}`,
     alsoStoredAs: (names: string) => `also stored as ${names}`,
@@ -53,6 +55,7 @@ export const accounts = defineCopy({
     nextDownloads: '다음 다운로드',
     columns: {
       account: '계좌',
+      assetType: '자산 종류',
       timeline: '기간',
       transactions: '거래내역',
       dividends: '배당·분배',
@@ -61,6 +64,7 @@ export const accounts = defineCopy({
       realized: '실현손익',
       balances: '예금 잔고',
     },
+    assetTypes: { stock: '주식', pension: '연금', gold: '금', cash: '예금' },
     legend: { transactions: '거래내역', dividends: '배당·분배', holdings: '보유 스냅샷' },
     timelineLabel: (name: string, start: string, end: string) => `${name}: ${start}부터 ${end}까지의 자료`,
     alsoStoredAs: (names: string) => `다른 이름: ${names}`,

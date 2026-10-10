@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import Database from 'better-sqlite3'
-import { buildGoldPriceDocument, parseGoldHistory, parseGoldLatest, parsePrice, seoulDate } from '../scripts/gold-price.mjs'
+import { buildGoldPriceDocument, goldBackfillPlan, goldHistoryUrl, mergeGoldHistory, parseGoldHistory, parseGoldLatest, parsePrice, seoulDate } from '../scripts/gold-price.mjs'
 import { runIngest } from './ingest-harness'
 import { GOLD, STOCK_INPUTS, TAXLOT_COLUMNS, TRANSACTION_COLUMNS, tsv, writeScenario } from './pension-fixtures'
 import { PAYLOAD_HEADERS } from './sheet-payloads'
@@ -59,6 +59,38 @@ test('the document carries the code, unit, latest and history', () => {
   assert.match(doc.source, /Naver/)
   assert.deepEqual(doc.latest, { date: '2026-03-05', price: 177480 })
   assert.deepEqual(doc.history, [{ date: '2026-03-04', price: 178480 }])
+})
+
+test('fetched history merges into the file: one price per date, the fetched one winning, oldest first', () => {
+  const merged = mergeGoldHistory(
+    [{ date: '2026-01-02', price: 100 }, { date: '2026-01-05', price: 101 }],
+    [{ date: '2026-01-05', price: 105 }, { date: '2026-01-06', price: 106 }]
+  )
+  assert.deepEqual(merged, [
+    { date: '2026-01-02', price: 100 },
+    { date: '2026-01-05', price: 105 },
+    { date: '2026-01-06', price: 106 },
+  ])
+  assert.deepEqual(mergeGoldHistory(undefined, [{ date: '2026-01-06', price: 106 }]), [{ date: '2026-01-06', price: 106 }])
+  // Junk in the stored file is dropped rather than kept.
+  assert.deepEqual(mergeGoldHistory([{ date: 'x', price: 1 }, { date: '2026-01-01', price: -1 }] as any, []), [])
+})
+
+test('the backfill pages back to the first purchase, or 400 days, and only when the file does not reach it', () => {
+  const today = '2026-10-10'
+  // First run: no file. Back to the purchase when it is within 400 days.
+  assert.deepEqual(goldBackfillPlan({ history: [], earliestPurchase: '2026-01-15', today }), { target: '2026-01-15' })
+  // A purchase older than 400 days stops at 400 days.
+  assert.deepEqual(goldBackfillPlan({ history: [], earliestPurchase: '2020-01-01', today }), { target: '2025-09-05' })
+  // No purchase known: 400 days.
+  assert.deepEqual(goldBackfillPlan({ history: [], earliestPurchase: null, today }), { target: '2025-09-05' })
+  // The file already reaches the purchase: nothing to do.
+  assert.equal(goldBackfillPlan({ history: [{ date: '2026-01-10', price: 1 }], earliestPurchase: '2026-01-15', today }), null)
+  // The file starts after the purchase: page back.
+  assert.deepEqual(goldBackfillPlan({ history: [{ date: '2026-08-01', price: 1 }], earliestPurchase: '2026-01-15', today }), { target: '2026-01-15' })
+  // The file already reaches 400 days back: nothing more to fetch.
+  assert.equal(goldBackfillPlan({ history: [{ date: '2025-09-01', price: 1 }], earliestPurchase: '2020-01-01', today }), null)
+  assert.match(goldHistoryUrl(3), /page=3&pageSize=60/)
 })
 
 // --- ingest -----------------------------------------------------------------

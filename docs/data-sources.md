@@ -139,8 +139,11 @@ each product `{ name, quantity, costKrw, valueKrw }`. `cashKrw` is set only for 
   products stands in for one, as of its `asOf`, with its `cashKrw` as a cash row.
   Each product becomes a `holdings_all` row with the entry's `account` and
   `wrapper`, `as_of_date` = the snapshot date, and cost = `cost_krw`. An ETF keeps
-  its ticker; a fund row gets a stable id `PENSION:<token>:<n>` and a cash row
-  `PENSION:<token>:cash:<n>`, where `<n>` is its row number in the snapshot. A priced ETF is marked at quantity × the KR price
+  its ticker; a fund row gets a stable id `PENSION:<token>:<slug>` and a cash row
+  `PENSION:<token>:cash:<slug>`, where `<slug>` is the first 10 hex characters of
+  sha1 over the NFC-normalised, whitespace-collapsed name
+  (`scripts/pension-ids.mjs`), so reordering a snapshot keeps every id. Two rows of
+  one snapshot with the same name get `-2`, `-3`. A priced ETF is marked at quantity × the KR price
   (`valuation_source = 'price'`); everything else, including an ETF with no price
   or no ticker, is valued at `value_krw` (`'snapshot'`). None of these rows is in
   the `holdings` view or in any stock figure.
@@ -156,6 +159,11 @@ each product `{ name, quantity, costKrw, valueKrw }`. `cashKrw` is set only for 
   (`valuation_source = 'price'`, as of the price date); with no price it is held at
   cost (`'cost'`, as of the last purchase). The purchases are not replayed into tax
   lots.
+- **Totals over time.** `pension_points` holds one total per pension account and
+  date: each snapshot's summed value and each certificate's `totalKrw` (the
+  certificate wins a shared date). `gold_prices` holds the price file's `history`
+  plus its `latest`, one per date. The total-assets trend reads both, never the
+  JSON files.
 - **One source per account.** A sheet row for an account that has a pension
   snapshot or a gold holding is dropped, so `holdings_all` never holds the same
   position twice.
@@ -184,7 +192,11 @@ dated by `result.localTradedAt` in Asia/Seoul) and
 at least 10). It writes
 `{ source, code: "M04020000", unit: "KRW/g", fetchedAt, latest: { date, price }, history: [{ date, price }] }`.
 A response for another code or unit is refused. If either call fails the previous
-file is kept and the step exits non-zero; the refresh carries on.
+file is kept and the step exits non-zero; the refresh carries on. The history
+accumulates: each run merges the fetched closes into the stored ones, one per
+date. While the stored history does not reach the earliest gold purchase (read
+from the last ingest's `transactions_all`), or 400 days back when that is nearer
+or no purchase is known, it pages backwards (`page=2,3,…`) until it does.
 - `pension_snapshot_matches_year_end`: each certificate's `totalKrw` against the
   snapshot with the same date (a certificate with products is one), within
   max(0.5%, ₩10,000). Fund NAVs are not fetched, so a later snapshot cannot be
@@ -330,6 +342,50 @@ were gone. Those days are now filled from the snapshot's `orders`, and only
 those days — the CSV stays the authority for every day it covers, and the
 bridged rows drop out when a download covers them. The design and its checks
 are in [robinhood-orders-bridge.md](robinhood-orders-bridge.md).
+
+## Supplementary data: check scope, cadences, and the FBAR rate table
+
+Deposits, CMA, pensions and gold are supplementary (see the spec's Amendments).
+Their data is kept apart from the stock figures in three ways.
+
+**Check scope.** Every validation check carries a `scope`, `stock` or
+`supplementary` (`validation_checks.scope`, default `stock`; an older database
+without the column reads as `stock`). The supplementary scope covers
+`cash_balances_readable`, `cash_balance_continuity`, `cash_anchor_present`,
+`cash_statements_parsed`, `pension_trades_after_snapshot`, `pension_etf_unpriced`,
+`pension_snapshot_matches_year_end`, `gold_priced`, `gold_price_fresh` and
+`us_wrapper_treatment_decided`. `wrapper_assigned` and `non_stock_wrappers_absent`
+stay `stock`, because they guard the stock view. The ingest prints
+`Validation: <passing>/<total> checks passing` for the stock scope only (the
+refresh cron reads that line) and a separate `Supplementary: <passing>/<total>
+checks passing` line. The Overview badge, `health.issues` in the summary and the
+daily refresh alert read the stock scope; `/health` labels each check's scope.
+The exit code is unchanged: any failing `error` check in either scope.
+
+**Cadences.** The weekly reminder lists a supplementary row once it is due soon
+(a few days before its maximum lag) or past it, dating each account by the later
+of its last row and its newest statement's period end, in a "보조 자산" section that is silent while everything is current:
+
+| Source | Maximum lag |
+| --- | --- |
+| Deposit, CMA and gold statements | 90 days |
+| Pension holdings snapshot | 180 days |
+| Gold price (`data/gold-prices.json`) | 7 days |
+
+`gold_price_fresh` (a warning) fails when the gold price is older than 7 days
+while a gold holding exists. The summary carries this as a `supplementaryCoverage`
+block with dates, labels and status only, never amounts.
+
+**`data/treasury-reporting-rates.json`.** The year-end KRW per USD rate that the
+FBAR instructions direct, used by the foreign-account maximum-balance table on
+`/net-worth`. It is tracked in the repository (public figures, not personal data):
+`{ "source", "retrieved", "rates": [{ "year", "date", "krwPerUsd" }] }`, one entry
+per year from 2020 to the last complete year, taken from the U.S. Treasury
+Reporting Rates of Exchange dataset on Fiscal Data; `source` records the exact
+query. Add the next year's entry after 31 December. For a year with no entry the
+table shows KRW only and says so. A year's maximum is flagged "may be understated"
+unless the account's balance history is daily through the year; US institutions
+are excluded.
 
 ## Generated or downloaded — which side a file goes on
 

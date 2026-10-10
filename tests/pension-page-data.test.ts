@@ -45,8 +45,8 @@ test('getNetWorth adds pensions and gold from holdings_all and leaves stocks alo
   )
   // Snapshot-valued rows carry their date; the priced gold does not.
   assert.deepEqual(after.asOfNotes, [
-    { label: IRP, asOf: '2026-10-08' },
-    { label: SAMSUNG_PENSION, asOf: '2025-12-31' },
+    { assetClass: 'pensions', label: IRP, asOf: '2026-10-08' },
+    { assetClass: 'pensions', label: SAMSUNG_PENSION, asOf: '2025-12-31' },
   ])
 
   // Gold held at cost (no price) is dated too.
@@ -55,7 +55,7 @@ test('getNetWorth adds pensions and gold from holdings_all and leaves stocks alo
   rw.close()
   const atCost = getNetWorth()
   assert.equal(atCost.byClass.gold, 1_500_000)
-  assert.deepEqual(atCost.asOfNotes.find((note) => note.label === GOLD), { label: GOLD, asOf: '2026-03-31' })
+  assert.deepEqual(atCost.asOfNotes.find((note) => note.label === GOLD), { assetClass: 'gold', label: GOLD, asOf: '2026-03-31' })
 })
 
 test('getPensionAccounts returns each account with its holdings split and contributions by year', async () => {

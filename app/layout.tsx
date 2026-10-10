@@ -9,6 +9,7 @@ import { getLanguage } from '@/lib/i18n-server'
 import { getAssetView } from '@/lib/asset-view-server'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { APP_NAME } from '@/lib/page-names'
+import { hasSupplementaryAssets } from '@/lib/adapters/portfolio-db'
 
 export const metadata: Metadata = {
   title: {
@@ -26,6 +27,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const language = await getLanguage()
   const currencyPreferences = await getCurrencyPreferences()
   const assetView = await getAssetView()
+  // Never let a DB hiccup in this optional check take down every page.
+  let showAllAssets = false
+  try {
+    showAllAssets = hasSupplementaryAssets()
+  } catch {
+    showAllAssets = false
+  }
   const skipLabel = language === 'ko' ? '본문으로 바로가기' : 'Skip to main content'
 
   return (
@@ -36,7 +44,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         </a>
         <LanguageProvider language={language} currencyPreferences={currencyPreferences}>
           <div className="flex min-h-screen flex-col lg:flex-row">
-            <Sidebar language={language} displayCurrency={currencyPreferences.displayCurrency} assetView={assetView} />
+            <Sidebar language={language} displayCurrency={currencyPreferences.displayCurrency} assetView={assetView} showAllAssets={showAllAssets} />
             {/*
               max-sm:overflow-x-clip stops the page itself scrolling sideways on a
               phone. /tax-settings could be dragged 234px to the right onto blank

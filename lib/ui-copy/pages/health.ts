@@ -83,6 +83,9 @@ export const health = defineCopy({
     noFreshnessIssues: 'No stale, drifted, or missing operational inputs',
 
     validationChecks: 'Validation checks',
+    validationChecksInfo:
+      'Checks marked Supplementary cover deposits, pensions and gold, which only feed total assets. They are not counted in the stock validation result or the Overview badge.',
+    supplementaryScope: 'Supplementary',
     noChecks: 'No checks found',
 
     pdfEvidence: 'PDF evidence',
@@ -148,6 +151,9 @@ export const health = defineCopy({
     noFreshnessIssues: '오래되거나 변경되거나 누락된 운영 입력이 없습니다.',
 
     validationChecks: '검증 점검',
+    validationChecksInfo:
+      '보조 자산으로 표시된 점검은 예금, 연금, 금처럼 전체 자산에만 쓰이는 데이터를 확인합니다. 주식 검증 결과와 개요 배지에는 세지 않습니다.',
+    supplementaryScope: '보조 자산',
     noChecks: '점검 항목이 없습니다.',
 
     pdfEvidence: 'PDF 근거',

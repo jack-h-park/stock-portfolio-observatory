@@ -2,7 +2,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
 import { Badge, Button, Card, EmptyState, InfoTooltip, Label, Signed, TextLink, marketTone } from '@/components/ui'
 import { getOperationalHealth, getOverview, getTaxPlanningLots, getWrapperReview } from '@/lib/adapters/portfolio-db'
-import { WrapperReviewCard } from '@/components/WrapperReviewCard'
+import { WrapperEstimateNote } from '@/components/WrapperReviewCard'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { fmtKrw, fmtMoney, fmtNumber, fmtPct } from '@/lib/format'
@@ -158,7 +158,7 @@ export default async function TaxPlanningPage({
         }
       />
 
-      <WrapperReviewCard rows={wrapperReview} copy={copy.wrapperReview} />
+      <WrapperEstimateNote rows={wrapperReview} copy={copy.wrapperReview} />
 
       <section className="mb-5 rounded-md border border-line bg-card shadow-card">
         <div className="flex flex-col gap-1 border-b border-line-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">

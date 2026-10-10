@@ -10,8 +10,10 @@
 // This reads the `accountCoverage` block that `pnpm summary` publishes and prints
 // one line per account that needs a download: the account, how far its data
 // reaches, and the date to start the next download from. Accounts that read the
-// same (Robinhood's three share one snapshot) are folded into one line. Silent
-// when every account is current.
+// same (Robinhood's three share one snapshot) are folded into one line. After
+// them, a 보조 자산 section names the deposits, pensions and gold whose files are
+// overdue, and the supplementary checks that fail, from the summary's
+// `supplementaryCoverage` block. Silent when everything is current.
 //
 // usage: node scripts/coverage-reminder.mjs [--summary <path>]
 //
@@ -121,6 +123,26 @@ function footer(groups) {
 }
 
 /**
+ * Supplementary items (deposits, pensions, physical gold, the gold price) that
+ * need something filed, oldest first. A summary written before the block existed
+ * has none, which reads as nothing to say rather than a refusal: the stock
+ * reminder must keep working against an older refresh.
+ */
+function supplementaryItems(doc) {
+  const block = doc.supplementaryCoverage
+  const rows = Array.isArray(block?.rows) ? block.rows.filter((row) => ATTENTION.has(row.status)) : []
+  const failing = Array.isArray(block?.failingChecks) ? block.failingChecks.filter(Boolean) : []
+  rows.sort((a, b) => ORDER[a.status] - ORDER[b.status] || (b.lagDays ?? 9999) - (a.lagDays ?? 9999) || String(a.label).localeCompare(String(b.label)))
+  return { rows, failing }
+}
+
+function supplementaryLine(row) {
+  const reach =
+    row.latestDate == null ? '반영된 자료 없음' : `${row.latestDate}까지 반영 (${row.lagDays}일 경과, 기준 ${row.maxLagDays}일)`
+  return `• ${row.label} — ${reach}\n  → ${row.action}`
+}
+
+/**
  * The message for one summary document, or null when there is nothing to say.
  * Throws when the document cannot be read as a summary this script understands.
  */
@@ -135,15 +157,28 @@ export function coverageMessage(doc) {
   }
 
   const groups = groupRows(items(coverage.rows).filter((row) => ATTENTION.has(row.status)))
-  if (groups.length === 0) return null
+  const supplementary = supplementaryItems(doc)
+  const hasSupplementary = supplementary.rows.length > 0 || supplementary.failing.length > 0
+  if (groups.length === 0 && !hasSupplementary) return null
 
   const urgent = groups.filter((group) => group.status !== 'due_soon')
   const soon = groups.filter((group) => group.status === 'due_soon')
   const asOf = String(doc.generatedAt ?? '').slice(0, 10) || 'unknown'
-  const parts = [`📥 계좌 자료 업데이트 — 받아야 할 자료 ${urgent.length}건, 곧 받을 자료 ${soon.length}건 (데이터 기준 ${asOf})`]
+  const parts = [
+    groups.length
+      ? `📥 계좌 자료 업데이트 — 받아야 할 자료 ${urgent.length}건, 곧 받을 자료 ${soon.length}건 (데이터 기준 ${asOf})`
+      : `📥 계좌 자료 업데이트 — 보조 자산 확인 필요 (데이터 기준 ${asOf})`,
+  ]
   if (urgent.length) parts.push('', '지금 필요:', ...urgent.map(line))
   if (soon.length) parts.push('', '기한 임박:', ...soon.map(line))
-  parts.push('', ...footer(groups), '전체 표: /data-ops')
+  // Deposits, pensions and gold come after the statements: they feed total
+  // assets only, never a stock figure.
+  if (hasSupplementary) {
+    parts.push('', '보조 자산:', ...supplementary.rows.map(supplementaryLine))
+    if (supplementary.failing.length) parts.push(`• 실패한 보조 자산 점검: ${supplementary.failing.join(', ')}`)
+  }
+  const tail = groups.length ? footer(groups) : []
+  parts.push('', ...tail, '전체 표: /data-ops')
   return parts.join('\n')
 }
 

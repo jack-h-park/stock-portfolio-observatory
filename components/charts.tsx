@@ -1,12 +1,15 @@
 'use client'
 
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Legend,
   Tooltip,
@@ -290,6 +293,102 @@ export function PortfolioMultiTrendChart({
           />
         ))}
       </LineChart>
+    </ResponsiveContainer>
+  )
+}
+
+type AssetClass = 'stocks' | 'crypto' | 'cash' | 'pensions' | 'gold'
+const STACK_ORDER: readonly AssetClass[] = ['stocks', 'crypto', 'cash', 'pensions', 'gold']
+/** One fixed colour per class, from the theme tokens, so a class keeps its colour across pages. */
+const ASSET_COLORS: Record<AssetClass, string> = {
+  stocks: 'var(--brand-blue)',
+  crypto: marketColor('CRYPTO'),
+  cash: 'var(--accent-success)',
+  pensions: 'var(--brand-purple)',
+  gold: 'var(--brand-pink)',
+}
+
+export type StackedAssetPoint = { date: string; total: number } & Record<AssetClass, number | null>
+
+/**
+ * Every asset class stacked, one area each, values already in the display
+ * currency's millions. A class that has not started is null and draws nothing
+ * (recharts stacks it as zero), and a dashed line marks where each class after
+ * the first date begins. The tooltip lists every class, with a dash for one not
+ * yet started, and the total.
+ */
+export function StackedAssetChart({
+  points,
+  startsOn,
+  currency,
+  labels,
+  height = 260,
+  axisLabel,
+}: {
+  points: StackedAssetPoint[]
+  startsOn: Partial<Record<AssetClass, string>>
+  currency: 'KRW' | 'USD'
+  labels: Record<AssetClass | 'total', string>
+  height?: number
+  axisLabel?: string
+}) {
+  const prefix = currency === 'USD' ? '$' : '₩'
+  const formatValue = (value: number) => `${prefix}${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}M`
+  const firstDate = points[0]?.date
+  const starts = STACK_ORDER.filter((key) => startsOn[key] && startsOn[key] !== firstDate)
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <AreaChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
+        <XAxis dataKey="date" tick={AXIS} tickLine={false} axisLine={{ stroke: 'var(--border-default)' }} />
+        <YAxis
+          tick={AXIS}
+          tickLine={false}
+          axisLine={false}
+          tickFormatter={formatValue}
+          label={axisLabel ? { value: axisLabel, angle: -90, position: 'insideLeft', style: AXIS } : undefined}
+        />
+        <Tooltip
+          content={({ active, label, payload }) => {
+            if (!active || !payload?.length) return null
+            const point = payload[0].payload as StackedAssetPoint
+            return (
+              <div style={{ ...TOOLTIP_SURFACE, padding: '6px 8px' }}>
+                <div style={{ marginBottom: 4, color: 'var(--text-tertiary)' }}>{label}</div>
+                {[...STACK_ORDER].reverse().map((key) => (
+                  <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                    <span style={{ color: ASSET_COLORS[key] }}>{labels[key]}</span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{point[key] == null ? '—' : formatValue(point[key]!)}</span>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 4, borderTop: '1px solid var(--border-subtle)', paddingTop: 4, fontWeight: 500 }}>
+                  <span>{labels.total}</span>
+                  <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatValue(point.total)}</span>
+                </div>
+              </div>
+            )
+          }}
+        />
+        <Legend wrapperStyle={{ fontSize: 11 }} />
+        {starts.map((key) => (
+          <ReferenceLine key={key} x={startsOn[key]} stroke={ASSET_COLORS[key]} strokeDasharray="3 3" />
+        ))}
+        {STACK_ORDER.map((key) => (
+          <Area
+            key={key}
+            type="linear"
+            dataKey={key}
+            name={labels[key]}
+            stackId="assets"
+            stroke={ASSET_COLORS[key]}
+            fill={ASSET_COLORS[key]}
+            fillOpacity={0.35}
+            strokeWidth={1.5}
+            connectNulls={false}
+            isAnimationActive={false}
+          />
+        ))}
+      </AreaChart>
     </ResponsiveContainer>
   )
 }

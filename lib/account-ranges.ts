@@ -9,6 +9,11 @@
  */
 
 export type RangeKind = 'transactions' | 'dividends' | 'holdings' | 'lots' | 'realized' | 'balances'
+/** What an account holds: securities, a pension, physical gold, or deposits. */
+export type AssetType = 'stock' | 'pension' | 'gold' | 'cash'
+// An account with rows of more than one type takes the most specific: a pension
+// account's cash sweep row does not make it a stock account.
+const ASSET_TYPE_RANK: Record<AssetType, number> = { stock: 0, cash: 1, gold: 2, pension: 3 }
 
 /** One table's span for one account name, as the query returns it. */
 export type RangeRow = {
@@ -21,6 +26,8 @@ export type RangeRow = {
   start: string | null
   end: string | null
   count: number
+  /** Defaults to 'stock' (the CASH market reads as 'cash'). */
+  assetType?: AssetType
 }
 
 export type DateRange = { start: string | null; end: string | null; count: number }
@@ -33,6 +40,7 @@ export type AccountDataRange = {
   /** Other names the same account is stored under. */
   aliases: string[]
   accountType: string | null
+  assetType: AssetType
   ranges: Partial<Record<RangeKind, DateRange>>
   firstDate: string | null
   lastDate: string | null
@@ -72,9 +80,11 @@ export function groupAccountRanges(rows: RangeRow[]): AccountDataRange[] {
     const key = nameKey(row.market, row.brokerage, row.account)
     let account = byName.get(key)
     if (!account) {
-      account = { id: key, market: row.market, brokerage: row.brokerage, name: row.account, aliases: [], accountType: null, ranges: {}, firstDate: null, lastDate: null }
+      account = { id: key, market: row.market, brokerage: row.brokerage, name: row.account, aliases: [], accountType: null, assetType: 'stock', ranges: {}, firstDate: null, lastDate: null }
       byName.set(key, account)
     }
+    const assetType = row.assetType ?? (row.market === 'CASH' ? 'cash' : 'stock')
+    if (ASSET_TYPE_RANK[assetType] > ASSET_TYPE_RANK[account.assetType]) account.assetType = assetType
     if (!account.accountType && row.accountType) account.accountType = row.accountType
     account.ranges[row.kind] = mergeRange(account.ranges[row.kind], { start: row.start, end: row.end, count: row.count })
   }

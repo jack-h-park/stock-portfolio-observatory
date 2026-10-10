@@ -16,7 +16,7 @@
 import fs from 'node:fs'
 
 const ROUTES = [
-  '/', '/daily-briefing', '/holdings', '/review', '/rebalance', '/income',
+  '/', '/net-worth', '/pension', '/daily-briefing', '/holdings', '/review', '/rebalance', '/income',
   '/tax-planning', '/tax-settings', '/lots', '/cost-basis', '/dividends',
   '/transactions', '/fx', '/crypto-premium', '/accounts', '/health', '/data-ops',
   '/reconciliation', '/data-map', '/positions/KR/005930',
@@ -24,6 +24,10 @@ const ROUTES = [
 const LANGUAGES = ['en', 'ko']
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
 const LANGUAGE_COOKIE = 'stock-observatory-language'
+// One extra pass renders the overview in the all-assets view, which draws the
+// stacked total-assets chart that the default view never shows.
+const ASSET_VIEW_COOKIE = 'stock-observatory-asset-view'
+const VIEWS = [null, 'all']
 
 function arg(flag, fallback) {
   const i = process.argv.indexOf(flag)
@@ -37,10 +41,15 @@ const browser = await chromium.launch()
 const found = new Map()
 
 for (const language of LANGUAGES) {
+ for (const view of VIEWS) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' })
-  await context.addCookies([{ name: LANGUAGE_COOKIE, value: language, domain: new URL(baseUrl).hostname, path: '/' }])
+  const domain = new URL(baseUrl).hostname
+  await context.addCookies([
+    { name: LANGUAGE_COOKIE, value: language, domain, path: '/' },
+    ...(view ? [{ name: ASSET_VIEW_COOKIE, value: view, domain, path: '/' }] : []),
+  ])
   const page = await context.newPage()
-  for (const route of ROUTES) {
+  for (const route of view ? ['/'] : ROUTES) {
     try {
       await page.goto(`${baseUrl}${route}`, { waitUntil: 'networkidle', timeout: 45_000 })
       await page.waitForTimeout(600)
@@ -54,14 +63,15 @@ for (const language of LANGUAGES) {
           found.set(violation.id, { impact: violation.impact, help: violation.help, where: new Set(), nodes: new Set() })
         }
         const entry = found.get(violation.id)
-        entry.where.add(`${route} (${language})`)
+        entry.where.add(`${route} (${language}${view ? `, ${view}` : ''})`)
         for (const node of violation.nodes.slice(0, 3)) entry.nodes.add(node.html.slice(0, 120))
       }
     } catch (error) {
-      console.error(`FAIL ${route} ${language}: ${error.message.split('\n')[0]}`)
+      console.error(`FAIL ${route} ${language}${view ? ` ${view}` : ''}: ${error.message.split('\n')[0]}`)
     }
   }
   await context.close()
+ }
 }
 await browser.close()
 
@@ -72,5 +82,5 @@ for (const [id, v] of violations) {
   console.log(`  ${[...v.where].slice(0, 5).join(', ')}${v.where.size > 5 ? ' …' : ''}`)
   for (const node of [...v.nodes].slice(0, 2)) console.log(`  · ${node}`)
 }
-console.log(`\n${violations.length} distinct violation(s) across ${ROUTES.length * LANGUAGES.length} route-languages`)
+console.log(`\n${violations.length} distinct violation(s) across ${(ROUTES.length + 1) * LANGUAGES.length} route-languages`)
 process.exit(violations.length === 0 ? 0 : 1)

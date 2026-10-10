@@ -101,6 +101,7 @@ export default async function AccountsPage() {
                 </div>
               ),
             },
+            { key: 'assetType', label: copy.columns.assetType, nowrap: true, render: (row: AccountDataRange) => copy.assetTypes[row.assetType] },
             ...(axis
               ? [
                   {

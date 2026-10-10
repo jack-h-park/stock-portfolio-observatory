@@ -1,13 +1,18 @@
 import fs from 'node:fs'
+import { periodEndFromSource } from '@/lib/supplementary'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import Database from 'better-sqlite3'
 import { config } from '@/config'
 import type { TaxPlanningLot } from '@/lib/tax-planning'
 import { getTaxPolicyState, usTaxableWrappers, wrapperTreatment, type TaxPolicy, type WrapperTreatment } from '@/lib/tax-policy'
-import { depositsSeries, monthEndCash, summarizeNetWorth, type AsOfNote, type CashBalanceRow, type NetWorth } from '@/lib/net-worth'
+import { ASSET_CLASSES, depositsSeries, summarizeNetWorth, totalAssetsSeries, type AsOfNote, type CashBalanceRow, type NetWorth, type TotalAssetsSeries } from '@/lib/net-worth'
 import type { PensionContributionYear } from '@/lib/pension'
-import { groupAccountRanges, type AccountDataRange, type RangeKind, type RangeRow } from '@/lib/account-ranges'
+import { groupAccountRanges, type AccountDataRange, type AssetType, type RangeKind, type RangeRow } from '@/lib/account-ranges'
+import { foreignAccountMaxima, isUsBrokerage, isUsCashInstitution, maxBalance, treasuryRateFor, type BalancePoint, type ForeignAccountInput, type ForeignAccountMaxima } from '@/lib/fbar'
+import treasuryRates from '@/data/treasury-reporting-rates.json'
+import { loadAccountMap } from '@/scripts/account-map.mjs'
+import { createLotValuer } from '@/scripts/lot-valuation.mjs'
 
 /**
  * The default (Stocks) view: taxable and ISA securities only. Every holdings total goes through this.
@@ -89,6 +94,16 @@ export type HealthCheck = {
   status: 'pass' | 'fail'
   detail: string
   severity: 'error' | 'warning'
+  /** `stock` checks guard the Stocks view; `supplementary` ones cover deposits, pensions and gold. */
+  scope: CheckScope
+}
+
+export type CheckScope = 'stock' | 'supplementary'
+
+/** The scope column, or `'stock'` for a database written before checks had one. */
+function checkScopeSql(conn: Database.Database) {
+  const columns = (conn.prepare('pragma table_info(validation_checks)').all() as { name: string }[]).map((column) => column.name)
+  return columns.includes('scope') ? 'scope' : "'stock'"
 }
 
 export type EvidenceReport = {
@@ -851,7 +866,10 @@ export function getOverview() {
       .prepare('select count(*) as count, coalesce(sum(realized_gl_krw), 0) as amount from realized_lots')
       .get() as any
     const tx = conn.prepare('select count(*) as count, min(date) as first_date, max(date) as last_date from transactions').get() as any
-    const checks = conn.prepare("select count(*) as failed from validation_checks where status != 'pass'").get() as any
+    // The badge counts stock checks only: a supplementary warning is not a Stocks-view problem.
+    const checks = conn
+      .prepare(`select count(*) as failed from validation_checks where status != 'pass' and ${checkScopeSql(conn)} = 'stock'`)
+      .get() as any
     const fxRates = conn.prepare('select * from fx_rates order by as_of_date desc, from_currency').all() as any[]
     return { totals, dividends, realized, tx, failedChecks: checks.failed as number, fxRates }
   } finally {
@@ -983,8 +1001,8 @@ function withCumulativeRealized(conn: Database.Database, snapshots: PortfolioSna
 }
 
 // USD/KRW on a date: the latest historical rate on or before it, else the
-// current spot rate. Shared by the net-worth history and the deposits series so
-// both convert a dated balance the same way.
+// current spot rate. Shared by the deposits series and the total-assets series
+// so both convert a dated balance the same way.
 function usdKrwRateAt(conn: Database.Database): (date: string) => number | null {
   const hasTable = (name: string) =>
     Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(name))
@@ -999,19 +1017,115 @@ function usdKrwRateAt(conn: Database.Database): (date: string) => number | null 
   return (date: string) => rates.filter((r) => r.price_date <= date).at(-1)?.rate ?? usd?.rate ?? null
 }
 
-// Deposits in KRW on each snapshot date, for the overview trend in the
-// all-assets view. Rows are read in (date, id) order so a repeated date keeps
-// its last row, the same as the latest-balance read in getNetWorth.
+// Every cash_balances row in (date, id) order, so a repeated date keeps its last
+// row, the same as the latest-balance read in getNetWorth.
+function cashBalanceRows(conn: Database.Database): CashBalanceRow[] {
+  const hasCash = conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'cash_balances'").get()
+  return hasCash
+    ? (conn.prepare('select institution, account, currency, as_of_date as date, balance from cash_balances order by as_of_date, id').all() as CashBalanceRow[])
+    : []
+}
+
+// Deposits in KRW on each of the given dates: the cash class of the total-assets series.
 export function getDepositsSeries(dates: string[]): ReturnType<typeof depositsSeries> {
   const conn = db()
   try {
-    const hasCash = conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'cash_balances'").get()
-    const rows = hasCash
-      ? (conn
-          .prepare('select institution, account, currency, as_of_date as date, balance from cash_balances order by as_of_date, id')
-          .all() as CashBalanceRow[])
+    return depositsSeries(dates, cashBalanceRows(conn), usdKrwRateAt(conn))
+  } finally {
+    conn.close()
+  }
+}
+
+/** Today in the ingest's time zone, the same calendar the snapshot dates use (scripts/portfolio-snapshot.mjs). */
+export function portfolioToday() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: process.env.STOCK_TIME_ZONE || 'America/Los_Angeles',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+}
+
+/** Snapshot dates within the last `days`, oldest first: the dates the total-assets chart plots. */
+export function getSnapshotDates(days = 3650): string[] {
+  const conn = db()
+  try {
+    const table = conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'portfolio_snapshots'").get()
+    if (!table) return []
+    return (
+      conn
+        .prepare("select snapshot_date from portfolio_snapshots where snapshot_date >= date('now', ?) order by snapshot_date")
+        .all(`-${Math.max(1, Math.floor(days))} days`) as { snapshot_date: string }[]
+    ).map((row) => row.snapshot_date)
+  } finally {
+    conn.close()
+  }
+}
+
+/**
+ * Total assets by class on each date, for the stacked trend: stocks (KR + US)
+ * and crypto from portfolio_snapshots, cash from cash_balances, pensions from
+ * the certificate and snapshot totals in pension_points, gold from its BUY rows
+ * and gold_prices. Then today is appended from getNetWorth(), replacing any
+ * date on or after it, so the last point is the Total assets card exactly.
+ */
+export function getTotalAssetsSeries(dates: string[], precomputed?: NetWorth): TotalAssetsSeries {
+  // A page that already has the net worth passes it, so getOverview() runs once.
+  const netWorth = precomputed ?? getNetWorth()
+  const today = portfolioToday()
+  const conn = db()
+  try {
+    const hasTable = (name: string) =>
+      Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(name))
+    const columnsOf = (name: string) =>
+      new Set((conn.prepare(`pragma table_info(${name})`).all() as { name: string }[]).map((column) => column.name))
+    const past = [...new Set(dates)].filter((date) => date < today).sort()
+
+    const snapshots = new Map(
+      (hasTable('portfolio_snapshots')
+        ? (conn
+            .prepare('select snapshot_date as date, kr_market_value as kr, us_market_value_base as us, crypto_market_value_base as crypto from portfolio_snapshots')
+            .all() as { date: string; kr: number | null; us: number | null; crypto: number | null }[])
+        : []
+      ).map((row) => [row.date, row])
+    )
+    const stocks: Record<string, number | null> = {}
+    const crypto: Record<string, number | null> = {}
+    for (const date of past) {
+      const row = snapshots.get(date)
+      stocks[date] = !row || (row.kr == null && row.us == null) ? null : Number(row.kr ?? 0) + Number(row.us ?? 0)
+      crypto[date] = row?.crypto == null ? null : Number(row.crypto)
+    }
+    const cash = Object.fromEntries(depositsSeries(past, cashBalanceRows(conn), usdKrwRateAt(conn)).series.map((point) => [point.date, point.krw]))
+    const pensionPoints = hasTable('pension_points')
+      ? (conn.prepare('select account, date, value_krw as valueKrw from pension_points order by date, id').all() as { account: string; date: string; valueKrw: number }[])
       : []
-    return depositsSeries(dates, rows, usdKrwRateAt(conn))
+    // Gold BUY rows carry grams as quantity and the purchase amount in KRW. No
+    // gold sale is on file; the holding itself (getNetWorth) handles one.
+    const goldBuys =
+      hasTable('transactions_all') && columnsOf('transactions_all').has('asset_class')
+        ? (
+            conn
+              .prepare(
+                `select substr(date, 1, 10) as date, abs(coalesce(quantity, 0)) as grams, abs(coalesce(amount_krw, settlement_krw, 0)) as costKrw
+                   from transactions_all where asset_class = 'gold' and type = 'BUY' order by date, id`
+              )
+              .all() as { date: string; grams: number; costKrw: number }[]
+          ).filter((buy) => buy.grams > 0)
+        : []
+    const goldPrices = hasTable('gold_prices') ? (conn.prepare('select date, price from gold_prices order by date').all() as { date: string; price: number }[]) : []
+
+    const history = totalAssetsSeries({ dates: past, stocks, crypto, cash, pensionPoints, gold: { buys: goldBuys, prices: goldPrices } })
+    // Today, from the card's own figures. A class that is zero today and never
+    // had data stays null, so it does not "start" on the last point.
+    const latest = { date: today, total: netWorth.totalKrw } as TotalAssetsSeries['points'][number]
+    for (const key of ASSET_CLASSES) {
+      const value = netWorth.byClass[key]
+      latest[key] = value !== 0 || history.startsOn[key] ? value : null
+    }
+    const startsOn = { ...history.startsOn }
+    for (const key of ASSET_CLASSES) if (!startsOn[key] && latest[key] != null) startsOn[key] = today
+    return { points: [...history.points, latest], startsOn }
   } finally {
     conn.close()
   }
@@ -1056,7 +1170,7 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
     const asOfNotes = hasTable('holdings_all')
       ? (conn
           .prepare(
-            `select distinct account as label, as_of_date as asOf
+            `select distinct case when ${PENSION_ROW_SQL} then 'pensions' else 'gold' end as assetClass, account as label, as_of_date as asOf
                from holdings_all
               where (${PENSION_ROW_SQL} or ${GOLD_ROW_SQL})
                 and (valuation_source in ('snapshot', 'cost') or base_market_value is null)
@@ -1065,7 +1179,7 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
           )
           .all() as AsOfNote[])
       : []
-    const summary = summarizeNetWorth({
+    return summarizeNetWorth({
       stocksKrw: (overview.totals.kr_base_market_value ?? 0) + (overview.totals.us_base_market_value ?? 0),
       cryptoKrw: overview.totals.crypto_base_market_value ?? 0,
       usdKrw: usd?.rate ?? null,
@@ -1074,20 +1188,216 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
       goldKrw: Number(others.gold),
       asOfNotes,
     })
-    const series = hasTable('cash_balances')
-      ? (conn.prepare('select institution, account, currency, as_of_date as date, balance from cash_balances order by as_of_date, id').all() as any[])
-      : []
+  } finally {
+    conn.close()
+  }
+}
+
+/**
+ * Each foreign account's maximum value in `year`, for FBAR and Form 8938. Foreign
+ * is everything not held at a US institution:
+ *
+ * - cash outside the US banks (isUsCashInstitution), from daily balances
+ *   carried forward; a USD account's maximum is read in dollars;
+ * - stock accounts outside the US brokerages (isUsBrokerage), KR and US market
+ *   alike, so a Korean broker's US stocks count: month-end values of the lots
+ *   held times the historical price, converted at that date's USD/KRW rate when
+ *   the quote is in dollars (the reconstruction the month-end backfill uses),
+ *   at cost where no price reaches a position. Crypto is not included;
+ * - pension accounts, from their certificate and snapshot totals;
+ * - the gold account, grams held times the latest KRX price, at cost before
+ *   the first stored price (partial when any of the year is at cost).
+ *
+ * USD figures use the Treasury year-end rate in data/treasury-reporting-rates.json.
+ * An account with nothing in or before the year, or a zero maximum, is left out.
+ * A USD account no rate of any kind can convert stays in, with a null won figure.
+ * Rows are identified by `institution|account`; for pensions and gold the
+ * institution is the account name before its parenthesis. This can differ from
+ * the institution `/pension` shows, which comes from the account map entry.
+ */
+export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
+  const rate = treasuryRateFor(year, treasuryRates.rates)
+  const today = portfolioToday()
+  const start = `${year}-01-01`
+  const end = `${year}-12-31`
+  const conn = db()
+  try {
+    const hasTable = (name: string) =>
+      Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(name))
+    const columnsOf = (name: string) =>
+      new Set((conn.prepare(`pragma table_info(${name})`).all() as { name: string }[]).map((column) => column.name))
+    const accounts: ForeignAccountInput[] = []
+    const institutionOf = (account: string) => account.split('(')[0].trim() || account
+    const add = (
+      institution: string,
+      account: string,
+      kind: ForeignAccountInput['kind'],
+      found: { maxKrw: number | null; date: string; coverage: ForeignAccountInput['coverage'] } | null,
+      extra: Partial<ForeignAccountInput> = {}
+    ) => {
+      if (!found) return
+      const positive = found.maxKrw != null ? found.maxKrw > 0 : (extra.maxUsdNative ?? 0) > 0
+      if (positive) accounts.push({ institution, account, kind, maxKrw: found.maxKrw, maxDate: found.date, coverage: found.coverage, ...extra })
+    }
+
+    // Cash: one series per (institution, account), in the account's own currency.
     const rateAt = usdKrwRateAt(conn)
-    // Ordered by date, so the Map keeps the last snapshot of each month.
-    const stocksByMonth = new Map<string, number>(
-      hasTable('portfolio_snapshots')
-        ? (conn
-            .prepare('select substr(snapshot_date,1,7) as month, global_base_market_value as v from portfolio_snapshots order by snapshot_date')
-            .all() as any[]).map((r) => [r.month, r.v])
+    const cashByAccount = new Map<string, { institution: string; account: string; currency: string; points: BalancePoint[] }>()
+    if (hasTable('cash_balances')) {
+      const rows = conn
+        .prepare('select institution, account, currency, as_of_date as date, balance from cash_balances order by as_of_date, id')
+        .all() as { institution: string; account: string; currency: string; date: string; balance: number }[]
+      for (const row of rows) {
+        if (isUsCashInstitution(row.institution)) continue
+        const key = `${row.institution}|${row.account}`
+        const entry = cashByAccount.get(key) ?? { institution: row.institution, account: row.account, currency: row.currency, points: [] }
+        entry.points.push({ date: row.date, valueKrw: Number(row.balance) })
+        cashByAccount.set(key, entry)
+      }
+    }
+    for (const { institution, account, currency, points } of cashByAccount.values()) {
+      const found = maxBalance(points, year)
+      if (!found) continue
+      if (currency === 'USD') {
+        // Dollars in, dollars out. Without a Treasury rate the won figure falls
+        // back to the market rate on the date of the maximum, and with neither
+        // it is null: the row stays, the page says why it has no won figure.
+        const krwPerUsd = rate?.krwPerUsd ?? rateAt(found.date)
+        add(institution, account, 'cash', { ...found, maxKrw: krwPerUsd == null ? null : found.maxKrw * krwPerUsd }, { maxUsdNative: found.maxKrw })
+      } else if (currency === 'KRW') {
+        add(institution, account, 'cash', found)
+      }
+    }
+
+    // Stock accounts outside the US brokerages, KR and US market: month-end
+    // values, with the prior year-end as 1 January.
+    const lotsTable = hasTable('tax_lots_all') ? 'tax_lots_all' : hasTable('tax_lots') ? 'tax_lots' : null
+    const realizedTable = hasTable('realized_lots_all') ? 'realized_lots_all' : hasTable('realized_lots') ? 'realized_lots' : null
+    if (lotsTable) {
+      const stockOnly = (table: string) => (columnsOf(table).has('asset_class') ? ` and ${STOCK_ROW_SQL}` : '')
+      const brokerageOf = (table: string) => (columnsOf(table).has('brokerage') ? 'brokerage' : 'null as brokerage')
+      // The valuer groups by account, so each lot's account becomes its row id.
+      const identities = new Map<string, { institution: string; account: string }>()
+      const foreignOnly = <T extends { brokerage: string | null; account: string }>(lots: T[]) =>
+        lots
+          .filter((lot) => !isUsBrokerage(lot.brokerage, lot.account))
+          .map((lot) => {
+            const institution = lot.brokerage?.trim() || institutionOf(lot.account)
+            const id = `${institution}|${lot.account}`
+            identities.set(id, { institution, account: lot.account })
+            return { ...lot, account: id }
+          })
+      const openLots = foreignOnly(
+        conn
+          .prepare(
+            `select market, ${brokerageOf(lotsTable)}, account, ticker, acquired_date, open_quantity, cost_basis_krw
+               from ${lotsTable} where market in ('KR', 'US')${stockOnly(lotsTable)}`
+          )
+          .all() as { market: string; brokerage: string | null; account: string; ticker: string; acquired_date: string; open_quantity: number; cost_basis_krw: number }[]
+      )
+      const realizedLots = realizedTable
+        ? foreignOnly(
+            conn
+              .prepare(
+                `select market, ${brokerageOf(realizedTable)}, account, ticker, acquired_date, sold_date, quantity_sold, cost_basis_krw
+                   from ${realizedTable} where market in ('KR', 'US')${stockOnly(realizedTable)}`
+              )
+              .all() as {
+              market: string
+              brokerage: string | null
+              account: string
+              ticker: string
+              acquired_date: string | null
+              sold_date: string | null
+              quantity_sold: number | null
+              cost_basis_krw: number | null
+            }[]
+          )
         : []
-    )
-    const history = monthEndCash(series, rateAt).map((row) => ({ ...row, stocks: stocksByMonth.get(row.month) ?? null }))
-    return { ...summary, history }
+      const historicalPrices = hasTable('historical_prices')
+        ? (conn
+            .prepare(
+              `select market, ticker, ${columnsOf('historical_prices').has('currency') ? 'currency' : "case when market = 'KR' then 'KRW' end as currency"}, price_date, close
+                 from historical_prices order by market, ticker, price_date`
+            )
+            .all() as { market: string; ticker: string; currency: string | null; price_date: string; close: number }[])
+        : []
+      const historicalFxRates = hasTable('historical_fx_rates')
+        ? (conn.prepare('select price_date, rate from historical_fx_rates order by price_date').all() as { price_date: string; rate: number }[])
+        : []
+      const valuer = createLotValuer({ openLots, realizedLots, historicalPrices, historicalFxRates })
+      const firstLot = new Map<string, string>()
+      for (const lot of [...openLots, ...realizedLots]) {
+        const date = String(lot.acquired_date ?? '').slice(0, 10)
+        if (date && (!firstLot.has(lot.account) || date < firstLot.get(lot.account)!)) firstLot.set(lot.account, date)
+      }
+      const dates = [`${year - 1}-12-31`]
+      for (let month = 1; month <= 12; month += 1) dates.push(new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10))
+      const pointsByAccount = new Map<string, BalancePoint[]>()
+      for (const date of dates.filter((d) => d <= today)) {
+        const totals = new Map<string, number>()
+        // A position no price reaches counts at cost rather than at nothing.
+        for (const position of valuer.valuedPositionsAt(date)) totals.set(position.account, (totals.get(position.account) ?? 0) + (position.marketValue ?? position.cost))
+        for (const [account, first] of firstLot) {
+          if (first > date) continue
+          pointsByAccount.set(account, [...(pointsByAccount.get(account) ?? []), { date, valueKrw: totals.get(account) ?? 0 }])
+        }
+      }
+      for (const [id, points] of pointsByAccount) {
+        const { institution, account } = identities.get(id)!
+        add(institution, account, 'brokerage', maxBalance(points, year, 'month_end'))
+      }
+    }
+
+    // Pensions: certificate and snapshot totals.
+    if (hasTable('pension_points')) {
+      const rows = conn.prepare('select account, date, value_krw as valueKrw from pension_points order by date, id').all() as {
+        account: string
+        date: string
+        valueKrw: number
+      }[]
+      const byAccount = new Map<string, BalancePoint[]>()
+      for (const row of rows) byAccount.set(row.account, [...(byAccount.get(row.account) ?? []), { date: row.date, valueKrw: Number(row.valueKrw) }])
+      for (const [account, points] of byAccount) add(institutionOf(account), account, 'pension', maxBalance(points, year, 'year_end'))
+    }
+
+    // Gold: the value changes only on a purchase or a price date, so a point on
+    // each of those (and today, the holding still standing) is the daily series.
+    if (hasTable('transactions_all') && columnsOf('transactions_all').has('asset_class')) {
+      const buys = (
+        conn
+          .prepare(
+            `select account, substr(date, 1, 10) as date, abs(coalesce(quantity, 0)) as grams, abs(coalesce(amount_krw, settlement_krw, 0)) as costKrw
+               from transactions_all where asset_class = 'gold' and type = 'BUY' order by date, id`
+          )
+          .all() as { account: string; date: string; grams: number; costKrw: number }[]
+      ).filter((buy) => buy.grams > 0)
+      const prices = hasTable('gold_prices') ? (conn.prepare('select date, price from gold_prices order by date').all() as { date: string; price: number }[]) : []
+      const byAccount = new Map<string, typeof buys>()
+      for (const buy of buys) byAccount.set(buy.account, [...(byAccount.get(buy.account) ?? []), buy])
+      for (const [account, list] of byAccount) {
+        const valueOn = (date: string) => {
+          const held = list.filter((buy) => buy.date <= date)
+          const price = prices.filter((row) => row.date <= date).at(-1)
+          return {
+            valueKrw: price ? held.reduce((sum, buy) => sum + buy.grams, 0) * price.price : held.reduce((sum, buy) => sum + buy.costKrw, 0),
+            atCost: held.length > 0 && !price,
+          }
+        }
+        const dates = [...new Set([...list.map((buy) => buy.date), ...prices.map((row) => row.date).filter((d) => d >= list[0].date), today])].sort()
+        const found = maxBalance(
+          dates.map((date) => ({ date, valueKrw: valueOn(date).valueKrw })),
+          year
+        )
+        if (!found) continue
+        // Prices only accrue, so the year is at cost somewhere exactly when its first held day is.
+        const firstHeld = list[0].date > start ? list[0].date : start
+        const atCost = firstHeld <= end && valueOn(firstHeld).atCost
+        add(institutionOf(account), account, 'gold', atCost ? { ...found, coverage: 'partial' } : found)
+      }
+    }
+
+    return foreignAccountMaxima(year, rate, accounts)
   } finally {
     conn.close()
   }
@@ -1157,7 +1467,7 @@ export function getPensionAccounts(): PensionAccount[] {
             order by year`
         )
       : null
-    // A pension fund is `PENSION:<token>:<n>`, cash `PENSION:<token>:cash:<n>`, and an ETF its KR ticker.
+    // A pension fund is `PENSION:<token>:<slug>`, cash `PENSION:<token>:cash:<slug>` (scripts/pension-ids.mjs), and an ETF its KR ticker.
     const kindOf = (ticker: string): PensionHolding['kind'] =>
       /^PENSION:[^:]+:cash:/.test(ticker) ? 'CASH' : ticker.startsWith('PENSION:') ? 'FUND' : 'ETF'
     return accounts.map(({ account, wrapper }) => {
@@ -1488,7 +1798,7 @@ function fileCategory(filePath: string, relativePath: string) {
   if (ext === '.csv') return 'us csv export'
   if (ext === '.pdf') return 'pdf evidence'
   if (ext === '.tsv') return 'tsv payload'
-  if (ext === '.xlsx') return 'workbook'
+  if (ext === '.xlsx' || ext === '.xls') return 'workbook'
   if (ext === '.json') return 'json snapshot'
   if (ext === '.db' || ext === '.sqlite' || ext === '.sqlite3') return 'database'
   if (ext === '.png') return 'image artifact'
@@ -1499,7 +1809,8 @@ function fileCategory(filePath: string, relativePath: string) {
 
 function inventoryCandidate(filePath: string) {
   const ext = path.extname(filePath).toLowerCase()
-  return new Set(['.csv', '.pdf', '.tsv', '.xlsx', '.json', '.db', '.sqlite', '.sqlite3', '.png', '.txt', '.md']).has(ext)
+  // .xls: some banks still export statements in the old Excel format.
+  return new Set(['.csv', '.pdf', '.tsv', '.xlsx', '.xls', '.json', '.db', '.sqlite', '.sqlite3', '.png', '.txt', '.md']).has(ext)
 }
 
 function walkFiles(root: string, maxFiles = 2000) {
@@ -1566,6 +1877,26 @@ function retentionFor(relativePath: string, status: SourceInventoryItem['status'
     return {
       retention: 'active' as const,
       retentionReason: '거래·배당·tax lot을 재생성하는 사람이 받은 증권사 원본 PDF입니다.',
+    }
+  }
+  // The supplementary originals: kept like the broker statements, because the
+  // deposit balances, pension holdings and pension totals are rebuilt from them.
+  if (relativePath.startsWith('bank-statements/')) {
+    return {
+      retention: 'active' as const,
+      retentionReason: '예금·CMA 잔고를 재생성하는 사람이 받은 은행 거래내역 원본입니다.',
+    }
+  }
+  if (relativePath.startsWith('pension/evidence/')) {
+    return {
+      retention: 'active' as const,
+      retentionReason: '연금 계좌의 연말 잔고·납입 증명서 원본입니다. pension-evidence.json을 재생성합니다.',
+    }
+  }
+  if (relativePath.startsWith('pension/')) {
+    return {
+      retention: 'active' as const,
+      retentionReason: '연금 계좌 보유 현황을 사람이 캡처한 스냅샷 원본입니다.',
     }
   }
   if (
@@ -2778,13 +3109,21 @@ export function getAccountDataRanges(): AccountDataRange[] {
     ]
     const rows: RangeRow[] = []
     for (const span of spans) {
+      const table = allAssetsTable(conn, span.table)
+      const columns = new Set((conn.prepare(`pragma table_info(${table})`).all() as { name: string }[]).map((column) => column.name))
+      // A database older than the wrapper and asset-class columns holds stock rows only.
+      const assetType = [
+        columns.has('account_wrapper') ? `when ${PENSION_ROW_SQL} then 'pension'` : '',
+        columns.has('asset_class') ? `when ${GOLD_ROW_SQL} then 'gold'` : '',
+      ].join(' ')
+      const assetTypeSql = assetType.trim() ? `case ${assetType} else 'stock' end` : `'stock'`
       const found = conn
         .prepare(
-          `select market, coalesce(brokerage, 'Unknown') as brokerage, account, max(${span.type}) as account_type,
+          `select market, coalesce(brokerage, 'Unknown') as brokerage, account, max(${span.type}) as account_type, ${assetTypeSql} as asset_type,
                   min(${span.start}) as start, max(${span.end}) as end, count(*) as count
-             from ${allAssetsTable(conn, span.table)} group by market, brokerage, account`
+             from ${table} group by market, brokerage, account, asset_type`
         )
-        .all() as { market: string; brokerage: string; account: string; account_type: string | null; start: string | null; end: string | null; count: number }[]
+        .all() as { market: string; brokerage: string; account: string; account_type: string | null; asset_type: AssetType; start: string | null; end: string | null; count: number }[]
       for (const row of found) {
         rows.push({
           kind: span.kind,
@@ -2795,6 +3134,7 @@ export function getAccountDataRanges(): AccountDataRange[] {
           start: isoDate(row.start),
           end: isoDate(row.end),
           count: row.count,
+          assetType: row.asset_type,
         })
       }
     }
@@ -2812,6 +3152,139 @@ export function getAccountDataRanges(): AccountDataRange[] {
       rows.push({ kind: 'balances', market: row.market, brokerage: row.brokerage, account: row.account, accountType: row.account_type, start: isoDate(row.start), end: isoDate(row.end), count: row.count })
     }
     return groupAccountRanges(rows)
+  } finally {
+    conn.close()
+  }
+}
+
+export type SupplementaryCoverageKind = 'deposit' | 'cma' | 'pension' | 'gold' | 'gold_price'
+
+export type SupplementaryCoverageRow = {
+  kind: SupplementaryCoverageKind
+  label: string
+  latestDate: string | null
+  lagDays: number | null
+  maxLagDays: number
+  status: AccountCoverageStatus
+  /** What to file next, in the reminder's words. */
+  action: string
+}
+
+export type SupplementaryCoverage = {
+  rows: SupplementaryCoverageRow[]
+  /** Names of the failing `supplementary` validation checks. */
+  failingChecks: string[]
+}
+
+/** Days each kind may go without a newer file before the reminder names it. */
+const SUPPLEMENTARY_MAX_LAG_DAYS: Record<SupplementaryCoverageKind, number> = {
+  deposit: 90,
+  cma: 90,
+  pension: 180,
+  gold: 90,
+  gold_price: 7,
+}
+
+/**
+ * How far each supplementary asset's files reach: one row per cash account, per
+ * pension account in the map, per gold account, and one for the gold price.
+ * Dates, labels and status only, never an amount: this feeds the weekly
+ * reminder, which leaves the machine. Deposits, pensions and gold have no
+ * download schedule of their own, so like the broker statements they go stale
+ * only when nobody files the next export, and nothing said so.
+ */
+/** The latest ISO date among the given ones, ignoring nulls. */
+function latestOf(...dates: (string | null | undefined)[]): string | null {
+  return dates.filter((d): d is string => Boolean(d)).sort().at(-1) ?? null
+}
+
+export function getSupplementaryCoverage(): SupplementaryCoverage {
+  const conn = db()
+  try {
+    const hasTable = (name: string) =>
+      Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(name))
+    const hasColumn = (table: string, column: string) =>
+      (conn.prepare(`pragma table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column)
+    const rows: SupplementaryCoverageRow[] = []
+    const push = (kind: SupplementaryCoverageKind, label: string, latest: string | null, action: string) => {
+      const latestDate = isoDate(latest)
+      const lagDays = calendarAgeDays(latestDate)
+      const maxLagDays = SUPPLEMENTARY_MAX_LAG_DAYS[kind]
+      rows.push({ kind, label, latestDate, lagDays, maxLagDays, status: coverageStatus(lagDays, maxLagDays), action })
+    }
+
+    if (hasTable('cash_balances')) {
+      const cash = conn
+        .prepare(
+          `select institution, account, max(case when kind = 'cma' then 1 else 0 end) as isCma, max(as_of_date) as latest,
+                  ${hasColumn('cash_balances', 'source') ? 'group_concat(distinct source)' : 'null'} as sources
+             from cash_balances group by institution, account order by institution, account`
+        )
+        .all() as { institution: string; account: string; isCma: number; latest: string | null; sources: string | null }[]
+      for (const row of cash) {
+        const label = `${row.institution} ${row.account}`
+        // A quiet account has no balance row near its statement's end, so the
+        // statement's own period end counts too; otherwise a fresh download of a
+        // dormant account would never clear the reminder.
+        const latest = latestOf(row.latest, ...String(row.sources ?? '').split(',').map(periodEndFromSource))
+        push(row.isCma ? 'cma' : 'deposit', label, latest, `${label} 거래내역을 ${isoDate(latest)}부터 받아 inbox에 넣으세요`)
+      }
+    }
+
+    // Every pension account the map lists, filed or not: one with no snapshot yet
+    // is 'missing', which is the reminder's whole point.
+    let pensionAccounts: { token?: unknown; account?: unknown; wrapper?: unknown }[] = []
+    try {
+      pensionAccounts = loadAccountMap(config.stockAccountMapPath).pensionAccounts ?? []
+    } catch {
+      // An unreadable map is the ingest's failure to report; here it means no rows.
+      pensionAccounts = []
+    }
+    const snapshotStmt = hasTable('holdings_all')
+      ? conn.prepare(
+          `select max(as_of_date) as latest from holdings_all where account = ? and (? is null or account_wrapper = ?) and ${PENSION_ROW_SQL}`
+        )
+      : null
+    for (const entry of pensionAccounts) {
+      const token = String(entry?.token ?? '').trim()
+      const account = String(entry?.account ?? '').trim()
+      if (!token || !account) continue
+      const wrapper = String(entry?.wrapper ?? '').trim() || null
+      const latest = (snapshotStmt?.get(account, wrapper, wrapper) as { latest: string | null } | undefined)?.latest ?? null
+      push('pension', account, latest, `${account} 보유 현황을 캡처해 pension/${token}-holdings-YYYYMMDD.csv로 넣으세요`)
+    }
+
+    // Gold: how far each account's 금현물 statement reaches, and how old the price is.
+    if (hasTable('transactions_all')) {
+      const gold = conn
+        .prepare(
+          `select account, max(date) as latest, ${hasColumn('transactions_all', 'source') ? 'group_concat(distinct source)' : 'null'} as sources
+             from transactions_all where ${GOLD_ROW_SQL} group by account order by account`
+        )
+        .all() as { account: string; latest: string | null; sources: string | null }[]
+      for (const row of gold) {
+        // The certificate's period end, not the last purchase: months without a
+        // trade must not keep the reminder open after a fresh certificate is filed.
+        const latest = latestOf(row.latest, ...String(row.sources ?? '').split(',').map(periodEndFromSource))
+        push('gold', row.account, latest, `${row.account} 금현물 거래내역증명서를 ${isoDate(latest)}부터 새로 받아 inbox에 넣으세요`)
+      }
+    }
+    const holdsGold = hasTable('holdings_all') && Boolean(conn.prepare(`select 1 from holdings_all where ${GOLD_ROW_SQL} limit 1`).get())
+    if (holdsGold) {
+      const latest = hasTable('gold_prices')
+        ? ((conn.prepare('select max(date) as latest from gold_prices').get() as { latest: string | null }).latest ?? null)
+        : null
+      push('gold_price', 'KRX 금 시세', latest, 'KRX 금 시세를 갱신하세요 (pnpm fetch:gold-price)')
+    }
+
+    const failingChecks = hasTable('validation_checks')
+      ? (
+          conn
+            .prepare(`select name from validation_checks where status != 'pass' and ${checkScopeSql(conn)} = 'supplementary' order by name`)
+            .all() as { name: string }[]
+        ).map((row) => row.name)
+      : []
+    return { rows, failingChecks }
   } finally {
     conn.close()
   }
@@ -3343,29 +3816,27 @@ export function getPositionDetail(market: string, ticker: string): PositionDetai
 }
 
 /**
- * Open lots for the tax planner: every stock lot (the default view), plus the
- * lots of any other wrapper whose US treatment is `taxable` in the policy. With
- * the pension wrappers `undecided` this is exactly the stock view.
+ * Open lots for the tax planner: the lots of every wrapper whose US treatment is
+ * `taxable` in the policy. The brokerage wrapper always is; `isa` is by default,
+ * so with the defaults this is exactly the stock view. An `isa` set to anything
+ * else drops the ISA lots, and a pension wrapper set to `taxable` adds its lots.
  */
 export function getTaxPlanningLots(limit = 500, policy: TaxPolicy = getTaxPolicyState().policy): TaxPlanningLot[] {
   const conn = db()
   try {
-    const extraWrappers = usTaxableWrappers(policy).filter((wrapper) => wrapper !== 'taxable' && wrapper !== 'isa')
+    const wrappers = ['taxable', ...usTaxableWrappers(policy)]
     const lotsTable = allAssetsTable(conn, 'tax_lots')
     const holdingsTable = allAssetsTable(conn, 'holdings')
-    // A database older than the *_all tables has only the stock rows, and no
-    // other wrapper to add.
-    const extra = extraWrappers.length && lotsTable === 'tax_lots_all'
+    // A database older than the *_all tables has only the stock rows, and is
+    // read as it always was.
+    const scoped = lotsTable === 'tax_lots_all'
     const rowFilter = (alias: string) =>
-      extra
-        ? `((${alias}.account_wrapper in ('taxable', 'isa') or ${alias}.account_wrapper in (${extraWrappers.map(() => '?').join(', ')}))` +
-          ` and ${alias}.asset_class = 'security')`
-        : lotsTable === 'tax_lots_all'
-          ? `(${alias}.account_wrapper in ('taxable', 'isa') and ${alias}.asset_class = 'security')`
-          : alias === 'h'
-            ? `${alias}.${STOCK_WRAPPER_SQL}`
-            : '1 = 1'
-    const params = extra ? [...extraWrappers, ...extraWrappers, limit] : [limit]
+      scoped
+        ? `(${alias}.account_wrapper in (${wrappers.map(() => '?').join(', ')}) and ${alias}.asset_class = 'security')`
+        : alias === 'h'
+          ? `${alias}.${STOCK_WRAPPER_SQL}`
+          : '1 = 1'
+    const params = scoped ? [...wrappers, ...wrappers, limit] : [limit]
     return conn
       .prepare(
         `with holding_prices as (
@@ -3435,6 +3906,24 @@ export type WrapperReviewRow = {
 }
 
 /**
+ * Whether the database holds any supplementary data: a cash balance, or a row
+ * in holdings_all outside the stock view (a pension wrapper, or gold). Cheap
+ * enough for the layout, which hides the All assets section without it.
+ */
+export function hasSupplementaryAssets(): boolean {
+  if (!dbAvailable()) return false
+  const conn = db()
+  try {
+    const hasTable = (name: string) => Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(name))
+    if (hasTable('cash_balances') && conn.prepare('select 1 from cash_balances limit 1').get()) return true
+    if (hasTable('holdings_all') && conn.prepare(`select 1 from holdings_all where not (${STOCK_ROW_SQL}) limit 1`).get()) return true
+    return false
+  } finally {
+    conn.close()
+  }
+}
+
+/**
  * One row per account under a wrapper other than `taxable` or `isa`, from the
  * `*_all` tables: what a US preparer needs to settle its treatment. Realized
  * gains and dividends are to date, in KRW. Empty on a database older than the
@@ -3463,8 +3952,8 @@ export function getWrapperReview(policy: TaxPolicy = getTaxPolicyState().policy)
     const dividends = conn.prepare(
       'select coalesce(sum(amount_krw), 0) as total from dividends_all where account = ? and account_wrapper = ?'
     )
-    // A pension fund is stored under `PENSION:<token>:<n>` and an ETF under its KR
-    // ticker; cash is `PENSION:<token>:cash:<n>` and is not a PFIC.
+    // A pension fund is stored under `PENSION:<token>:<slug>` and an ETF under its KR
+    // ticker; cash is `PENSION:<token>:cash:<slug>` and is not a PFIC.
     const pfics = conn.prepare(
       `select count(distinct ticker) as total from holdings_all
         where account = ? and account_wrapper = ?
@@ -3893,7 +4382,11 @@ export function getEvidenceReports(): EvidenceReport[] {
 export function getValidationChecks(): HealthCheck[] {
   const conn = db()
   try {
-    return conn.prepare('select * from validation_checks order by status desc, severity, name').all() as HealthCheck[]
+    return conn
+      .prepare(
+        `select id, name, status, detail, severity, ${checkScopeSql(conn)} as scope from validation_checks order by status desc, severity, name`
+      )
+      .all() as HealthCheck[]
   } finally {
     conn.close()
   }
