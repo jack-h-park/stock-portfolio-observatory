@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
+import { loadAccountMap, tagRows } from './account-map.mjs'
 import { loadLocalEnv } from './env.mjs'
 import { portfolioDate, valuePortfolio } from './portfolio-snapshot.mjs'
 import { resolveCryptoFiles, resolveUsHoldingFiles, resolveUsTransactionFiles } from './source-files.mjs'
@@ -31,6 +32,8 @@ const refreshRunsPath = process.env.STOCK_REFRESH_RUNS_PATH || path.join(process
 // so a hand-entered assumption can be checked against the transactions the
 // ingest actually sees — see `us_ytd_realized_assumption_reviewed` below.
 const taxPolicyPath = process.env.STOCK_TAX_POLICY_PATH || path.join(process.cwd(), 'data/tax-policy.json')
+const accountMapPath = process.env.STOCK_ACCOUNT_MAP_PATH || path.join(process.cwd(), 'data/accounts.local.json')
+const accountMap = loadAccountMap(accountMapPath)
 const fxLedgerPath =
   process.env.STOCK_FX_LEDGER_PATH || path.join(outDir, 'fx-ledger.json')
 
@@ -559,8 +562,17 @@ function toBase(value, currency) {
   return value * fx.rate
 }
 
+// Every securities row gets its wrapper and owner here, in one place, so no
+// call site can forget to tag a row and leak a pension position into the
+// default (Stocks) view.
+const WRAPPED_TABLES = new Set(['holdings', 'tax_lots', 'realized_lots', 'transactions', 'dividends'])
+
 function insertMany(db, table, rows, columns) {
   if (rows.length === 0) return
+  if (WRAPPED_TABLES.has(table)) {
+    rows = tagRows(rows, accountMap)
+    columns = [...columns.filter((c) => c !== 'account_wrapper' && c !== 'owner'), 'account_wrapper', 'owner']
+  }
   const placeholders = columns.map(() => '?').join(', ')
   const stmt = db.prepare(`insert into ${table} (${columns.join(', ')}) values (${placeholders})`)
   const tx = db.transaction((items) => {
@@ -739,7 +751,10 @@ create table holdings (
   unrealized_gl_pct real,
   long_term_qty real,
   short_term_qty real,
-  lot_count integer
+  lot_count integer,
+  asset_class text not null default 'security',
+  account_wrapper text not null default 'taxable',
+  owner text not null default 'self'
 );
 
 create table tax_lots (
@@ -765,7 +780,9 @@ create table tax_lots (
   unit_cost real,
   holding_days integer,
   tax_term text,
-  source text
+  source text,
+  account_wrapper text not null default 'taxable',
+  owner text not null default 'self'
 );
 
 create table realized_lots (
@@ -814,7 +831,9 @@ create table realized_lots (
   -- always have, so Korea attributes there and leaves the native column null.
   dividends_native real,
   dividends_krw real,
-  source text
+  source text,
+  account_wrapper text not null default 'taxable',
+  owner text not null default 'self'
 );
 
 create table transactions (
@@ -846,7 +865,9 @@ create table transactions (
   -- they are not the same decision. Null wherever the source does not say.
   placed_agent text,
   source text,
-  page integer
+  page integer,
+  account_wrapper text not null default 'taxable',
+  owner text not null default 'self'
 );
 
 create table dividends (
@@ -869,7 +890,9 @@ create table dividends (
   mapping_status text,
   mapping_note text,
   source text,
-  page integer
+  page integer,
+  account_wrapper text not null default 'taxable',
+  owner text not null default 'self'
 );
 
 create table validation_checks (
@@ -1149,6 +1172,14 @@ if (fs.existsSync(robinhoodSnapshotPath)) {
   db.prepare(
     'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
   ).run('robinhood_snapshot', fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, snapshot.accounts?.length ?? 0)
+}
+// Fingerprint only: the map holds account numbers and balances, which never go
+// into the database or the repo.
+if (fs.existsSync(accountMapPath)) {
+  const fp = fingerprint(accountMapPath)
+  db.prepare(
+    'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run('account_map', fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, Object.keys(accountMap.accounts).length)
 }
 if (fs.existsSync(cryptoActivityPath)) {
   const fp = fingerprint(cryptoActivityPath)
@@ -4301,6 +4332,19 @@ const checks = []
 function check(name, ok, detail, severity = 'error') {
   checks.push({ name, status: ok ? 'pass' : 'fail', detail, severity })
 }
+
+const unwrapped = ['holdings', 'tax_lots', 'realized_lots', 'transactions', 'dividends'].map((table) => [
+  table,
+  db.prepare(`select count(*) as n from ${table} where account_wrapper is null or account_wrapper = ''`).get().n,
+])
+check(
+  'wrapper_assigned',
+  unwrapped.every(([, n]) => n === 0),
+  unwrapped.every(([, n]) => n === 0)
+    ? 'every securities row has an account wrapper'
+    : unwrapped.filter(([, n]) => n > 0).map(([t, n]) => `${t}: ${n} row(s) without a wrapper`).join('; '),
+  'warning'
+)
 
 const fxEvents = fxLedger.events ?? []
 const fxEstimated = fxEvents.filter((row) => row.event_type === 'EXCHANGE' && row.rate_status === 'estimated')

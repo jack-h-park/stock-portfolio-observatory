@@ -56,6 +56,7 @@ const INGEST_PATHS: Record<string, string> = {
   STOCK_MANUAL_MAPPINGS_PATH: 'manual-mappings.json',
   STOCK_REFRESH_RUNS_PATH: 'refresh-runs.json',
   STOCK_TAX_POLICY_PATH: 'tax-policy.json',
+  STOCK_ACCOUNT_MAP_PATH: 'accounts.local.json',
 }
 
 /**
