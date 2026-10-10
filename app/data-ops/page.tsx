@@ -77,7 +77,7 @@ export default async function DataOpsPage() {
         destination: '넣을 위치',
         detail: '설명',
         days: (value: number | null) => value == null ? '기준일 없음' : `${fmtNumber(value)}일 전`,
-        methodLabel: { inbox: 'inbox', api: '자동 API', mcp: 'MCP', mixed: 'API + 파일' },
+        methodLabel: { inbox: 'inbox', manual: '직접 저장', api: '자동 API', mcp: 'MCP', mixed: 'API + 파일' },
         none: '모든 계좌가 허용 범위 안에 있습니다.',
       }
     : {
@@ -95,7 +95,7 @@ export default async function DataOpsPage() {
         destination: 'Destination',
         detail: 'Detail',
         days: (value: number | null) => value == null ? 'No cutoff' : `${fmtNumber(value)}d ago`,
-        methodLabel: { inbox: 'inbox', api: 'API', mcp: 'MCP', mixed: 'API + file' },
+        methodLabel: { inbox: 'inbox', manual: 'by hand', api: 'API', mcp: 'MCP', mixed: 'API + file' },
         none: 'All accounts are within their configured coverage window.',
       }
 

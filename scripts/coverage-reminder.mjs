@@ -73,11 +73,34 @@ function line(group) {
   // The Robinhood snapshot is regenerated through the MCP, not downloaded, so
   // "download from <date>" would send someone looking for an export that does not
   // exist.
+  const from = group.downloadFrom ? `${group.downloadFrom}부터 ` : ''
+  // A 'manual' file cannot be filed by the inbox (a Robinhood transactions CSV
+  // names no account), so the destination is the name to save it under.
   const next =
     group.method === 'mcp'
       ? `→ ${group.requiredArtifact} 다시 생성`
-      : `→ ${group.downloadFrom ? `${group.downloadFrom}부터 ` : ''}${group.requiredArtifact} 다운로드 → ${group.destination}`
+      : group.method === 'manual'
+        ? `→ ${from}${group.requiredArtifact} 다운로드 → 직접 저장: ${group.destination}`
+        : `→ ${from}${group.requiredArtifact} 다운로드 → ${group.destination}`
   return `• ${accountLabel(group)} — ${reach}\n  ${next}`
+}
+
+/**
+ * How the files reach the next refresh, said only for the kinds this message
+ * asks for. "Put it in the inbox" was printed under every message, including
+ * ones whose only items were Robinhood CSVs the inbox reports and leaves where
+ * they are, and a snapshot that is not a file anyone downloads.
+ */
+function footer(groups) {
+  const lines = []
+  if (groups.some((group) => group.method !== 'mcp' && group.method !== 'manual')) {
+    lines.push('받은 파일은 inbox에 넣으면 다음 refresh에 반영됩니다.')
+  }
+  const manual = [...new Set(groups.filter((group) => group.method === 'manual').map((group) => group.requiredArtifact))]
+  if (manual.length) {
+    lines.push(`${manual.join(', ')}는 파일에 계좌가 적혀 있지 않아 inbox가 분류하지 않습니다. 위에 적힌 경로와 이름으로 직접 저장하면 다음 refresh에 반영됩니다.`)
+  }
+  return lines
 }
 
 /**
@@ -103,7 +126,7 @@ export function coverageMessage(doc) {
   const parts = [`📥 계좌 자료 업데이트 — 받아야 할 자료 ${urgent.length}건, 곧 받을 자료 ${soon.length}건 (데이터 기준 ${asOf})`]
   if (urgent.length) parts.push('', '지금 필요:', ...urgent.map(line))
   if (soon.length) parts.push('', '기한 임박:', ...soon.map(line))
-  parts.push('', '받은 파일은 inbox에 넣으면 다음 refresh에 반영됩니다. 전체 표: /data-ops')
+  parts.push('', ...footer(groups), '전체 표: /data-ops')
   return parts.join('\n')
 }
 

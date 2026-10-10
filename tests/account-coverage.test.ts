@@ -70,7 +70,7 @@ test('one Robinhood row per account, as stale as its transaction CSVs even when 
   assert.equal(midterm.status, 'action_needed')
   assert.equal(midterm.coveredThrough, daysAgo(59))
   assert.equal(midterm.downloadFrom, daysAgo(60))
-  assert.equal(midterm.method, 'inbox')
+  assert.equal(midterm.method, 'manual')
   assert.match(midterm.requiredArtifact, /MCP snapshot/)
   assert.match(midterm.requiredArtifact, /transactions CSV/)
   const [snapshot, csv] = midterm.sources

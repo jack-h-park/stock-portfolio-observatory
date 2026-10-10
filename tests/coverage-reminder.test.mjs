@@ -70,7 +70,7 @@ const rhSource = (over) => ({
 const rhCsv = (token, coveredThrough, downloadFrom, lagDays, over = {}) =>
   rhSource({
     label: 'CSV',
-    method: 'inbox',
+    method: 'manual',
     status: 'action_needed',
     coveredThrough,
     downloadFrom,
@@ -108,8 +108,11 @@ test('a fresh Robinhood snapshot does not hide transaction CSVs that stopped wee
   )
   assert.ok(message, 'stale CSVs must produce a reminder even though the snapshot is current')
   assert.match(message, /Robinhood Mid-term · 2222 — 2026-08-11까지 반영 \(59일 경과, 기준 14일\)/)
-  assert.match(message, /2026-08-10부터 Robinhood transactions CSV 다운로드 → us-transactions\/robinhood-transactions-midterm-YYYYMMDD-YYYYMMDD\.csv/)
-  assert.match(message, /2026-08-12부터 Robinhood transactions CSV 다운로드 → us-transactions\/robinhood-transactions-agentic-/)
+  assert.match(message, /2026-08-10부터 Robinhood transactions CSV 다운로드 → 직접 저장: us-transactions\/robinhood-transactions-midterm-YYYYMMDD-YYYYMMDD\.csv/)
+  assert.match(message, /2026-08-12부터 Robinhood transactions CSV 다운로드 → 직접 저장: us-transactions\/robinhood-transactions-agentic-/)
+  // Nothing here goes through the inbox, so the message does not say it does.
+  assert.doesNotMatch(message, /inbox에 넣으면/)
+  assert.match(message, /Robinhood transactions CSV는 파일에 계좌가 적혀 있지 않아 inbox가 분류하지 않습니다/)
   // The current snapshot is not something to do.
   assert.doesNotMatch(message, /snapshot/)
   // Oldest first.
@@ -131,6 +134,15 @@ test('a stale snapshot shared by every account is one line, beside each account�
   assert.match(message, /robinhood-transactions-agentic-/)
   assert.match(message, /robinhood-transactions-longterm-/)
   assert.match(message, /받아야 할 자료 4건/)
+})
+
+test('a message mixing inbox files and hand-saved CSVs explains both, once each', () => {
+  const message = coverageMessage(
+    doc([row({}), rhAccount('Robinhood Mid-term · 2222', [rhSource({}), rhCsv('midterm', '2026-08-11', '2026-08-10', 59)])])
+  )
+  assert.equal(message.match(/inbox에 넣으면/g).length, 1)
+  assert.equal(message.match(/직접 저장하면/g).length, 1)
+  assert.match(message, /전체 표: \/data-ops$/)
 })
 
 test('a summary written before sources existed still reads as before', () => {
