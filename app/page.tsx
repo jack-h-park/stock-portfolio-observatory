@@ -125,7 +125,7 @@ export default async function OverviewPage({
   const netWorth = assetView === 'all' ? netWorthSummary : null
   const portfolioSnapshots = getPortfolioSnapshots(trendRangeDays(selectedRange.days))
   // All-assets view only: every class stacked on the same snapshot dates, plus today.
-  const totalAssets = assetView === 'all' ? getTotalAssetsSeries(portfolioSnapshots.map((snapshot) => snapshot.snapshot_date)) : null
+  const totalAssets = assetView === 'all' ? getTotalAssetsSeries(portfolioSnapshots.map((snapshot) => snapshot.snapshot_date), netWorthSummary) : null
   const top = getTopHoldings(10)
   const accounts = getAccountAllocation()
   const dividendYears = getDividendByYear()

@@ -178,6 +178,32 @@ test('as-of notes carry their asset class, and cash is dated by its oldest lates
   )
 })
 
+test('a snapshot dated today yields one point for today, and it is the Total assets figure', async () => {
+  const dbPath = ingest()
+  config.stockDbPath = dbPath
+  const { getNetWorth, getTotalAssetsSeries, portfolioToday } = await import('../lib/adapters/portfolio-db')
+  const today = portfolioToday()
+  const db = new Database(dbPath)
+  db.prepare('delete from portfolio_snapshots').run()
+  const insert = db.prepare(
+    `insert into portfolio_snapshots (snapshot_date, captured_at, global_base_cost, global_base_market_value, kr_market_value, us_market_value_base, crypto_market_value_base,
+       kr_cost_basis, us_cost_basis_base, crypto_cost_basis_base, krw_cost, usd_cost, dividends_krw, dividends_usd, holding_count, share_count)
+     values (?, ?, 0, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1)`
+  )
+  insert.run('2026-01-31', '2026-01-31T00:00:00Z', 500_000, 500_000)
+  // A snapshot value that differs from the card, so a leaked snapshot point would show.
+  insert.run(today, `${today}T00:00:00Z`, 123, 123)
+  db.close()
+
+  const netWorth = getNetWorth()
+  const series = getTotalAssetsSeries(['2026-01-31', today])
+  assert.equal(series.points.filter((point) => point.date === today).length, 1)
+  assert.equal(series.points.at(-1)!.date, today)
+  assert.equal(series.points.at(-1)!.total, netWorth.totalKrw)
+  // A precomputed net worth gives the same series.
+  assert.deepEqual(getTotalAssetsSeries(['2026-01-31', today], netWorth), series)
+})
+
 // --- overview stock trend ---------------------------------------------------
 
 test('the overview stock trend is stock-only again: no deposits scope, and global is the snapshot value', () => {

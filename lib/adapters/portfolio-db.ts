@@ -1032,7 +1032,7 @@ export function getDepositsSeries(dates: string[]): ReturnType<typeof depositsSe
 }
 
 /** Today in the ingest's time zone, the same calendar the snapshot dates use (scripts/portfolio-snapshot.mjs). */
-function portfolioToday() {
+export function portfolioToday() {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: process.env.STOCK_TIME_ZONE || 'America/Los_Angeles',
     year: 'numeric',
@@ -1064,8 +1064,9 @@ export function getSnapshotDates(days = 3650): string[] {
  * and gold_prices. Then today is appended from getNetWorth(), replacing any
  * date on or after it, so the last point is the Total assets card exactly.
  */
-export function getTotalAssetsSeries(dates: string[]): TotalAssetsSeries {
-  const netWorth = getNetWorth()
+export function getTotalAssetsSeries(dates: string[], precomputed?: NetWorth): TotalAssetsSeries {
+  // A page that already has the net worth passes it, so getOverview() runs once.
+  const netWorth = precomputed ?? getNetWorth()
   const today = portfolioToday()
   const conn = db()
   try {

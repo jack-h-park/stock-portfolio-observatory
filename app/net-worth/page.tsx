@@ -32,7 +32,7 @@ export default async function NetWorthPage() {
   const classes = ASSET_CLASSES
   // Every snapshot date, plus today. The month-end table keeps the last point of
   // each month: the month's last snapshot, and today for the current month.
-  const totalAssets = getTotalAssetsSeries(getSnapshotDates(100 * 365))
+  const totalAssets = getTotalAssetsSeries(getSnapshotDates(100 * 365), netWorth)
   const monthEnds = new Map<string, HistoryRow>()
   for (const point of totalAssets.points) monthEnds.set(point.date.slice(0, 7), { ...point, month: point.date.slice(0, 7) })
   const history = [...monthEnds.values()]
