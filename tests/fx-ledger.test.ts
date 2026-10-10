@@ -75,3 +75,37 @@ print(json.dumps({'events':events,'findings':findings}))
   assert.deepEqual(result.events.map((event: any) => event.event_type), ['EXCHANGE', 'EXCHANGE_CANCEL'])
   assert.deepEqual(result.events.map((event: any) => event.usd_amount), [10, 10])
 })
+
+// The cron's PATH has no `soffice`, and the macOS installer does not add one, so
+// the lookup has to find the app bundle itself or the Hana XLS rows go missing.
+function findSoffice(env: Record<string, string> = {}) {
+  const temp = mkdtempSync(path.join(tmpdir(), 'fx-soffice-'))
+  const bundled = path.join(temp, 'LibreOffice.app/Contents/MacOS/soffice')
+  mkdirSync(path.dirname(bundled), { recursive: true })
+  writeFileSync(bundled, '#!/bin/sh\n', { mode: 0o755 })
+  const emptyPath = path.join(temp, 'empty-path')
+  mkdirSync(emptyPath)
+  const result = runPython(`
+import importlib.util, json, os
+from pathlib import Path
+spec=importlib.util.spec_from_file_location('fx', 'scripts/extract-fx-ledger.py')
+m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+os.environ['PATH']=${JSON.stringify(emptyPath)}
+os.environ['HOME']=${JSON.stringify(temp)}
+m.MACOS_SOFFICE_PATHS=[Path(${JSON.stringify(path.join(temp, 'missing/soffice'))}), Path(${JSON.stringify(bundled)})]
+print(json.dumps(m.soffice_binary()))
+`, env)
+  return { result, bundled }
+}
+
+test('soffice is found in the macOS app bundle when nothing puts it on PATH', () => {
+  const { result, bundled } = findSoffice({ STOCK_SOFFICE_BIN: '' })
+  assert.equal(result, bundled)
+})
+
+test('a configured STOCK_SOFFICE_BIN still wins over the app bundle', () => {
+  const configured = path.join(mkdtempSync(path.join(tmpdir(), 'fx-soffice-bin-')), 'soffice')
+  writeFileSync(configured, '#!/bin/sh\n', { mode: 0o755 })
+  const { result } = findSoffice({ STOCK_SOFFICE_BIN: configured })
+  assert.equal(result, configured)
+})
