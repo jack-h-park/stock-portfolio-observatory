@@ -5,7 +5,7 @@ import Database from 'better-sqlite3'
 import { STOCK_WRAPPERS, loadAccountMap, tagRows } from './account-map.mjs'
 import { loadLocalEnv } from './env.mjs'
 import { portfolioDate, valuePortfolio } from './portfolio-snapshot.mjs'
-import { resolveCryptoFiles, resolveUsHoldingFiles, resolveUsTransactionFiles } from './source-files.mjs'
+import { resolveCryptoFiles, resolveUsHoldingFiles, resolveUsTransactionFiles, robinhoodStrategyLabel } from './source-files.mjs'
 
 loadLocalEnv()
 
@@ -2311,6 +2311,10 @@ for (const source of usHoldingFiles) {
 const robinhoodSnapshot = fs.existsSync(robinhoodSnapshotPath)
   ? JSON.parse(fs.readFileSync(robinhoodSnapshotPath, 'utf8'))
   : null
+// The `source_system` of a transaction the orders bridge wrote. Named once
+// because two places must agree on it: the bridge that writes it and the seam
+// pass that must never treat it as an export. See docs/robinhood-orders-bridge.md.
+const ROBINHOOD_ORDERS_SOURCE_SYSTEM = 'robinhood_mcp_orders'
 
 // The MCP's own field names are not frozen by anything this repo controls, and a
 // renamed key would otherwise drop lots silently — a position quietly worth less
@@ -2889,6 +2893,12 @@ const usOverlapOnlyInEarlier = []
   const spans = new Map()
   for (const r of transactionRows) {
     if (r.market !== 'US' || !r.date || !r.source) continue
+    // Bridged order fills are not an export. Their window always ends after
+    // every CSV, so let in here they would WIN the shared days and the CSV rows
+    // would be dropped — the bridge overruling its own authority. The cutoff
+    // in the bridge is where the two meet, not this pass. (The bridge runs
+    // after this pass today; the guard keeps that order from mattering.)
+    if (r.source_system === ROBINHOOD_ORDERS_SOURCE_SYSTEM) continue
     const account = text(r.account) || text(r.brokerage)
     const key = `${account}\t${r.source}`
     let span = spans.get(key)
@@ -3010,6 +3020,253 @@ const usOverlapOnlyInEarlier = []
       dividendRows.length = 0
       for (const d of keptDividends) dividendRows.push(d)
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Robinhood orders, but ONLY after the newest CSV
+// ---------------------------------------------------------------------------
+//
+// The Toss bridge above, for Robinhood; docs/robinhood-orders-bridge.md is the
+// design. Positions come from the MCP snapshot, current to the hour it was
+// taken; trades come from CSVs downloaded by hand. Every trade between the two
+// is in the positions and nowhere in the transactions, so a sale in that window
+// left the replay holding shares the broker says are gone — the error
+// `robinhood_replay_missing_disposal` exists for — and its gain missing from
+// `realized_lots`.
+//
+// The CSV stays the authority for every day it covers. The cutoff is the
+// newest CSV row of each account, and orders supply only what comes after it,
+// so a newer download moves the cutoff, the bridged rows drop out, and the
+// CSV's own rows replace them. Nothing is counted twice and nothing here
+// outlives the download that covers it.
+//
+// Robinhood needs less than Toss: its open lots come from the snapshot and its
+// realized lots from the US replay below, so appending the fills to
+// `transactionRows` ahead of the replay is the whole integration.
+//
+// WHAT THIS CANNOT SEE: anything in the window that is not an order — a cash
+// dividend, a transfer, a split. Those change a position with no order behind
+// it, the replay disagrees with the snapshot, and the replay checks still name
+// it. The bridge narrows them to what orders genuinely cannot explain.
+const robinhoodBridgeAccounts = []
+const robinhoodBridgeNotes = []
+let robinhoodBridgedFills = 0
+let robinhoodSnapshotHasOrders = false
+// Sales the bridge booked, by account, so a check can say which disposals rest
+// on orders rather than on a CSV.
+const robinhoodBridgedSales = []
+
+// The CSV's `Activity Date` is the US trading date, and execution timestamps
+// are UTC. An extended-hours fill at 20:30 ET is 00:30 UTC the next day; taking
+// the UTC date puts it a day late — past the cutoff comparison, and on
+// December 31 into the wrong tax year.
+const easternDateFormat = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+})
+function easternDate(timestamp) {
+  const ms = Date.parse(text(timestamp))
+  if (Number.isNaN(ms)) return ''
+  const parts = Object.fromEntries(easternDateFormat.formatToParts(ms).map((p) => [p.type, p.value]))
+  return `${parts.year}-${parts.month}-${parts.day}`
+}
+
+if (robinhoodSnapshot?.accounts?.length) {
+  // The order list carries `instrument_id` on every order and `symbol` on most.
+  // A symbol is resolved from any order or position that carries both, so an
+  // order without one still lands on the right ticker instead of being dropped.
+  const instrumentId = (o) => {
+    const raw = text(firstOf(o, ['instrument_id', 'instrument']))
+    return raw.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0]?.toLowerCase() ?? raw
+  }
+  const orderList = (account) => {
+    const orders = account.orders
+    if (orders == null) return null
+    return Array.isArray(orders) ? orders : Array.isArray(orders.items) ? orders.items : []
+  }
+  const symbolByInstrument = new Map()
+  const nameBySymbol = new Map()
+  for (const account of robinhoodSnapshot.accounts) {
+    for (const o of [...(account.positions ?? []), ...(orderList(account) ?? [])]) {
+      const symbol = text(firstOf(o, ['symbol', 'instrument_symbol', 'ticker']))
+      const id = instrumentId(o)
+      if (symbol && id && !symbolByInstrument.has(id)) symbolByInstrument.set(id, symbol)
+      const name = text(firstOf(o, ['name', 'simple_name', 'instrument_name']))
+      if (symbol && name && !nameBySymbol.has(normalizeTicker(symbol))) nameBySymbol.set(normalizeTicker(symbol), name)
+    }
+  }
+
+  // The seam pass's signature, so a cutoff-day fill and its CSV row are the
+  // same trade by the same rule that decides it between two CSVs.
+  const signature = (r) =>
+    [r.date, text(r.ticker), text(r.type), usRound(number(r.quantity) ?? 0, 6), usRound(number(r.native_amount) ?? 0, 4)].join('\0')
+  // The same without the amount: a fill that matches a CSV row on everything
+  // but money is almost certainly that row with the fee netted differently.
+  const looseSignature = (r) =>
+    [r.date, text(r.ticker), text(r.type), usRound(number(r.quantity) ?? 0, 6)].join('\0')
+
+  for (const account of robinhoodSnapshot.accounts) {
+    const strategy = robinhoodStrategyLabel(text(account.nickname))
+    const hint = text(firstOf(account, ['accountNumber', 'account_number'])).slice(-4)
+    // The CSV names its account by strategy ("Robinhood Mid-term"), so that is
+    // the label a bridged row must carry for the replay to put it in the same
+    // account as the rows it continues.
+    const csvAccount = `Robinhood ${strategy || hint}`.trim()
+    const orders = orderList(account)
+    const meta = Array.isArray(account.orders) ? {} : account.orders ?? {}
+    const report = {
+      account: csvAccount,
+      fetched: orders != null,
+      complete: meta.complete === true,
+      createdAtGte: text(meta.createdAtGte).slice(0, 10),
+      cutoff: null,
+      bridged: 0,
+      alreadyInCsv: 0,
+      problems: [],
+    }
+    robinhoodBridgeAccounts.push(report)
+    if (orders == null) continue
+    robinhoodSnapshotHasOrders = true
+
+    // As-of and range files alike: the account's newest CSV row is where the
+    // CSVs stop being able to answer.
+    for (const r of transactionRows) {
+      if (r.brokerage !== 'Robinhood' || r.account !== csvAccount) continue
+      if (r.source_system === ROBINHOOD_ORDERS_SOURCE_SYSTEM) continue
+      if (r.date && (report.cutoff == null || r.date > report.cutoff)) report.cutoff = r.date
+    }
+    // Without a CSV, orders would become the authority for the account's whole
+    // history, which the August measurement ruled out (docs/data-sources.md).
+    if (report.cutoff == null) continue
+    if (!report.complete) {
+      report.problems.push('the order pull is not marked complete, so fills may be missing')
+    }
+    if (report.createdAtGte && report.createdAtGte > report.cutoff) {
+      report.problems.push(
+        `orders were fetched from ${report.createdAtGte}, after the CSV cutoff ${report.cutoff}, so fills between them are unseen`
+      )
+    }
+
+    // The cutoff day can be partial — a download ends at an instant — so fills
+    // on it are bridged only where the CSV does not already hold them, matched
+    // as a multiset so two genuine identical fills survive as two.
+    const heldOnCutoff = new Map()
+    const looseOnCutoff = new Map()
+    for (const r of transactionRows) {
+      if (r.brokerage !== 'Robinhood' || r.account !== csvAccount || r.date !== report.cutoff) continue
+      if (r.source_system === ROBINHOOD_ORDERS_SOURCE_SYSTEM) continue
+      heldOnCutoff.set(signature(r), (heldOnCutoff.get(signature(r)) ?? 0) + 1)
+      looseOnCutoff.set(looseSignature(r), (looseOnCutoff.get(looseSignature(r)) ?? 0) + 1)
+    }
+
+    // A newest-first list paged while orders are being placed can repeat an
+    // order across two pages; the order id says it is the same one.
+    const seenOrders = new Set()
+    const fills = []
+    for (const order of orders) {
+      const id = text(order.id)
+      if (id) {
+        if (seenOrders.has(id)) continue
+        seenOrders.add(id)
+      }
+      const side = text(order.side).toLowerCase()
+      if (side !== 'buy' && side !== 'sell') continue
+      const rawSymbol = text(firstOf(order, ['symbol', 'instrument_symbol'])) || symbolByInstrument.get(instrumentId(order)) || ''
+      // No `state` filter: a partly filled order that was then cancelled still
+      // moved shares, and the executions are what say so.
+      for (const exec of order.executions ?? []) {
+        const timestamp = text(firstOf(exec, ['timestamp', 'executed_at', 'created_at']))
+        const date = easternDate(timestamp)
+        const quantity = number(firstOf(exec, ['quantity', 'filled_quantity']))
+        const price = number(firstOf(exec, ['price', 'effective_price']))
+        if (!date || !(quantity > 0) || price == null) {
+          report.problems.push(`order ${id || '?'} has an execution that cannot be read (${timestamp || 'no timestamp'})`)
+          continue
+        }
+        if (date < report.cutoff) continue
+        if (!rawSymbol) {
+          report.problems.push(`${date} order ${id || '?'}: no symbol for instrument ${instrumentId(order) || '?'}`)
+          continue
+        }
+        fills.push({ order, side, rawSymbol, timestamp, date, quantity, price, fees: number(exec.fees) ?? 0 })
+      }
+    }
+    fills.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+
+    for (const { order, side, rawSymbol, date, quantity, price, fees } of fills) {
+      const ticker = normalizeTicker(rawSymbol)
+      const type = side === 'buy' ? 'BUY' : 'SELL'
+      // One row per execution, as the CSV writes it, so a later CSV replaces
+      // these one for one. Cents, because the CSV's Amount is in cents.
+      const gross = quantity * price
+      const nativeAmount = usRound(type === 'BUY' ? -(gross + fees) : gross - fees, 2)
+      const row = {
+        market: 'US',
+        currency: 'USD',
+        base_currency: 'KRW',
+        brokerage: 'Robinhood',
+        account_type: strategy,
+        source_system: ROBINHOOD_ORDERS_SOURCE_SYSTEM,
+        date,
+        account: csvAccount,
+        type,
+        raw_type: type === 'BUY' ? 'Buy' : 'Sell',
+        ticker,
+        name: nameBySymbol.get(ticker) || robinhoodNameByTicker.get(ticker) || '',
+        quantity,
+        native_amount: nativeAmount,
+        native_settlement: nativeAmount,
+        native_unit_price: price,
+        amount_krw: toBase(nativeAmount, 'USD'),
+        settlement_krw: toBase(nativeAmount, 'USD'),
+        unit_price: toBase(price, 'USD'),
+        fee: fees,
+        tax: null,
+        balance: null,
+        placed_agent: text(order.placed_agent) || null,
+        source: path.basename(robinhoodSnapshotPath),
+        page: null,
+      }
+      if (date === report.cutoff) {
+        const exact = heldOnCutoff.get(signature(row)) ?? 0
+        if (exact > 0) {
+          heldOnCutoff.set(signature(row), exact - 1)
+          looseOnCutoff.set(looseSignature(row), (looseOnCutoff.get(looseSignature(row)) ?? 1) - 1)
+          report.alreadyInCsv += 1
+          continue
+        }
+        // Same day, ticker, side and quantity, different money. Bridging it
+        // would count that trade twice; leaving it out could miss a genuine
+        // second fill. Neither is safe to do quietly, so it is left out and
+        // named: a real missing sale still fails the replay checks loudly,
+        // where a doubled one would only understate the position.
+        const loose = looseOnCutoff.get(looseSignature(row)) ?? 0
+        if (loose > 0) {
+          looseOnCutoff.set(looseSignature(row), loose - 1)
+          report.problems.push(
+            `${date} ${ticker} ${type} ${quantity}: matches a CSV row on the cutoff day except for the amount ` +
+              `(${nativeAmount.toFixed(2)} from orders) — not bridged`
+          )
+          continue
+        }
+      }
+      transactionRows.push(row)
+      report.bridged += 1
+      robinhoodBridgedFills += 1
+      if (type === 'SELL') robinhoodBridgedSales.push(`${csvAccount} ${date} ${ticker} ${usRound(quantity, 6)}`)
+    }
+  }
+
+  for (const report of robinhoodBridgeAccounts) {
+    for (const problem of report.problems) robinhoodBridgeNotes.push(`${report.account}: ${problem}`)
+  }
+  if (robinhoodSnapshotHasOrders) {
+    console.error(
+      `[robinhood] orders bridge: ${robinhoodBridgedFills} execution(s) after the CSV cutoffs bridged ` +
+        `(${robinhoodBridgeAccounts.map((a) => `${a.account} ${a.cutoff ?? 'no CSV'}: ${a.bridged}`).join(', ')})` +
+        (robinhoodBridgeNotes.length ? `; ${robinhoodBridgeNotes.length} note(s)` : '')
+    )
+    for (const note of robinhoodBridgeNotes) console.error(`[robinhood]   ${note}`)
   }
 }
 
@@ -3455,6 +3712,14 @@ function usHoldingDays(from, to) {
           `${r.date} ${r.brokerage} ${ticker}: ${usRound(remaining, 6)} unit(s) disposed with no ` +
             `matching open lot (${r.type}/${text(r.raw_type)})`
         )
+        // A bridged sale that runs out of lots sold shares that arrived some
+        // way orders cannot show — a transfer in, most likely. Its unmatched
+        // part books no gain at all, so it is named by the bridge's own check.
+        if (r.source_system === ROBINHOOD_ORDERS_SOURCE_SYSTEM) {
+          robinhoodBridgeNotes.push(
+            `${r.account}: ${r.date} ${ticker} sold ${usRound(qty, 6)} with only ${usRound(qty - remaining, 6)} in replay lots`
+          )
+        }
       }
       snapshot(posKey, r.date)
     }
@@ -5618,6 +5883,16 @@ const computedByMarket = [...new Set(realizedForTaxYear.map((r) => r.market))].s
   const rows = realizedForTaxYear.filter((r) => r.market === market)
   return `${market} ${rows.reduce((sum, r) => sum + (realizedUsdOf(r) ?? 0), 0).toFixed(2)}`
 })
+// The part of the US figure that rests on Robinhood order fills rather than a
+// CSV. It is provisional: a CSV covering those days replaces the fills, and a
+// fee netted differently there moves it by cents.
+const bridgedRealizedRows = realizedForTaxYear.filter(
+  (r) => r.market === 'US' && r.brokerage === 'Robinhood' && r.source === path.basename(robinhoodSnapshotPath)
+)
+const bridgedRealizedDetail = bridgedRealizedRows.length
+  ? `; US ${bridgedRealizedRows.reduce((sum, r) => sum + (realizedUsdOf(r) ?? 0), 0).toFixed(2)} of it is from ` +
+    `${bridgedRealizedRows.length} lot(s) sold after the newest Robinhood CSV, bridged from orders and provisional`
+  : ''
 const assumedShortUsd = Number(usTaxAssumptions?.ytdRealizedShortGainLossUsd ?? 0)
 const assumedLongUsd = Number(usTaxAssumptions?.ytdRealizedLongGainLossUsd ?? 0)
 // A dollar: below the rounding these figures are carried at, and far below
@@ -5655,12 +5930,14 @@ check(
     ? `no ${taxYear} US sales to reconcile`
     : ytdAgrees && ytdRealizedAssumed
       ? `${ytdSalesDetail}; ytdRealized*Usd matches the worldwide ${computedBasis} figure ` +
-        `(${computedShortUsd.toFixed(2)} short / ${computedLongUsd.toFixed(2)} long — ${computedByMarket.join(', ')})`
+        `(${computedShortUsd.toFixed(2)} short / ${computedLongUsd.toFixed(2)} long — ${computedByMarket.join(', ')})` +
+        bridgedRealizedDetail
       : `${ytdSalesDetail}; worldwide ${computedBasis} gives ${computedShortUsd.toFixed(2)} short / ` +
         `${computedLongUsd.toFixed(2)} long (${computedByMarket.join(', ')}) but ytdRealized*Usd is ` +
         `${assumedShortUsd} / ${assumedLongUsd}` +
         `${unconvertible.length ? `; ${unconvertible.length} lot(s) had no FX for their acquisition or sale date` : ''}` +
-        `${taxPolicy ? '' : ` (no policy file at ${path.basename(taxPolicyPath)})`}`,
+        `${taxPolicy ? '' : ` (no policy file at ${path.basename(taxPolicyPath)})`}` +
+        bridgedRealizedDetail,
   'warning'
 )
 
@@ -5725,6 +6002,24 @@ check(
   'warning'
 )
 
+// Which source backs the disposals, said on the check that would miss one. The
+// orders bridge closes this check for any sale it can see, so a pass has to say
+// how many sales rest on order fills rather than on a CSV, and a failure has to
+// say whether orders were even there to look at — "the bridge could not see
+// it" and "nobody fetched the orders" call for different remedies.
+const robinhoodDisposalBacking = !robinhoodSnapshotHasOrders
+  ? robinhoodSnapshotLotCount === 0
+    ? ''
+    : '; the snapshot holds no orders, so no sale after the newest CSV is bridged (see robinhood_orders_bridge_csv)'
+  : robinhoodBridgedSales.length === 0
+    ? '; every Robinhood sale comes from a CSV — none were bridged from orders'
+    : `; ${robinhoodBridgedSales.length} sale(s) after the newest CSV come from order fills, not a CSV ` +
+      `(${robinhoodBridgedSales.slice(0, 6).join('; ')}) — provisional until a CSV covers them` +
+      (robinhoodReplayMissingDisposals.length
+        ? '; what is still missing is not an order — a transfer out or a corporate action — or a fill the ' +
+          'bridge could not read (see robinhood_orders_bridge_csv)'
+        : '')
+
 // The other direction, and the reason it is not folded into the warning above:
 // the replay still holds shares the broker says are gone, so SOMETHING SOLD OR
 // TRANSFERRED THEM AND THE BOOKS DO NOT KNOW. Unlike an undownloaded purchase,
@@ -5741,10 +6036,52 @@ check(
   robinhoodSnapshotLotCount === 0
     ? 'no MCP snapshot backing Robinhood holdings — nothing to compare the replay against'
     : robinhoodReplayMissingDisposals.length === 0
-      ? 'no Robinhood position holds more in the replay than the broker reports'
+      ? 'no Robinhood position holds more in the replay than the broker reports' + robinhoodDisposalBacking
       : `${robinhoodReplayMissingDisposals.length} Robinhood position(s) hold FEWER shares than the replay: a ` +
         `disposal is missing from the transaction history, so its proceeds and realized gain are not on the books ` +
-        `(download the CSV covering it): ${robinhoodReplayMissingDisposals.slice(0, 6).join('; ')}`
+        `(download the CSV covering it): ${robinhoodReplayMissingDisposals.slice(0, 6).join('; ')}` +
+        robinhoodDisposalBacking
+)
+
+// The Robinhood orders bridge, shaped like `toss_orders_bridge_statement`. It
+// reports what it did even when it did nothing, per account, because "nothing
+// traded after the cutoff" and "the orders were never fetched" read the same
+// from outside and call for opposite responses.
+//
+// It fails on anything that leaves the window short without saying so in the
+// numbers: a pull not marked complete, a fetch window that starts after the
+// cutoff, an execution it could not read, a cutoff-day fill that only half
+// matches the CSV, and a bridged sale that ran out of replay lots — that one
+// books no gain for the shares it could not match.
+const robinhoodBridgeOk =
+  !robinhoodSnapshot?.accounts?.length ||
+  (robinhoodSnapshotHasOrders &&
+    robinhoodBridgeNotes.length === 0 &&
+    robinhoodBridgeAccounts.every((a) => a.fetched))
+const robinhoodBridgeSummary = robinhoodBridgeAccounts
+  .map((a) =>
+    !a.fetched
+      ? `${a.account}: orders not fetched`
+      : a.cutoff == null
+        ? `${a.account}: no CSV, so nothing is bridged — orders are never the authority for a whole history`
+        : `${a.account}: CSV through ${a.cutoff}, ${a.bridged} execution(s) bridged after it` +
+          (a.alreadyInCsv ? ` (${a.alreadyInCsv} on the cutoff day already in the CSV)` : '') +
+          (a.complete ? '' : ', pull not marked complete')
+  )
+  .join('; ')
+check(
+  'robinhood_orders_bridge_csv',
+  robinhoodBridgeOk,
+  !robinhoodSnapshot?.accounts?.length
+    ? 'no MCP snapshot — nothing to bridge with'
+    : !robinhoodSnapshotHasOrders
+      ? 'the snapshot holds no orders — they were never fetched, so trades after the newest CSV are not bridged; ' +
+        'regenerate it with get_equity_orders per account (see docs/robinhood-orders-bridge.md)'
+      : `${robinhoodBridgeSummary}` +
+        (robinhoodBridgedSales.length ? `; sales from orders: ${robinhoodBridgedSales.join('; ')}` : '') +
+        (robinhoodBridgeNotes.length ? `; ${robinhoodBridgeNotes.length} problem(s): ${robinhoodBridgeNotes.join('; ')}` : '') +
+        '; dividends, transfers and corporate actions are not orders and wait for the next CSV',
+  'warning'
 )
 
 // How the seams between overlapping exports came out. The resolution happens
