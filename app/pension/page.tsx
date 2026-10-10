@@ -6,7 +6,7 @@ import { CardRow } from '@/components/layout'
 import { dbAvailable, getMeta, getPensionAccounts, getWrapperReview, type PensionAccount, type PensionHolding } from '@/lib/adapters/portfolio-db'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
-import { fmtDate, fmtDateTime, fmtPct } from '@/lib/format'
+import { fmtDate, fmtDateTime, fmtKrw, fmtPct } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { routeMetadata, routeSection } from '@/lib/page-names'
 import { contributionsAgainstLimits, type ContributionLimitRow } from '@/lib/pension'
@@ -29,6 +29,8 @@ export default async function PensionPage() {
   // Money in the display currency, as the Overview shows it.
   const money = createMoneyFormatter(await getCurrencyPreferences())
   const krw = (value: number | null) => (value == null ? copy.none : money(value))
+  // Statutory limits are fixed won amounts; converting them would make them drift with the rate.
+  const limitKrw = (value: number | null) => (value == null ? copy.none : fmtKrw(value))
 
   return (
     <>
@@ -138,7 +140,7 @@ export default async function PensionPage() {
                 align: 'right',
                 nowrap: true,
                 priority: 'secondary',
-                render: (row: ContributionLimitRow) => <span className="font-mono text-ink-3">{krw(row.limit?.pensionSavingsLimitKrw ?? null)}</span>,
+                render: (row: ContributionLimitRow) => <span className="font-mono text-ink-3">{limitKrw(row.limit?.pensionSavingsLimitKrw ?? null)}</span>,
               },
               {
                 key: 'combined',
@@ -164,7 +166,7 @@ export default async function PensionPage() {
                 nowrap: true,
                 priority: 'secondary',
                 render: (row: ContributionLimitRow) =>
-                  row.limit ? <span className="font-mono text-ink-3">{money(row.limit.combinedLimitKrw)}</span> : <span className="text-ink-3">{copy.noLimit}</span>,
+                  row.limit ? <span className="font-mono text-ink-3">{limitKrw(row.limit.combinedLimitKrw)}</span> : <span className="text-ink-3">{copy.noLimit}</span>,
               },
               { key: 'eligible', label: copy.contributionColumns.eligible, align: 'right', nowrap: true, render: (row: ContributionLimitRow) => <span className="font-mono">{krw(row.creditEligibleKrw)}</span> },
               {

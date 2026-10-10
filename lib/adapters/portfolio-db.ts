@@ -3446,12 +3446,6 @@ export type WrapperReviewRow = {
 }
 
 /**
- * One row per account under a wrapper other than `taxable` or `isa`, from the
- * `*_all` tables: what a US preparer needs to settle its treatment. Realized
- * gains and dividends are to date, in KRW. Empty on a database older than the
- * `*_all` tables, which holds no such account.
- */
-/**
  * Whether the database holds any supplementary data: a cash balance, or a row
  * in holdings_all outside the stock view (a pension wrapper, or gold). Cheap
  * enough for the layout, which hides the All assets section without it.
@@ -3469,6 +3463,12 @@ export function hasSupplementaryAssets(): boolean {
   }
 }
 
+/**
+ * One row per account under a wrapper other than `taxable` or `isa`, from the
+ * `*_all` tables: what a US preparer needs to settle its treatment. Realized
+ * gains and dividends are to date, in KRW. Empty on a database older than the
+ * `*_all` tables, which holds no such account.
+ */
 export function getWrapperReview(policy: TaxPolicy = getTaxPolicyState().policy): WrapperReviewRow[] {
   const conn = db()
   try {

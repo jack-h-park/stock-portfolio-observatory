@@ -27,7 +27,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const language = await getLanguage()
   const currencyPreferences = await getCurrencyPreferences()
   const assetView = await getAssetView()
-  const showAllAssets = hasSupplementaryAssets()
+  // Never let a DB hiccup in this optional check take down every page.
+  let showAllAssets = false
+  try {
+    showAllAssets = hasSupplementaryAssets()
+  } catch {
+    showAllAssets = false
+  }
   const skipLabel = language === 'ko' ? '본문으로 바로가기' : 'Skip to main content'
 
   return (
