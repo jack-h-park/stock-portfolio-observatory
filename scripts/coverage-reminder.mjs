@@ -10,8 +10,8 @@
 // This reads the `accountCoverage` block that `pnpm summary` publishes and prints
 // one line per account that needs a download: the account, how far its data
 // reaches, and the date to start the next download from. Accounts that read the
-// same (Robinhood's six share one snapshot) are folded into one line. Silent when
-// every account is current.
+// same (Robinhood's three share one snapshot) are folded into one line. Silent
+// when every account is current.
 //
 // usage: node scripts/coverage-reminder.mjs [--summary <path>]
 //
@@ -30,11 +30,27 @@ const SCHEMA_VERSION = 1
 const ATTENTION = new Set(['action_needed', 'missing', 'due_soon'])
 const ORDER = { missing: 0, action_needed: 1, due_soon: 2, current: 3 }
 
+/**
+ * One item per thing to obtain. An account made of several artifacts that age
+ * separately (Robinhood: an MCP snapshot and per-account transaction CSVs) is
+ * split into one item per artifact, each with its own date and its own way of
+ * being obtained. Read as one row, a fresh snapshot hid CSVs two months behind.
+ */
+function items(rows) {
+  return rows.flatMap((row) =>
+    Array.isArray(row.sources) && row.sources.length > 1
+      ? row.sources.map((source) => ({ ...row, ...source, account: row.account, brokerage: row.brokerage }))
+      : [row]
+  )
+}
+
 /** Rows that read the same are one thing to do, however many accounts share them. */
 function groupRows(rows) {
   const groups = new Map()
   for (const row of rows) {
-    const key = [row.brokerage, row.status, row.coveredThrough, row.downloadFrom, row.requiredArtifact, row.method].join('|')
+    // The destination is part of what to do: two accounts' CSVs that happen to
+    // stop on the same day are still two files with two names.
+    const key = [row.brokerage, row.status, row.coveredThrough, row.downloadFrom, row.requiredArtifact, row.method, row.destination].join('|')
     const group = groups.get(key)
     if (group) group.accounts.push(row.account)
     else groups.set(key, { ...row, accounts: [row.account] })
@@ -78,7 +94,7 @@ export function coverageMessage(doc) {
     throw new Error('summary has no accountCoverage block — the refresh that writes it predates this reader')
   }
 
-  const groups = groupRows(coverage.rows.filter((row) => ATTENTION.has(row.status)))
+  const groups = groupRows(items(coverage.rows).filter((row) => ATTENTION.has(row.status)))
   if (groups.length === 0) return null
 
   const urgent = groups.filter((group) => group.status !== 'due_soon')

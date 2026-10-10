@@ -26,6 +26,7 @@ function coverageTone(status: AccountCoverage['status']): Tone {
 
 function coverageDateLabel(row: AccountCoverage): string {
   const date = (value: string | null) => value ? fmtDate(value) : 'n/a'
+  if (row.sources.length > 1) return row.sources.map((source) => `${source.label} ${date(source.coveredThrough)}`).join(' · ')
   if (row.method === 'mixed') {
     // TODO(i18n): not yet translated — folded into the shared copy registry in P2.
     return `API ${date(row.apiCoveredThrough)} · statement ${date(row.statementCoveredThrough)}`
@@ -35,6 +36,7 @@ function coverageDateLabel(row: AccountCoverage): string {
 
 function coverageLagLabel(row: AccountCoverage, language: string): string {
   const days = (value: number | null) => value == null ? (language === 'ko' ? '기준일 없음' : 'No cutoff') : language === 'ko' ? `${fmtNumber(value)}일 전` : `${fmtNumber(value)}d ago`
+  if (row.sources.length > 1) return row.sources.map((source) => `${source.label} ${days(source.lagDays)}`).join(' · ')
   if (row.method === 'mixed') {
     // TODO(i18n): not yet translated — folded into the shared copy registry in P2.
     return `API ${days(row.apiLagDays)} · statement ${days(row.statementLagDays)}`
@@ -141,7 +143,7 @@ export default async function DataOpsPage() {
                 render: (row: AccountCoverage) => (
                   <span className="tabular-nums">
                     {coverageLagLabel(row, language)}
-                    {row.method !== 'mixed' && row.overdueDays ? <span className="ml-1 text-danger">(+{row.overdueDays})</span> : null}
+                    {row.method !== 'mixed' && row.sources.length <= 1 && row.overdueDays ? <span className="ml-1 text-danger">(+{row.overdueDays})</span> : null}
                   </span>
                 ),
               },

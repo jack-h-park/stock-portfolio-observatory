@@ -266,6 +266,20 @@ const summary = {
       method: row.method,
       requiredArtifact: row.requiredArtifact,
       destination: row.destination,
+      // Present when the account is several artifacts that age separately; the
+      // reminder names each stale one rather than the account as a whole.
+      sources: row.sources.map((source) => ({
+        label: source.label,
+        method: source.method,
+        status: source.status,
+        coveredThrough: source.coveredThrough,
+        downloadFrom: source.downloadFrom,
+        lagDays: source.lagDays,
+        maxLagDays: source.maxLagDays,
+        overdueDays: source.overdueDays,
+        requiredArtifact: source.requiredArtifact,
+        destination: source.destination,
+      })),
     })),
   },
 
