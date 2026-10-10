@@ -135,7 +135,7 @@ produces the same rows, so a later CSV replaces them one for one.
 
 | Row field | From |
 |---|---|
-| `date` | execution `timestamp`, converted to **America/New_York**, date only |
+| `date` | the **trading session** date: execution `timestamp` in America/New_York, plus 4 hours, date only |
 | `type` | `side`, mapped to `BUY` / `SELL` |
 | `ticker` | `symbol` through `normalizeTicker` and the manual-mapping renames |
 | `quantity` | execution `quantity` |
@@ -147,10 +147,23 @@ produces the same rows, so a later CSV replaces them one for one.
 | `source` | `robinhood-snapshot.json` |
 | `account`, `account_type` | the snapshot account's nickname, mapped as the CSV specs map it |
 
-**Dates must be converted to Eastern time.** Timestamps are UTC, and the CSV's
-`Activity Date` is the US trading date. An extended-hours fill at 20:30 ET is
-00:30 UTC on the next day. Taking the UTC date would put it a day late, past the
-cutoff check, and possibly into the wrong tax year on December 31.
+**Dates are trading-session dates, not calendar dates.** Timestamps are UTC.
+The CSV's `Activity Date` is the session a fill belongs to, and Robinhood's
+overnight session, which opens at 20:00 ET, belongs to the **next** trading day.
+So a fill at 21:00 ET on a Sunday is dated Monday. Shifting the Eastern time
+forward by four hours puts 20:00 ET on the next date and leaves every other
+session on its own: pre-market, the regular session, after-hours, and the
+overnight session's hours after midnight.
+
+Neither simpler rule works:
+
+- The plain Eastern date puts every overnight-session fill a day early.
+- The UTC date agrees with the CSV in every case observed, but only by accident.
+  In winter (EST), an after-hours fill between 19:00 and 20:00 ET is already
+  the next day in UTC, so the UTC date would be a day late.
+
+A date a day off moves a fill across the cutoff, and on December 31 it moves it
+into the wrong tax year.
 
 ### 4. What the bridge cannot see
 
@@ -214,8 +227,22 @@ Run these once and record the results here:
    CSV row net of its own share. So fees are applied per execution, never once
    per order. Buys with a non-zero fee have not been seen yet; the buy side of
    the formula is still unconfirmed.
-2. **Eastern-date mapping.** Find an extended-hours fill in the history and
-   confirm its CSV `Activity Date` is the Eastern date of its timestamp.
+2. **Session-date mapping — checked 2026-10-10.** Mid-term's history since
+   2025-10 has 33 executions outside regular hours. 29 of them match exactly one
+   CSV row by ticker and quantity. Four are ambiguous (the same quantity on
+   several nearby days) and were left out. All 29 follow the +4h rule:
+
+   | Fill time (ET) | Fills | CSV `Activity Date` |
+   |---|---|---|
+   | 00:00–09:30 (overnight after midnight, pre-market) | 6 | same Eastern date |
+   | 16:00–18:30 (after-hours) | 13 | same Eastern date |
+   | 20:00–24:00 (overnight session) | 10 | **next** date; four Sunday-evening fills are dated Monday |
+
+   Not yet seen:
+   - an overnight fill on the evening before a market holiday, to confirm it is
+     dated to the next *trading* day rather than the next calendar day
+   - an EST fill between 19:00 and 20:00 ET
+   - any of this in the Long-term or Agentic accounts
 3. **The missing 2025 sale — explained 2026-10-10.** The unfiltered Mid-term
    history since 2025-10-22, 167 orders in a single page, holds the sale: one
    execution whose quantity and price reproduce the CSV `Amount` to the cent.
@@ -268,7 +295,8 @@ carries `orders`:
 - A newer CSV covering the window removes every bridged row.
 - The seam pass ignores bridged rows, so a CSV row is never dropped in their
   favour.
-- A fill at 00:30 UTC is dated the previous Eastern day.
+- A fill at 21:00 ET (the overnight session) is dated the next day, and one at
+  19:30 ET in winter, which is already the next day in UTC, keeps its own day.
 - An account with no CSV bridges nothing, and the check says why.
 - A snapshot with no `orders` key behaves exactly as today.
 
