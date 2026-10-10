@@ -376,3 +376,51 @@ test('master plan years and wash-sale flags read the USD gain of a USD lot', () 
   assert.ok(instructions.every((instruction) => !instruction.washSaleRisk))
   assert.ok(planSet.selectedPlan.years.every((year) => year.usGrossTaxKrw > 0))
 })
+
+// A sale's role (gain, loss, mixed) depends on whose return it lands on: the US measures in USD,
+// Korea in KRW. fxReversalLot is a USD gain and a KRW loss.
+test('a lot that is a USD gain and a KRW loss is mixed in a joint filing year and is not accelerated as a loss', () => {
+  const planSet = buildMonthlySalePlanSet({
+    lots: [fxReversalLot({ id: 1, acquired_date: '2026-07-01' })],
+    policy: policy(),
+    selectedStrategy: 'ACCELERATE_LOSSES',
+    asOfDate: '2026-07-20',
+  })
+  const [instruction] = planSet.selectedPlan.instructions
+  // 2027 still files in both countries. As a loss it would have been sold on the as-of date.
+  assert.equal(instruction.plannedDate, '2027-07-02')
+  assert.equal(instruction.role, 'mixed')
+})
+
+test('the same lot is a gain in a US-only filing year', () => {
+  const planSet = buildMonthlySalePlanSet({
+    lots: [fxReversalLot({ id: 1, acquired_date: '2026-07-01' })],
+    policy: policy(),
+    selectedStrategy: 'WAIT_US_ONLY',
+    asOfDate: '2026-07-20',
+  })
+  const [instruction] = planSet.selectedPlan.instructions
+  assert.equal(instruction.year, 2028)
+  assert.equal(instruction.role, 'gain')
+})
+
+test('a plain KRW loss is still a loss in a joint filing year and is accelerated', () => {
+  const planSet = buildMonthlySalePlanSet({
+    lots: [lot({ id: 1, acquired_date: '2026-07-01', native_market_value: 8_000, native_unrealized_gl: -2_000 })],
+    policy: policy(),
+    selectedStrategy: 'ACCELERATE_LOSSES',
+    asOfDate: '2026-07-20',
+  })
+  const [instruction] = planSet.selectedPlan.instructions
+  assert.equal(instruction.plannedDate, '2026-07-20')
+  assert.equal(instruction.role, 'loss')
+})
+
+test('the US-measured short gain and loss are reported beside the KRW ones', () => {
+  const currentPolicy = policy()
+  const plan = buildTaxPlan({ lots: [fxReversalLot()], policy: currentPolicy, scenario: 'US_AND_KR', objective: 'raise-cash' })
+  const aggregate = summarizeTaxCandidates({ candidates: plan.candidates, policy: currentPolicy, scenario: 'US_AND_KR', year: 2026 })
+  assert.equal(aggregate.netShortGainKrw, -2_000_000)
+  assert.equal(aggregate.usMeasuredNetShortGainKrw, 2_000_000)
+  assert.equal(aggregate.usMeasuredShortLossHarvestKrw, 0)
+})

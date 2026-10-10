@@ -26,6 +26,8 @@ type OpportunityRow = {
   netGainKrw: number
   netShortGainKrw: number
   netLongGainKrw: number
+  usMeasuredNetShortGainKrw: number
+  usMeasuredShortLossHarvestKrw: number
   usTaxIfAllSoldKrw: number
   usFederalTaxOnUsMarketGainKrw: number
   krNetTaxableGainBeforeDeductionKrw: number
@@ -100,6 +102,8 @@ export function buildOpportunityRows({
         totalProceedsKrw: aggregate.totalProceedsKrw,
         netGainKrw: aggregate.netGainKrw,
         netShortGainKrw: aggregate.netShortGainKrw,
+        usMeasuredNetShortGainKrw: aggregate.usMeasuredNetShortGainKrw,
+        usMeasuredShortLossHarvestKrw: aggregate.usMeasuredShortLossHarvestKrw,
         netLongGainKrw: aggregate.netLongGainKrw,
         usTaxIfAllSoldKrw: aggregate.usTaxKrw,
         usFederalTaxOnUsMarketGainKrw: aggregate.usFederalTaxOnUsMarketGainKrw,
@@ -198,9 +202,11 @@ function buildTakeaways(rows: OpportunityRow[], policy: TaxPolicy, assumptionsAr
 
   const krLoss = groups.find((group) => group.market === 'KR')
   const usGain = groups.find((group) => group.market === 'US')
+  // A US-return screen, so both sides are measured the US way: a US lot's gain in USD rather than
+  // in won, which would fold in USD/KRW movement since purchase.
   const pairableShortGainKrw = Math.min(
-    Number(krLoss?.shortLossHarvestKrw ?? 0),
-    Math.max(Number(usGain?.netShortGainKrw ?? 0), 0)
+    Number(krLoss?.usMeasuredShortLossHarvestKrw ?? 0),
+    Math.max(Number(usGain?.usMeasuredNetShortGainKrw ?? 0), 0)
   )
   if (krLoss && usGain && pairableShortGainKrw > 0) {
     const shortRatePct =
@@ -211,7 +217,7 @@ function buildTakeaways(rows: OpportunityRow[], policy: TaxPolicy, assumptionsAr
     takeaways.push({
       label: copy.opportunity.potentialPairing,
       title: copy.opportunity.potentialPairingTitle,
-      body: copy.opportunity.potentialPairingBody(fmtKrw(krLoss.shortLossHarvestKrw), fmtKrw(usGain.netShortGainKrw), fmtKrw(pairableShortGainKrw)),
+      body: copy.opportunity.potentialPairingBody(fmtKrw(krLoss.usMeasuredShortLossHarvestKrw), fmtKrw(usGain.usMeasuredNetShortGainKrw), fmtKrw(pairableShortGainKrw)),
       action: copy.opportunity.potentialPairingAction,
       caveat: copy.opportunity.potentialPairingCaveat(fmtKrw(screeningTaxImpactKrw), fmtNumber(shortRatePct, 2)),
       metric: copy.opportunity.gainToScreenMetric(fmtKrw(pairableShortGainKrw)),

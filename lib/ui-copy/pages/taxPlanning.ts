@@ -234,6 +234,7 @@ export const taxPlanning = defineCopy({
       washSaleReviewDetail: (count: string | number) => `Wash-sale review: ${count} same-ticker open-lot acquisition(s) in the configured window.`,
       lossOffset: 'Loss offset',
       gainSale: 'Gain sale',
+      mixedByReturn: 'Gain on one return, loss on the other',
       neutral: 'Neutral',
       actualsAndNote: 'Actuals and note',
       executedDate: 'Executed date',
@@ -302,7 +303,7 @@ export const taxPlanning = defineCopy({
       potentialPairing: 'Potential pairing',
       potentialPairingTitle: 'Pair KR loss lots with US short-term gains in the same US tax year',
       potentialPairingBody: (krLoss: string, usGain: string, pairable: string) =>
-        `The current screen shows ${krLoss} of KR short-term unrealized losses and ${usGain} of net US-market short-term gains. A screening match of up to ${pairable} could reduce the modeled US short-term gain.`,
+        `The current screen shows ${krLoss} of KR short-term unrealized losses and ${usGain} of net US-market short-term gains, both measured as the US return measures them. A screening match of up to ${pairable} could reduce the modeled US short-term gain.`,
       potentialPairingAction: 'When a US short-term gain sale is planned, review enough KR short-term loss lots in that same US tax year before choosing the exact tickers.',
       potentialPairingCaveat: (impact: string, ratePct: string) =>
         `The screening tax effect is up to ${impact} at the current ${ratePct}% assumption. A KRW loss is not automatically the US tax loss: USD tax basis, transaction-date FX, account eligibility, wash-sale rules, and other capital activity must be verified.`,
@@ -644,6 +645,7 @@ export const taxPlanning = defineCopy({
       washSaleReviewDetail: (count: string | number) => `Wash-sale 검토: 설정된 기간 내 같은 ticker 열린 lot 취득 ${count}건.`,
       lossOffset: '손실 상계',
       gainSale: '이익 매도',
+      mixedByReturn: '신고국별 손익 엇갈림',
       neutral: '중립',
       actualsAndNote: '실제값과 메모',
       executedDate: '실행일',
@@ -712,7 +714,7 @@ export const taxPlanning = defineCopy({
       potentialPairing: '상계 후보',
       potentialPairingTitle: '같은 미국 세금연도 안에서 한국 손실 lot과 미국 단기 이익을 맞춰보세요',
       potentialPairingBody: (krLoss: string, usGain: string, pairable: string) =>
-        `현재 화면에는 한국 단기 미실현 손실 ${krLoss}, 미국시장 순 단기 이익 ${usGain}가 보입니다. 최대 ${pairable}까지 미국 단기 이익을 줄이는 상계 후보로 볼 수 있습니다.`,
+        `현재 화면에는 한국 단기 미실현 손실 ${krLoss}, 미국시장 순 단기 이익 ${usGain}가 보입니다(둘 다 미국 신고 기준으로 측정). 최대 ${pairable}까지 미국 단기 이익을 줄이는 상계 후보로 볼 수 있습니다.`,
       potentialPairingAction: '미국 단기 이익 매도가 계획되어 있다면, 정확한 티커 선택 전 같은 미국 세금연도 안에서 충분한 한국 단기 손실 lot을 검토하세요.',
       potentialPairingCaveat: (impact: string, ratePct: string) =>
         `현재 ${ratePct}% 가정에서 스크리닝상 세금 효과는 최대 ${impact}입니다. KRW 손실이 자동으로 미국 세법상 손실이 되는 것은 아닙니다. USD 기준가, 거래일 FX, 계좌 적격성, wash sale, 기타 자본거래를 확인해야 합니다.`,
