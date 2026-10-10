@@ -753,7 +753,8 @@ const krExtractReport = fs.existsSync(krExtractReportPath)
   : null
 const krExtractFindings = krExtractReport?.findings ?? []
 const krDroppedRowFindings = krExtractFindings.filter((f) => f.drops_rows && f.rows > 0)
-const krKeptRowFindings = krExtractFindings.filter((f) => !f.drops_rows && f.rows > 0)
+const krKeptRowFindings = krExtractFindings.filter((f) => !f.drops_rows && !f.blocking && f.rows > 0)
+const krBlockingFindings = krExtractFindings.filter((f) => f.blocking && f.rows > 0)
 if (statementAccounts.size) {
   for (const [name, parsed] of Object.entries(krStatements)) {
     if (!parsed) continue
@@ -5473,6 +5474,19 @@ check(
     ? 'the statement parser reported nothing it had to work around'
     : krKeptRowFindings.map((f) => `${f.kind}: ${f.rows} row(s), ${f.distinct} distinct`).join('; '),
   'warning'
+)
+
+// Overlapping statements are resolved by the extractor (the later-ending one
+// keeps the shared days), so what reaches here is what it could not resolve: two
+// statements under one filename series that print different 계좌번호. Reading
+// both merges two accounts' rows under one label, and a warning about that went
+// unread for two months, so this one stops the refresh.
+check(
+  'kr_statements_one_account_per_series',
+  krBlockingFindings.length === 0,
+  krBlockingFindings.length === 0
+    ? 'every statement series holds one account'
+    : krBlockingFindings.map((f) => `${f.kind}: ${f.samples.join('; ')}`).join('; ')
 )
 
 // Locked statements are neither: the file was never opened, so its rows are
