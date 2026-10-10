@@ -380,8 +380,8 @@ export function TaxPlanTimeline({
                     render: (row: any) => (
                       <div className="flex flex-col items-start gap-1">
                         <Badge tone={bucketTone(row.holdingBucket)}>{row.holdingBucket}</Badge>
-                        <Badge tone={row.role === 'loss' ? 'danger' : row.role === 'gain' ? 'info' : 'neutral'}>
-                          {row.role === 'loss' ? copy.lossOffset : row.role === 'gain' ? copy.gainSale : copy.neutral}
+                        <Badge tone={row.role === 'loss' ? 'danger' : row.role === 'gain' ? 'info' : row.role === 'mixed' ? 'warning' : 'neutral'}>
+                          {row.role === 'loss' ? copy.lossOffset : row.role === 'gain' ? copy.gainSale : row.role === 'mixed' ? copy.mixedByReturn : copy.neutral}
                         </Badge>
                       </div>
                     ),

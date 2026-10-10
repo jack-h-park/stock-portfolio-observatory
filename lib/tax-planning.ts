@@ -94,6 +94,11 @@ export type TaxPlan = {
   }
 }
 
+// What a sale is for the filing year it lands in. `mixed` is a lot that is a gain on one return
+// and a loss on the other: bought while the won was weaker, a US lot can be a USD gain and a KRW
+// loss at once. It is neither loss inventory nor a plain gain sale.
+export type PlanRole = 'gain' | 'loss' | 'neutral' | 'mixed'
+
 export type TaxCandidateAggregate = {
   year: number
   usdKrwRate: number
@@ -108,6 +113,9 @@ export type TaxCandidateAggregate = {
   longLossHarvestKrw: number
   netShortGainKrw: number
   netLongGainKrw: number
+  // The same short-term figures measured the US way (usGainUsd), in KRW at the planning rate.
+  usMeasuredNetShortGainKrw: number
+  usMeasuredShortLossHarvestKrw: number
   usTaxKrw: number
   usTaxAfterForeignTaxCreditKrw: number
   usFederalShortTermTaxKrw: number
@@ -206,7 +214,7 @@ export type MasterPlanInstruction = {
   proceedsKrw: number
   gainKrw: number
   holdingBucket: 'short' | 'long'
-  role: 'gain' | 'loss' | 'neutral'
+  role: PlanRole
   reason: string
   washSaleRisk: boolean
   washSaleMatches: number
@@ -395,6 +403,30 @@ function usGainKrw(row: TaxPlanCandidate) {
   return Number(row.gainKrw ?? 0)
 }
 
+// The gain each return that is filed in `year` would see: the US in USD (at the current rate, in
+// KRW), Korea in KRW and only for lots Korea taxes. With neither filing, the KRW gain stands in.
+function filingYearGains(candidate: TaxPlanCandidate, year: number, policy: TaxPolicy) {
+  const scenario = scenarioFromTaxYearProfile(annualProfileForYear(policy, year))
+  const gains: number[] = []
+  if (isScenarioEnabled(scenario, 'US')) gains.push(usGainKrw(candidate))
+  if (isScenarioEnabled(scenario, 'KR') && krTaxable(candidate, policy)) gains.push(Number(candidate.gainKrw ?? 0))
+  return gains.length ? gains : [Number(candidate.gainKrw ?? 0)]
+}
+
+function planningRole(candidate: TaxPlanCandidate, year: number, policy: TaxPolicy): PlanRole {
+  const gains = filingYearGains(candidate, year, policy)
+  const anyGain = gains.some((gain) => gain > 0)
+  const anyLoss = gains.some((gain) => gain < 0)
+  if (anyGain && anyLoss) return 'mixed'
+  return anyLoss ? 'loss' : anyGain ? 'gain' : 'neutral'
+}
+
+// For ordering sales: the larger of the gains the year's returns see, so a mixed lot ranks by the
+// return on which it costs tax rather than by the one on which it does not.
+function planningGainKrw(candidate: TaxPlanCandidate, year: number, policy: TaxPolicy) {
+  return Math.max(...filingYearGains(candidate, year, policy))
+}
+
 function candidateUsdKrwRate(candidates: TaxPlanCandidate[], policy: TaxPolicy) {
   const configured = assumptionNumber(policy, 'US', 'planningUsdKrwRate', 0)
   if (configured > 0) return configured
@@ -539,6 +571,9 @@ export function summarizeTaxCandidates({
     longLossHarvestKrw: Math.abs(Math.min(sumGain(longRows.filter((row) => Number(row.gainKrw) < 0)), 0)),
     netShortGainKrw,
     netLongGainKrw,
+    usMeasuredNetShortGainKrw: sumUsGainUsd(shortRows) * usdKrwRate,
+    usMeasuredShortLossHarvestKrw:
+      Math.abs(Math.min(sumUsGainUsd(shortRows.filter((row) => usGainUsd(row, usdKrwRate) < 0)), 0)) * usdKrwRate,
     usTaxKrw,
     usTaxAfterForeignTaxCreditKrw: Math.max(usTaxKrw - usForeignTaxCreditKrw, 0),
     usFederalShortTermTaxKrw: usEstimate.federalShortTermTaxUsd * usdKrwRate,
@@ -1011,18 +1046,20 @@ function instructionFromSlice({
   plannedDate,
   sequence,
   strategy,
+  policy,
 }: {
   slice: ScheduleSlice
   fraction: number
   plannedDate: Date
   sequence: number
   strategy: MasterPlanStrategyKey
+  policy: TaxPolicy
 }): MasterPlanInstruction {
   const candidate = slice.candidate
   const gainKrw = Number(candidate.gainKrw ?? 0) * fraction
   const eligible = longTermEligibleDate(candidate.acquired_date)
   const longTerm = plannedDate.getTime() >= eligible.getTime()
-  const role = gainKrw > 0 ? 'gain' : gainKrw < 0 ? 'loss' : 'neutral'
+  const role = planningRole(candidate, plannedDate.getUTCFullYear(), policy)
   const reason =
     strategy === 'WAIT_US_ONLY'
       ? 'Held for long-term treatment and same-year netting in the first US-only filing year'
@@ -1030,7 +1067,9 @@ function instructionFromSlice({
         ? 'Early loss candidate for same-year gain offset; wash-sale review required'
         : role === 'loss'
           ? 'Loss inventory scheduled with the annual realization plan'
-          : longTerm
+          : role === 'mixed'
+            ? 'A gain on one return and a loss on the other this year; scheduled as a sale, not as loss inventory'
+            : longTerm
             ? 'First permitted window after long-term eligibility'
             : 'Short-term sale under the selected scenario'
   return {
@@ -1096,23 +1135,26 @@ function scheduleImmediate(
   slices: ScheduleSlice[],
   asOf: Date,
   strategy: MasterPlanStrategyKey,
-  usOnlyYear: number | null
+  usOnlyYear: number | null,
+  policy: TaxPolicy
 ) {
   const instructions: MasterPlanInstruction[] = []
   let sequence = 0
   for (const slice of slices) {
-    const gain = Number(slice.candidate.gainKrw ?? 0)
+    // Pulled forward only when it is a loss on every return filed this year; a mixed lot would
+    // realize a gain on the other one.
+    const lossNow = planningRole(slice.candidate, asOf.getUTCFullYear(), policy) === 'loss'
     let plannedDate = laterDate(asOf, slice.eligibleDate)
     if (strategy === 'WAIT_US_ONLY' && usOnlyYear != null) {
       plannedDate = laterDate(plannedDate, new Date(Date.UTC(usOnlyYear, 0, 2)))
     }
-    if (strategy === 'ACCELERATE_LOSSES' && gain < 0) plannedDate = asOf
-    instructions.push(instructionFromSlice({ slice, fraction: 1, plannedDate, sequence: sequence++, strategy }))
+    if (strategy === 'ACCELERATE_LOSSES' && lossNow) plannedDate = asOf
+    instructions.push(instructionFromSlice({ slice, fraction: 1, plannedDate, sequence: sequence++, strategy, policy }))
   }
   return instructions.sort((a, b) => a.plannedDate.localeCompare(b.plannedDate) || a.ticker.localeCompare(b.ticker))
 }
 
-function scheduleStaged(slices: ScheduleSlice[], asOf: Date, executionMonths: number) {
+function scheduleStaged(slices: ScheduleSlice[], asOf: Date, executionMonths: number, policy: TaxPolicy) {
   const instructions: MasterPlanInstruction[] = []
   const totalProceedsKrw = slices.reduce((sum, slice) => sum + Number(slice.candidate.proceedsKrw ?? 0), 0)
   const monthlyCapacityKrw = executionMonths > 0 ? totalProceedsKrw / executionMonths : totalProceedsKrw
@@ -1122,19 +1164,21 @@ function scheduleStaged(slices: ScheduleSlice[], asOf: Date, executionMonths: nu
 
   for (let monthIndex = 0; monthIndex < maxMonths && slices.some((slice) => slice.remainingFraction > 1e-8); monthIndex += 1) {
     const end = monthEnd(cursor)
+    // Every sale this month lands in the cursor's year, so that year's returns decide the order.
+    const year = cursor.getUTCFullYear()
     let capacity = monthlyCapacityKrw
     const eligible = slices
       .filter((slice) => slice.remainingFraction > 1e-8 && slice.eligibleDate.getTime() <= end.getTime())
       .sort((a, b) => {
-        const gainA = Number(a.candidate.gainKrw ?? 0)
-        const gainB = Number(b.candidate.gainKrw ?? 0)
+        const gainA = planningGainKrw(a.candidate, year, policy)
+        const gainB = planningGainKrw(b.candidate, year, policy)
         const gainRatioA = Number(a.candidate.proceedsKrw ?? 0) > 0 ? gainA / Number(a.candidate.proceedsKrw) : 0
         const gainRatioB = Number(b.candidate.proceedsKrw ?? 0) > 0 ? gainB / Number(b.candidate.proceedsKrw) : 0
         return gainRatioA - gainRatioB || a.eligibleDate.getTime() - b.eligibleDate.getTime()
       })
 
-    const losses = eligible.filter((slice) => Number(slice.candidate.gainKrw ?? 0) < 0)
-    const gains = eligible.filter((slice) => Number(slice.candidate.gainKrw ?? 0) >= 0)
+    const losses = eligible.filter((slice) => planningRole(slice.candidate, year, policy) === 'loss')
+    const gains = eligible.filter((slice) => planningRole(slice.candidate, year, policy) !== 'loss')
     const remainingLossProceeds = losses.reduce(
       (sum, slice) => sum + Number(slice.candidate.proceedsKrw ?? 0) * slice.remainingFraction,
       0
@@ -1160,7 +1204,7 @@ function scheduleStaged(slices: ScheduleSlice[], asOf: Date, executionMonths: nu
         const preferredDay = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth(), 15))
         const plannedDate = laterDate(laterDate(asOf, slice.eligibleDate), preferredDay)
         instructions.push(
-          instructionFromSlice({ slice, fraction, plannedDate, sequence: sequence++, strategy: 'STAGED' })
+          instructionFromSlice({ slice, fraction, plannedDate, sequence: sequence++, strategy: 'STAGED', policy })
         )
         slice.remainingFraction = Math.max(slice.remainingFraction - fraction, 0)
         remainingBudget -= saleProceeds
@@ -1351,8 +1395,8 @@ export function buildMonthlySalePlanSet({
     const slices = makeSlices()
     const rawInstructions =
       strategy === 'STAGED'
-        ? scheduleStaged(slices, asOf, normalizedExecutionMonths)
-        : scheduleImmediate(slices, asOf, strategy, usOnlyYear)
+        ? scheduleStaged(slices, asOf, normalizedExecutionMonths, policy)
+        : scheduleImmediate(slices, asOf, strategy, usOnlyYear, policy)
     const instructions = annotateWashSaleRisk(rawInstructions, candidates, policy)
     return assembleMasterPlan({
       instructions,
