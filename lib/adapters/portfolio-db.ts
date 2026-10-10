@@ -253,7 +253,7 @@ export type AccountCoverageStatus = 'current' | 'due_soon' | 'action_needed' | '
 export type AccountCoverageSource = {
   /** Short name for a table cell: 'MCP', 'CSV'. */
   label: string
-  method: 'inbox' | 'mcp'
+  method: 'inbox' | 'manual' | 'mcp'
   coveredThrough: string | null
   downloadFrom: string | null
   lagDays: number | null
@@ -279,7 +279,10 @@ export type AccountCoverage = {
   maxLagDays: number
   overdueDays: number | null
   status: AccountCoverageStatus
-  method: 'inbox' | 'api' | 'mcp' | 'mixed'
+  // 'manual': downloaded, but the inbox cannot file it, so it is named and
+  // placed by hand. A Robinhood transactions CSV carries no account, and which
+  // account it is exists only in the name someone gives it.
+  method: 'inbox' | 'manual' | 'api' | 'mcp' | 'mixed'
   requiredArtifact: string
   format: string
   destination: string
@@ -2126,7 +2129,7 @@ function coverageSource(input: Pick<AccountCoverageSource, 'label' | 'method' | 
   return {
     ...input,
     // A regenerated snapshot has no start date; only a download does.
-    downloadFrom: input.method === 'inbox' ? subtractCalendarDays(input.coveredThrough, 1) : null,
+    downloadFrom: input.method === 'mcp' ? null : subtractCalendarDays(input.coveredThrough, 1),
     lagDays,
     overdueDays: lagDays == null ? null : Math.max(0, lagDays - input.maxLagDays),
     status: coverageStatus(lagDays, input.maxLagDays),
@@ -2294,7 +2297,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
           const token = rawAccount.toLowerCase().replace(/[^a-z]/g, '')
           sources.push(coverageSource({
             label: 'CSV',
-            method: 'inbox',
+            method: 'manual',
             coveredThrough: isoDate(transaction.covered_through),
             maxLagDays: 14,
             requiredArtifact: 'Robinhood transactions CSV',
@@ -2374,7 +2377,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
       // deliberate overlap and cannot hide an edge-of-window transaction. With
       // separate sources, the one that is downloaded is the one that has a start.
       const downloadFrom = sources.length
-        ? sources.find((source) => source.method === 'inbox')?.downloadFrom ?? null
+        ? sources.find((source) => source.method !== 'mcp')?.downloadFrom ?? null
         : subtractCalendarDays(method === 'mixed' ? statementCoveredThrough ?? coveredThrough : coveredThrough, 1)
       const apiLagDays = calendarAgeDays(apiCoveredThrough)
       const statementLagDays = calendarAgeDays(statementCoveredThrough)
