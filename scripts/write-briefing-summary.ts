@@ -37,6 +37,7 @@ import {
   getPortfolioReview,
   getRebalanceReview,
   getRefreshRuns,
+  getSupplementaryCoverage,
   getValidationChecks,
 } from '@/lib/adapters/portfolio-db'
 
@@ -97,6 +98,7 @@ const rebalance = getRebalanceReview()
 const markets = getMarketBreakdown()
 const lastRun = getRefreshRuns(1)[0] ?? null
 const coverage = getAccountCoverage()
+const supplementaryCoverage = getSupplementaryCoverage()
 
 /**
  * An account label with any account-number-like token cut to its last four.
@@ -119,7 +121,11 @@ const conversionRate = getOverview().fxRates.find((r: any) => r.from_currency !=
 
 const snapshotAt = (key: string) => health.snapshots.find((item) => item.key === key)?.observedAt ?? null
 
-const SUPPLEMENTARY_SOURCE_KEYS = new Set(['source:bank_balances'])
+// The supplementary inputs the ingest fingerprints: the bank statements file,
+// the pension evidence and each pension snapshot CSV (`pension:<file>`), and the
+// gold price file.
+const SUPPLEMENTARY_SOURCE_KEYS = new Set(['source:bank_balances', 'source:pension_evidence', 'source:gold_prices'])
+const isSupplementarySource = (key: string) => SUPPLEMENTARY_SOURCE_KEYS.has(key) || key.startsWith('source:pension:')
 
 const issues: SummaryIssue[] = [
   // A failed refresh belongs in this list even though nothing on /health may look
@@ -168,9 +174,9 @@ const issues: SummaryIssue[] = [
     : []),
   // Supplementary data (deposits, pensions, gold) stays out of this list: the
   // briefing and the trading review are stock-only. Its checks carry scope
-  // 'supplementary', and the bank statements file is its only source here.
+  // 'supplementary', and its source files are named above.
   ...health.items
-    .filter((item) => item.status !== 'fresh' && !SUPPLEMENTARY_SOURCE_KEYS.has(item.key))
+    .filter((item) => item.status !== 'fresh' && !isSupplementarySource(item.key))
     .map((item) => ({
       key: item.key,
       label: item.label,
@@ -290,6 +296,25 @@ const summary = {
         missingDisposals: source.missingDisposals ?? [],
       })),
     })),
+  },
+
+  // How far the deposits, pensions and gold reach, for the same weekly reminder.
+  // Dates, labels and status only: no balance, value or amount travels here. A
+  // label is masked like an account above, and so is its copy inside the action.
+  supplementaryCoverage: {
+    rows: supplementaryCoverage.rows.map((row) => {
+      const label = maskAccount(row.label)
+      return {
+        kind: row.kind,
+        label,
+        latestDate: row.latestDate,
+        lagDays: row.lagDays,
+        maxLagDays: row.maxLagDays,
+        status: row.status,
+        action: row.action.split(row.label).join(label),
+      }
+    }),
+    failingChecks: supplementaryCoverage.failingChecks,
   },
 
   // The reason this artifact exists. Only this app holds an FX snapshot, so only

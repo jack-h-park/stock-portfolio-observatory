@@ -8,6 +8,7 @@ import { getTaxPolicyState, usTaxableWrappers, wrapperTreatment, type TaxPolicy,
 import { ASSET_CLASSES, depositsSeries, summarizeNetWorth, totalAssetsSeries, type AsOfNote, type CashBalanceRow, type NetWorth, type TotalAssetsSeries } from '@/lib/net-worth'
 import type { PensionContributionYear } from '@/lib/pension'
 import { groupAccountRanges, type AccountDataRange, type AssetType, type RangeKind, type RangeRow } from '@/lib/account-ranges'
+import { loadAccountMap } from '@/scripts/account-map.mjs'
 
 /**
  * The default (Stocks) view: taxable and ISA securities only. Every holdings total goes through this.
@@ -1583,7 +1584,7 @@ function fileCategory(filePath: string, relativePath: string) {
   if (ext === '.csv') return 'us csv export'
   if (ext === '.pdf') return 'pdf evidence'
   if (ext === '.tsv') return 'tsv payload'
-  if (ext === '.xlsx') return 'workbook'
+  if (ext === '.xlsx' || ext === '.xls') return 'workbook'
   if (ext === '.json') return 'json snapshot'
   if (ext === '.db' || ext === '.sqlite' || ext === '.sqlite3') return 'database'
   if (ext === '.png') return 'image artifact'
@@ -1594,7 +1595,8 @@ function fileCategory(filePath: string, relativePath: string) {
 
 function inventoryCandidate(filePath: string) {
   const ext = path.extname(filePath).toLowerCase()
-  return new Set(['.csv', '.pdf', '.tsv', '.xlsx', '.json', '.db', '.sqlite', '.sqlite3', '.png', '.txt', '.md']).has(ext)
+  // .xls: some banks still export statements in the old Excel format.
+  return new Set(['.csv', '.pdf', '.tsv', '.xlsx', '.xls', '.json', '.db', '.sqlite', '.sqlite3', '.png', '.txt', '.md']).has(ext)
 }
 
 function walkFiles(root: string, maxFiles = 2000) {
@@ -1661,6 +1663,26 @@ function retentionFor(relativePath: string, status: SourceInventoryItem['status'
     return {
       retention: 'active' as const,
       retentionReason: '거래·배당·tax lot을 재생성하는 사람이 받은 증권사 원본 PDF입니다.',
+    }
+  }
+  // The supplementary originals: kept like the broker statements, because the
+  // deposit balances, pension holdings and pension totals are rebuilt from them.
+  if (relativePath.startsWith('bank-statements/')) {
+    return {
+      retention: 'active' as const,
+      retentionReason: '예금·CMA 잔고를 재생성하는 사람이 받은 은행 거래내역 원본입니다.',
+    }
+  }
+  if (relativePath.startsWith('pension/evidence/')) {
+    return {
+      retention: 'active' as const,
+      retentionReason: '연금 계좌의 연말 잔고·납입 증명서 원본입니다. pension-evidence.json을 재생성합니다.',
+    }
+  }
+  if (relativePath.startsWith('pension/')) {
+    return {
+      retention: 'active' as const,
+      retentionReason: '연금 계좌 보유 현황을 사람이 캡처한 스냅샷 원본입니다.',
     }
   }
   if (
@@ -2916,6 +2938,121 @@ export function getAccountDataRanges(): AccountDataRange[] {
       rows.push({ kind: 'balances', market: row.market, brokerage: row.brokerage, account: row.account, accountType: row.account_type, start: isoDate(row.start), end: isoDate(row.end), count: row.count })
     }
     return groupAccountRanges(rows)
+  } finally {
+    conn.close()
+  }
+}
+
+export type SupplementaryCoverageKind = 'deposit' | 'cma' | 'pension' | 'gold' | 'gold_price'
+
+export type SupplementaryCoverageRow = {
+  kind: SupplementaryCoverageKind
+  label: string
+  latestDate: string | null
+  lagDays: number | null
+  maxLagDays: number
+  status: AccountCoverageStatus
+  /** What to file next, in the reminder's words. */
+  action: string
+}
+
+export type SupplementaryCoverage = {
+  rows: SupplementaryCoverageRow[]
+  /** Names of the failing `supplementary` validation checks. */
+  failingChecks: string[]
+}
+
+/** Days each kind may go without a newer file before the reminder names it. */
+const SUPPLEMENTARY_MAX_LAG_DAYS: Record<SupplementaryCoverageKind, number> = {
+  deposit: 90,
+  cma: 90,
+  pension: 180,
+  gold: 90,
+  gold_price: 7,
+}
+
+/**
+ * How far each supplementary asset's files reach: one row per cash account, per
+ * pension account in the map, per gold account, and one for the gold price.
+ * Dates, labels and status only, never an amount: this feeds the weekly
+ * reminder, which leaves the machine. Deposits, pensions and gold have no
+ * download schedule of their own, so like the broker statements they go stale
+ * only when nobody files the next export, and nothing said so.
+ */
+export function getSupplementaryCoverage(): SupplementaryCoverage {
+  const conn = db()
+  try {
+    const hasTable = (name: string) =>
+      Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(name))
+    const rows: SupplementaryCoverageRow[] = []
+    const push = (kind: SupplementaryCoverageKind, label: string, latest: string | null, action: string) => {
+      const latestDate = isoDate(latest)
+      const lagDays = calendarAgeDays(latestDate)
+      const maxLagDays = SUPPLEMENTARY_MAX_LAG_DAYS[kind]
+      rows.push({ kind, label, latestDate, lagDays, maxLagDays, status: coverageStatus(lagDays, maxLagDays), action })
+    }
+
+    if (hasTable('cash_balances')) {
+      const cash = conn
+        .prepare(
+          `select institution, account, max(case when kind = 'cma' then 1 else 0 end) as isCma, max(as_of_date) as latest
+             from cash_balances group by institution, account order by institution, account`
+        )
+        .all() as { institution: string; account: string; isCma: number; latest: string | null }[]
+      for (const row of cash) {
+        const label = `${row.institution} ${row.account}`
+        push(row.isCma ? 'cma' : 'deposit', label, row.latest, `${label} 거래내역을 ${isoDate(row.latest)}부터 받아 inbox에 넣으세요`)
+      }
+    }
+
+    // Every pension account the map lists, filed or not: one with no snapshot yet
+    // is 'missing', which is the reminder's whole point.
+    let pensionAccounts: { token?: unknown; account?: unknown; wrapper?: unknown }[] = []
+    try {
+      pensionAccounts = loadAccountMap(config.stockAccountMapPath).pensionAccounts ?? []
+    } catch {
+      // An unreadable map is the ingest's failure to report; here it means no rows.
+      pensionAccounts = []
+    }
+    const snapshotStmt = hasTable('holdings_all')
+      ? conn.prepare(
+          `select max(as_of_date) as latest from holdings_all where account = ? and (? is null or account_wrapper = ?) and ${PENSION_ROW_SQL}`
+        )
+      : null
+    for (const entry of pensionAccounts) {
+      const token = String(entry?.token ?? '').trim()
+      const account = String(entry?.account ?? '').trim()
+      if (!token || !account) continue
+      const wrapper = String(entry?.wrapper ?? '').trim() || null
+      const latest = (snapshotStmt?.get(account, wrapper, wrapper) as { latest: string | null } | undefined)?.latest ?? null
+      push('pension', account, latest, `${account} 보유 현황을 캡처해 pension/${token}-holdings-YYYYMMDD.csv로 넣으세요`)
+    }
+
+    // Gold: how far each account's 금현물 statement reaches, and how old the price is.
+    if (hasTable('transactions_all')) {
+      const gold = conn
+        .prepare(`select account, max(date) as latest from transactions_all where ${GOLD_ROW_SQL} group by account order by account`)
+        .all() as { account: string; latest: string | null }[]
+      for (const row of gold) {
+        push('gold', row.account, row.latest, `${row.account} 금현물 거래내역증명서를 ${isoDate(row.latest)}부터 새로 받아 inbox에 넣으세요`)
+      }
+    }
+    const holdsGold = hasTable('holdings_all') && Boolean(conn.prepare(`select 1 from holdings_all where ${GOLD_ROW_SQL} limit 1`).get())
+    if (holdsGold) {
+      const latest = hasTable('gold_prices')
+        ? ((conn.prepare('select max(date) as latest from gold_prices').get() as { latest: string | null }).latest ?? null)
+        : null
+      push('gold_price', 'KRX 금 시세', latest, 'KRX 금 시세를 갱신하세요 (pnpm fetch:gold-price)')
+    }
+
+    const failingChecks = hasTable('validation_checks')
+      ? (
+          conn
+            .prepare(`select name from validation_checks where status != 'pass' and ${checkScopeSql(conn)} = 'supplementary' order by name`)
+            .all() as { name: string }[]
+        ).map((row) => row.name)
+      : []
+    return { rows, failingChecks }
   } finally {
     conn.close()
   }

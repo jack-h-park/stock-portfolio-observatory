@@ -5150,6 +5150,32 @@ insertMany(
   ['date', 'price', 'source']
 )
 
+// The supplementary inputs, so their drift is fingerprinted like any other.
+// Named `pension:<file>`, `pension_evidence` and `gold_prices`; the briefing
+// summary keeps their drift out of the stock-only health.issues by these names.
+for (const name of pensionDirFiles) {
+  if (!/-holdings-\d{8}\.csv$/.test(name)) continue
+  const file = path.join(pensionDir, name)
+  if (!fs.statSync(file).isFile()) continue
+  const fp = fingerprint(file)
+  const rowCount = Math.max(0, parseCsv(fs.readFileSync(file, 'utf8')).filter((r) => r.some((c) => c.trim())).length - 1)
+  db.prepare(
+    'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run(`pension:${name}`, fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, rowCount)
+}
+if (fs.existsSync(pensionEvidencePath)) {
+  const fp = fingerprint(pensionEvidencePath)
+  db.prepare(
+    'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run('pension_evidence', fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, pensionEvidence.certificates.length)
+}
+if (fs.existsSync(goldPricesPath)) {
+  const fp = fingerprint(goldPricesPath)
+  db.prepare(
+    'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run('gold_prices', fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, goldPrice?.history.size ?? 0)
+}
+
 const goldHoldingRows = []
 const goldTradesByAccount = new Map()
 for (const r of transactionRows) {
@@ -5415,6 +5441,23 @@ check(
           .join('; ')
       : `${goldHoldingRows.map((r) => `${r.account}: ${r.quantity} g`).join('; ')} valued at cost, ` +
         `because there is no KRX gold price: ${goldPriceProblem}`,
+  'warning',
+  'supplementary'
+)
+
+// The price is fetched by the refresh, so a week-old one means that step has
+// been failing quietly: the holding is still marked, at a price nobody updated.
+const goldPriceMaxDays = 7
+const goldPriceAgeDays = goldPrice ? Math.floor((Date.now() - Date.parse(`${goldPrice.date}T00:00:00Z`)) / 86_400_000) : null
+check(
+  'gold_price_fresh',
+  goldHoldingRows.length === 0 || goldPrice == null || (goldPriceAgeDays != null && goldPriceAgeDays <= goldPriceMaxDays),
+  goldHoldingRows.length === 0
+    ? 'no gold holding'
+    : goldPrice == null
+      ? 'no KRX gold price to date (gold_priced reports why)'
+      : `KRX gold price as of ${goldPrice.date} (${goldPriceAgeDays}d old, limit ${goldPriceMaxDays}d)` +
+        (goldPriceAgeDays > goldPriceMaxDays ? '; run fetch:gold-price' : ''),
   'warning',
   'supplementary'
 )

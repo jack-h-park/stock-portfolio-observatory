@@ -164,3 +164,49 @@ test('a missing sale is named under its account’s CSV line, and only there', (
   assert.match(message, /Robinhood Long-term · 3333 — 2026-10-06까지 반영[^\n]*\n[^\n]*longterm[^\n]*\n {2}⚠️ 매도 기록 누락 2종목 \(ACME, WIDG\)/)
   assert.equal(message.match(/매도 기록 누락/g)?.length, 1)
 })
+
+// Supplementary assets (deposits, pensions, physical gold) have no statement
+// download behind them, but they go stale the same way: nobody files the next
+// export. The summary's supplementaryCoverage block carries dates, labels and a
+// status per item, and the failing supplementary checks by name. Invented labels.
+const supRow = (over) => ({
+  kind: 'deposit',
+  label: 'Example Bank ••1234',
+  latestDate: '2026-06-01',
+  lagDays: 130,
+  maxLagDays: 90,
+  status: 'action_needed',
+  action: 'Example Bank ••1234 거래내역을 2026-06-01부터 받아 inbox에 넣으세요',
+  ...over,
+})
+const withSupplementary = (rows, supplementaryRows, failingChecks = []) => ({
+  ...doc(rows),
+  supplementaryCoverage: { rows: supplementaryRows, failingChecks },
+})
+
+test('a stale deposit and a failing supplementary check print a 보조 자산 section after the stock items', () => {
+  const message = coverageMessage(withSupplementary([row({})], [supRow({}), supRow({ kind: 'gold_price', label: 'KRX 금 시세', status: 'current', lagDays: 1, maxLagDays: 7 })], ['gold_price_fresh']))
+  assert.ok(message)
+  assert.ok(message.indexOf('미래에셋증권(ISA)') < message.indexOf('보조 자산'))
+  assert.match(message, /보조 자산/)
+  assert.match(message, /Example Bank ••1234 — 2026-06-01까지 반영 \(130일 경과, 기준 90일\)/)
+  assert.match(message, /→ Example Bank ••1234 거래내역을 2026-06-01부터 받아 inbox에 넣으세요/)
+  assert.match(message, /gold_price_fresh/)
+  // A current row is not something to do.
+  assert.doesNotMatch(message, /KRX 금 시세/)
+  assert.match(message, /전체 표: \/data-ops$/)
+})
+
+test('a stale supplementary item alone still produces a message', () => {
+  const message = coverageMessage(withSupplementary([row({ status: 'current' })], [supRow({ kind: 'pension', label: 'Example IRP', latestDate: null, lagDays: null, maxLagDays: 180, status: 'missing', action: 'Example IRP 보유 현황을 캡처해 pension/irp-holdings-YYYYMMDD.csv로 넣으세요' })]))
+  assert.ok(message)
+  assert.match(message, /Example IRP — 반영된 자료 없음/)
+  assert.match(message, /pension\/irp-holdings-YYYYMMDD\.csv/)
+})
+
+test('an all-current supplementary block prints no section, and an older summary without one reads as before', () => {
+  assert.equal(coverageMessage(withSupplementary([row({ status: 'current' })], [supRow({ status: 'current', lagDays: 3 })])), null)
+  const message = coverageMessage(withSupplementary([row({})], [supRow({ status: 'current', lagDays: 3 })]))
+  assert.doesNotMatch(message, /보조 자산/)
+  assert.equal(coverageMessage(doc([row({ status: 'current' })])), null)
+})
