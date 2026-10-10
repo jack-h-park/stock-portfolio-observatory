@@ -5,12 +5,12 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
-// 미래에셋 prints a Korean short code with an `A` in front of it and a foreign
-// listing as its bare symbol. `clean_ticker` used to strip every leading A, so
-// the Apple shares bought in that account were ledgered as APL while the same
-// security everywhere else was AAPL — two positions, two realized rows, one
-// company. Same harness as kr-lot-notes: the module imports pdfplumber at load
-// time, and nothing here reads a PDF.
+// Mirae Asset (미래에셋) prints a Korean short code with an `A` in front of it
+// and a foreign listing as its bare symbol. `clean_ticker` used to strip every
+// leading A, so the Apple shares bought in that account were ledgered as APL
+// while the same security everywhere else was AAPL — two positions, two
+// realized rows, one company. Same harness as kr-lot-notes: the module imports
+// pdfplumber at load time, and nothing here reads a PDF.
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..')
 const PY = process.env.STOCK_PYTHON_BIN || 'python3'

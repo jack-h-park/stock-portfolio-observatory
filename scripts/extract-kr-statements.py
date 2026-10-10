@@ -224,10 +224,11 @@ def clean_name(value):
 
 
 def clean_ticker(value):
-    # 종목번호 prefixes a Korean short code with `A` (`A005930`, `A0001A0`). A
-    # foreign listing is printed as its own symbol, so stripping every leading A
-    # turned AAPL into APL and split one Apple position across two tickers. Only
-    # an A in front of a six-character code that starts with a digit is a prefix.
+    # The certificate's security-code column (종목번호) prefixes a Korean short
+    # code with `A` (`A005930`, `A0001A0`). A foreign listing is printed as its
+    # own symbol, so stripping every leading A turned AAPL into APL and split one
+    # Apple position across two tickers. Only an A in front of a six-character
+    # code that starts with a digit is a prefix.
     return re.sub(r"^A(?=\d[0-9A-Z]{5}$)", "", nfc(str(value or "")).strip())
 
 
@@ -617,9 +618,9 @@ def tax_term(days):
 def booked_won(row):
     """The won amount the certificate booked for a foreign-currency trade, or None.
 
-    `amount_of` fills Amount (KRW) only where the line carried its own 환율, so
-    this is the broker's own conversion on the trade date. Without it the ingest
-    converts with its historical table, at a date it has to be told.
+    `amount_of` fills Amount (KRW) only where the line carried its own exchange
+    rate, so this is the broker's own conversion on the trade date. Without it
+    the ingest converts with its historical table, at a date it has to be told.
     """
     value = row.get("Amount (KRW)")
     if value in ("", None) or float(row.get("Native Amount") or 0) <= 0:
@@ -686,11 +687,12 @@ def build_lots(transactions, as_of_by_account):
     }
     applied_splits = set()
 
-    # 소수해외대체입고 moves fractional shares in with no cash leg, and with no
-    # amount the certificate leaves the currency at KRW while 단가 is in dollars:
-    # a $7.29 BRK.B lot was costed at ₩7 and sold at "₩7", a gain of zero. Such a
-    # lot takes the currency the same account's priced trades in that ticker are
-    # booked in, when they agree on one.
+    # A fractional foreign-share transfer-in (raw type `소수해외대체입고`) moves
+    # shares in with no cash leg. With no amount the certificate leaves the
+    # currency at KRW while the unit price is in dollars: a $7.29 BRK.B lot was
+    # costed at ₩7 and sold at "₩7", a gain of zero. Such a lot takes the currency
+    # the same account's priced trades in that ticker are booked in, when they
+    # agree on one. Raw types for a foreign security contain `해외` ("overseas").
     booked_currencies = {}
     for r in transactions:
         if r["Ticker"] and float(r["Native Amount"] or 0) > 0:
