@@ -1,0 +1,77 @@
+import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import test from 'node:test'
+
+const REPO_ROOT = path.resolve(import.meta.dirname, '..')
+
+function fileDownloads(files: Record<string, string | Buffer>) {
+  const dataDir = mkdtempSync(path.join(tmpdir(), 'bank-inbox-'))
+  mkdirSync(path.join(dataDir, 'inbox'), { recursive: true })
+  for (const [name, body] of Object.entries(files)) writeFileSync(path.join(dataDir, 'inbox', name), body)
+  const result = spawnSync(process.env.STOCK_PYTHON_BIN || 'python3', ['scripts/file-downloads.py', '--dry-run'], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    env: { ...process.env, STOCK_DATA_DIR: dataDir, STOCK_TOSSBANK_PASSWORD: '' },
+  })
+  assert.equal(result.status, 0, `filer exited ${result.status}: ${result.stderr}`)
+  return result.stdout
+}
+
+const CHASE_CHECKING = [
+  'Details,Posting Date,Description,Amount,Type,Balance,Check or Slip #',
+  'DEBIT,10/01/2026,"EXAMPLE UTILITY PAYMENT",-50.00,ACH_DEBIT,950.00,,',
+  'CREDIT,09/15/2026,"EXAMPLE PAYROLL",1000.00,ACH_CREDIT,1000.00,,',
+].join('\n')
+
+const BOA = [
+  'Description,,Summary Amt.',
+  'Beginning balance as of 06/01/2025,,"100.00"',
+  'Total credits,,"50.00"',
+  'Total debits,,"-20.00"',
+  'Ending balance as of 06/30/2025,,"130.00"',
+  '',
+  'Date,Description,Amount,Running Bal.',
+  '06/01/2025,Beginning balance as of 06/01/2025,,"100.00"',
+  '06/02/2025,"EXAMPLE DEPOSIT","50.00","150.00"',
+  '06/30/2025,"EXAMPLE CARD","-20.00","130.00"',
+].join('\n')
+
+const RH_CHECKING = ['Date,Description,Amount', '2026-10-05,"Inter-Entity Transfer to Brokerage",-10.00', '2026-09-01,"Example Deposit",30.00'].join('\n')
+const RH_SAVINGS = ['Date,Description,Amount', '2026-09-30,"Interest Payment",1.00', '2026-09-01,"Internal Transfer from Personal Checking",20.00'].join('\n')
+const RH_UNKNOWN = ['Date,Description,Amount', '2026-09-30,"Something",1.00'].join('\n')
+
+test('a Chase checking activity export files into bank-statements by its row dates', () => {
+  assert.match(fileDownloads({ 'Chase0000_Activity_20261009.csv': CHASE_CHECKING }), /→ bank-statements\/chase-checking-20260915-20261001\.csv/)
+})
+
+test('a Bank of America statement CSV files by its declared period', () => {
+  assert.match(fileDownloads({ 'stmt.csv': BOA }), /→ bank-statements\/boa-checking-20250601-20250630\.csv/)
+})
+
+test('Robinhood bank exports are told apart by what their rows say, and refused when they say nothing', () => {
+  assert.match(fileDownloads({ 'a.csv': RH_CHECKING }), /→ bank-statements\/robinhood-bank-checking-20260901-20261005\.csv/)
+  assert.match(fileDownloads({ 'b.csv': RH_SAVINGS }), /→ bank-statements\/robinhood-bank-savings-20260901-20260930\.csv/)
+  assert.match(fileDownloads({ 'c.csv': RH_UNKNOWN }), /recognised but not filed[\s\S]*c\.csv[\s\S]*checking or savings/)
+})
+
+test('a 새마을금고 거래내역조회 .xls files by its 조회기간', () => {
+  const cfb = Buffer.concat([
+    Buffer.from('d0cf11e0a1b11ae1', 'hex'),
+    Buffer.alloc(504),
+    Buffer.from('거래내역조회', 'utf16le'),
+    Buffer.alloc(16),
+    Buffer.from('통장(상품)명', 'utf16le'),
+    Buffer.alloc(16),
+    Buffer.from('조회기간 : 2023.01.01 ~ 2026.10.09', 'utf16le'),
+  ])
+  assert.match(fileDownloads({ 'export.xls': cfb }), /→ bank-statements\/mg-deposit-20230101-20261009\.xls/)
+})
+
+test('an encrypted 토스뱅크 export without a password is refused with the variable to set', () => {
+  // CFB magic + the EncryptedPackage stream name is enough for the detector; the body is not decrypted here.
+  const cfb = Buffer.concat([Buffer.from('d0cf11e0a1b11ae1', 'hex'), Buffer.alloc(504), Buffer.from('EncryptedPackage', 'utf16le')])
+  assert.match(fileDownloads({ '토스뱅크_거래내역.xlsx': cfb }), /STOCK_TOSSBANK_PASSWORD/)
+})
