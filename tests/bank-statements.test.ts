@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
@@ -81,4 +83,75 @@ print(json.dumps({"order": [x["date"] for x in t], "amounts": [x["amount"] for x
   assert.deepEqual(r.order, ['2026-09-01', '2026-09-02', '2026-09-02'])
   assert.deepEqual(r.amounts, [1200, -100, 200])
   assert.deepEqual(r.eod, [{ date: '2026-09-01', balance: 1200 }, { date: '2026-09-02', balance: 1300 }])
+})
+
+test('_num accepts currency symbols, parentheses and a trailing minus, and raises on other text', () => {
+  const r = py(`
+bad = False
+try:
+    m._num("abc")
+except ValueError:
+    bad = True
+print(json.dumps([m._num("(5.00)"), m._num("$1,234.50"), m._num("₩-"), m._num("7.25-"), m._num("₩(1,000)"), bad]))`)
+  assert.deepEqual(r, [-5, 1234.5, null, -7.25, -1000, true])
+})
+
+test('a malformed file becomes a finding and the other accounts are still written', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'bank-main-'))
+  mkdirSync(path.join(dir, 'bank-statements'))
+  writeFileSync(path.join(dir, 'bank-statements', 'chase-checking-a-b.csv'),
+    'Details,Posting Date,Description,Amount,Type,Balance,Check or Slip #\nDEBIT,10/01/2026,"L",-5.00,ACH,945.00,,\n')
+  writeFileSync(path.join(dir, 'bank-statements', 'boa-checking-a-b.csv'), 'not,a,statement\n1,2,3\n')
+  const out = path.join(dir, 'out.json')
+  execFileSync('python3', ['scripts/extract-bank-statements.py'], {
+    cwd: ROOT,
+    env: { ...process.env, STOCK_DATA_DIR: dir, STOCK_BANK_BALANCES_PATH: out, STOCK_ACCOUNT_MAP_PATH: path.join(dir, 'none.json') },
+    encoding: 'utf8',
+  })
+  const doc = JSON.parse(readFileSync(out, 'utf8'))
+  assert.equal(doc.accounts.length, 1)
+  assert.equal(doc.accounts[0].institution, 'chase')
+  assert.equal(doc.findings.length, 1)
+  assert.match(doc.findings[0], /boa-checking-a-b\.csv: could not be parsed \(StopIteration/)
+})
+
+test('a bad anchor is a finding and the account gets no derived balances', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'bank-anchor-'))
+  mkdirSync(path.join(dir, 'bank-statements'))
+  writeFileSync(path.join(dir, 'bank-statements', 'robinhood-bank-savings-a-b.csv'), 'Date,Description,Amount\n2026-09-01,"Y",30.00\n')
+  writeFileSync(path.join(dir, 'map.json'), JSON.stringify({
+    bankAccounts: [{ institution: 'robinhood-bank', kind: 'savings', currency: 'USD', alias: 'RH save' }],
+    anchors: [{ alias: 'RH save', date: '2026-09-01', balance: 'lots' }],
+  }))
+  const out = path.join(dir, 'out.json')
+  execFileSync('python3', ['scripts/extract-bank-statements.py'], {
+    cwd: ROOT,
+    env: { ...process.env, STOCK_DATA_DIR: dir, STOCK_BANK_BALANCES_PATH: out, STOCK_ACCOUNT_MAP_PATH: path.join(dir, 'map.json') },
+    encoding: 'utf8',
+  })
+  const doc = JSON.parse(readFileSync(out, 'utf8'))
+  assert.deepEqual(doc.accounts[0].balances, [])
+  assert.match(doc.findings[0], /RH save: anchor is unusable/)
+})
+
+test('rows unique to a later overlapping file follow the earlier file on a shared day', () => {
+  const r = py(`
+head = "Details,Posting Date,Description,Amount,Type,Balance,Check or Slip #"
+a = m.parse_chase("\\n".join([head,
+ 'DEBIT,10/01/2026,"B",-10.00,ACH,880.00,,',
+ 'DEBIT,10/01/2026,"A",-20.00,ACH,890.00,,',
+ 'CREDIT,09/30/2026,"P",910.00,ACH,910.00,,']))
+b = m.parse_chase("\\n".join([head,
+ 'DEBIT,10/02/2026,"D",-1.00,ACH,869.00,,',
+ 'DEBIT,10/01/2026,"C",-10.00,ACH,870.00,,',
+ 'DEBIT,10/01/2026,"B",-10.00,ACH,880.00,,']))
+t = m.merge_txns([a, b])
+print(json.dumps({"eod": m.end_of_day(t), "breaks": m.continuity_breaks(t), "seq": [x["seq"] for x in t]}))`)
+  assert.deepEqual(r.eod, [
+    { date: '2026-09-30', balance: 910 },
+    { date: '2026-10-01', balance: 870 },
+    { date: '2026-10-02', balance: 869 },
+  ])
+  assert.deepEqual(r.breaks, [])
+  assert.deepEqual(r.seq, [0, 1, 2, 3, 4])
 })
