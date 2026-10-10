@@ -363,7 +363,13 @@ Two things it will not do, both deliberate:
   metadata; which of the three strategy accounts it came from exists only in
   the name someone typed. Those tokens are half the `account` on every
   Robinhood row in the database, so a wrong one would mislabel real holdings.
-  Name it by hand.
+  Name it by hand, and name the window for the dates you asked Robinhood for
+  (`robinhood-transactions-agentic-20260812-20261009.csv`), not for the last
+  row in it. The filer names other brokers' windows by their rows because the
+  rows are all it can see. You know the range, and a quiet account's last trade
+  can be weeks before the export. The account coverage reads the name's end date
+  as how far the CSV reaches, so a window named for its last row keeps the
+  reminder asking for a file you already have.
 - **A single part of a split Toss statement cannot be numbered.** Parts share a
   발급번호 and a 조회 기간 and differ only in their rows, so `-1of3` is a property
   of the set: drop the whole set in at once and the run numbers it by first

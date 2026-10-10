@@ -2286,6 +2286,64 @@ function robinhoodAccountResolver(snapshot: any, transactionRows: CoverageDbRow[
   }
 }
 
+// Written by the ingest on fills it bridges from the MCP's orders after the
+// newest CSV (docs/robinhood-orders-bridge.md). Not a CSV, so not CSV coverage.
+const ROBINHOOD_ORDERS_SOURCE_SYSTEM = 'robinhood_mcp_orders'
+
+/** The last day a Robinhood transactions file says it covers, from its name. */
+export function robinhoodCsvPeriodEnd(filename: string): { account: string; end: string } | null {
+  const match = path.basename(filename).match(/^robinhood-transactions-([a-z]+)-(\d{8}-\d{8}|\d{4}-\d{4}|\d{8})\.csv$/i)
+  if (!match) return null
+  const period = match[2]
+  const ymd = (value: string) => `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`
+  const end = /^\d{8}-\d{8}$/.test(period) ? ymd(period.slice(9)) : /^\d{4}-\d{4}$/.test(period) ? `${period.slice(5)}-12-31` : ymd(period)
+  return { account: match[1].toLowerCase(), end }
+}
+
+/**
+ * How far each Robinhood account's transaction CSVs reach, keyed by the
+ * strategy name the CSVs are filed under ("Mid-term").
+ *
+ * The later of two dates: the newest row a CSV holds, and the newest period a
+ * CSV's NAME declares. The row alone understated a quiet account: an export
+ * asked for through 10-09 whose last trade was 09-23 read as covering 09-23,
+ * and the reminder kept asking for a file that had already been downloaded.
+ * The name is what says which days the export answers for, and the ingest's
+ * seam resolution reads it the same way.
+ *
+ * Fills bridged from orders are excluded. They are in the same table under the
+ * same account, and counting them made a two-week-old CSV read current for as
+ * long as the account kept trading.
+ */
+function robinhoodCsvCoverage(conn: Database.Database, sourceRows: any[]) {
+  const through = new Map<string, string>()
+  const raise = (account: string, date: string | null) => {
+    if (date && date > (through.get(account) ?? '')) through.set(account, date)
+  }
+  const rows = conn
+    .prepare(`select account_type, max(date) as last from transactions
+              where market = 'US' and brokerage = 'Robinhood' and coalesce(source_system, '') != ?
+              group by account_type`)
+    .all(ROBINHOOD_ORDERS_SOURCE_SYSTEM) as { account_type: string | null; last: string | null }[]
+  // The filename token is the strategy name lowercased to fit the filename
+  // grammar ("midterm" for "Mid-term"), so the two are matched the same way.
+  const byToken = new Map<string, string>()
+  for (const row of rows) {
+    if (!row.account_type) continue
+    byToken.set(row.account_type.toLowerCase().replace(/[^a-z]/g, ''), row.account_type)
+    raise(row.account_type, isoDate(row.last))
+  }
+  // A period ending after today is a typo in a hand-typed name, not coverage;
+  // trusting it would mark the account current until that day arrives.
+  const today = new Date().toISOString().slice(0, 10)
+  for (const source of sourceRows) {
+    const period = robinhoodCsvPeriodEnd(String(source.filename ?? ''))
+    const account = period && byToken.get(period.account)
+    if (account && period.end <= today) raise(account, period.end)
+  }
+  return through
+}
+
 /**
  * "Robinhood Mid-term · 1234" for a folded account; the plain label otherwise.
  * Separated by spaces, not wrapped in brackets, so the briefing summary's
@@ -2332,6 +2390,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
     const checks = new Map(checkRows.map((row) => [row.name, row]))
     const robinhoodSnapshot = readJson(config.stockRobinhoodSnapshotPath)
     const robinhoodAccount = robinhoodAccountResolver(robinhoodSnapshot, transactionRows)
+    const robinhoodCsvThrough = robinhoodCsvCoverage(conn, sourceRows)
     // Written by the ingest per account (the strategy name, which is the
     // Robinhood coverage key). Absent from a database older than the table.
     const missingDisposalsByAccount = new Map<string, string[]>()
@@ -2420,7 +2479,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
           const csv = coverageSource({
             label: 'CSV',
             method: 'manual',
-            coveredThrough: isoDate(transaction.covered_through),
+            coveredThrough: robinhoodCsvThrough.get(rawAccount) ?? null,
             maxLagDays: 14,
             requiredArtifact: 'Robinhood transactions CSV',
             // The export names no account, so the file is named by hand; the
@@ -2443,7 +2502,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
           ? 'snapshot은 Robinhood MCP에서 다시 생성하고, 거래내역 CSV는 계좌별로 다운로드해 이름을 붙여 us-transactions/에 넣으세요. 둘 중 오래된 쪽이 계좌 기준일입니다.'
           : 'Robinhood MCP에서 계좌 snapshot과 lot을 다시 생성하세요. broker CSV를 inbox에 넣는 작업이 아닙니다.')
         detail = sources.length > 1
-          ? 'MCP snapshot의 fetchedAt과 거래내역 CSV의 마지막 거래일 중 오래된 쪽을 기준으로 계산합니다.'
+          ? 'MCP snapshot의 fetchedAt과 거래내역 CSV가 다루는 마지막 날(파일 이름의 기간 끝, 또는 그보다 늦은 거래일) 중 오래된 쪽을 기준으로 계산합니다.'
           : checks.get('robinhood_snapshot_fresh')?.detail ?? 'MCP snapshot의 fetchedAt을 기준으로 계산합니다.'
       } else if (market === 'US') {
         requiredArtifact = `${brokerage} holdings CSV + transactions CSV`

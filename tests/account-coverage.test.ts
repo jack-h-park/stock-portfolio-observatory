@@ -24,12 +24,12 @@ const db = new Database(dbPath)
 db.exec(`
 create table source_files (name text primary key, filename text not null, mtime_ms integer not null);
 create table holdings (market text, brokerage text, account_type text, account text, as_of_date text, account_wrapper text not null default 'taxable');
-create table transactions (market text, brokerage text, account_type text, account text, date text);
+create table transactions (market text, brokerage text, account_type text, account text, date text, source_system text);
 create table tax_lots (market text, brokerage text, account_type text, account text, as_of_date text);
 create table validation_checks (name text, detail text, status text);
 `)
 const holding = db.prepare('insert into holdings (market, brokerage, account_type, account, as_of_date) values (?, ?, ?, ?, ?)')
-const transaction = db.prepare('insert into transactions values (?, ?, ?, ?, ?)')
+const transaction = db.prepare('insert into transactions (market, brokerage, account_type, account, date) values (?, ?, ?, ?, ?)')
 for (const [hint, nickname] of [['1111', 'Agentic'], ['2222', 'Mid-term']]) {
   holding.run('US', 'Robinhood', nickname, `Robinhood ${hint}`, daysAgo(0))
 }
