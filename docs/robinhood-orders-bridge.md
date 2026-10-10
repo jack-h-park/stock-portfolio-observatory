@@ -202,10 +202,15 @@ is how the two sources meet.
 
 Run these once and record the results here:
 
-1. **Fee netting.** The 2025 sale checked above had zero fees, so it cannot
-   confirm the sell-side fee formula. Several of the 2026-10-09 sales carry
-   non-zero `fees`. When the CSV covering them arrives, check that each CSV
-   `Amount` equals `qty × price − fees` per execution.
+1. **Fee netting — confirmed 2026-10-10 for sells.** The five 2026-10-09 sales
+   came back in the next CSVs as eight rows, one per execution. Each CSV
+   `Amount` equals that execution's `qty × price − fees`, rounded half-up to
+   cents, in all eight. Four executions carried non-zero fees, from $0.03 to
+   $0.53, and for those four the gross `qty × price` misses the CSV by exactly
+   the fee. A two-fill order's fee is split across its executions, each fill's
+   CSV row net of its own share. So fees are applied per execution, never once
+   per order. Buys with a non-zero fee have not been seen yet; the buy side of
+   the formula is still unconfirmed.
 2. **Eastern-date mapping.** Find an extended-hours fill in the history and
    confirm its CSV `Activity Date` is the Eastern date of its timestamp.
 3. **The missing 2025 sale.** Page the unfiltered Mid-term history across
