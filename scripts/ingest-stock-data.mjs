@@ -3207,9 +3207,14 @@ if (robinhoodSnapshot?.accounts?.length) {
       const ticker = normalizeTicker(rawSymbol)
       const type = side === 'buy' ? 'BUY' : 'SELL'
       // One row per execution, as the CSV writes it, so a later CSV replaces
-      // these one for one. Cents, because the CSV's Amount is in cents.
+      // these one for one. Cents, because the CSV's Amount is in cents, and
+      // rounded on the magnitude: the broker rounds a half cent away from zero
+      // (5 × $134.415 is ($672.08) in the CSV), while Math.round takes -x.5 UP,
+      // to the smaller amount. Signed first, a buy came out a cent short of its
+      // CSV row and the cutoff-day match missed it.
       const gross = quantity * price
-      const nativeAmount = usRound(type === 'BUY' ? -(gross + fees) : gross - fees, 2)
+      const magnitude = usRound(type === 'BUY' ? gross + fees : gross - fees, 2)
+      const nativeAmount = type === 'BUY' ? -magnitude : magnitude
       const row = {
         market: 'US',
         currency: 'USD',

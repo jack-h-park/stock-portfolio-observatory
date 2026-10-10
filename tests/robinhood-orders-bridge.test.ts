@@ -241,6 +241,27 @@ test('a cutoff-day fill that matches a CSV row on everything but the amount is n
   assert.match(bridge?.detail ?? '', /matches a CSV row on the cutoff day except for the amount/)
 })
 
+test('a buy at a half cent rounds away from zero, as the CSV does, and matches its cutoff-day row', () => {
+  // 5 × $40.005 is $200.025. The CSV says ($200.03); Math.round on the signed
+  // -200.025 says -200.02, which matched nothing and read as a near-miss.
+  const csvRow = '"8/11/2026","8/11/2026","8/12/2026","ACME","ACME Corp\nCUSIP: 000000000","Buy","5","$40.01","($200.03)"'
+  const out = ingest(
+    { [MIDTERM_CSV]: [...BASE_ROWS, csvRow] },
+    [
+      {
+        nickname: 'Mid-term',
+        acme: 15,
+        orders: [order('o-1', 'buy', 'ACME', [{ timestamp: '2026-08-11T14:00:00Z', quantity: '5', price: '40.005' }])],
+      },
+    ]
+  )
+
+  assert.deepEqual(out.bridged, [])
+  const bridge = out.check('robinhood_orders_bridge_csv')
+  assert.equal(bridge?.status, 'pass', bridge?.detail)
+  assert.match(bridge?.detail ?? '', /1 on the cutoff day already in the CSV/)
+})
+
 test('a newer CSV covering the window removes every bridged row', () => {
   const orders = [sell('o-1', '2026-10-09T14:31:02Z', 10, 55)]
   const out = ingest(
