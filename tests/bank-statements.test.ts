@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
+
+// The 토스뱅크 cases build their fixture workbooks with openpyxl. CI's python has
+// no openpyxl (the app's own refresh host does), so those cases skip there, the
+// same way the encrypted-workbook filing tests do.
+const HAVE_OPENPYXL = spawnSync('python3', ['-c', 'import openpyxl']).status === 0
 const LOAD = `
 import importlib.util, json
 spec=importlib.util.spec_from_file_location('bank', 'scripts/extract-bank-statements.py')
@@ -189,7 +194,7 @@ function extract(dir: string, map: object | null = null) {
   return JSON.parse(readFileSync(out, 'utf8'))
 }
 
-test('토스뱅크 rows, newest first with float cells, read in order with signed amounts and end-of-day balances', () => {
+test('토스뱅크 rows, newest first with float cells, read in order with signed amounts and end-of-day balances', { skip: !HAVE_OPENPYXL }, () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'toss-rows-'))
   mkdirSync(path.join(dir, 'bank-statements'))
   writeTossWorkbook(path.join(dir, 'bank-statements', 'tossbank-0000-20260101-20261010.xlsx'), '0000', [
@@ -205,7 +210,7 @@ test('토스뱅크 rows, newest first with float cells, read in order with signe
   assert.deepEqual(a.continuityBreaks, [])
 })
 
-test('토스뱅크 same-second rows keep their file order, and a gap is a continuity break', () => {
+test('토스뱅크 same-second rows keep their file order, and a gap is a continuity break', { skip: !HAVE_OPENPYXL }, () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'toss-gap-'))
   mkdirSync(path.join(dir, 'bank-statements'))
   writeTossWorkbook(path.join(dir, 'bank-statements', 'tossbank-0000-a-b.xlsx'), '0000', [
@@ -220,7 +225,7 @@ test('토스뱅크 same-second rows keep their file order, and a gap is a contin
   assert.match(a.continuityBreaks[0], /2026-09-03/)
 })
 
-test('a 토스뱅크 row with no balance gets previous balance plus amount, so the next row is not a false break', () => {
+test('a 토스뱅크 row with no balance gets previous balance plus amount, so the next row is not a false break', { skip: !HAVE_OPENPYXL }, () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'toss-blank-'))
   mkdirSync(path.join(dir, 'bank-statements'))
   writeTossWorkbook(path.join(dir, 'bank-statements', 'tossbank-0000-a-b.xlsx'), '0000', [
@@ -237,7 +242,7 @@ test('a 토스뱅크 row with no balance gets previous balance plus amount, so t
   assert.match(doc.findings[0], /tossbank-0000-a-b\.xlsx: 1 row\(s\) printed no balance/)
 })
 
-test('two 토스뱅크 last4 values give two accounts, and the map overrides kind and alias by last4', () => {
+test('two 토스뱅크 last4 values give two accounts, and the map overrides kind and alias by last4', { skip: !HAVE_OPENPYXL }, () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'toss-two-'))
   mkdirSync(path.join(dir, 'bank-statements'))
   writeTossWorkbook(path.join(dir, 'bank-statements', 'tossbank-0000-a-b.xlsx'), '0000', [['2026.09.01 10:00:00', 'a', 10.0, 10.0]])
@@ -295,7 +300,7 @@ print(json.dumps({"amounts": [x["amount"] for x in t], "breaks": m.continuity_br
   assert.deepEqual(r.breaks, [])
 })
 
-test('a 토스뱅크 workbook with no header row is a finding that says so, and the other accounts are kept', () => {
+test('a 토스뱅크 workbook with no header row is a finding that says so, and the other accounts are kept', { skip: !HAVE_OPENPYXL }, () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'toss-nohdr-'))
   mkdirSync(path.join(dir, 'bank-statements'))
   execFileSync('python3', ['-c', 'import sys, openpyxl; wb = openpyxl.Workbook(); wb.active.append([None, "nothing here"]); wb.save(sys.argv[1])', path.join(dir, 'bank-statements', 'tossbank-0000-a-b.xlsx')])
