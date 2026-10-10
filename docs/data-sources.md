@@ -526,26 +526,24 @@ facts about the brokers' exports and outlive it.
 | No cron can regenerate the Robinhood snapshot — only an agent session with the MCP | `robinhood_snapshot_fresh` | open by design; the check is the mitigation |
 | No path exists to fetch a new 삼성증권 거래내역확인서 automatically — a vest can only be discovered by re-downloading | `samsung_statement_fresh` | open by design; the check is the mitigation |
 | US realized gains absent | `us_ytd_realized_assumption_reviewed` | E (replay) + D (1099-B) in progress |
-| Two Toss fills missing from its API | — | inquiry drafted |
 | US sheet still an input to reconcile | — | blocked on US realized |
 | `Note` mapping rules not migrated | — | open |
-| **Toss orders are fetched every 6h and never read.** `fetch-toss.mjs` pages `/api/v1/orders`, filters to `FILLED`, and writes them into `data/toss-snapshot.json`; the ingest reads only `holdings.items` from that file. So the trades between the newest 거래내역서 and now are already on disk, unused — which is the whole of the drift `toss_holdings_lots_provenance` reports | `toss_holdings_lots_provenance` | **P2** — open. See the note below before implementing |
-| **`toss_holdings_lots_provenance` does not say how old the statement is**, so a count of disagreements reads as a defect rather than as expected drift. One run reported 7 of 38, and all seven were the multi-week gap between the newest statement and the live snapshot | itself | **P2** — message only, no logic change |
+| **Toss fills the orders API omits stay invisible until the next 거래내역서.** The orders fetched every 6h are read: `toss_orders_bridge_statement` books the fills after the newest statement's last transaction into transactions and lots, and the statement replaces them once a newer one is downloaded (#61). What remains is what `/api/v1/orders` does not return — 시간외 단일가 and 장후 시간외종가 fills — and anything that is not an order, such as `타사대체입고` or a rights issue. That the API omits after-hours fills by design was confirmed by 토스증권 support on 2026-08-02 (see "What the certificates and the API each get wrong") | `toss_holdings_lots_provenance` | open by design; the check is the mitigation |
+| **`toss_holdings_lots_provenance` does not say how old the statement is**, so a count of disagreements reads as a defect rather than as expected drift. Before #61 one run reported 7 of 38, all of them plain purchases made after the newest statement. The bridge now books those, so what is left to disagree is what it cannot see — an after-hours fill or a non-order row since the cutoff — and naming the cutoff date in the message is what would say so | itself | **P2** — message only, no logic change |
 | **A zero-cost rights certificate looks like a position that vanished.** `신주인수권증서` has expiry as its normal end of life, so a zero-cost rights lot is reported as an open lot with no live position — a warning that returns every time rights are issued, which is how a check stops being read | `toss_holdings_lots_provenance` | **P2** — open |
 
-**Before wiring Toss orders in, read the Robinhood row above.** The same
-question was asked there in 2026-08 and the answer was to leave the CSVs
-authoritative: the MCP's orders turned out to hold no trade the CSV lacked,
-while dividends, transfers and corporate actions had no order endpoint at all,
-so ingesting orders would have added a second source of the same trades for very
-little. Toss is not identical — its orders come from a cron rather than an agent
-session, so they genuinely can be fresher than any statement — but the second
-half applies unchanged. A single statement can carry `타사대체입고`
-(a transfer in from another broker) and `신주인수권증서입고` (a rights issue) beside
-its `구매` rows, and an orders endpoint returns none of those. So orders can
-close the *trade* gap and the 거래내역서 stays the only source of everything
-else — which also means the merge needs a per-account floor and a rule for which
-side owns a Buy/Sell in the overlap, exactly as the Robinhood work worked out.
+**Toss orders were wired in, but only after the newest statement.** The same
+question was asked of Robinhood in 2026-08 and the answer there was to leave the
+CSVs authoritative: the MCP's orders held no trade the CSV lacked, while
+dividends, transfers and corporate actions had no order endpoint at all. Toss
+differed in one way that mattered — its orders come from a cron, so they are
+genuinely fresher than any statement — and agreed in the other: a single
+statement can carry `타사대체입고` and `신주인수권증서입고` beside its `구매` rows,
+and an orders endpoint returns neither. So the bridge (#61) closes only the
+*trade* gap: the cutoff is the newest statement's last transaction, orders
+supply only fills after it, and the 거래내역서 stays the only source of
+everything else. The Robinhood equivalent, for the window after the newest CSV,
+is designed in [robinhood-orders-bridge.md](robinhood-orders-bridge.md).
 
 Each gap that the system can see is a named check rather than a silence. That is
 deliberate: the failures this project keeps rediscovering are not crashes but
