@@ -472,14 +472,28 @@ class Refusal:
 # same file, because that means a marker is not as specific as it looks.
 # ---------------------------------------------------------------------------
 
-# 미래에셋 계좌번호 → the account type its certificates belong to. Read off the
-# certificates on disk rather than inferred from the number's shape: a 잔고증명서
-# does not print 계좌유형, and guessing which account a balance belongs to would
-# put ISA holdings under the 종합 account. An unknown account number is refused.
-MIRAE_ACCOUNTS = {
-    "456121492000": "isa",
-    "220224249320": "general",
-}
+# 미래에셋 계좌번호 → the account type its certificates belong to, from the
+# account map's `brokerageAccounts` (the numbers are private and this repository
+# is public). Read off the certificates on disk rather than inferred from the
+# number's shape: a 잔고증명서 does not print 계좌유형, and guessing which account
+# a balance belongs to would put ISA holdings under the 종합 account. An unknown
+# account number is refused.
+MIRAE_MAP_REMEDY = (
+    'add {"institution": "mirae", "accountNumber": "<계좌번호>", "kind": "isa" or "general"} '
+    "to brokerageAccounts in the account map (data/accounts.local.json)"
+)
+
+
+def mirae_account_kind(number):
+    """(kind, problem): which 미래에셋 account `number` is, per the account map."""
+    entries, problem = account_map_list("brokerageAccounts")
+    if problem:
+        return None, problem
+    for entry in entries:
+        if (entry.get("institution") == "mirae" and entry.get("kind") in ("isa", "general")
+                and digits(entry.get("accountNumber")) == digits(number)):
+            return entry["kind"], None
+    return None, None
 
 
 def mirae_period_window(text):
@@ -521,13 +535,15 @@ def detect_mirae_transactions(doc):
         kind = "isa" if "ISA" in match.group(1) else "general" if "종합" in match.group(1) else None
     if kind is None:
         account = re.search(r"계좌번호(\d[\d-]+)", body)
-        kind = MIRAE_ACCOUNTS.get(digits(account.group(1))) if account else None
+        kind, problem = mirae_account_kind(account.group(1)) if account else (None, None)
+        if problem:
+            return Refusal("미래에셋 거래내역증명서", problem, "fix the JSON, or move the file aside")
     if kind is None:
         return Refusal(
             "미래에셋 거래내역증명서",
-            "page 2 names neither 계좌유형 ISA/종합 nor a 계좌번호 this repo has "
-            "seen, so which account it belongs to is unknown",
-            "add the account number to MIRAE_ACCOUNTS in scripts/file-downloads.py",
+            "page 2 names neither 계좌유형 ISA/종합 nor a 계좌번호 the account map "
+            "declares, so which account it belongs to is unknown",
+            MIRAE_MAP_REMEDY,
         )
 
     evidence = [f"제공내역 {iso(start)} ~ {iso(end)}", f"계좌유형 {kind}"]
@@ -576,13 +592,15 @@ def detect_mirae_balance(doc):
         )
 
     account = re.search(r"계좌번호계좌명부기명실명확인번호(\d[\d-]+)", cover)
-    kind = MIRAE_ACCOUNTS.get(digits(account.group(1))) if account else None
+    kind, problem = mirae_account_kind(account.group(1)) if account else (None, None)
+    if problem:
+        return Refusal("미래에셋 잔고증명서", problem, "fix the JSON, or move the file aside")
     if kind is None:
         return Refusal(
             "미래에셋 잔고증명서",
-            "the 계좌번호 is not one this repo has seen, and a 잔고증명서 does not "
-            "print 계좌유형 — which account it belongs to is unknown",
-            "add the account number to MIRAE_ACCOUNTS in scripts/file-downloads.py",
+            "the 계좌번호 is not one the account map declares, and a 잔고증명서 does "
+            "not print 계좌유형 — which account it belongs to is unknown",
+            MIRAE_MAP_REMEDY,
         )
 
     issue = re.search(r"발급번호:(\d{4})-(\d{3})-(\d{8})", cover)
@@ -651,14 +669,35 @@ def detect_toss_transactions(doc):
     )
 
 
+def hana_usd_accounts():
+    """(numbers, problem): the Hana USD account numbers the account map declares, digits only."""
+    entries, problem = account_map_list("bankAccounts")
+    if problem:
+        return [], problem
+    return [digits(e["accountNumber"]) for e in entries
+            if e.get("institution") == "hana" and e.get("currency") == "USD" and digits(e.get("accountNumber"))], None
+
+
 def detect_hana_fx_history(doc):
     """Hana foreign-currency account history -> fx-statements/hana-usd-...."""
     if doc.suffix == ".pdf":
         cover = despace(doc.page_text(0))
         # Safari's print PDF duplicates each title/header glyph four times, but
         # leaves account values, dates, currency, and data rows intact.
-        if "228-910040-10938" not in cover or "USD" not in cover or "FX마켓" not in cover:
+        if "USD" not in cover or "FX마켓" not in cover:
             return None
+        # Which account is the map's to say: the number is private.
+        numbers, problem = hana_usd_accounts()
+        if problem:
+            return Refusal("Hana USD account history", problem, "fix the JSON, or move the file aside")
+        account = next((n for n in numbers if n in cover.replace("-", "")), None)
+        if not account:
+            return Refusal(
+                "Hana USD account history",
+                "the PDF prints no Hana USD account number the account map declares",
+                'add {"institution": "hana", "kind": "fx", "currency": "USD", "accountNumber": "<계좌번호>"} '
+                "to bankAccounts in the account map (data/accounts.local.json)",
+            )
         window = re.search(r"(\d{4}-\d{2}-\d{2})~(\d{4}-\d{2}-\d{2})", cover)
         if not window:
             return Refusal("Hana USD account history", "the PDF has no printed 조회기간")
@@ -666,7 +705,7 @@ def detect_hana_fx_history(doc):
         return Plan(
             DIR_FX,
             f"hana-usd-history-{period_from_window(start, end)}.pdf",
-            [f"조회기간 {iso(start)} ~ {iso(end)}", "account ...10938", "currency USD"],
+            [f"조회기간 {iso(start)} ~ {iso(end)}", f"account ...{account[-5:]}", "currency USD"],
         )
 
     # Hana's download is legacy BIFF/XLS. Its shared-string stream is UTF-16LE;
@@ -950,20 +989,29 @@ def detect_chase(doc):
 FIDELITY_HISTORY_NAME = re.compile(r"^History_for_Account_([A-Z0-9]+)(-\d+)?\.csv$")
 
 
-def mapped_cma_ids():
-    """(ids, problem): Fidelity account IDs the account map declares as a CMA.
+def account_map_list(key):
+    """(entries, problem): one list from the account map.
 
-    No map is normal (CI, a fresh checkout) and means no CMAs. A map that exists
-    but cannot be read is a `problem` instead of an empty set, because an empty
-    set would quietly send a CMA to the brokerage folder.
+    No map is normal (CI, a fresh checkout) and means an empty list. A map that
+    exists but cannot be read is a `problem` instead, because an empty list would
+    quietly send a CMA to the brokerage folder, or refuse a pension file for the
+    wrong reason.
     """
     if not ACCOUNT_MAP_PATH.exists():
-        return set(), None
+        return [], None
     try:
         raw = json.loads(ACCOUNT_MAP_PATH.read_text(encoding="utf-8"))
-        entries = raw.get("bankAccounts", []) if isinstance(raw, dict) else []
+        entries = raw.get(key, []) if isinstance(raw, dict) else []
     except (OSError, ValueError) as error:
-        return set(), f"the account map {ACCOUNT_MAP_PATH.name} could not be read ({type(error).__name__})"
+        return [], f"the account map {ACCOUNT_MAP_PATH.name} could not be read ({type(error).__name__})"
+    return [e for e in entries if isinstance(e, dict)] if isinstance(entries, list) else [], None
+
+
+def mapped_cma_ids():
+    """(ids, problem): Fidelity account IDs the account map declares as a CMA."""
+    entries, problem = account_map_list("bankAccounts")
+    if problem:
+        return set(), problem
     return {str(e["accountId"]) for e in entries
             if isinstance(e, dict) and e.get("institution") == "fidelity" and e.get("kind") == "cma" and e.get("accountId")}, None
 

@@ -47,7 +47,7 @@ None of their contents belong in the repo:
 
 | Variable | Holds |
 | --- | --- |
-| `STOCK_ACCOUNT_MAP_PATH` | the account map: account numbers, institution aliases, wrappers and anchor balances (`data/accounts.local.json`, relative to the repo). The filer reads it to tell a CMA from a brokerage history, and the extractor to name accounts; `push-sources.sh` copies it to the refresh host with the other config files, and a missing map is skipped without failing the push |
+| `STOCK_ACCOUNT_MAP_PATH` | the account map: account numbers, institution aliases, wrappers and anchor balances (`data/accounts.local.json`, relative to the repo). The filer reads it to tell a CMA from a brokerage history, which 미래에셋 account a certificate belongs to (`brokerageAccounts`), and which Hana PDF is the USD account (`bankAccounts`, `institution: "hana"`), and the extractor to name accounts; a filer that needs one of those entries and finds none refuses the file and names the entry to add; `push-sources.sh` copies it to the refresh host with the other config files, and a missing map is skipped without failing the push |
 | `STOCK_BANK_BALANCES_PATH` | the extracted deposit balances (`bank-balances.json`) that the refresh loads into `cash_balances` |
 | `STOCK_TOSSBANK_PASSWORD` | the password for Toss Bank's encrypted workbook; read on the laptop only, never on the refresh host (files in `bank-statements/` are already decrypted) |
 
@@ -294,9 +294,9 @@ was confirmed against the files already on disk.
 | Document | Recognised by | Lands in |
 | --- | --- | --- |
 | 미래에셋 거래내역증명서 | `거래내역 증 명 서` + `계좌유형` ISA/종합 on page 2 | `kr-statements/mirae-<isa\|general>-transactions-<period>[-<발급번호>]` |
-| 미래에셋 잔고증명서 | `잔 고 증 명 서` + a known 계좌번호 | `kr-statements/mirae-<kind>-balance-<기준일자>-<발급번호>` |
+| 미래에셋 잔고증명서 | `잔 고 증 명 서` + a 계좌번호 the account map lists under `brokerageAccounts` | `kr-statements/mirae-<kind>-balance-<기준일자>-<발급번호>` |
 | 토스 거래내역서 | `거래내역서` + `발급번호` + 계좌 `137-…` | `kr-statements/toss-transactions-<period>[-NofM]` |
-| Hana USD account history PDF/XLS | account `228-910040-10938`, USD rows, printed query window | `fx-statements/hana-usd-history-<period>` |
+| Hana USD account history PDF/XLS | PDF: a USD account number the account map lists under `bankAccounts` (`institution: "hana"`); both: USD rows, printed query window | `fx-statements/hana-usd-history-<period>` |
 | 삼성 주식보상 | `계좌거래내역` + `종합(주식보상)` | `kr-statements/samsung-rsu-transactions-<계좌 last 5>` |
 | Robinhood Crypto 명세서 | first line `Crypto Statement` + `MM-YYYY` | `crypto-robinhood/robinhood-crypto-statement-<YYYYMM>` |
 | Robinhood Gain/Loss | `OPEN LONGS` + `WS Cost Adj`; account and as-of from the PDF **title** | `us-holdings/robinhood-holdings-<acct>-<asof>` |
