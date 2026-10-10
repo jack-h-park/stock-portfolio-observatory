@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import type { ReactNode } from 'react'
 import { SegmentedControl } from '@/components/ui'
 import {
   DISPLAY_CURRENCIES,
@@ -65,5 +66,24 @@ export function AssetViewSwitcher({ assetView, labels }: { assetView: AssetView;
         router.refresh()
       }}
     />
+  )
+}
+
+// A link-styled button that switches the asset view the same way the header
+// switch does: same cookie, then a server refresh.
+export function AssetViewLink({ to, children }: { to: AssetView; children: ReactNode }) {
+  const router = useRouter()
+
+  return (
+    <button
+      type="button"
+      className="inline-flex min-h-6 items-center text-caption font-medium text-info hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/40"
+      onClick={() => {
+        persist(ASSET_VIEW_COOKIE, to)
+        router.refresh()
+      }}
+    >
+      {children}
+    </button>
   )
 }

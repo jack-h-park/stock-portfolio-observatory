@@ -46,3 +46,42 @@ export function monthEndCash(
     return { month, cash }
   })
 }
+
+export type CashBalanceRow = { institution: string; account: string; currency: 'KRW' | 'USD'; date: string; balance: number }
+
+/**
+ * Deposits in KRW on each of the given dates: every account's latest balance on
+ * or before the date, converted at that date's rate, summed. An account adds
+ * nothing before its first balance, and a USD account adds nothing on a date
+ * with no rate. A date no account reaches is null, so a chart draws a gap rather
+ * than a fall to zero. `since` is the earliest first balance among the accounts
+ * that reached at least one date. Rows of one account that share a date keep
+ * their input order, so the last one wins (the reader orders by date, then id).
+ */
+export function depositsSeries(
+  dates: string[],
+  rows: CashBalanceRow[],
+  rateAt: (date: string) => number | null
+): { series: { date: string; krw: number | null }[]; since: string | null } {
+  const byAccount = new Map<string, CashBalanceRow[]>()
+  for (const row of rows) {
+    const key = `${row.institution}|${row.account}`
+    byAccount.set(key, [...(byAccount.get(key) ?? []), row])
+  }
+  const accounts = [...byAccount.values()].map((list) => [...list].sort((a, b) => a.date.localeCompare(b.date)))
+  const counted = new Set<CashBalanceRow[]>()
+  const series = dates.map((date) => {
+    let krw: number | null = null
+    for (const list of accounts) {
+      const last = list.filter((row) => row.date <= date).at(-1)
+      if (!last) continue
+      const value = toKrw(last.currency, last.balance, last.currency === 'KRW' ? null : rateAt(date))
+      if (value == null) continue
+      krw = (krw ?? 0) + value
+      counted.add(list)
+    }
+    return { date, krw }
+  })
+  const starts = [...counted].map((list) => list[0].date).sort()
+  return { series, since: starts[0] ?? null }
+}

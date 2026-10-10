@@ -6,6 +6,10 @@ export const overview = defineCopy({
     totalAssets: 'Total assets',
     assetClasses: { stocks: 'Stocks', crypto: 'Crypto', cash: 'Cash', pension: 'Pension', gold: 'Gold' },
     openNetWorth: 'Open net worth',
+    totalAssetsInclDeposits: 'Total assets incl. deposits',
+    viewAllAssets: '→ view all assets',
+    depositsSince: (date: string) => `Deposits included from ${date}`,
+    depositsInGlobal: '· In All, deposits add to market value and cost basis; G/L and return stay stock-only.',
     unpricedCash: (count: number) => `${count} deposit account(s) without an FX rate are not in the total.`,
     emphasis: 'Overview',
     subtitle: (ingestedAt: string, fx: string | null) =>
@@ -107,6 +111,7 @@ export const overview = defineCopy({
       KR: 'Korea',
       US: 'United States',
       CRYPTO: 'Crypto',
+      deposits: 'Deposits',
     },
   },
   ko: {
@@ -114,6 +119,10 @@ export const overview = defineCopy({
     totalAssets: '총자산',
     assetClasses: { stocks: '주식', crypto: '암호화폐', cash: '현금', pension: '연금', gold: '금' },
     openNetWorth: '순자산 열기',
+    totalAssetsInclDeposits: '예금 포함 총자산',
+    viewAllAssets: '→ 전체 자산 보기',
+    depositsSince: (date: string) => `예금은 ${date}부터 반영`,
+    depositsInGlobal: '· 전체 탭에서 예금은 평가금액과 취득원가에만 더해지고, 손익과 수익률은 주식 기준입니다.',
     unpricedCash: (count: number) => `환율이 없는 예금 계좌 ${count}개는 합계에 포함되지 않았습니다.`,
     emphasis: '개요',
     subtitle: (ingestedAt: string, fx: string | null) =>
@@ -215,6 +224,7 @@ export const overview = defineCopy({
       KR: '한국',
       US: '미국',
       CRYPTO: '가상자산',
+      deposits: '예금',
     },
   },
 })
