@@ -238,8 +238,10 @@ test('a 토스뱅크 row with no balance gets previous balance plus amount, so t
   // 09-01: 1000; the blank row makes 1100; the next row's -100 lands on 1000 as printed.
   assert.deepEqual(a.balances, [{ date: '2026-09-01', balance: 1000 }, { date: '2026-09-02', balance: 1100 }, { date: '2026-09-03', balance: 1000 }])
   assert.deepEqual(a.continuityBreaks, [])
-  assert.equal(doc.findings.length, 1)
-  assert.match(doc.findings[0], /tossbank-0000-a-b\.xlsx: 1 row\(s\) printed no balance/)
+  // Informational: it is a note, not a finding, so it raises no warning downstream.
+  assert.deepEqual(doc.findings, [])
+  assert.equal(doc.notes.length, 1)
+  assert.match(doc.notes[0], /tossbank-0000-a-b\.xlsx: 1 row\(s\) printed no balance/)
 })
 
 test('two 토스뱅크 last4 values give two accounts, and the map overrides kind and alias by last4', { skip: !HAVE_OPENPYXL }, () => {

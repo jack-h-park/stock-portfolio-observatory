@@ -56,7 +56,7 @@ function normalizeBankBalances(raw) {
   }
   if (!isObject(raw)) {
     problems.push('top level is not an object')
-    return { doc: { accounts: [], findings: [] }, problems }
+    return { doc: { accounts: [], findings: [], notes: [] }, problems }
   }
   let rawAccounts = raw.accounts
   if (!Array.isArray(rawAccounts)) {
@@ -102,18 +102,21 @@ function normalizeBankBalances(raw) {
   })
   const findings = raw.findings === null ? [] : strings(raw.findings, 'findings')
   if (raw.findings === null) problems.push('findings is null')
-  return { doc: { accounts, findings }, problems }
+  // Informational lines from the extractor (for example a 토스뱅크 balance that was
+  // computed because the statement printed none). Shown, never counted as a fault.
+  const notes = raw.notes === null ? [] : strings(raw.notes, 'notes')
+  return { doc: { accounts, findings, notes }, problems }
 }
 let bankBalancesProblems = []
 const bankBalances = (() => {
-  if (!fs.existsSync(bankBalancesPath)) return { accounts: [], findings: [] }
+  if (!fs.existsSync(bankBalancesPath)) return { accounts: [], findings: [], notes: [] }
   try {
     const { doc, problems } = normalizeBankBalances(JSON.parse(fs.readFileSync(bankBalancesPath, 'utf8')))
     bankBalancesProblems = problems
     return doc
   } catch (error) {
     bankBalancesProblems = [error instanceof Error ? error.message : String(error)]
-    return { accounts: [], findings: [] }
+    return { accounts: [], findings: [], notes: [] }
   }
 })()
 const fxLedgerPath =
@@ -4533,7 +4536,7 @@ check(
   'cash_statements_parsed',
   otherFindings.length === 0,
   otherFindings.length === 0
-    ? 'every bank statement was parsed'
+    ? `every bank statement was parsed${bankBalances.notes.length ? `; ${bankBalances.notes.length} note(s): ${bankBalances.notes.slice(0, 3).join('; ')}` : ''}`
     : `${otherFindings.length} finding(s): ${otherFindings.slice(0, 3).join('; ')}`,
   'warning'
 )

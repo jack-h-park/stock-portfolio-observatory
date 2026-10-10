@@ -226,6 +226,19 @@ test('cash_statements_parsed fails on extractor findings that are not anchor mes
   assert.equal(statusOf().status, 'pass')
 })
 
+test('extractor notes are shown in cash_statements_parsed without making it fail', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'cash-src-'))
+  const file = path.join(dir, 'bank-balances.json')
+  const note = 'tossbank-0000-a-b.xlsx: 4 row(s) printed no balance; each was taken as the previous balance plus its amount'
+  writeFileSync(file, JSON.stringify({ accounts: [], findings: [], notes: [note] }))
+  const db = ingest({ STOCK_BANK_BALANCES_PATH: file })
+  const check = db.prepare("select status, detail from validation_checks where name = 'cash_statements_parsed'").get() as any
+  assert.equal(check.status, 'pass')
+  assert.ok(check.detail.includes(note))
+  const readable = db.prepare("select status from validation_checks where name = 'cash_balances_readable'").get() as any
+  assert.equal(readable.status, 'pass')
+})
+
 test('non_stock_wrappers_absent passes by default and fails while a non-stock wrapper has rows', () => {
   const pass = ingestAccounts({}).prepare("select status, severity from validation_checks where name = 'non_stock_wrappers_absent'").get() as any
   assert.equal(pass.status, 'pass')

@@ -137,7 +137,7 @@ def _cell_num(value):
     return _num(_cell_text(value))
 
 
-def parse_tossbank(path, findings=None):
+def parse_tossbank(path, findings=None, notes=None):
     """토스뱅크 거래내역 workbook (already decrypted): header row by cells, newest first, signed amounts."""
     import openpyxl
 
@@ -177,8 +177,15 @@ def parse_tossbank(path, findings=None):
             txn["balance"] = round(previous + txn["amount"], 2)
             filled += 1
         previous = txn["balance"]
-    if filled and findings is not None:
-        findings.append(f"{Path(path).name}: {filled} row(s) printed no balance; each was taken as the previous balance plus its amount")
+    # Informational, not a fault: the filled values are still checked by the next
+    # printed balance. It goes to `notes`, which the ingest shows without raising a
+    # warning; a caller that passes no notes list gets it in findings as before.
+    if filled:
+        message = f"{Path(path).name}: {filled} row(s) printed no balance; each was taken as the previous balance plus its amount"
+        if notes is not None:
+            notes.append(message)
+        elif findings is not None:
+            findings.append(message)
     return out
 
 
@@ -268,13 +275,13 @@ def _xls_rows(source, findings):
 FAMILIES = [
     # (filename prefix, institution, kind, currency, parser, account-key regex or None)
     # A key regex splits one prefix into one account per captured key (the last4 in the file name).
-    ("chase-checking-", "chase", "checking", "USD", lambda p, f: parse_chase(p.read_text(encoding="utf-8-sig")), None),
-    ("boa-checking-", "boa", "checking", "USD", lambda p, f: parse_boa(p.read_text(encoding="utf-8-sig")), None),
-    ("robinhood-bank-checking-", "robinhood-bank", "checking", "USD", lambda p, f: parse_robinhood_bank(p.read_text(encoding="utf-8-sig")), None),
-    ("robinhood-bank-savings-", "robinhood-bank", "savings", "USD", lambda p, f: parse_robinhood_bank(p.read_text(encoding="utf-8-sig")), None),
-    ("mg-deposit-", "mg", "deposit", "KRW", lambda p, f: parse_mg_rows(_xls_rows(p, f)), None),
-    ("tossbank-", "tossbank", "checking", "KRW", lambda p, f: parse_tossbank(p, f), r"^tossbank-(\d{4})-"),
-    ("fidelity-cma-", "fidelity", "cma", "USD", lambda p, f: parse_fidelity_cma(p.read_text(encoding="utf-8-sig")), None),
+    ("chase-checking-", "chase", "checking", "USD", lambda p, f, n: parse_chase(p.read_text(encoding="utf-8-sig")), None),
+    ("boa-checking-", "boa", "checking", "USD", lambda p, f, n: parse_boa(p.read_text(encoding="utf-8-sig")), None),
+    ("robinhood-bank-checking-", "robinhood-bank", "checking", "USD", lambda p, f, n: parse_robinhood_bank(p.read_text(encoding="utf-8-sig")), None),
+    ("robinhood-bank-savings-", "robinhood-bank", "savings", "USD", lambda p, f, n: parse_robinhood_bank(p.read_text(encoding="utf-8-sig")), None),
+    ("mg-deposit-", "mg", "deposit", "KRW", lambda p, f, n: parse_mg_rows(_xls_rows(p, f)), None),
+    ("tossbank-", "tossbank", "checking", "KRW", lambda p, f, n: parse_tossbank(p, f, n), r"^tossbank-(\d{4})-"),
+    ("fidelity-cma-", "fidelity", "cma", "USD", lambda p, f, n: parse_fidelity_cma(p.read_text(encoding="utf-8-sig")), None),
 ]
 
 
@@ -316,7 +323,7 @@ def _derive(alias, txns, account_map, findings):
 
 def main():
     account_map = json.loads(MAP_PATH.read_text(encoding="utf-8")) if MAP_PATH.exists() else {}
-    findings, accounts = [], []
+    findings, notes, accounts = [], [], []
     for prefix, institution, kind, currency, parse, key_pattern in FAMILIES:
         files = sorted(SOURCE_DIR.glob(f"{prefix}*")) if SOURCE_DIR.exists() else []
         if not files:
@@ -335,7 +342,7 @@ def main():
             parsed = []
             for path in paths:
                 try:
-                    rows = parse(path, findings)
+                    rows = parse(path, findings, notes)
                 except Exception as error:  # one bad file must not cost every account
                     findings.append(f"{path.name}: could not be parsed ({type(error).__name__}: {error})")
                     continue
@@ -358,9 +365,9 @@ def main():
                 "continuityBreaks": [] if derived else continuity_breaks(txns),
             })
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    document = {"generatedAt": datetime.now(timezone.utc).isoformat(), "accounts": accounts, "findings": findings}
+    document = {"generatedAt": datetime.now(timezone.utc).isoformat(), "accounts": accounts, "findings": findings, "notes": notes}
     OUT_PATH.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"bank balances: {len(accounts)} account(s), {len(findings)} finding(s) → {OUT_PATH}")
+    print(f"bank balances: {len(accounts)} account(s), {len(findings)} finding(s), {len(notes)} note(s) → {OUT_PATH}")
 
 
 if __name__ == "__main__":
