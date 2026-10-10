@@ -460,6 +460,8 @@ def rows(path, source_name, on_problem):
                     "tax": number(cells.get("제세금")),
                     "share_balance": number(cells.get("잔고")),
                     "cash_balance": number(cells.get("잔액")),
+                    # number() reads a blank as 0; a blank is no balance at all.
+                    "cash_printed": bool(nfc(cells.get("잔액") or "").strip()),
                     "source": source_name,
                     "page": page_no,
                 }

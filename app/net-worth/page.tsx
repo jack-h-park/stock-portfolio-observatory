@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { DataTable } from '@/components/DataTable'
+import { DataTable, type DataTableColumn } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, MetricField } from '@/components/ui'
 import { CardRow } from '@/components/layout'
@@ -53,6 +53,46 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
   const fbarYear = fbarYears.includes(requestedYear) ? requestedYear : lastCompleteYear(portfolioToday())
   const fbar = getForeignAccountMaxima(fbarYear)
   const fbarCopy = copy.fbar
+  const fbarColumns: DataTableColumn<ForeignAccountRow>[] = [
+    { key: 'institution', label: fbarCopy.columns.institution, render: (row: ForeignAccountRow) => <span className="font-medium text-ink">{row.institution}</span> },
+    { key: 'account', label: fbarCopy.columns.account, render: (row: ForeignAccountRow) => row.account },
+    { key: 'kind', label: fbarCopy.columns.kind, priority: 'secondary', render: (row: ForeignAccountRow) => fbarCopy.kinds[row.kind] },
+    {
+      key: 'coverage',
+      label: fbarCopy.columns.coverage,
+      render: (row: ForeignAccountRow) => (
+        <span>
+          {fbarCopy.coverage[row.coverage]}
+          {row.understated ? (
+            <>
+              {' '}
+              <Badge tone="warning">{fbarCopy.understated}</Badge>
+            </>
+          ) : null}
+          {row.cashIncluded === false ? <span className="block text-label text-ink-3">{fbarCopy.cashNotIncluded}</span> : null}
+        </span>
+      ),
+    },
+    { key: 'maxDate', label: fbarCopy.columns.maxDate, nowrap: true, render: (row: ForeignAccountRow) => <span className="tabular-nums">{fmtDate(row.maxDate)}</span> },
+    {
+      key: 'maxKrw',
+      label: fbarCopy.columns.maxKrw,
+      align: 'right',
+      nowrap: true,
+      render: (row: ForeignAccountRow) => <span className="tabular-nums">{row.maxKrw == null ? copy.none : formatKrw(row.maxKrw)}</span>,
+    },
+    ...(fbar.rate
+      ? [
+          {
+            key: 'maxUsd',
+            label: fbarCopy.columns.maxUsd,
+            align: 'right' as const,
+            nowrap: true,
+            render: (row: ForeignAccountRow) => <span className="tabular-nums">{row.maxUsd == null ? copy.none : formatUsd(row.maxUsd)}</span>,
+          },
+        ]
+      : []),
+  ]
 
   return (
     <>
@@ -214,61 +254,29 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
               : fbarCopy.noRate(fbarYear)}
           </p>
           <p>{fbarCopy.understatedNote}</p>
+          <p>{fbarCopy.cashNote}</p>
           {fbar.rows.some((row) => row.maxKrw == null) ? (
             <p>{fbarCopy.unpriced(fbar.rows.filter((row) => row.maxKrw == null).map((row) => `${row.institution} ${row.account}`).join(', '))}</p>
           ) : null}
         </div>
-        <DataTable
-          caption={fbarCopy.title}
-          rows={fbar.rows}
-          getRowKey={(row: ForeignAccountRow) => row.id}
-          emptyMessage={fbarCopy.empty(fbarYear)}
-          columns={[
-            { key: 'institution', label: fbarCopy.columns.institution, render: (row: ForeignAccountRow) => <span className="font-medium text-ink">{row.institution}</span> },
-            { key: 'account', label: fbarCopy.columns.account, render: (row: ForeignAccountRow) => row.account },
-            { key: 'kind', label: fbarCopy.columns.kind, priority: 'secondary', render: (row: ForeignAccountRow) => fbarCopy.kinds[row.kind] },
-            {
-              key: 'coverage',
-              label: fbarCopy.columns.coverage,
-              render: (row: ForeignAccountRow) => (
-                <span>
-                  {fbarCopy.coverage[row.coverage]}
-                  {row.understated ? (
-                    <>
-                      {' '}
-                      <Badge tone="warning">{fbarCopy.understated}</Badge>
-                    </>
-                  ) : null}
-                </span>
-              ),
-            },
-            { key: 'maxDate', label: fbarCopy.columns.maxDate, nowrap: true, render: (row: ForeignAccountRow) => <span className="tabular-nums">{fmtDate(row.maxDate)}</span> },
-            {
-              key: 'maxKrw',
-              label: fbarCopy.columns.maxKrw,
-              align: 'right',
-              nowrap: true,
-              render: (row: ForeignAccountRow) => <span className="tabular-nums">{row.maxKrw == null ? copy.none : formatKrw(row.maxKrw)}</span>,
-            },
-            ...(fbar.rate
-              ? [
-                  {
-                    key: 'maxUsd',
-                    label: fbarCopy.columns.maxUsd,
-                    align: 'right' as const,
-                    nowrap: true,
-                    render: (row: ForeignAccountRow) => <span className="tabular-nums">{row.maxUsd == null ? copy.none : formatUsd(row.maxUsd)}</span>,
-                  },
-                ]
-              : []),
-          ]}
-        />
+        <DataTable caption={fbarCopy.title} rows={fbar.rows} getRowKey={(row: ForeignAccountRow) => row.id} emptyMessage={fbarCopy.empty(fbarYear)} columns={fbarColumns} />
         {fbar.rows.length ? (
           <div className="mt-3 flex flex-wrap justify-end gap-x-6 gap-y-1 text-body">
             <span className="text-ink-3">{fbarCopy.aggregate}</span>
             <span className="font-medium tabular-nums text-ink">{formatKrw(fbar.rows.reduce((sum, row) => sum + (row.maxKrw ?? 0), 0))}</span>
             {fbar.aggregateMaxUsd != null ? <span className="font-medium tabular-nums text-ink">{formatUsd(fbar.aggregateMaxUsd)}</span> : null}
           </div>
+        ) : null}
+        {fbar.cryptoRows.length ? (
+          <section className="mt-5 border-t border-line-subtle pt-4">
+            <h3 className="mb-2 text-body font-medium text-ink-2">{fbarCopy.cryptoTitle}</h3>
+            <DataTable caption={fbarCopy.cryptoTitle} rows={fbar.cryptoRows} getRowKey={(row: ForeignAccountRow) => row.id} emptyMessage={fbarCopy.empty(fbarYear)} columns={fbarColumns} />
+            <div className="mt-3 flex flex-wrap justify-end gap-x-6 gap-y-1 text-body">
+              <span className="text-ink-3">{fbarCopy.cryptoSubtotal}</span>
+              <span className="font-medium tabular-nums text-ink">{formatKrw(fbar.cryptoRows.reduce((sum, row) => sum + (row.maxKrw ?? 0), 0))}</span>
+              {fbar.cryptoSubtotalMaxUsd != null ? <span className="font-medium tabular-nums text-ink">{formatUsd(fbar.cryptoSubtotalMaxUsd)}</span> : null}
+            </div>
+          </section>
         ) : null}
       </Card>
     </>
