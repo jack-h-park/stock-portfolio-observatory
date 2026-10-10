@@ -342,6 +342,8 @@ function closeSlashes(value) {
   return text(value).replace(/\s*\/\s*/g, '/')
 }
 
+const MERRILL_TYPE_BUCKETS = new Set(['trades/securities', 'dividends/interest'])
+
 function normalizeMerrillTransactionType(description, type = '') {
   const explicit = closeSlashes(type).toLowerCase()
   const desc = text(description).toLowerCase()
@@ -353,10 +355,16 @@ function normalizeMerrillTransactionType(description, type = '') {
   if (desc.startsWith('security transfer in')) return 'TRANSFER_IN'
   if (desc.startsWith('security transfer out')) return 'TRANSFER_OUT'
   if (desc.startsWith('funds received')) return 'TRANSFER_IN'
-  // Merrill's current export puts the broad bucket `Trades/Securities` in the
-  // Type column for purchases, sales, reinvestments, and security transfers.
-  // It is not specific enough to override the action encoded in Description.
-  if (explicit && explicit !== 'trades/securities') return normalizeUsTransactionType(explicit, description)
+  // Same reason: an `Other Income` row can name a fund whose title says
+  // DIVIDEND, and the prefix is what the row is.
+  if (desc.startsWith('other income')) return 'OTHER_INCOME'
+  // Merrill's current export puts broad buckets in the Type column, and neither
+  // is specific enough to override the action encoded in Description.
+  // `Trades/Securities` covers purchases, sales, reinvestments and security
+  // transfers. `Dividends/Interest` covers distributions AND a brokerage cash
+  // offer (`Other Income Merrill Edge Offer …`); read as a type, its label
+  // matched `dividend` first and booked that bonus as a dividend.
+  if (explicit && !MERRILL_TYPE_BUCKETS.has(explicit)) return normalizeUsTransactionType(explicit, description)
   if (desc.includes('reinvestment')) return 'REINVEST'
   if (desc.includes('dividend')) return 'DIVIDEND'
   if (desc.includes('interest')) return 'INTEREST'

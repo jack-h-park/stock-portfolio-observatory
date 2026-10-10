@@ -182,3 +182,45 @@ test('the respelled `Trades/ Securities` type still defers to the description', 
     ['2026-03-30 BUY', '2026-06-22 SELL', '2026-10-05 REINVEST', '2026-10-05 REINVEST']
   )
 })
+
+test('a cash offer under `Dividends/ Interest` is other income, not a dividend', () => {
+  // `Dividends/Interest` is a bucket like `Trades/Securities`: Merrill files a
+  // brokerage sign-up bonus under it, beside the real distributions. Read as a
+  // specific type, its label matched `dividend` before the description was
+  // consulted, so the bonus was booked as a dividend — income category
+  // `dividend`, the 1099-DIV bucket, for money that is no payout on any
+  // position. The older layout left Type empty and typed the same row
+  // OTHER_INCOME from its description. Both spellings of the bucket are covered.
+  for (const bucket of ['Dividends/ Interest', 'Dividends/Interest']) {
+    const dir = mkdtempSync(path.join(tmpdir(), 'merrill-income-'))
+    mkdirSync(path.join(dir, 'us-transactions'), { recursive: true })
+    writeFileSync(
+      path.join(dir, 'us-transactions', 'merrill-transactions-20260706-20260805.csv'),
+      window([
+        ['08/05/2026', DIVIDEND, bucket, '--', '+$43.10'],
+        ['07/06/2026', 'Other Income Merrill Edge Offer Cash Offer', bucket, '--', '+$125.00'],
+      ]) + '\r\n',
+      'utf8'
+    )
+    writeSheetPayloads(dir)
+    const db = new Database(runIngest(dir, { allowFailure: true }), { readonly: true })
+
+    const types = db
+      .prepare("select date, type from transactions where brokerage = 'Merrill' order by date")
+      .all() as { date: string; type: string }[]
+    assert.deepEqual(
+      types.map((t) => `${t.date} ${t.type}`),
+      ['2026-07-06 OTHER_INCOME', '2026-08-05 DIVIDEND'],
+      bucket
+    )
+
+    const categories = db
+      .prepare("select date, income_category from dividends where brokerage = 'Merrill' order by date")
+      .all() as { date: string; income_category: string }[]
+    assert.deepEqual(
+      categories.map((c) => `${c.date} ${c.income_category}`),
+      ['2026-07-06 other', '2026-08-05 dividend'],
+      bucket
+    )
+  }
+})
