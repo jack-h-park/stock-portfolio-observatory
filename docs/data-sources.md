@@ -246,6 +246,20 @@ Collapsing the window to its year would throw away the months, which is the one
 thing the name is for. The suffix carries only what the export itself declared —
 빗썸's 일부: the window is not final and the next download will extend it.
 
+Korean 거래내역증명서 windows may overlap, and they need no re-download when they
+do. `statements_to_read` in `scripts/extract-kr-statements.py` compares the
+조회기간 each document prints, within one account (told apart by the printed
+계좌번호, not the filename):
+
+- one period inside another: the shorter document is not read;
+- the same period twice: one copy is read;
+- a partial overlap: both are read, and the shared days come only from the
+  document whose period ends later.
+
+Two documents in one filename series that print different 계좌번호 mean a file
+was named for the wrong account. That fails `kr_statements_one_account_per_series`
+(ERROR) instead of being read.
+
 Two things follow from having one grammar rather than a dozen ad-hoc names.
 
 **`source_file_dates_plausible` became possible.** A period can now be compared

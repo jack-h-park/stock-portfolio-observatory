@@ -308,6 +308,12 @@ def statement_coverage(path, report):
 # produces a transaction, an unmapped 거래종류 produces nothing at all.
 DROPPING_KINDS = {"unmapped-type", "samsung-unmapped-type", "mirae-unmapped-type"}
 
+# Finding kinds that mean the extract is WRONG rather than incomplete: rows that
+# belong to a different account were filed under this one. The ingest fails the
+# refresh on these instead of listing them beside the notes, because a warning
+# that says "counted twice" was scrolled past for two months.
+BLOCKING_KINDS = {"account-mismatch"}
+
 # Types classified on the evidence that they carry no shares. The classification
 # is only as good as that, so the day one arrives with a quantity on it, the
 # parser says so instead of the shares going quiet — see 배당주입고 in TYPE_MAP.
@@ -336,79 +342,145 @@ def statement_series(stem):
         stem = shortened
 
 
-def statements_to_read(pdfs, report):
-    """The statements to extract, with any fully superseded ones left out.
+ACCOUNT_NUMBER_RE = re.compile(r"계좌번호\s*:?\s*([0-9*][0-9*\-]{5,}[0-9*])")
 
-    A 거래내역증명서 is requested for a period, so re-downloading a longer one
-    hands you a document that contains the old one whole. Both then sit in the
-    directory, and the extractor — which globs — reads both and counts every
-    shared transaction twice. That happened: `toss-transactions-20260715.pdf`
-    (2026-01-01~07-15) and `toss-transactions-20260801.pdf` (2026-01-01~08-01)
-    would have double-counted seven months of Toss trading, and the only thing
-    that stopped it was someone noticing the periods by eye.
+
+def statement_account_number(path):
+    """The 계좌번호 printed on the first two pages, or None if none is printed.
+
+    Compared only for equality, so a masked number (`123-45-****`) works as long
+    as both statements mask it the same way.
+    """
+    pdf = open_pdf(str(path))
+    if pdf is None:
+        return None
+    with pdf:
+        text = "\n".join(nfc(page.extract_text() or "") for page in pdf.pages[:2])
+    found = ACCOUNT_NUMBER_RE.search(text)
+    return found.group(1) if found else None
+
+
+class StatementsToRead(list):
+    """The statement files to read, and the days each one leaves to another.
+
+    A list, so a caller that only iterates is unchanged. `cedes(path, date)` is
+    what the row loop asks before keeping a row: True means another statement
+    covers that day too and is the one read for it.
+    """
+
+    def __init__(self, paths, ceded):
+        super().__init__(paths)
+        self.ceded = ceded  # document key -> [(start, end, winner key)]
+
+    def cedes(self, path, date):
+        day = str(date or "")[:10].replace("/", "-").replace(".", "-")
+        windows = self.ceded.get(PART_SUFFIX_RE.sub("", Path(path).stem), ())
+        return any(start <= day <= end for start, end, _ in windows)
+
+
+def statements_to_read(pdfs, report):
+    """The statements to extract, and how overlapping ones share their days.
+
+    A 거래내역증명서 is requested for a period, so downloads overlap. Both files
+    then sit in the directory, and the extractor, which globs, reads both and
+    counts every shared transaction twice. That happened:
+    `toss-transactions-20260715.pdf` (2026-01-01~07-15) and
+    `toss-transactions-20260801.pdf` (2026-01-01~08-01) would have double-counted
+    seven months of Toss trading.
+
+    Every overlap is resolved here rather than reported back to whoever downloaded
+    the files:
+
+    - one period inside another: the shorter document is not read;
+    - the same period twice: one of them is not read (they are the same rows);
+    - a partial overlap: both are read, and the shared days are taken only from
+      the document whose period ends later. That one was issued later, so it
+      holds every row of the shared days; the earlier one can stop partway
+      through its last day, at the moment it was issued.
 
     Superseding is decided on the period the DOCUMENT declares on page 1, not on
     the filename. Filenames here are typed by hand; 조회기간 is printed by the
     broker.
 
-    Multi-part exports are grouped first, and that is the whole reason this is
-    not a two-line rule. Toss splits a long period across files by row count and
-    prints THE SAME 조회기간 on every part: `toss-transactions-2023-1of2` and
-    `-2of2` both declare 2023-01-01~2023-12-31. Comparing files would find each
-    contains the other and drop one, silently losing half of 2023 and two thirds
-    of 2024 — 4,871 transactions. So `-NofM` is stripped to get the document, and
-    documents are what get compared.
+    Two statements are compared only when they come from the same account. The
+    series in the filename is not enough. On 2026-10-10 three CMA certificates
+    were filed under the 종합 name, and they looked like duplicates of the 종합
+    statements. The printed 계좌번호 is what decides. Two different numbers under
+    one series name mean a file was named for the wrong account, and that is
+    reported as blocking: reading it merges two accounts' rows into one.
 
-    Only strict containment resolves. A partial overlap has rows in each that the
-    other lacks, so neither can be dropped and it is reported instead; equal
-    periods across two different documents cannot happen under the naming
-    grammar (the period IS the name) and so is reported rather than guessed at.
+    Multi-part exports are grouped first. Toss splits a long period across files
+    by row count and prints THE SAME 조회기간 on every part:
+    `toss-transactions-2023-1of2` and `-2of2` both declare 2023-01-01~2023-12-31.
+    Comparing the files would find each one contains the other and drop one,
+    silently losing half of 2023 and two thirds of 2024 (4,871 transactions). So
+    `-NofM` is stripped to get the document, and documents are what get compared.
     """
     documents = {}
     for path in pdfs:
         documents.setdefault(PART_SUFFIX_RE.sub("", path.stem), []).append(path)
 
     coverage = {}
+    accounts = {}
     for key, parts in documents.items():
-        # One page-1 read per document: the parts declare the same period, so
-        # reading them all would cost the same answer several times over.
+        # One read per document: the parts declare the same period, so reading
+        # them all would cost the same answer several times over.
         coverage[key] = statement_coverage(parts[0], report)
+        accounts[key] = statement_account_number(parts[0])
+
+    def same_account(a, b):
+        # A statement that prints no number cannot be told apart, so it is
+        # compared with its series as before rather than read alongside it.
+        return accounts[a] is None or accounts[b] is None or accounts[a] == accounts[b]
+
+    dated = sorted(
+        (k, coverage[k]) for k in coverage if coverage[k][0] and coverage[k][1]
+    )
+    pairs = [
+        (key, span, other, o_span)
+        for i, (key, span) in enumerate(dated)
+        for other, o_span in dated[i + 1:]
+        if statement_series(key) == statement_series(other)
+    ]
 
     superseded = {}
-    series = {}
-    for key in coverage:
-        series.setdefault(statement_series(key), []).append(key)
-    dated = sorted(
-        (k, coverage[k])
-        for group in series.values()
-        for k in group
-        if coverage[k][0] and coverage[k][1]
-    )
-    for i, (key, (start, end)) in enumerate(dated):
-        for other, (o_start, o_end) in dated[i + 1:]:
-            if statement_series(key) != statement_series(other):
-                continue
-            # Each pair judged once, from the lower key, so a mutual relation is
-            # not reported twice as if it were two findings.
-            key_in_other = o_start <= start and end <= o_end
-            other_in_key = start <= o_start and o_end <= end
-            if key_in_other and other_in_key:
+    mismatched = set()
+    for key, (start, end), other, (o_start, o_end) in pairs:
+        if not same_account(key, other):
+            if (o_start <= end and start <= o_end) and (key, other) not in mismatched:
+                mismatched.add((key, other))
                 report(
-                    "duplicate-coverage",
-                    f"{key} and {other} both declare {start}~{end} — reading both would "
-                    f"count every transaction twice; remove one",
+                    "account-mismatch",
+                    f"{key} and {other} share a filename series but print different "
+                    f"계좌번호 — one is filed under the wrong account; rename or move it",
                 )
-            elif key_in_other:
-                superseded[key] = (other, start, end, o_start, o_end)
-            elif other_in_key:
-                superseded[other] = (key, o_start, o_end, start, end)
-            elif o_start <= end and start <= o_end:
-                report(
-                    "partial-overlap",
-                    f"{key} ({start}~{end}) and {other} ({o_start}~{o_end}) overlap without "
-                    f"either containing the other — both are read, so the shared days are "
-                    f"counted twice; re-download one to cover the whole span",
-                )
+            continue
+        key_in_other = o_start <= start and end <= o_end
+        other_in_key = start <= o_start and o_end <= end
+        if key_in_other and other_in_key:
+            # The same period from the same account: the same rows. Keep the
+            # later-named one, which is the later download.
+            superseded[key] = (other, start, end, o_start, o_end)
+        elif key_in_other:
+            superseded[key] = (other, start, end, o_start, o_end)
+        elif other_in_key:
+            superseded[other] = (key, o_start, o_end, start, end)
+
+    ceded = {}
+    for key, (start, end), other, (o_start, o_end) in pairs:
+        if key in superseded or other in superseded or not same_account(key, other):
+            continue
+        if not (o_start <= end and start <= o_end):
+            continue
+        # Partial overlap (containment was settled above). The document that
+        # ends later keeps the shared days.
+        loser, winner = (key, other) if end < o_end else (other, key)
+        shared = (max(start, o_start), min(end, o_end))
+        ceded.setdefault(loser, []).append((*shared, winner))
+        print(
+            f"[kr-statements] overlap: {loser} reads up to the day before {shared[0]}; "
+            f"{shared[0]}~{shared[1]} is read from {winner}"
+        )
 
     keep = []
     for key, parts in documents.items():
@@ -420,7 +492,7 @@ def statements_to_read(pdfs, report):
             )
             continue
         keep.extend(parts)
-    return sorted(keep)
+    return StatementsToRead(sorted(keep), ceded)
 
 
 def account_label(pdf):
@@ -1012,7 +1084,11 @@ def toss_transactions(statements_dir, snapshot, report):
     for pdf_path in pdfs:
         name = pdf_path.name
         count = 0
+        ceded = 0
         for row in toss_statements.rows(str(pdf_path), name, report):
+            if pdfs.cedes(pdf_path, row["date"]):
+                ceded += 1
+                continue
             mapped, _label = toss_statements.classify(row["raw_type"])
             if mapped is None:
                 report("unmapped-type", f"{row['raw_type']} ({name} p{row['page']})")
@@ -1074,7 +1150,8 @@ def toss_transactions(statements_dir, snapshot, report):
                 "Page": row["page"],
             })
             count += 1
-        print(f"[toss-statement] {name}: {count} transaction(s)")
+        print(f"[toss-statement] {name}: {count} transaction(s)"
+              + (f", {ceded} left to an overlapping statement" if ceded else ""))
     breaks = check_share_balances(out, report)
     print(f"[toss-statement] 잔고 continuity: {len(out)} row(s) checked, {breaks} break(s)")
     return out
@@ -1108,7 +1185,11 @@ def samsung_transactions(statements_dir, known_tickers, report):
         rows, totals, account = samsung_statements.parse(str(pdf_path), name, PDF_PASSWORD, report)
         samsung_statements.check_totals(rows, totals, name, report)
         count = 0
+        ceded = 0
         for row in rows:
+            if pdfs.cedes(pdf_path, row["date"]):
+                ceded += 1
+                continue
             mapped = samsung_statements.classify(row["raw_type"])
             if mapped is None:
                 report("samsung-unmapped-type", f"{row['raw_type']} ({name} p{row['page']})")
@@ -1152,7 +1233,8 @@ def samsung_transactions(statements_dir, known_tickers, report):
                 "Page": row["page"],
             })
             count += 1
-        print(f"[samsung-statement] {name}: {count} transaction(s) → {account}")
+        print(f"[samsung-statement] {name}: {count} transaction(s) → {account}"
+              + (f", {ceded} left to an overlapping statement" if ceded else ""))
     breaks = check_share_balances(out, report)
     print(f"[samsung-statement] 잔고수량 continuity: {len(out)} row(s) checked, {breaks} break(s)")
     return out
@@ -1193,7 +1275,11 @@ def main():
         with pdf:
             account = account_label(pdf)
             count = 0
+            ceded = 0
             for page_no, a, b, c in records(pdf, name):
+                if pdfs.cedes(pdf_path, a[0].strip()):
+                    ceded += 1
+                    continue
                 raw_type = a[1].strip()
                 if raw_type in CASH_LEG_TYPES:
                     continue
@@ -1258,7 +1344,8 @@ def main():
                         "Page": page_no,
                     })
                 count += 1
-            print(f"[kr-statement] {name}: {count} transaction(s) from {len(pdf.pages)} page(s)")
+            print(f"[kr-statement] {name}: {count} transaction(s) from {len(pdf.pages)} page(s)"
+                  + (f", {ceded} left to an overlapping statement" if ceded else ""))
 
     toss_snapshot = load_toss_snapshot(report)
     toss_rows = toss_transactions(statements_dir, toss_snapshot, report)
@@ -1411,6 +1498,7 @@ def main():
             "rows": len(details),
             "distinct": len(unique),
             "drops_rows": kind in DROPPING_KINDS,
+            "blocking": kind in BLOCKING_KINDS,
             "samples": unique[:10],
         })
     if unmapped:
