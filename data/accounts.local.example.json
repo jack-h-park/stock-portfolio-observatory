@@ -7,7 +7,12 @@
     { "institution": "tossbank", "last4": "1111", "kind": "savings", "currency": "KRW", "alias": "Toss Bank savings" },
     { "institution": "fidelity", "kind": "cma", "accountId": "Z00000001", "currency": "USD", "alias": "Fidelity CMA" },
     { "institution": "robinhood-bank", "kind": "checking", "currency": "USD", "alias": "Robinhood checking" },
-    { "institution": "robinhood-bank", "kind": "savings", "currency": "USD", "alias": "Robinhood savings" }
+    { "institution": "robinhood-bank", "kind": "savings", "currency": "USD", "alias": "Robinhood savings" },
+    { "institution": "hana", "kind": "fx", "currency": "USD", "accountNumber": "000-000000-00000", "alias": "Hana USD" }
+  ],
+  "brokerageAccounts": [
+    { "institution": "mirae", "accountNumber": "000000000001", "kind": "isa" },
+    { "institution": "mirae", "accountNumber": "000000000002", "kind": "general" }
   ],
   "anchors": [
     { "alias": "Robinhood checking", "date": "2026-01-31", "balance": 100.0 }
