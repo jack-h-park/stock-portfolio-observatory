@@ -8,7 +8,9 @@
     { "institution": "fidelity", "kind": "cma", "accountId": "Z00000001", "currency": "USD", "alias": "Fidelity CMA" },
     { "institution": "robinhood-bank", "kind": "checking", "currency": "USD", "alias": "Robinhood checking" },
     { "institution": "robinhood-bank", "kind": "savings", "currency": "USD", "alias": "Robinhood savings" },
-    { "institution": "hana", "kind": "fx", "currency": "USD", "accountNumber": "000-000000-00000", "alias": "Hana USD" }
+    { "institution": "hana", "kind": "fx", "currency": "USD", "accountNumber": "000-000000-00000", "alias": "Hana USD" },
+    { "institution": "mg", "last4": "2222", "kind": "deposit", "currency": "KRW", "alias": "MG old deposit", "retiredOn": "2024-06-30" },
+    { "institution": "tossbank", "last4": "3333", "kind": "checking", "currency": "KRW", "alias": "Toss Bank old checking", "retired": true }
   ],
   "brokerageAccounts": [
     { "institution": "mirae", "accountNumber": "000000000001", "kind": "isa" },

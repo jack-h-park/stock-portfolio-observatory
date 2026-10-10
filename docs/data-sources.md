@@ -401,6 +401,19 @@ of its last row and its newest statement's period end, in a "보조 자산" sect
 while a gold holding exists. The summary carries this as a `supplementaryCoverage`
 block with dates, labels and status only, never amounts.
 
+**Retired cash accounts.** A `bankAccounts` entry in the account map may carry
+`"retired": true` or `"retiredOn": "YYYY-MM-DD"` once the account is closed
+(`data/accounts.local.example.json` shows both). The entry is matched to its
+`cash_balances` rows the way the bank extractor names them: the institution plus
+the entry's `alias`; without an alias, `<institution> <last4>` for a family whose
+files carry a last4 (Toss Bank), and `<institution> <kind>` otherwise. A retired
+account leaves the "보조 자산" reminder rows. It stays in `cash_balances`, in
+the deposit history and in the FBAR table for the years it existed: `retiredOn`
+ends its FBAR series on that date, with nothing held from the next day, so its
+last balance is not carried into later years. `"retired": true` without a date
+only silences the reminder. A `retiredOn` that is not a YYYY-MM-DD date is
+ignored, so the account keeps showing until the entry is fixed.
+
 **`data/treasury-reporting-rates.json`.** The year-end KRW per USD rate that the
 FBAR instructions direct, used by the foreign-account maximum-balance table on
 `/net-worth`. It is tracked in the repository (public figures, not personal data):
@@ -411,6 +424,48 @@ query. Add the next year's entry after 31 December. For a year with no entry the
 table shows KRW only and says so. A year's maximum is flagged "may be understated"
 unless the account's balance history is daily through the year; US institutions
 are excluded.
+
+**Brokerage cash in the FBAR table.** A Korean brokerage row is its securities at
+each month-end plus the account's uninvested cash on that date, carried forward
+from the last balance the statements print. `extract-kr-statements.py` writes
+`data/kr-statements/cash.tsv` (`Date, Account, Pool, Currency, Balance, Source,
+Page`), the last balance per account, pool and day, and
+`data/kr-statements/cash-coverage.tsv` (`Account, Source, Period Start, Period
+End`), the period each statement read declares on page 1 (or its own first to
+last cash line when it declares none). The ingest files them in `brokerage_cash`,
+with the account's wrapper and asset class, and `brokerage_cash_coverage`. A
+balance is carried forward only inside those periods: a missing statement is a
+gap with no cash, and nothing is carried past the newest statement. The
+sources:
+
+| Statement | What it prints | Pools |
+| --- | --- | --- |
+| 미래에셋 거래내역증명서 (종합, ISA) | 예수금잔액 on every cash line, 외화예수금 with its 통화코드; a securities line leaves both blank | `KRW`, and one per foreign currency (in that currency) |
+| Toss 거래내역서 | 잔액 on every line, separately in the 원화 and 달러 sections, both in won | `KRW`, `KRW_dollar_section` (currency `KRW`) |
+| 삼성증권 거래내역확인서 (주식보상) | 현금잔액 on every line | `KRW` |
+
+Only stock-wrapper accounts count: a pension's cash is already in its
+certificate totals, and the gold account is valued in grams. The Toss Open API
+snapshot carries today's cash only and is not used, so Toss cash stops at the
+newest statement. A pool's currency decides conversion: `USD` pools are real
+dollars, converted at the month-end USD/KRW rate, and won pools are added as
+they stand. A balance is read only from lines inside the period that contains
+the date, so a month-end before a period's first line has no cash. A brokerage
+row with cash in the year is `partial` unless one unbroken statement period runs
+from 1 January to 31 December and has a cash line on or before 1 January; a row with no
+cash in the year carries `cashIncluded: false`, and the page notes "Cash not
+included". An account with no lots gets a row only for a year with cash inside
+it. The 미래에셋 ISA
+certificates are issued with CMA자동매매 제외, so cash swept into RP is not in
+their 예수금잔액.
+
+**Crypto exchanges in the FBAR table.** Exchange accounts follow the brokerage
+rule (Bithumb is foreign, Robinhood Crypto domestic) and are valued from their
+lots and the crypto price history at each month-end, the same reconstruction as
+the brokerage rows. They are listed in their own group as reference, with a
+crypto subtotal, and are never in the aggregate. Exchange cash is not included:
+the statements' KRW balance reaches the database only on deposit and withdrawal
+rows.
 
 ## Generated or downloaded — which side a file goes on
 
