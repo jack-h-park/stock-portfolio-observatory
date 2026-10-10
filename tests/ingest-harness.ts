@@ -92,20 +92,31 @@ export function ingestEnv(dir: string, overrides: Record<string, string> = {}) {
  */
 export function runIngest(
   dir: string,
+  options: { env?: Record<string, string>; allowFailure?: boolean } = {}
+) {
+  return runIngestWithOutput(dir, options).dbPath
+}
+
+/** `runIngest`, plus the ingest's stdout, for tests that read the printed validation lines. */
+export function runIngestWithOutput(
+  dir: string,
   { env = {}, allowFailure = false }: { env?: Record<string, string>; allowFailure?: boolean } = {}
 ) {
   const full = ingestEnv(dir, env)
+  let stdout = ''
   try {
     // `full` is a plain string map by construction; Next's ProcessEnv insists on
     // NODE_ENV, which the child inherits when the parent has it and does not need
     // when it does not.
-    execFileSync(process.execPath, [INGEST_SCRIPT], {
+    stdout = execFileSync(process.execPath, [INGEST_SCRIPT], {
       cwd: dir,
       stdio: 'pipe',
       env: full as NodeJS.ProcessEnv,
+      encoding: 'utf8',
     })
   } catch (err) {
     if (!allowFailure || !(err as { status?: number }).status) throw err
+    stdout = String((err as { stdout?: string }).stdout ?? '')
   }
-  return full.STOCK_DB_PATH
+  return { dbPath: full.STOCK_DB_PATH, stdout }
 }

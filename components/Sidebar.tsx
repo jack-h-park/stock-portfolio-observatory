@@ -12,7 +12,18 @@ import { Label } from '@/components/ui'
 import { getPageCopy } from '@/lib/ui-copy'
 
 
-export function Sidebar({ language, displayCurrency, assetView }: { language: Language; displayCurrency: DisplayCurrency; assetView: AssetView }) {
+export function Sidebar({
+  language,
+  displayCurrency,
+  assetView,
+  showAllAssets,
+}: {
+  language: Language
+  displayCurrency: DisplayCurrency
+  assetView: AssetView
+  /** False when the database holds no supplementary data: the All assets section is then hidden. */
+  showAllAssets: boolean
+}) {
   const copy = getPageCopy('sidebar', language)
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
@@ -125,7 +136,7 @@ export function Sidebar({ language, displayCurrency, assetView }: { language: La
         </div>
 
         <nav className="mt-5 flex flex-col gap-4" aria-label={copy.navLabel}>
-          {copy.sections.map((section) => {
+          {copy.sections.filter((section) => showAllAssets || !('supplementary' in section && section.supplementary)).map((section) => {
             const sectionActive = section.items.some((item) => isActive(item.href))
             const items = (
               <ul className="mt-1.5 flex flex-col gap-0.5">

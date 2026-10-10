@@ -119,6 +119,8 @@ const conversionRate = getOverview().fxRates.find((r: any) => r.from_currency !=
 
 const snapshotAt = (key: string) => health.snapshots.find((item) => item.key === key)?.observedAt ?? null
 
+const SUPPLEMENTARY_SOURCE_KEYS = new Set(['source:bank_balances'])
+
 const issues: SummaryIssue[] = [
   // A failed refresh belongs in this list even though nothing on /health may look
   // wrong. When a step fails, the snapshot it was meant to rewrite is simply left
@@ -164,8 +166,11 @@ const issues: SummaryIssue[] = [
         },
       ]
     : []),
+  // Supplementary data (deposits, pensions, gold) stays out of this list: the
+  // briefing and the trading review are stock-only. Its checks carry scope
+  // 'supplementary', and the bank statements file is its only source here.
   ...health.items
-    .filter((item) => item.status !== 'fresh')
+    .filter((item) => item.status !== 'fresh' && !SUPPLEMENTARY_SOURCE_KEYS.has(item.key))
     .map((item) => ({
       key: item.key,
       label: item.label,
@@ -174,7 +179,7 @@ const issues: SummaryIssue[] = [
       detail: item.detail,
     })),
   ...checks
-    .filter((check) => check.status !== 'pass')
+    .filter((check) => check.status !== 'pass' && check.scope !== 'supplementary')
     .map((check) => ({
       key: `validation:${check.name}`,
       label: check.name,

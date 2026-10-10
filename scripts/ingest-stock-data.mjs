@@ -1106,7 +1106,8 @@ create table validation_checks (
   name text not null,
   status text not null,
   detail text not null,
-  severity text not null
+  severity text not null,
+  scope text not null default 'stock'
 );
 
 create table evidence_reports (
@@ -5297,9 +5298,14 @@ insertMany(
   ['name', 'category', 'filename', 'path', 'account_hint', 'pages', 'row_count', 'metrics_json']
 )
 
+// Every check has a scope. `stock` checks guard the Stocks view and drive its
+// surfaces: the printed `Validation:` line the refresh cron greps, and the
+// Overview's failed-check count. `supplementary` checks cover the data kept only
+// for total assets (deposits, pensions, physical gold); they are stored and
+// printed on their own line, and fail the run only as an error, like any other.
 const checks = []
-function check(name, ok, detail, severity = 'error') {
-  checks.push({ name, status: ok ? 'pass' : 'fail', detail, severity })
+function check(name, ok, detail, severity = 'error', scope = 'stock') {
+  checks.push({ name, status: ok ? 'pass' : 'fail', detail, severity, scope })
 }
 
 // A wrapper outside the known four is what a typo in the account map looks like
@@ -5333,7 +5339,8 @@ check(
       : 'no pension snapshot and no pension trades'
     : `${pensionTradesAfterSnapshot.join('; ')}. The trades are stored, but the holdings stay at the snapshot ` +
       'until a newer one is filed (pension/<token>-holdings-<YYYYMMDD>.csv)',
-  'warning'
+  'warning',
+  'supplementary'
 )
 check(
   'gold_priced',
@@ -5346,7 +5353,8 @@ check(
           .join('; ')
       : `${goldHoldingRows.map((r) => `${r.account}: ${r.quantity} g`).join('; ')} valued at cost, ` +
         `because there is no KRX gold price: ${goldPriceProblem}`,
-  'warning'
+  'warning',
+  'supplementary'
 )
 
 check(
@@ -5358,7 +5366,8 @@ check(
       : 'no ETF in any pension snapshot'
     : `${pensionUnpricedEtfs.length} pension ETF(s) kept at the snapshot's value_krw, as of the snapshot date, ` +
       `because they could not be marked at a KR price: ${pensionUnpricedEtfs.join('; ')}`,
-  'warning'
+  'warning',
+  'supplementary'
 )
 check(
   'pension_snapshot_matches_year_end',
@@ -5372,7 +5381,8 @@ check(
   ]
     .filter(Boolean)
     .join('. ') || 'no year-end pension certificate on file',
-  'warning'
+  'warning',
+  'supplementary'
 )
 check(
   'us_wrapper_treatment_decided',
@@ -5383,7 +5393,8 @@ check(
     : usUndecidedWrappers.length
       ? `no account sits under an undecided US wrapper (undecided: ${usUndecidedWrappers.join(', ')})`
       : 'every pension wrapper has a US treatment',
-  'warning'
+  'warning',
+  'supplementary'
 )
 
 const fxEvents = fxLedger.events ?? []
@@ -5409,14 +5420,16 @@ check(
   bankBalancesProblems.length > 0
     ? `${bankBalancesPath}: ${bankBalancesProblems.length} problem(s): ${bankBalancesProblems.slice(0, 3).join('; ')}`
     : fs.existsSync(bankBalancesPath) ? 'bank balances file read' : 'no bank balances file',
-  'warning'
+  'warning',
+  'supplementary'
 )
 const continuityBreaks = bankBalances.accounts.flatMap((a) => a.continuityBreaks.map((b) => `${a.account} ${b}`))
 check(
   'cash_balance_continuity',
   continuityBreaks.length === 0,
   continuityBreaks.length === 0 ? 'every running-balance statement is continuous' : `${continuityBreaks.length} break(s): ${continuityBreaks.slice(0, 5).join('; ')}`,
-  'warning'
+  'warning',
+  'supplementary'
 )
 // The two anchor messages scripts/extract-bank-statements.py emits; a parse
 // failure is a different finding and is not judged here.
@@ -5425,7 +5438,8 @@ check(
   'cash_anchor_present',
   anchorFindings.length === 0,
   anchorFindings.length === 0 ? 'every account without a balance column has a usable anchor' : anchorFindings.join('; '),
-  'warning'
+  'warning',
+  'supplementary'
 )
 const otherFindings = bankBalances.findings.filter((f) => !anchorFindings.includes(f))
 check(
@@ -5434,7 +5448,8 @@ check(
   otherFindings.length === 0
     ? `every bank statement was parsed${bankBalances.notes.length ? `; ${bankBalances.notes.length} note(s): ${bankBalances.notes.slice(0, 3).join('; ')}` : ''}`
     : `${otherFindings.length} finding(s): ${otherFindings.slice(0, 3).join('; ')}`,
-  'warning'
+  'warning',
+  'supplementary'
 )
 // The phase-1 guard, turned around now that the filters exist. Non-stock rows
 // (irp, pension_savings, or a non-security asset class) are expected in the
@@ -6939,7 +6954,7 @@ check(
 )
 
 insertMany(db, 'missing_disposals', robinhoodMissingDisposalRows, ['market', 'brokerage', 'account_type', 'ticker', 'replay_qty', 'held_qty'])
-insertMany(db, 'validation_checks', checks, ['name', 'status', 'detail', 'severity'])
+insertMany(db, 'validation_checks', checks, ['name', 'status', 'detail', 'severity', 'scope'])
 
 // The snapshot series is the Stocks view's history (the home trend, and the
 // stocks line on /net-worth), so it is written from stock rows only.
@@ -7045,10 +7060,14 @@ db.close()
 // because the refresh cron greps exactly this line to decide whether to alert.
 // Counting warnings as "passing" here made that alert unreachable for the one
 // class of failure it was written to catch: the survivable kind that exits 0.
+// The line counts `stock` checks only, so a supplementary warning (a stale gold
+// price, a bank statement gap) never raises the stock alert; those go on the
+// `Supplementary:` line below. The exit code still counts errors in both scopes.
 const failed = checks.filter((c) => c.status !== 'pass' && c.severity === 'error')
-const notPassing = checks.filter((c) => c.status !== 'pass')
+const passingLine = (scoped) => `${scoped.filter((c) => c.status === 'pass').length}/${scoped.length} checks passing`
 console.log(`Wrote ${dbPath}`)
-console.log(`Validation: ${checks.length - notPassing.length}/${checks.length} checks passing`)
+console.log(`Validation: ${passingLine(checks.filter((c) => c.scope === 'stock'))}`)
+console.log(`Supplementary: ${passingLine(checks.filter((c) => c.scope === 'supplementary'))}`)
 if (failed.length) {
   console.error(JSON.stringify(failed, null, 2))
   process.exitCode = 1

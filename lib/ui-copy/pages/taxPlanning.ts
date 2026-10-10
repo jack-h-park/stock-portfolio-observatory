@@ -403,6 +403,8 @@ export const taxPlanning = defineCopy({
       dividends: 'Dividends to date',
       likelyPfics: 'Likely PFICs',
       likelyPficsInfo: 'Korean funds and ETFs in the account, which a US preparer is likely to treat as PFICs.',
+      outsideEstimate: (count: string) => `${count} pension account(s) are outside the US estimate — `,
+      seePension: 'see Pension',
       wrappers: { irp: 'IRP', pension_savings: 'Pension savings', isa: 'ISA' } as Record<string, string>,
       treatments: {
         taxable: 'Taxable: in the estimate',
@@ -814,6 +816,8 @@ export const taxPlanning = defineCopy({
       dividends: '누적 배당',
       likelyPfics: 'PFIC 가능 종목',
       likelyPficsInfo: '계좌 안의 한국 펀드와 ETF로, 미국 세무사가 PFIC로 볼 가능성이 높은 종목입니다.',
+      outsideEstimate: (count: string) => `연금 계좌 ${count}개는 미국 세금 추정에서 제외 → `,
+      seePension: '연금 페이지',
       wrappers: { irp: 'IRP', pension_savings: '연금저축', isa: 'ISA' } as Record<string, string>,
       treatments: {
         taxable: '과세: 추정에 포함',

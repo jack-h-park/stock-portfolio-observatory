@@ -1,4 +1,4 @@
-import { Badge, Card, Signed, type Tone } from '@/components/ui'
+import { Badge, Card, Signed, TextLink, type Tone } from '@/components/ui'
 import { DataTable } from '@/components/DataTable'
 import type { WrapperReviewRow } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtNumber } from '@/lib/format'
@@ -11,6 +11,21 @@ const TREATMENT_TONE: Record<string, Tone> = {
   undecided: 'warning',
   deferred: 'neutral',
   exempt_within_limit: 'neutral',
+}
+
+/**
+ * The tax pages' pointer to /pension: one line counting the accounts the US
+ * estimate leaves out (any treatment but `taxable`). Renders nothing when none is.
+ */
+export function WrapperEstimateNote({ rows, copy }: { rows: WrapperReviewRow[]; copy: WrapperReviewCopy }) {
+  const outside = rows.filter((row) => row.usTreatment !== 'taxable').length
+  if (outside === 0) return null
+  return (
+    <p className="mb-5 text-label text-ink-3">
+      {copy.outsideEstimate(fmtNumber(outside))}
+      <TextLink href="/pension">{copy.seePension}</TextLink>
+    </p>
+  )
 }
 
 /**

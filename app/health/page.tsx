@@ -269,7 +269,7 @@ export default async function HealthPage() {
         )}
       </Card>
 
-      <Card title={copy.validationChecks} className="mt-5" accent={failed.length > 0}>
+      <Card title={copy.validationChecks} info={copy.validationChecksInfo} className="mt-5" accent={failed.length > 0}>
         {checks.length === 0 ? (
           <EmptyState>{copy.noChecks}</EmptyState>
         ) : (
@@ -279,7 +279,12 @@ export default async function HealthPage() {
                 <Badge tone={check.status === 'pass' ? 'success' : check.severity === 'warning' ? 'warning' : 'danger'}>
                   {displayRunStatus(check.status, runStatusLabels)}
                 </Badge>
-                <span className="min-w-0 flex-1 text-body font-medium text-ink">{check.name}</span>
+                <span className="min-w-0 flex-1 text-body font-medium text-ink">
+                  {check.name}
+                  {check.scope === 'supplementary' && (
+                    <span className="ml-2"><Badge tone="neutral">{copy.supplementaryScope}</Badge></span>
+                  )}
+                </span>
                 <span className="text-caption text-ink-3">{check.detail}</span>
               </li>
             ))}

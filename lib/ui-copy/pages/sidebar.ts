@@ -17,7 +17,6 @@ export const sidebar = defineCopy({
         label: 'Core Workflows',
         items: [
           { href: '/', label: 'Portfolio Overview' },
-          { href: '/net-worth', label: 'Net Worth' },
           { href: '/daily-briefing', label: "Today's Briefing" },
           { href: '/holdings', label: 'Holdings' },
           { href: '/review', label: 'Portfolio Review' },
@@ -31,7 +30,6 @@ export const sidebar = defineCopy({
           { href: '/tax-planning', label: 'Tax Planning' },
           { href: '/tax-settings', label: 'Tax Settings' },
           { href: '/lots', label: 'Tax Lots' },
-          { href: '/pension', label: 'Pension' },
         ],
       },
       {
@@ -43,6 +41,16 @@ export const sidebar = defineCopy({
           { href: '/transactions', label: 'Transactions' },
           { href: '/fx', label: 'FX Exchange & Gain' },
           { href: '/crypto-premium', label: 'Korea Premium' },
+        ],
+      },
+      // Supplementary data (deposits, pensions, gold) lives only here, and the
+      // section is hidden when the database holds none.
+      {
+        label: 'All assets',
+        supplementary: true,
+        items: [
+          { href: '/net-worth', label: 'Net Worth' },
+          { href: '/pension', label: 'Pension' },
         ],
       },
       {
@@ -74,7 +82,6 @@ export const sidebar = defineCopy({
         label: '핵심 업무',
         items: [
           { href: '/', label: '포트폴리오 개요' },
-          { href: '/net-worth', label: '순자산' },
           { href: '/daily-briefing', label: '오늘의 브리핑' },
           { href: '/holdings', label: '보유종목' },
           { href: '/review', label: '포트폴리오 검토' },
@@ -88,7 +95,6 @@ export const sidebar = defineCopy({
           { href: '/tax-planning', label: '세금 계획' },
           { href: '/tax-settings', label: '세금 설정' },
           { href: '/lots', label: '세금 계산 단위' },
-          { href: '/pension', label: '연금' },
         ],
       },
       {
@@ -100,6 +106,14 @@ export const sidebar = defineCopy({
           { href: '/transactions', label: '거래 내역' },
           { href: '/fx', label: '환전 · 환차익' },
           { href: '/crypto-premium', label: '코리아 프리미엄' },
+        ],
+      },
+      {
+        label: '전체 자산',
+        supplementary: true,
+        items: [
+          { href: '/net-worth', label: '순자산' },
+          { href: '/pension', label: '연금' },
         ],
       },
       {

@@ -3,7 +3,8 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, MetricField } from '@/components/ui'
 import { CardRow } from '@/components/layout'
 import { getMeta, getNetWorth } from '@/lib/adapters/portfolio-db'
-import { formatKrw, formatUsd } from '@/lib/currency'
+import { createMoneyFormatter, formatKrw, formatUsd } from '@/lib/currency'
+import { getCurrencyPreferences } from '@/lib/currency-server'
 import { fmtDate, fmtDateTime } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { routeMetadata, routeSection } from '@/lib/page-names'
@@ -19,6 +20,9 @@ type HistoryRow = NetWorth['history'][number]
 export default async function NetWorthPage() {
   const language = await getLanguage()
   const copy = getPageCopy('netWorth', language)
+  // Every KRW figure in the display currency, as the Overview shows it. The
+  // Balance column stays in each account's own currency.
+  const money = createMoneyFormatter(await getCurrencyPreferences())
   const meta = getMeta()
   const netWorth = getNetWorth()
   const classes = ['stocks', 'crypto', 'cash', 'pensions', 'gold'] as const
@@ -35,12 +39,12 @@ export default async function NetWorthPage() {
 
       <CardRow columns={3}>
         <Card>
-          <MetricField label={copy.total} value={formatKrw(netWorth.totalKrw)} valueClassName="text-metric" />
+          <MetricField label={copy.total} value={money(netWorth.totalKrw)} valueClassName="text-metric" />
         </Card>
         <Card title={copy.byClass} className="md:col-span-2">
           <div className="grid grid-cols-2 gap-4 p-4 md:grid-cols-5">
             {classes.map((name) => (
-              <MetricField key={name} label={copy.classes[name]} value={formatKrw(netWorth.byClass[name])} valueClassName="text-title tabular-nums" />
+              <MetricField key={name} label={copy.classes[name]} value={money(netWorth.byClass[name])} valueClassName="text-title tabular-nums" />
             ))}
           </div>
           {netWorth.asOfNotes.length ? (
@@ -94,7 +98,7 @@ export default async function NetWorthPage() {
               label: copy.columns.krw,
               align: 'right',
               nowrap: true,
-              render: (row: CashRow) => <span className="tabular-nums">{row.krw == null ? copy.none : formatKrw(row.krw)}</span>,
+              render: (row: CashRow) => <span className="tabular-nums">{row.krw == null ? copy.none : money(row.krw)}</span>,
             },
           ]}
         />
@@ -117,9 +121,9 @@ export default async function NetWorthPage() {
                 key: 'stocks',
                 label: copy.historyColumns.stocks,
                 align: 'right',
-                render: (row: HistoryRow) => <span className="tabular-nums">{row.stocks == null ? copy.none : formatKrw(row.stocks)}</span>,
+                render: (row: HistoryRow) => <span className="tabular-nums">{row.stocks == null ? copy.none : money(row.stocks)}</span>,
               },
-              { key: 'cash', label: copy.historyColumns.cash, align: 'right', render: (row: HistoryRow) => <span className="tabular-nums">{formatKrw(row.cash)}</span> },
+              { key: 'cash', label: copy.historyColumns.cash, align: 'right', render: (row: HistoryRow) => <span className="tabular-nums">{money(row.cash)}</span> },
             ]}
           />
         </Card>

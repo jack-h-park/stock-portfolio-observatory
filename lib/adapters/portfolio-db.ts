@@ -89,6 +89,16 @@ export type HealthCheck = {
   status: 'pass' | 'fail'
   detail: string
   severity: 'error' | 'warning'
+  /** `stock` checks guard the Stocks view; `supplementary` ones cover deposits, pensions and gold. */
+  scope: CheckScope
+}
+
+export type CheckScope = 'stock' | 'supplementary'
+
+/** The scope column, or `'stock'` for a database written before checks had one. */
+function checkScopeSql(conn: Database.Database) {
+  const columns = (conn.prepare('pragma table_info(validation_checks)').all() as { name: string }[]).map((column) => column.name)
+  return columns.includes('scope') ? 'scope' : "'stock'"
 }
 
 export type EvidenceReport = {
@@ -851,7 +861,10 @@ export function getOverview() {
       .prepare('select count(*) as count, coalesce(sum(realized_gl_krw), 0) as amount from realized_lots')
       .get() as any
     const tx = conn.prepare('select count(*) as count, min(date) as first_date, max(date) as last_date from transactions').get() as any
-    const checks = conn.prepare("select count(*) as failed from validation_checks where status != 'pass'").get() as any
+    // The badge counts stock checks only: a supplementary warning is not a Stocks-view problem.
+    const checks = conn
+      .prepare(`select count(*) as failed from validation_checks where status != 'pass' and ${checkScopeSql(conn)} = 'stock'`)
+      .get() as any
     const fxRates = conn.prepare('select * from fx_rates order by as_of_date desc, from_currency').all() as any[]
     return { totals, dividends, realized, tx, failedChecks: checks.failed as number, fxRates }
   } finally {
@@ -3343,29 +3356,27 @@ export function getPositionDetail(market: string, ticker: string): PositionDetai
 }
 
 /**
- * Open lots for the tax planner: every stock lot (the default view), plus the
- * lots of any other wrapper whose US treatment is `taxable` in the policy. With
- * the pension wrappers `undecided` this is exactly the stock view.
+ * Open lots for the tax planner: the lots of every wrapper whose US treatment is
+ * `taxable` in the policy. The brokerage wrapper always is; `isa` is by default,
+ * so with the defaults this is exactly the stock view. An `isa` set to anything
+ * else drops the ISA lots, and a pension wrapper set to `taxable` adds its lots.
  */
 export function getTaxPlanningLots(limit = 500, policy: TaxPolicy = getTaxPolicyState().policy): TaxPlanningLot[] {
   const conn = db()
   try {
-    const extraWrappers = usTaxableWrappers(policy).filter((wrapper) => wrapper !== 'taxable' && wrapper !== 'isa')
+    const wrappers = ['taxable', ...usTaxableWrappers(policy)]
     const lotsTable = allAssetsTable(conn, 'tax_lots')
     const holdingsTable = allAssetsTable(conn, 'holdings')
-    // A database older than the *_all tables has only the stock rows, and no
-    // other wrapper to add.
-    const extra = extraWrappers.length && lotsTable === 'tax_lots_all'
+    // A database older than the *_all tables has only the stock rows, and is
+    // read as it always was.
+    const scoped = lotsTable === 'tax_lots_all'
     const rowFilter = (alias: string) =>
-      extra
-        ? `((${alias}.account_wrapper in ('taxable', 'isa') or ${alias}.account_wrapper in (${extraWrappers.map(() => '?').join(', ')}))` +
-          ` and ${alias}.asset_class = 'security')`
-        : lotsTable === 'tax_lots_all'
-          ? `(${alias}.account_wrapper in ('taxable', 'isa') and ${alias}.asset_class = 'security')`
-          : alias === 'h'
-            ? `${alias}.${STOCK_WRAPPER_SQL}`
-            : '1 = 1'
-    const params = extra ? [...extraWrappers, ...extraWrappers, limit] : [limit]
+      scoped
+        ? `(${alias}.account_wrapper in (${wrappers.map(() => '?').join(', ')}) and ${alias}.asset_class = 'security')`
+        : alias === 'h'
+          ? `${alias}.${STOCK_WRAPPER_SQL}`
+          : '1 = 1'
+    const params = scoped ? [...wrappers, ...wrappers, limit] : [limit]
     return conn
       .prepare(
         `with holding_prices as (
@@ -3440,6 +3451,24 @@ export type WrapperReviewRow = {
  * gains and dividends are to date, in KRW. Empty on a database older than the
  * `*_all` tables, which holds no such account.
  */
+/**
+ * Whether the database holds any supplementary data: a cash balance, or a row
+ * in holdings_all outside the stock view (a pension wrapper, or gold). Cheap
+ * enough for the layout, which hides the All assets section without it.
+ */
+export function hasSupplementaryAssets(): boolean {
+  if (!dbAvailable()) return false
+  const conn = db()
+  try {
+    const hasTable = (name: string) => Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(name))
+    if (hasTable('cash_balances') && conn.prepare('select 1 from cash_balances limit 1').get()) return true
+    if (hasTable('holdings_all') && conn.prepare(`select 1 from holdings_all where not (${STOCK_ROW_SQL}) limit 1`).get()) return true
+    return false
+  } finally {
+    conn.close()
+  }
+}
+
 export function getWrapperReview(policy: TaxPolicy = getTaxPolicyState().policy): WrapperReviewRow[] {
   const conn = db()
   try {
@@ -3893,7 +3922,11 @@ export function getEvidenceReports(): EvidenceReport[] {
 export function getValidationChecks(): HealthCheck[] {
   const conn = db()
   try {
-    return conn.prepare('select * from validation_checks order by status desc, severity, name').all() as HealthCheck[]
+    return conn
+      .prepare(
+        `select id, name, status, detail, severity, ${checkScopeSql(conn)} as scope from validation_checks order by status desc, severity, name`
+      )
+      .all() as HealthCheck[]
   } finally {
     conn.close()
   }
