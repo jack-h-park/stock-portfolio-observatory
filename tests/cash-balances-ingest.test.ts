@@ -72,7 +72,7 @@ function ingestAccounts(map: unknown) {
 test('the account map and the label rule decide the wrapper stored on ingested rows', () => {
   const db = ingestAccounts({ accounts: { 'Alpha Pension Acct': { wrapper: 'irp' } } })
   const wrapperOf = (account: string) =>
-    (db.prepare('select account_wrapper as w, owner from transactions where account = ?').get(account) as any)
+    (db.prepare('select account_wrapper as w, owner from transactions_all where account = ?').get(account) as any)
   assert.equal(wrapperOf('Alpha Pension Acct')?.w, 'irp')
   assert.equal(wrapperOf('Beta Broker (ISA)')?.w, 'isa')
   assert.equal(wrapperOf('Gamma Ordinary')?.w, 'taxable')
@@ -239,16 +239,19 @@ test('extractor notes are shown in cash_statements_parsed without making it fail
   assert.equal(readable.status, 'pass')
 })
 
-test('non_stock_wrappers_absent passes by default and fails while a non-stock wrapper has rows', () => {
-  const pass = ingestAccounts({}).prepare("select status, severity from validation_checks where name = 'non_stock_wrappers_absent'").get() as any
+test('non_stock_wrappers_absent counts non-stock rows and passes while the stock views keep them out', () => {
+  const pass = ingestAccounts({}).prepare("select status, severity, detail from validation_checks where name = 'non_stock_wrappers_absent'").get() as any
   assert.equal(pass.status, 'pass')
   assert.equal(pass.severity, 'warning')
-  const fail = ingestAccounts({ accounts: { 'Alpha Pension Acct': { wrapper: 'irp' } } })
+  assert.match(pass.detail, /no row sits outside/)
+  // Phase 2 put the filters in place, so rows under irp are expected now; the
+  // check reports them and only fails if one reaches a stock view.
+  const held = ingestAccounts({ accounts: { 'Alpha Pension Acct': { wrapper: 'irp' } } })
     .prepare("select status, severity, detail from validation_checks where name = 'non_stock_wrappers_absent'").get() as any
-  assert.equal(fail.status, 'fail')
-  assert.equal(fail.severity, 'warning')
-  assert.match(fail.detail, /transactions/)
-  assert.match(fail.detail, /phase 2/)
+  assert.equal(held.status, 'pass')
+  assert.equal(held.severity, 'warning')
+  assert.match(held.detail, /transactions/)
+  assert.match(held.detail, /kept out of the stock views/)
 })
 
 test('accounts with an unsupported currency or kind are dropped and reported', () => {

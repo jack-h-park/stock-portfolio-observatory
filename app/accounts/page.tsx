@@ -73,10 +73,11 @@ export default async function AccountsPage() {
         accent
         action={<TextLink href="/data-ops#account-coverage">{copy.nextDownloads}</TextLink>}
       >
-        <div className="flex flex-col gap-2 border-b border-line-subtle bg-surface px-4 py-3 text-label leading-relaxed text-ink-3">
-          <p>{copy.scopeNote}</p>
-          {axis ? <TimelineLegend labels={copy.legend} /> : null}
-        </div>
+        {axis ? (
+          <div className="flex flex-col gap-2 border-b border-line-subtle bg-surface px-4 py-3 text-label leading-relaxed text-ink-3">
+            <TimelineLegend labels={copy.legend} />
+          </div>
+        ) : null}
         <DataTable
           caption={copy.tableTitle}
           rows={accounts}

@@ -37,7 +37,7 @@ export async function createSavedTaxPlanAction(formData: FormData) {
   const horizonYears = boundedNumber(formData.get('horizonYears'), 5, 1, 10)
   const policyState = getTaxPolicyState()
   const planSet = buildMonthlySalePlanSet({
-    lots: getTaxPlanningLots(5000),
+    lots: getTaxPlanningLots(5000, policyState.policy),
     policy: policyState.policy,
     selectedStrategy,
     executionMonths,

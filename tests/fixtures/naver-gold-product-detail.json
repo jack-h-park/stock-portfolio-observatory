@@ -1,0 +1,23 @@
+{
+  "isSuccess": true,
+  "detailCode": "",
+  "message": "",
+  "result": {
+    "categoryType": "metals",
+    "stockExchangeType": { "code": "KRX", "zoneId": "Asia/Seoul", "nationType": "KOR", "name": "KRX" },
+    "reutersCode": "M04020000",
+    "symbolCode": "M04020000",
+    "name": "국내 금",
+    "localTradedAt": "2026-03-05T15:19:36+09:00",
+    "closePrice": "177,480",
+    "fluctuations": "-1,000",
+    "fluctuationsRatio": "-0.56",
+    "fluctuationsType": { "code": "5", "text": "하락", "name": "FALLING" },
+    "marketStatus": "CLOSE",
+    "priceDataType": "REALTIME",
+    "unit": "원/g",
+    "marketIndexTotalInfos": [
+      { "code": "lastClosePrice", "key": "전일", "value": "178,480" }
+    ]
+  }
+}

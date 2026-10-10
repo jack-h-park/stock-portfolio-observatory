@@ -1,7 +1,8 @@
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, Label, MetricField, MetricHeroCard, TextLink } from '@/components/ui'
 import { fmtDateTime, fmtNumber } from '@/lib/format'
-import { getMeta } from '@/lib/adapters/portfolio-db'
+import { dbAvailable, getMeta, getWrapperReview } from '@/lib/adapters/portfolio-db'
+import { WrapperReviewCard } from '@/components/WrapperReviewCard'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
 import { annualProfiles, assumptionBool, assumptionNumber, assumptionString, getTaxPolicyState, type TaxYearProfile } from '@/lib/tax-policy'
@@ -25,6 +26,8 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
   const state = getTaxPolicyState()
   const { policy } = state
   const profiles = annualProfiles(policy, policy.planningHorizonYears ?? 5)
+  const wrapperReview = dbAvailable() ? getWrapperReview(policy) : []
+  const wrapperReviewCopy = getPageCopy('taxPlanning', language).wrapperReview
 
   // What the ingest computed from the actual sales, shown beside the field
   // rather than written into it. These two assumptions drive the tax estimate
@@ -115,6 +118,8 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
           </div>
         </Card>
       </CardRow>
+
+      <WrapperReviewCard rows={wrapperReview} copy={wrapperReviewCopy} />
 
       <form action={saveTaxSettings} className="space-y-5">
         <Card title={copy.filingProfile.title} accent>

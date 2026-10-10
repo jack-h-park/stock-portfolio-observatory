@@ -7,7 +7,7 @@ import Database from 'better-sqlite3'
 import { runIngest } from './ingest-harness'
 import { writeSheetPayloads } from './sheet-payloads'
 
-const HOLDING_INSERT = `insert into holdings (market, currency, base_currency, account, ticker, name, quantity, native_cost, total_cost_krw,
+const HOLDING_INSERT = `insert into holdings_all (market, currency, base_currency, account, ticker, name, quantity, native_cost, total_cost_krw,
        base_cost, base_market_value, native_market_value, account_wrapper)
      values ('KR','KRW','KRW',?,?,?,10,1000,1000,1000,5000,5000,?)`
 

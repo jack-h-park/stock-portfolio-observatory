@@ -6,6 +6,7 @@ import {
   assumptionString,
   projectedWagesUsd,
   scenarioFromTaxYearProfile,
+  wrapperTreatment,
   type FilingScenario,
   type TaxPolicy,
   type TaxYearProfile,
@@ -29,6 +30,8 @@ export type TaxPlanningLot = {
   cost_basis_krw: number
   holding_days: number | null
   tax_term: string | null
+  /** The account's wrapper. Absent on a lot read before wrappers existed: a plain brokerage lot. */
+  account_wrapper?: string | null
 }
 
 export type TaxPlanCandidate = TaxPlanningLot & {
@@ -289,6 +292,17 @@ export type MonthlySalePlanSet = {
     nextLongTermDate: string | null
     estimatedFederalTaxAvoidedKrw: number
   }
+}
+
+/**
+ * The lots the estimate may use. A plain brokerage lot always counts; any other
+ * wrapper counts only while its US treatment is `taxable`. `undecided`, `deferred`
+ * and `exempt_within_limit` keep the lot out, and the tax pages list the account
+ * under "Needs review for US tax" instead. With the example policy every ISA lot
+ * stays in (US `isa` is `taxable`), so the default view does not move.
+ */
+export function lotsInUsEstimate<T extends Pick<TaxPlanningLot, 'account_wrapper'>>(lots: T[], policy: TaxPolicy): T[] {
+  return lots.filter((lot) => wrapperTreatment(policy, 'US', lot.account_wrapper || 'taxable') === 'taxable')
 }
 
 function pctRate(value: number) {
@@ -574,7 +588,7 @@ export function buildTaxPlan({
   const krDomesticTaxable = assumptionBool(policy, 'KR', 'domesticMajorShareholder', false) || assumptionBool(policy, 'KR', 'domesticListedOffMarketSale', false)
   const krForeignTaxCreditMode = assumptionString(policy, 'KR', 'foreignTaxCreditMode', 'manual')
 
-  const candidates = lots.map((lot) => {
+  const candidates = lotsInUsEstimate(lots, policy).map((lot) => {
     const proceedsNative = lot.native_market_value == null ? null : Number(lot.native_market_value)
     const explicitFxRate = Number(lot.fx_rate_to_base ?? 0)
     const basisFxRate = lot.currency === 'USD' && lot.native_cost_basis > 0 ? lot.cost_basis_krw / lot.native_cost_basis : 0
@@ -838,7 +852,7 @@ export function buildMultiYearTaxPlan({
   const profiles = annualProfiles(policy, horizonYears)
   const strategies: MultiYearStrategyKey[] = ['KR_FIRST', 'US_FIRST', 'BALANCED', 'LOSS_FIRST']
   const scenarios = strategies.map((strategy) => {
-    let remainingLots = cloneLots(lots)
+    let remainingLots = cloneLots(lotsInUsEstimate(lots, policy))
     const years = profiles.map((profile, yearIndex) => {
       const selected = allocateYear({
         lots: remainingLots,

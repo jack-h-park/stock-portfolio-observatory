@@ -31,6 +31,7 @@ export const sidebar = defineCopy({
           { href: '/tax-planning', label: 'Tax Planning' },
           { href: '/tax-settings', label: 'Tax Settings' },
           { href: '/lots', label: 'Tax Lots' },
+          { href: '/pension', label: 'Pension' },
         ],
       },
       {
@@ -87,6 +88,7 @@ export const sidebar = defineCopy({
           { href: '/tax-planning', label: '세금 계획' },
           { href: '/tax-settings', label: '세금 설정' },
           { href: '/lots', label: '세금 계산 단위' },
+          { href: '/pension', label: '연금' },
         ],
       },
       {

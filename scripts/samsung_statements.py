@@ -81,7 +81,29 @@ TYPE_MAP = {
     # Cash leaving for a bank account. No ticker and no quantity, so the lot
     # walk skips it; it is kept for the cash trail and for the 출금액합계 check.
     "이체출금": "TRANSFER_OUT",
+    # The 연금저축 거래내역확인서 is the English-labelled LEDGER A/C TRANSACTIONS
+    # DETAIL, and prints its types in English. Deposit is cash paid into the
+    # pension (a contribution); Reinvestment is a fund distribution bought back
+    # into the fund, a buy-like row with a quantity.
+    "Buy": "BUY",
+    "Sell": "SELL",
+    "After Hours Sell": "SELL",
+    "Deposit": "DEPOSIT",
+    "Interest": "INTEREST",
+    "Reinvestment": "REINVEST",
 }
+
+# The ledger's cash-in and cash-out types, for its Total Deposit(A) / Total
+# Debit(B) check. Total Deposit(A) is the money that came INTO the account:
+# the Deposit rows plus the MMF Interest credited, checked against the real
+# ledger (Deposit alone falls short by exactly the interest). A Sell's proceeds
+# and a Reinvestment are movements inside the account and are not in it.
+LEDGER_INFLOW_TYPES = {"Deposit", "Interest"}
+LEDGER_OUTFLOW_TYPES = {"Withdrawal"}
+
+# A fund name in the ledger starts with its numeric product code in brackets,
+# `(1234567)Samsung ...`, which is not a ticker.
+LEDGER_CODE = re.compile(r"^\(\d+\)\s*")
 
 # Column index → what the two stacked lines of that cell mean. Written out
 # because the pairing is the whole trick of this layout.
@@ -127,9 +149,38 @@ def account_label(cell):
     second says nothing about what the account holds, so it is dropped rather
     than concatenated into a label nobody would recognise.
     """
-    groups = re.findall(r"\(([^)]+)\)", nfc(cell))
+    text = nfc(cell)
+    # The 연금저축 ledger prints `<n>-15 연금저축 CMA(비대면)(회사지원)`. Its
+    # bracketed groups are the channel and the plan funding; the account type is
+    # the text itself.
+    if "연금저축" in text:
+        return f"{DEFAULT_ACCOUNT}(연금저축)"
+    groups = re.findall(r"\(([^)]+)\)", text)
     kind = next((g for g in groups if g not in ("비대면", "대면")), "")
     return f"{DEFAULT_ACCOUNT}({kind})" if kind else DEFAULT_ACCOUNT
+
+
+def split_type_and_name(cell):
+    """(거래명, 종목명) from the stacked type cell.
+
+    The 주식보상 statement puts the type on line 1 and the name on line 2. The
+    연금저축 ledger's name has a `(<code>)` prefix and wraps onto lines 3 and
+    later, so the name is every line after the type, joined. The type is the
+    longest run of leading lines that is a known type, so a type that ever wraps
+    (`After Hours` / `Sell`) still reads whole.
+    """
+    parts = lines(cell)
+    if not parts:
+        return "", ""
+    raw_type = parts[0]
+    taken = 1
+    for k in range(len(parts), 1, -1):
+        candidate = " ".join(parts[:k])
+        if candidate in TYPE_MAP:
+            raw_type, taken = candidate, k
+            break
+    name = " ".join(parts[taken:])
+    return raw_type, LEDGER_CODE.sub("", name).strip()
 
 
 def parse(path, source_name, password, report):
@@ -141,19 +192,25 @@ def parse(path, source_name, password, report):
     out = []
     totals = None
     account = DEFAULT_ACCOUNT
+    # The English ledger (연금저축). Its column 5 second line is the fund
+    # evaluation price, not a running share count.
+    ledger = False
     with pdfplumber.open(path, password=password or "") as pdf:
         for page_no, page in enumerate(pdf.pages, start=1):
             for table in page.extract_tables() or []:
                 for row in table:
                     cells = [c or "" for c in row]
-                    if len(cells) >= 2 and nfc(cells[0]).strip() == "계좌번호":
+                    first = nfc(cells[0]).strip()
+                    if len(cells) >= 2 and first in ("계좌번호", "Account No."):
                         account = account_label(cells[1])
+                        ledger = ledger or first == "Account No."
                         continue
-                    if len(cells) >= 7 and nfc(cells[0]).strip().startswith("입금액합계"):
+                    if len(cells) >= 7 and (first.startswith("입금액합계") or first.startswith("Total Deposit")):
                         totals = {
                             "inflow": number(cells[1]),
                             "outflow": number(cells[3]),
                             "net": number(cells[6]),
+                            "ledger": first.startswith("Total Deposit"),
                         }
                         continue
                     if len(cells) < 12:
@@ -162,7 +219,7 @@ def parse(path, source_name, password, report):
                     if not DATE_CELL.match(date):
                         continue  # header, or the account block at the top
 
-                    raw_type = line_at(cells[COL_NAME], 0)
+                    raw_type, name = split_type_and_name(cells[COL_NAME])
                     # 통화코드 is 'KRW' on the rows that have a security leg and
                     # '0' on the ones that do not. Anything else would mean a
                     # foreign holding in an account that has only ever held a
@@ -177,7 +234,7 @@ def parse(path, source_name, password, report):
                     out.append({
                         "date": date.replace("/", "-"),
                         "raw_type": raw_type,
-                        "name": line_at(cells[COL_NAME], 1),
+                        "name": name,
                         "quantity": number(line_at(cells[COL_QTY], 0)),
                         "unit_price": number(line_at(cells[COL_QTY], 1)),
                         # 거래금액 is the gross consideration and 정산금액 what
@@ -189,8 +246,10 @@ def parse(path, source_name, password, report):
                         "tax": number(line_at(cells[COL_TAX_FEE], 0)),
                         "fee": number(line_at(cells[COL_TAX_FEE], 1)),
                         "cash_balance": number(line_at(cells[COL_BALANCE], 0)),
-                        # 잔고수량 — the broker's own running share count.
-                        "share_balance": number(line_at(cells[COL_BALANCE], 1)),
+                        # 잔고수량 — the broker's own running share count. The
+                        # ledger prints a fund evaluation price there instead,
+                        # which is no count at all.
+                        "share_balance": 0.0 if ledger else number(line_at(cells[COL_BALANCE], 1)),
                         "counterparty": " ".join(lines(cells[COL_COUNTERPARTY])),
                         "page": page_no,
                     })
@@ -206,15 +265,18 @@ def check_totals(rows, totals, source_name, report):
     entirely reasonable.
     """
     if not totals:
-        report("no-totals", f"{source_name}: no 입금액합계 row found to check the parse against")
+        report("no-totals", f"{source_name}: no 입금액합계 / Total Deposit(A) row found to check the parse against")
         return
-    inflow = sum(r["gross"] for r in rows if r["gross"] > 0 and r["raw_type"] != "이체출금")
-    outflow = sum(r["gross"] for r in rows if r["raw_type"] == "이체출금")
-    for label, parsed, printed in (
-        ("입금액합계", inflow, totals["inflow"]),
-        ("출금액합계", outflow, totals["outflow"]),
-        ("증감", inflow - outflow, totals["net"]),
-    ):
+    if totals.get("ledger"):
+        inflow = sum(r["gross"] for r in rows if r["raw_type"] in LEDGER_INFLOW_TYPES)
+        outflow = sum(r["gross"] for r in rows if r["raw_type"] in LEDGER_OUTFLOW_TYPES)
+        labels = ("Total Deposit(A)", "Total Debit(B)", "Balance(A-B)")
+    else:
+        inflow = sum(r["gross"] for r in rows if r["gross"] > 0 and r["raw_type"] != "이체출금")
+        outflow = sum(r["gross"] for r in rows if r["raw_type"] == "이체출금")
+        labels = ("입금액합계", "출금액합계", "증감")
+    for label, parsed, printed in zip(labels, (inflow, outflow, inflow - outflow),
+                                      (totals["inflow"], totals["outflow"], totals["net"])):
         if abs(parsed - printed) > 0.5:
             report(
                 "totals-break",

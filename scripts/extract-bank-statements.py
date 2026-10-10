@@ -255,6 +255,120 @@ def _fx_ledger_module():
     return module
 
 
+def _kr_statements_module():
+    """extract-kr-statements.py, for the 미래에셋 certificate reader (`open_pdf`, `records`, `number`)."""
+    spec = importlib.util.spec_from_file_location("kr_statements", Path(__file__).with_name("extract-kr-statements.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# The issue filter a 미래에셋 CMA certificate prints on page 2, read despaced.
+# `거래구분 CMA자동매매 제외` leaves the 발행어음 sweeps out; `거래구분 전체`
+# keeps them. `CMARP/MMW포함 N` is the RP/MMW flag, says nothing about a
+# 발행어음 CMA, and is printed on both kinds.
+CMA_SWEEPS_EXCLUDED = "CMA자동매매제외"
+CMA_SWEEPS_INCLUDED = "거래구분전체"
+CMA_SWEEP_KIND = "발행어음"
+CMA_REMEDY = "re-issue the 거래내역증명서 with CMA자동매매 포함, or provide a 잔고증명서"
+
+
+def _cma_direction(kind):
+    """+1 money in, -1 money out, 0 unknown. 매수/매도 are the 발행어음 legs."""
+    if "매수" in kind:
+        return -1
+    if "매도" in kind or "입금" in kind:
+        return 1
+    if "출금" in kind or "송금" in kind:
+        return -1
+    return 0
+
+
+def parse_mirae_cma(path, findings, notes=None):
+    """미래에셋 CMA (발행어음형) 거래내역증명서 → rows whose balance is 예수금 + 발행어음 principal.
+
+    The account's money sits in two places: 예수금 (cash) and the 발행어음 it is
+    swept into. Each row of the certificate, in printed order (dates ascending,
+    then 처리시각), is read as follows. Checked against a real certificate with the
+    sweeps: the 예수금 walk below matched every printed 예수금잔액 (116 checks,
+    0 breaks), and the account total moved only on transfers and interest.
+
+    - Cash moves by 입출금액 (B row, col 6), never by 거래금액 (A col 6). On a
+      발행어음 sell the two differ: 거래금액 is the gross proceeds (principal plus
+      interest), 제세금합 (B col 5) the tax withheld, and 입출금액 the net cash,
+      which is what reaches 예수금.
+    - A `CMA 발행어음 매수` row prints no 예수금잔액. Its 거래수량 (B col 2) equals
+      the amount: units are won of principal.
+    - `CMA 발행어음 만기매도` / `중도매도` rows print 예수금잔액 after the net
+      proceeds arrive. Their 거래수량 is the principal redeemed, so the interest
+      earned (net of tax) is 입출금액 minus 거래수량: 만기 interest arrives inside
+      the sell row, not as a row of its own.
+
+    The account balance is printed 예수금잔액 plus principal held (Σ 매수 units −
+    Σ 매도 units). Each emitted row's `amount` is how much that row moves the
+    account total: the transfer for 입금/출금/송금, the net interest for a sell,
+    and 0 for a buy (cash into principal). So `continuity_breaks` checks the
+    total, and `end_of_day` gives the account balance. Principal held is taken as
+    zero at the start of the certificate; a sell beyond it is reported.
+
+    Fail-closed on the issue filter. A certificate that says `CMA자동매매 제외`
+    leaves the sweeps out, so its 예수금잔액 is only the cash left after them; one
+    that shows neither that nor a sign the sweeps are in (`거래구분 전체`, or
+    발행어음 rows) cannot be told apart from it. Either way no balances are written,
+    and the finding says how to get a usable certificate. Returns None then.
+    """
+    kr = _kr_statements_module()
+    pdf = kr.open_pdf(str(path))
+    if pdf is None:
+        raise ValueError("could not be opened (set STOCK_PDF_PASSWORD)")
+    with pdf:
+        filter_text = re.sub(r"\s+", "", unicodedata.normalize("NFC", "\n".join(
+            (page.extract_text() or "") for page in pdf.pages[1:3])))
+        records = list(kr.records(pdf, path.name))
+    if CMA_SWEEPS_EXCLUDED in filter_text:
+        findings.append(
+            f"{path.name}: issued with CMA자동매매 제외, so its 예수금잔액 leaves out the 발행어음 sweeps and is "
+            f"not the account balance; no balances written — {CMA_REMEDY}")
+        return None
+    has_sweeps = any(CMA_SWEEP_KIND in a[1] for _page, a, _b, _c in records)
+    if CMA_SWEEPS_INCLUDED not in filter_text and not has_sweeps:
+        findings.append(
+            f"{path.name}: page 2 shows neither 거래구분 전체 nor 발행어음 rows, so whether the 발행어음 sweeps are "
+            f"included cannot be told; no balances written — {CMA_REMEDY}")
+        return None
+
+    out, unknown = [], {}
+    principal, oversold = 0.0, False
+    for seq, (_page, a, b, _c) in enumerate(records):
+        kind = a[1].strip()
+        direction = _cma_direction(kind)
+        if not direction:
+            unknown[kind] = unknown.get(kind, 0) + 1
+        cash = kr.number(b[6]) if b[6].strip() else kr.number(a[6])
+        if CMA_SWEEP_KIND in kind:
+            units = kr.number(b[2])
+            if direction < 0:
+                principal += units
+                change = 0.0
+            else:
+                principal -= units
+                change = cash - units
+                if principal < -0.5:
+                    oversold = True
+        else:
+            change = direction * cash
+        printed = kr.number(a[7]) if a[7].strip() else None
+        out.append({"date": a[0].strip().replace("/", "-"), "seq": seq, "description": kind, "amount": change,
+                    "balance": round(printed + principal, 2) if printed is not None else None})
+    for kind, count in sorted(unknown.items()):
+        findings.append(f"{path.name}: 거래종류 {kind} names no direction (입금/출금/송금/매수/매도); "
+                        f"{count} row(s) counted as 0")
+    if oversold:
+        findings.append(f"{path.name}: more 발행어음 was sold than the certificate shows bought, so principal was "
+                        "held before its period; balances understate it — request a certificate from the account's opening")
+    return out
+
+
 def _xls_rows(source, findings):
     fx = _fx_ledger_module()
     binary = fx.soffice_binary()
@@ -282,7 +396,12 @@ FAMILIES = [
     ("mg-deposit-", "mg", "deposit", "KRW", lambda p, f, n: parse_mg_rows(_xls_rows(p, f)), None),
     ("tossbank-", "tossbank", "checking", "KRW", lambda p, f, n: parse_tossbank(p, f, n), r"^tossbank-(\d{4})-"),
     ("fidelity-cma-", "fidelity", "cma", "USD", lambda p, f, n: parse_fidelity_cma(p.read_text(encoding="utf-8-sig")), None),
+    ("mirae-cma-", "mirae", "cma", "KRW", lambda p, f, n: parse_mirae_cma(p, f, n), None),
 ]
+
+# The alias an account gets when the map has no entry for it, where
+# `<institution> <kind>` would not read as the account's name.
+DEFAULT_ALIASES = {("mirae", "cma"): "미래에셋 CMA"}
 
 
 def _alias_rule(account_map, institution, kind, last4=None):
@@ -304,7 +423,8 @@ def _alias_rule(account_map, institution, kind, last4=None):
 
 def _alias(account_map, institution, kind, last4=None):
     rule = _alias_rule(account_map, institution, kind, last4)
-    return (rule or {}).get("alias") or (f"{institution} {last4}" if last4 else f"{institution} {kind}")
+    return (rule or {}).get("alias") or (f"{institution} {last4}" if last4 else
+                                         DEFAULT_ALIASES.get((institution, kind), f"{institution} {kind}"))
 
 
 def _derive(alias, txns, account_map, findings):
@@ -345,6 +465,8 @@ def main():
                     rows = parse(path, findings, notes)
                 except Exception as error:  # one bad file must not cost every account
                     findings.append(f"{path.name}: could not be parsed ({type(error).__name__}: {error})")
+                    continue
+                if rows is None:  # parsed, but unusable; the parser recorded why
                     continue
                 if not rows:
                     findings.append(f"{path.name}: parsed to zero rows")

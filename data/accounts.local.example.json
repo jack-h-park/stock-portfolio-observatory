@@ -16,5 +16,9 @@
   ],
   "anchors": [
     { "alias": "Robinhood checking", "date": "2026-01-31", "balance": 100.0 }
+  ],
+  "pensionAccounts": [
+    { "token": "irp", "account": "미래에셋증권(IRP)", "wrapper": "irp", "institution": "미래에셋증권" },
+    { "token": "pension-savings", "account": "삼성증권(연금저축)", "wrapper": "pension_savings", "institution": "삼성증권", "accountNumber": "00000000-15" }
   ]
 }

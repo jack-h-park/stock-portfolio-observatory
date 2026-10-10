@@ -92,6 +92,9 @@ done
 # Every directory the ingest and the extractors read. Keep in step with
 # scripts/source-files.mjs, extract-kr-statements.py, extract-crypto-activity.py
 # and extract-bank-statements.py.
+# `pension` holds the pension holdings snapshots and, under pension/evidence/, the
+# year-end certificates; rsync -a carries the subdirectory with it. A machine
+# with no pension files yet skips it with the note below, like any other.
 # `inbox` is deliberately not here: a file nothing could identify stays there,
 # and pushing it would put an unnamed document beside the named ones on the
 # machine that reads them.
@@ -104,6 +107,7 @@ SOURCES=(
   crypto-bithumb
   crypto-robinhood
   bank-statements
+  pension
 )
 
 # Config files under the repo's data/, pushed to the same path on the far side.

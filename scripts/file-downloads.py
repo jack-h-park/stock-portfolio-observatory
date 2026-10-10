@@ -107,6 +107,10 @@ DIR_BITHUMB = "crypto-bithumb"
 DIR_RH_CRYPTO = "crypto-robinhood"
 DIR_FX = "fx-statements"
 DIR_BANK = "bank-statements"
+# Pension holdings snapshots, and below them the year-end certificates kept as
+# evidence. One push entry (`pension`) carries both.
+DIR_PENSION = "pension"
+DIR_PENSION_EVIDENCE = "pension/evidence"
 
 # What lands in the inbox but is not a source. macOS writes .DS_Store into any
 # folder a Finder window has opened; a browser writes .crdownload/.part while a
@@ -508,12 +512,18 @@ def mirae_period_window(text):
 
 
 def detect_mirae_transactions(doc):
-    """미래에셋 거래내역증명서 → kr-statements/mirae-<isa|general>-transactions-…
+    """미래에셋 거래내역증명서 → kr-statements/mirae-<isa|general|irp|gold>-transactions-…,
+    or bank-statements/mirae-cma-<from>-<to>.pdf for the CMA.
 
     The title is letter-spaced on the cover (`거래내역 증 명 서`), so it is
     matched despaced. 계좌유형 is not on the cover — it is in the table header
-    that repeats on every data page — so page 2 supplies whether this is the ISA
-    or the 종합 account.
+    that repeats on every data page — so page 2 supplies whether this is the ISA,
+    the 종합, the IRP (`퇴직연금_개인IRP`) or the 금현물 account.
+
+    The IRP and 금현물 certificates are named for the window they declare, from
+    and to, never as an as-of: a 1 January start in the current year would
+    otherwise read as "everything up to here", and Task 3's extractors key on
+    the explicit range.
     """
     cover = doc.page_text(0)
     if "거래내역증명서" not in despace(cover) or "미래에셋증권" not in despace(cover):
@@ -532,7 +542,22 @@ def detect_mirae_transactions(doc):
     kind = None
     match = re.search(r"계좌유형(.*?)고객명", body)
     if match:
-        kind = "isa" if "ISA" in match.group(1) else "general" if "종합" in match.group(1) else None
+        # Only the 계좌유형 field is read: the certificate's boilerplate mentions
+        # 금현물 and 퇴직연금 on every account's pages.
+        account_type = match.group(1)
+        if re.search(r"IRP|퇴직연금", account_type, re.I):
+            kind = "irp"
+        elif "금현물" in account_type:
+            kind = "gold"
+        elif "ISA" in account_type:
+            kind = "isa"
+        elif "CMA" in account_type.upper():
+            # `종합_CMA` is the 발행어음형 CMA, a deposit account. It shares its
+            # last four digits with the 종합 brokerage account (which prints
+            # `종합`), so this must be decided before the 종합 branch below.
+            kind = "cma"
+        elif "종합" in account_type:
+            kind = "general"
     if kind is None:
         account = re.search(r"계좌번호(\d[\d-]+)", body)
         kind, problem = mirae_account_kind(account.group(1)) if account else (None, None)
@@ -547,6 +572,12 @@ def detect_mirae_transactions(doc):
         )
 
     evidence = [f"제공내역 {iso(start)} ~ {iso(end)}", f"계좌유형 {kind}"]
+    if kind == "cma":
+        # A bank statement: the bank extractor reads it, and the KR statement
+        # extractor (which globs kr-statements/mirae-*) never sees it.
+        return Plan(DIR_BANK, f"mirae-cma-{compact(start)}-{compact(end)}.pdf", evidence)
+    if kind in ("irp", "gold"):
+        return Plan(DIR_KR, f"mirae-{kind}-transactions-{compact(start)}-{compact(end)}.pdf", evidence)
     period = period_from_window(start, end)
     name = f"mirae-{kind}-transactions-{period}"
 
@@ -578,6 +609,9 @@ def detect_mirae_balance(doc):
     """
     cover = despace(doc.page_text(0))
     if "잔고증명서" not in cover:
+        return None
+    # The pension certificates share the title; their own detectors file them.
+    if is_irp_balance_certificate(doc) or is_samsung_balance_certificate(doc):
         return None
 
     as_of = None
@@ -1525,6 +1559,224 @@ def detect_tossbank(doc):
                 ["password-protected; filed decrypted", f"account ending {last4}", f"조회기간 {iso(start)} … {iso(stop)}"],
                 transform="tossbank-decrypt")
 
+# ---------------------------------------------------------------------------
+# Pension accounts: the 삼성 연금저축 ledger, the hand-made holdings snapshot,
+# and the year-end certificates kept as evidence. The IRP and 금현물
+# 거래내역증명서 are handled in detect_mirae_transactions above.
+#
+# The snapshot and evidence names carry a `token` from the account map's
+# `pensionAccounts`, because that token is what ties a file to an account for
+# the ingest: none of these documents carries the account label the ingest
+# uses, and the snapshot CSV carries no account at all.
+# ---------------------------------------------------------------------------
+
+def pension_account(predicate, what):
+    """(entry, refusal): the one pensionAccounts entry `predicate` picks, or why there is none."""
+    entries, problem = account_map_list("pensionAccounts")
+    if problem:
+        return None, Refusal(what, problem, "fix the JSON, or move the file aside")
+    found = [e for e in entries if predicate(e) and e.get("token")]
+    if len(found) == 1:
+        return found[0], None
+    if not found:
+        return None, Refusal(
+            what,
+            f"the account map ({ACCOUNT_MAP_PATH.name}) has no pensionAccounts entry for it, and "
+            "that entry's token is what the file is named by",
+            "add the pensionAccounts entry described in docs/data-sources.md",
+        )
+    tokens = ", ".join(str(e.get("token")) for e in found)
+    return None, Refusal(what, f"more than one pensionAccounts entry matches ({tokens})")
+
+
+def detect_samsung_pension_ledger(doc):
+    """삼성증권 연금저축 거래내역확인서 → kr-statements/samsung-pension-transactions-<from>-<to>.pdf
+
+    The only English-labelled statement here: the title is `LEDGER A/C
+    TRANSACTIONS DETAIL`, and the account type lives in the `Account No.` value
+    (`<n>-15 연금저축 CMA(비대면)(회사지원)`). The period is the declared
+    `Date YYYY-MM-DD ~ YYYY-MM-DD`, named from and to.
+    """
+    text = doc.page_text(0)
+    if "LEDGERA/CTRANSACTIONSDETAIL" not in despace(text):
+        return None
+    account = re.search(r"Account\s*No\.(.*)", text)
+    if not account or "연금저축" not in account.group(1):
+        return None
+    window = re.search(r"Date\s*(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})", text)
+    if not window:
+        return Refusal(
+            "삼성증권 연금저축 거래내역확인서",
+            "the first page has no `Date YYYY-MM-DD ~ YYYY-MM-DD` period, and the "
+            "period must come from the document",
+        )
+    start, end = parse_ymd(window.group(1)), parse_ymd(window.group(2))
+    return Plan(
+        DIR_KR,
+        f"samsung-pension-transactions-{compact(start)}-{compact(end)}.pdf",
+        [f"Date {iso(start)} ~ {iso(end)}", "Account No. names 연금저축"],
+    )
+
+
+# The two headers a pension holdings snapshot may carry. The legacy one predates
+# the ticker column; the first snapshot was written by hand from screenshots.
+PENSION_HOLDINGS_HEADERS = (
+    "type,name,ticker,quantity,cost_krw,value_krw",
+    "type,name,quantity,cost_krw,value_krw",
+)
+PENSION_HOLDINGS_NAME = re.compile(r"^(.+)-holdings-(\d{8})\.csv$")
+
+
+def detect_pension_holdings(doc):
+    """Pension holdings snapshot CSV → pension/<token>-holdings-<YYYYMMDD>.csv
+
+    The third detector that believes a file NAME, for the same reason as the
+    Robinhood transactions CSV: the file holds no account and no date, so the
+    name typed when it was made is the only place either lives. The token is
+    checked against the account map's pensionAccounts, and an unknown one is
+    refused with the name to use rather than filed under a guess.
+    """
+    if doc.suffix != ".csv" or not doc.lines:
+        return None
+    # Strip any BOM left after decoding (a spreadsheet re-save can stack one on
+    # top of another), so the exact header match does not miss a good file.
+    if doc.lines[0].lstrip("\ufeff").strip() not in PENSION_HOLDINGS_HEADERS:
+        return None
+    what = "pension holdings snapshot"
+    entries, problem = account_map_list("pensionAccounts")
+    if problem:
+        return Refusal(what, problem, "fix the JSON, or move the file aside")
+    tokens = [str(e["token"]) for e in entries if e.get("token")]
+    if not tokens:
+        return Refusal(
+            what,
+            f"the account map ({ACCOUNT_MAP_PATH.name}) declares no pensionAccounts, so no file name "
+            "can say which account this snapshot belongs to",
+            "add the pensionAccounts entries described in docs/data-sources.md",
+        )
+    expected = f"name it `<token>-holdings-YYYYMMDD.csv`, token one of: {', '.join(tokens)}"
+    found = PENSION_HOLDINGS_NAME.match(nfc(doc.path.name))
+    if not found or found.group(1) not in tokens:
+        return Refusal(
+            what,
+            "the CSV holds no account and no date, and its file name does not carry a known one",
+            expected,
+        )
+    try:
+        as_of = date(int(found.group(2)[:4]), int(found.group(2)[4:6]), int(found.group(2)[6:]))
+    except ValueError:
+        return Refusal(what, f"{found.group(2)} in the file name is not a date", expected)
+    token = found.group(1)
+    return Plan(
+        DIR_PENSION,
+        f"{token}-holdings-{compact(as_of)}.csv",
+        [f"file name: account {token}, as of {iso(as_of)} (the CSV carries neither)"],
+    )
+
+
+def is_irp_balance_status(doc):
+    cover = despace(doc.page_text(0))
+    return "퇴직연금잔고현황" in cover and "개인형IRP" in cover
+
+
+def is_irp_balance_certificate(doc):
+    """A 미래에셋 잔고증명서 whose page-2 holding is the 개인형IRP trust.
+
+    It prints no 계좌유형; the one product line on page 2 is what says IRP.
+    """
+    cover = despace(doc.page_text(0))
+    return "잔고증명서" in cover and "미래에셋증권" in cover and "개인형IRP" in despace(doc.page_text(1))
+
+
+def is_samsung_balance_certificate(doc):
+    """A 삼성증권 잔고증명서 holding 수익증권 (funds), the shape of the 연금저축 one."""
+    cover = despace(doc.page_text(0))
+    if "잔고증명서" not in cover or "삼성증권" not in cover:
+        return False
+    detail = despace(doc.page_text(1))
+    return "유가증권상세내역" in detail and "수익증권" in detail
+
+
+def evidence_plan(token, kind, as_of, evidence):
+    return Plan(DIR_PENSION_EVIDENCE, f"{token}-{kind}-{compact(as_of)}.pdf", evidence)
+
+
+def irp_entry(entry):
+    return entry.get("wrapper") == "irp" and entry.get("institution") == "미래에셋증권"
+
+
+def detect_irp_balance_status(doc):
+    """미래에셋 퇴직연금 잔고현황 → pension/evidence/<token>-balance-status-<기준일자>.pdf"""
+    if not is_irp_balance_status(doc):
+        return None
+    what = "미래에셋 퇴직연금 잔고현황"
+    match = re.search(r"기준일자:?(\d{4}-\d{2}-\d{2})", despace(doc.page_text(0)))
+    if not match:
+        return Refusal(what, "no `기준일자 : YYYY-MM-DD` on page 1, and evidence is dated by the day it is AS OF")
+    entry, refusal = pension_account(irp_entry, what)
+    if refusal:
+        return refusal
+    as_of = parse_ymd(match.group(1))
+    return evidence_plan(entry["token"], "balance-status", as_of, [f"기준일자 {iso(as_of)}", "제도유형 개인형IRP"])
+
+
+def detect_irp_balance_certificate(doc):
+    """미래에셋 IRP 잔고증명서 → pension/evidence/<token>-balance-certificate-<기준일자>.pdf
+
+    Two titles have been issued for the same document (`잔 고 증 명 서` and
+    `특 정 (종 목) 잔 고 증 명 서`); both despace to one containing 잔고증명서.
+    """
+    if not is_irp_balance_certificate(doc):
+        return None
+    what = "미래에셋 IRP 잔고증명서"
+    match = re.search(r"기준일자발급일시.*?(\d{4}-\d{2}-\d{2})", despace(doc.page_text(0)), re.S)
+    if not match:
+        return Refusal(what, "no 기준일자 on the cover, and evidence is dated by the day it is AS OF")
+    entry, refusal = pension_account(irp_entry, what)
+    if refusal:
+        return refusal
+    as_of = parse_ymd(match.group(1))
+    return evidence_plan(entry["token"], "balance-certificate", as_of, [f"기준일자 {iso(as_of)}", "page 2 holding 개인형IRP"])
+
+
+def detect_samsung_pension_certificate(doc):
+    """삼성증권 연금저축 잔고증명서 → pension/evidence/<token>-balance-certificate-<기준일자>.pdf
+
+    It prints no account type at all. What says pension is the issuer, the
+    title, funds (구분 수익증권) on page 2, and the account map declaring a 삼성
+    pension account. An entry may pin `accountNumber`; then the certificate's
+    계좌번호 must be that one.
+    """
+    if not is_samsung_balance_certificate(doc):
+        return None
+    what = "삼성증권 잔고증명서 (연금저축)"
+    match = re.search(r"기준일자(\d{2}|\d{4})\.(\d{1,2})\.(\d{1,2})", despace(doc.page_text(0)))
+    if not match:
+        return Refusal(what, "no `기준일자 YYYY.MM.DD` on page 1, and evidence is dated by the day it is AS OF")
+    entry, refusal = pension_account(lambda e: e.get("institution") == "삼성증권", what)
+    if refusal:
+        return refusal
+    pinned = digits(entry.get("accountNumber"))
+    if pinned:
+        printed = {digits(n) for n in re.findall(r"\d[\d-]{5,}\d", doc.page_text(1))}
+        if pinned not in printed:
+            return Refusal(
+                what,
+                f"no 계좌번호 on page 2 is the accountNumber the {entry['token']} pensionAccounts entry pins",
+                "check the certificate is for the pension account, or correct the map",
+            )
+    year = int(match.group(1))
+    as_of = date(year + 2000 if year < 100 else year, int(match.group(2)), int(match.group(3)))
+    evidence = [f"기준일자 {iso(as_of)}", "issuer 삼성증권, page 2 holds 수익증권"]
+    if pinned:
+        evidence.append("계좌번호 matches the map")
+    else:
+        evidence.append(
+            "NOTE: matched on issuer, title and 수익증권 only — a 삼성 non-pension fund "
+            f"certificate would match too; set accountNumber on the {entry['token']} pensionAccounts entry to pin it"
+        )
+    return evidence_plan(entry["token"], "balance-certificate", as_of, evidence)
+
 
 DETECTORS = [
     ("미래에셋 거래내역증명서", detect_mirae_transactions),
@@ -1548,6 +1800,11 @@ DETECTORS = [
     ("Robinhood checking / savings CSV", detect_robinhood_bank),
     ("새마을금고 거래내역조회 (.xls)", detect_mg_deposit),
     ("토스뱅크 거래내역 (.xlsx, encrypted)", detect_tossbank),
+    ("삼성증권 연금저축 거래내역확인서", detect_samsung_pension_ledger),
+    ("pension holdings snapshot CSV", detect_pension_holdings),
+    ("미래에셋 퇴직연금 잔고현황", detect_irp_balance_status),
+    ("미래에셋 IRP 잔고증명서", detect_irp_balance_certificate),
+    ("삼성증권 연금저축 잔고증명서", detect_samsung_pension_certificate),
 ]
 
 

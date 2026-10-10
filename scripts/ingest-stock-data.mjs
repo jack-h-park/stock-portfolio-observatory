@@ -2,10 +2,11 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
-import { STOCK_WRAPPERS, loadAccountMap, tagRows } from './account-map.mjs'
+import { STOCK_WRAPPERS, assetClassFor, loadAccountMap, ownerFor, tagRows, wrapperFor } from './account-map.mjs'
 import { loadLocalEnv } from './env.mjs'
 import { portfolioDate, valuePortfolio } from './portfolio-snapshot.mjs'
 import { resolveCryptoFiles, resolveUsHoldingFiles, resolveUsTransactionFiles, robinhoodStrategyLabel } from './source-files.mjs'
+import { DECIDABLE_WRAPPERS, resolveWrapperTreatment } from './wrapper-treatment.mjs'
 
 loadLocalEnv()
 
@@ -34,6 +35,15 @@ const refreshRunsPath = process.env.STOCK_REFRESH_RUNS_PATH || path.join(process
 const taxPolicyPath = process.env.STOCK_TAX_POLICY_PATH || path.join(process.cwd(), 'data/tax-policy.json')
 const accountMapPath = process.env.STOCK_ACCOUNT_MAP_PATH || path.join(process.cwd(), 'data/accounts.local.json')
 const accountMap = loadAccountMap(accountMapPath)
+// Pension holdings snapshots (`<token>-holdings-<YYYYMMDD>.csv`, made by hand) and
+// the year-end certificates extract-pension-evidence.py reads. Both are optional:
+// with neither, no pension holding is written and the pension checks pass empty.
+const pensionDir = process.env.STOCK_PENSION_DIR || path.join(dataDir, 'pension')
+const pensionEvidencePath =
+  process.env.STOCK_PENSION_EVIDENCE_PATH || path.join(process.cwd(), 'data/pension-evidence.json')
+// The KRX gold price (fetch-gold-price.mjs). Optional: without it the gold
+// holding is valued at cost and `gold_priced` says so.
+const goldPricesPath = process.env.STOCK_GOLD_PRICES_PATH || path.join(process.cwd(), 'data/gold-prices.json')
 const bankBalancesPath = process.env.STOCK_BANK_BALANCES_PATH || path.join(process.cwd(), 'data/bank-balances.json')
 // A bad deposit file must never abort the required stock ingest. Everything
 // read from it goes through normalizeBankBalances, which keeps only well-formed
@@ -677,24 +687,59 @@ function toBase(value, currency) {
   return value * fx.rate
 }
 
-// Every securities row gets its wrapper and owner here, in one place, so no
-// call site can forget to tag a row and leak a pension position into the
-// default (Stocks) view.
+// Every securities row gets its wrapper, owner and asset class here, in one
+// place, so no call site can forget to tag a row and leak a pension position
+// into the default (Stocks) view. Call sites name the plain table; the row goes
+// to the physical `<table>_all`, and the plain name is the stock-only view.
 const WRAPPED_TABLES = new Set(['holdings', 'tax_lots', 'realized_lots', 'transactions', 'dividends'])
 
 function insertMany(db, table, rows, columns) {
   if (rows.length === 0) return
+  let target = table
   if (WRAPPED_TABLES.has(table)) {
+    target = `${table}_all`
     rows = tagRows(rows, accountMap)
-    columns = [...columns.filter((c) => c !== 'account_wrapper' && c !== 'owner'), 'account_wrapper', 'owner']
+    columns = [
+      ...columns.filter((c) => c !== 'account_wrapper' && c !== 'owner' && c !== 'asset_class'),
+      'account_wrapper',
+      'owner',
+      'asset_class',
+    ]
   }
   const placeholders = columns.map(() => '?').join(', ')
-  const stmt = db.prepare(`insert into ${table} (${columns.join(', ')}) values (${placeholders})`)
+  const stmt = db.prepare(`insert into ${target} (${columns.join(', ')}) values (${placeholders})`)
   const tx = db.transaction((items) => {
     for (const item of items) stmt.run(columns.map((col) => item[col] ?? null))
   })
   tx(rows)
 }
+
+/**
+ * Tag rows with their wrapper, owner and asset class IN PLACE, leaving any
+ * value a row already carries. In place because several later steps key on row
+ * identity (the Toss bridge removes the lots it closed by reference), so a copy
+ * would quietly detach them. Called where each securities array is assembled
+ * and again before the stock computations, so rows pushed in between are tagged
+ * too; `insertMany` still tags whatever reaches it untagged.
+ */
+function retag(rows) {
+  for (const row of rows) {
+    if (row.account_wrapper == null) row.account_wrapper = wrapperFor(row, accountMap)
+    if (row.owner == null) row.owner = ownerFor(row, accountMap)
+    if (row.asset_class == null) row.asset_class = assetClassFor(row, accountMap)
+  }
+  return rows
+}
+
+// The ingest's own stock computations must not see pension or gold rows: the
+// snapshot writer, the tax-year realized set, the holdings/lots check and the
+// sheet freshness check all describe the Stocks view. A row that was never
+// tagged is classified on the spot by the same rule, so a push no retag call
+// has reached yet still cannot slip through.
+const isStockRow = (r) =>
+  STOCK_WRAPPERS.includes(r.account_wrapper ?? wrapperFor(r, accountMap)) &&
+  (r.asset_class ?? assetClassFor(r, accountMap)) === 'security'
+const stockOnly = (rows) => rows.filter(isStockRow)
 
 function required(value) {
   return text(value).length > 0
@@ -848,7 +893,7 @@ create table fx_account_balances (
   source text not null
 );
 
-create table holdings (
+create table holdings_all (
   id integer primary key,
   market text not null,
   currency text not null,
@@ -881,12 +926,16 @@ create table holdings (
   long_term_qty real,
   short_term_qty real,
   lot_count integer,
+  -- How base_market_value was reached, for rows that are not priced the usual
+  -- way: 'price' for a pension ETF marked at the KR price, 'snapshot' for a
+  -- pension row valued at its snapshot's value_krw. Null for stock rows.
+  valuation_source text,
   asset_class text not null default 'security',
   account_wrapper text not null default 'taxable',
   owner text not null default 'self'
 );
 
-create table tax_lots (
+create table tax_lots_all (
   id integer primary key,
   market text not null,
   currency text not null,
@@ -910,11 +959,12 @@ create table tax_lots (
   holding_days integer,
   tax_term text,
   source text,
+  asset_class text not null default 'security',
   account_wrapper text not null default 'taxable',
   owner text not null default 'self'
 );
 
-create table realized_lots (
+create table realized_lots_all (
   id integer primary key,
   market text not null,
   currency text not null,
@@ -961,11 +1011,12 @@ create table realized_lots (
   dividends_native real,
   dividends_krw real,
   source text,
+  asset_class text not null default 'security',
   account_wrapper text not null default 'taxable',
   owner text not null default 'self'
 );
 
-create table transactions (
+create table transactions_all (
   id integer primary key,
   market text not null,
   currency text not null,
@@ -995,11 +1046,12 @@ create table transactions (
   placed_agent text,
   source text,
   page integer,
+  asset_class text not null default 'security',
   account_wrapper text not null default 'taxable',
   owner text not null default 'self'
 );
 
-create table dividends (
+create table dividends_all (
   id integer primary key,
   market text not null,
   currency text not null,
@@ -1020,6 +1072,7 @@ create table dividends (
   mapping_note text,
   source text,
   page integer,
+  asset_class text not null default 'security',
   account_wrapper text not null default 'taxable',
   owner text not null default 'self'
 );
@@ -1032,6 +1085,20 @@ create table missing_disposals (
   ticker text not null,
   replay_qty real,
   held_qty real
+);
+
+-- Money into and out of a pension account, from its transaction rows. Internal
+-- movements (TRUST_OUT, INTEREST, REINVEST) are not flows. Amounts are positive;
+-- kind says the direction.
+create table pension_flows (
+  id integer primary key,
+  account text not null,
+  account_wrapper text not null,
+  owner text not null default 'self',
+  date text not null,
+  kind text not null,
+  amount_krw real not null,
+  source text
 );
 
 create table validation_checks (
@@ -1112,6 +1179,15 @@ create table historical_fx_rates (
   source text not null
 );
 `)
+
+// The default (Stocks) view is enforced here, not at 44 call sites: every
+// existing read names the view, and only code that should see pensions and gold
+// names *_all. Keep the predicate in step with STOCK_ROW_SQL in
+// lib/adapters/portfolio-db.ts.
+const STOCK_ROW_PREDICATE = "account_wrapper in ('taxable', 'isa') and asset_class = 'security'"
+for (const t of ['holdings', 'tax_lots', 'transactions', 'dividends', 'realized_lots']) {
+  db.exec(`create view ${t} as select * from ${t}_all where ${STOCK_ROW_PREDICATE}`)
+}
 
 db.prepare('insert into meta (key, value) values (?, ?)').run('ingested_at', now)
 db.prepare('insert into meta (key, value) values (?, ?)').run('data_dir', dataDir)
@@ -1418,6 +1494,8 @@ let holdingRows = datasets.holdings.rows
     }
   })
 
+retag(holdingRows)
+
 // Toss positions straight from the broker, replacing the spreadsheet's copy of
 // them. The sheet's Toss rows had not moved since 2026-07-15 while the account
 // kept trading, so this is the difference between a dashboard that is current
@@ -1488,7 +1566,7 @@ if (tossSnapshot?.accounts?.length) {
   }
   if (rows.length) {
     const replaced = holdingRows.filter((r) => r.account === tossAccountLabel).length
-    holdingRows = [...holdingRows.filter((r) => r.account !== tossAccountLabel), ...rows]
+    holdingRows = retag([...holdingRows.filter((r) => r.account !== tossAccountLabel), ...rows])
     tossHoldingCount = rows.length
     console.error(`[toss] ${rows.length} live holding(s) replace ${replaced} payload row(s) (fetched ${asOf})`)
   }
@@ -1528,6 +1606,8 @@ const taxLotRows = datasets.taxlots.rows.map((r) => {
   }
 })
 
+retag(taxLotRows)
+
 // Positions for the statement accounts, summed from their own lots rather than
 // read from the spreadsheet. A 거래내역증명서 has no position snapshot, but every
 // lot in it was derived from one, so the sum is the position — and it is the
@@ -1554,8 +1634,16 @@ const taxLotRows = datasets.taxlots.rows.map((r) => {
 // statement lots reproduce every payload position to the won. The one
 // difference is an addition — a 신주인수권증서 received at zero cost that the
 // sheet never listed — the same kind of find as the bond above.
+//
+// Stock accounts only. The 금현물 certificate writes open gold lots (in grams) to
+// the same taxlots.tsv, and the IRP and 연금저축 certificates are statement
+// accounts too; summing any of them into a holding would make it a KR stock
+// position, priced, checked and counted as one. Pension holdings come from their
+// own snapshots below, and gold from its own step.
 const lotDerivedHoldingAccounts = new Set(
-  [...statementAccounts].filter((account) => account !== tossAccountLabel || tossHoldingCount === 0)
+  [...statementAccounts].filter(
+    (account) => (account !== tossAccountLabel || tossHoldingCount === 0) && isStockRow({ account })
+  )
 )
 if (lotDerivedHoldingAccounts.size) {
   const grouped = new Map()
@@ -1615,7 +1703,7 @@ if (lotDerivedHoldingAccounts.size) {
   })
   if (derived.length) {
     const replaced = holdingRows.filter((r) => lotDerivedHoldingAccounts.has(r.account)).length
-    holdingRows = [...holdingRows.filter((r) => !lotDerivedHoldingAccounts.has(r.account)), ...derived]
+    holdingRows = retag([...holdingRows.filter((r) => !lotDerivedHoldingAccounts.has(r.account)), ...derived])
     console.error(`[kr-statements] holdings: ${derived.length} position(s) summed from lots replace ${replaced} payload row(s)`)
   }
 }
@@ -1657,6 +1745,8 @@ const realizedRows = datasets.realized.rows.map((r) => {
   }
 })
 
+retag(realizedRows)
+
 const transactionRows = datasets.transactions.rows.map((r) => ({
   market: 'KR',
   currency: text(r.Currency) || 'KRW',
@@ -1683,6 +1773,8 @@ const transactionRows = datasets.transactions.rows.map((r) => ({
   source: text(r.Source),
   page: number(r.Page),
 }))
+
+retag(transactionRows)
 
 // Toss orders, but ONLY after the newest statement.
 //
@@ -1938,6 +2030,8 @@ const dividendRows = datasets.dividends.rows.map((r) => ({
   source: text(r.Source),
   page: number(r.Page),
 }))
+
+retag(dividendRows)
 
 // Chase asset classes that are not positions. An allowlist would silently drop
 // whatever class the broker invents next; a denylist of cash-like classes fails
@@ -3400,7 +3494,9 @@ function usHoldingDays(from, to) {
 }
 
 {
-  const rows = transactionRows.filter((r) => r.market === 'US')
+  // The market is the guard that has always kept Korean rows out; the wrapper
+  // guard keeps out a US-listed holding in a pension account, should one appear.
+  const rows = transactionRows.filter((r) => r.market === 'US' && isStockRow(r))
 
   // Merrill books a reinvestment as two rows: `Reinvestment Share(s)` carries
   // the quantity with a zero amount, `Reinvestment Program` carries the cost
@@ -4167,6 +4263,7 @@ holdingRows.push(...cryptoHoldingRows)
 taxLotRows.push(...cryptoTaxLotRows)
 realizedRows.push(...cryptoRealizedRows)
 transactionRows.push(...cryptoTransactionRows)
+for (const rows of [holdingRows, taxLotRows, realizedRows, transactionRows, dividendRows]) retag(rows)
 
 // ---------------------------------------------------------------------------
 // US realized lots as the broker filed them (Form 1099-B)
@@ -4434,8 +4531,10 @@ let krDividendStats = null
     const closing = new Set(['SELL', 'TRANSFER_OUT'])
     const directional = new Set(['STOCK_SPLIT', 'CORPORATE_ACTION'])
     const held = new Map()
+    // Stock rows only: a pension or gold account's trades open no stock lot, so
+    // they have no place in the timeline the stock lots are attributed against.
     const ordered = [...transactionRows]
-      .filter((r) => text(r.ticker) && number(r.quantity))
+      .filter((r) => isStockRow(r) && text(r.ticker) && number(r.quantity))
       .sort((a, b) => text(a.date).localeCompare(text(b.date)))
     for (const r of ordered) {
       const key = `${r.account}|${text(r.ticker)}`
@@ -4482,6 +4581,7 @@ let krDividendStats = null
   {
     const legs = new Map()
     for (const r of transactionRows) {
+      if (!isStockRow(r)) continue
       if (r.type !== 'STOCK_SPLIT' && r.type !== 'CORPORATE_ACTION') continue
       const ticker = text(r.ticker)
       const qty = Math.abs(number(r.quantity) ?? 0)
@@ -4507,7 +4607,7 @@ let krDividendStats = null
 
   const byKey = new Map()
   for (const d of dividendRows) {
-    if (d.market !== 'KR') continue
+    if (d.market !== 'KR' || !isStockRow(d)) continue
     if (defaultIncomeCategory(d) !== 'dividend') continue
     const ticker = text(d.ticker)
     const amount = number(d.amount_krw) ?? 0
@@ -4518,7 +4618,7 @@ let krDividendStats = null
   }
 
   const lotsByKey = new Map()
-  const krLots = realizedRows.filter((r) => r.market === 'KR' && r.acquired_date && r.sold_date)
+  const krLots = realizedRows.filter((r) => r.market === 'KR' && isStockRow(r) && r.acquired_date && r.sold_date)
   for (const lot of krLots) {
     lot.dividends_krw = 0
     const key = `${lot.account}|${text(lot.ticker)}`
@@ -4584,8 +4684,11 @@ realizedRows.push(...usRealizedRows, ...us1099bRows)
 for (let i = 0; i < dividendRows.length; i += 1) {
   dividendRows[i] = applyDividendMappings(dividendRows[i], manualMappings)
 }
+// Every row pushed since the last pass (US replay, 1099-B, carried lots) gets its tag
+// before anything below sorts rows into stock and non-stock.
+for (const rows of [holdingRows, taxLotRows, realizedRows, transactionRows, dividendRows]) retag(rows)
 
-insertMany(db, 'holdings', holdingRows, [
+const HOLDING_COLUMNS = [
   'market',
   'currency',
   'base_currency',
@@ -4617,7 +4720,9 @@ insertMany(db, 'holdings', holdingRows, [
   'long_term_qty',
   'short_term_qty',
   'lot_count',
-])
+]
+// holdingRows is inserted after the pension and gold blocks below, so a row for
+// an account those blocks own can be dropped first instead of stored twice.
 insertMany(db, 'tax_lots', taxLotRows, [
   'market',
   'currency',
@@ -4755,6 +4860,393 @@ insertMany(db, 'dividends', dividendRows, [
   'source',
   'page',
 ])
+
+// ---------------------------------------------------------------------------
+// Pension accounts: holdings from snapshots, flows from transactions, and the
+// checks that say how far either can be trusted.
+//
+// None of this touches `holdingRows` or any other array the stock computations
+// read. Pension holdings are built here and inserted on their own, tagged with
+// the map entry's wrapper, so the Stocks view cannot see them by construction
+// (the views) and the in-memory stock figures cannot either (they never meet).
+// ---------------------------------------------------------------------------
+const PENSION_WRAPPERS = new Set(['irp', 'pension_savings'])
+const PENSION_CSV_HEADERS = ['type,name,ticker,quantity,cost_krw,value_krw', 'type,name,quantity,cost_krw,value_krw']
+
+let pensionEvidenceProblem = null
+const pensionEvidence = (() => {
+  if (!fs.existsSync(pensionEvidencePath)) return { certificates: [], findings: [] }
+  try {
+    const raw = JSON.parse(fs.readFileSync(pensionEvidencePath, 'utf8'))
+    return {
+      certificates: Array.isArray(raw?.certificates) ? raw.certificates.filter((c) => c && typeof c === 'object') : [],
+      findings: Array.isArray(raw?.findings) ? raw.findings : [],
+    }
+  } catch (error) {
+    // Evidence feeds validation only; a bad file must not stop the stock ingest.
+    pensionEvidenceProblem = `${pensionEvidencePath}: ${error instanceof Error ? error.message : String(error)}`
+    return { certificates: [], findings: [] }
+  }
+})()
+
+const pensionCsvProblems = []
+/** One hand-made snapshot CSV as product rows, or null when its header is not one of the two accepted. */
+function readPensionCsv(file) {
+  const rows = parseCsv(fs.readFileSync(file, 'utf8')).filter((r) => r.some((c) => c.trim()))
+  const header = (rows[0] ?? []).map((h) => h.trim().toLowerCase()).join(',')
+  if (!PENSION_CSV_HEADERS.includes(header)) {
+    pensionCsvProblems.push(`${path.basename(file)}: header '${header}' is not '${PENSION_CSV_HEADERS[0]}'`)
+    return null
+  }
+  const columns = header.split(',')
+  return rows.slice(1).map((cells) => {
+    const r = Object.fromEntries(columns.map((c, i) => [c, cells[i] ?? '']))
+    return {
+      type: text(r.type).toUpperCase(),
+      name: text(r.name),
+      ticker: text(r.ticker).replace(/^'/, ''),
+      quantity: number(r.quantity),
+      cost: number(r.cost_krw),
+      value: number(r.value_krw),
+    }
+  })
+}
+
+const pensionDirFiles = fs.existsSync(pensionDir) ? fs.readdirSync(pensionDir) : []
+const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * Every snapshot on file for one token, oldest first: each hand-made CSV, and
+ * each certificate that lists products. A 잔고증명서 with products IS a holdings
+ * snapshot as of its 기준일; its `cashKrw` (the 삼성 certificate's cash, which
+ * is not a product) becomes a CASH row so the rows sum to its total.
+ */
+function pensionSnapshots(token) {
+  const pattern = new RegExp(`^${escapeRegExp(token)}-holdings-(\\d{4})(\\d{2})(\\d{2})\\.csv$`)
+  const fromCsv = pensionDirFiles
+    .map((name) => ({ name, match: name.match(pattern) }))
+    .filter(({ match }) => match)
+    .map(({ name, match }) => ({
+      kind: 'csv',
+      date: `${match[1]}-${match[2]}-${match[3]}`,
+      source: name,
+      rows: readPensionCsv(path.join(pensionDir, name)),
+    }))
+    .filter((snap) => snap.rows)
+  const fromCertificates = pensionEvidence.certificates
+    .filter((c) => c.token === token && Array.isArray(c.products) && c.products.length && text(c.asOf))
+    .map((c) => ({
+      kind: 'certificate',
+      date: text(c.asOf),
+      source: text(c.source),
+      rows: [
+        ...c.products.map((p) => ({
+          type: 'FUND',
+          name: text(p?.name),
+          ticker: '',
+          quantity: typeof p?.quantity === 'number' ? p.quantity : null,
+          cost: typeof p?.costKrw === 'number' ? p.costKrw : null,
+          value: typeof p?.valueKrw === 'number' ? p.valueKrw : null,
+        })),
+        ...(typeof c.cashKrw === 'number' ? [{ type: 'CASH', name: 'Cash', ticker: '', quantity: null, cost: c.cashKrw, value: c.cashKrw }] : []),
+      ],
+    }))
+  return [...fromCsv, ...fromCertificates].sort((a, b) => a.date.localeCompare(b.date))
+}
+
+const pensionHoldingRows = []
+const pensionUnpricedEtfs = []
+let pensionPricedEtfs = 0
+/** account label -> { date, source } of the snapshot its holdings stand on. */
+const pensionSnapshotByAccount = new Map()
+const pensionSnapshotsByToken = new Map()
+for (const entry of accountMap.pensionAccounts ?? []) {
+  const token = text(entry?.token)
+  const account = text(entry?.account)
+  if (!token || !account) continue
+  const snapshots = pensionSnapshots(token)
+  pensionSnapshotsByToken.set(token, snapshots)
+  // The newest CSV; failing that, the newest certificate that lists products.
+  const csvs = snapshots.filter((s) => s.kind === 'csv')
+  const chosen = (csvs.length ? csvs : snapshots).at(-1)
+  if (!chosen) continue
+  pensionSnapshotByAccount.set(account, { date: chosen.date, source: chosen.source })
+  const wrapper = text(entry.wrapper) || wrapperFor({ account }, accountMap)
+  const owner = text(entry.owner) || ownerFor({ account }, accountMap)
+  chosen.rows.forEach((product, i) => {
+    const isEtf = product.type === 'ETF'
+    // Cash carries its kind in the id so nothing downstream counts it as a fund
+    // (the US review's likely-PFIC count, the /pension ETF/FUND/CASH split).
+    const ticker =
+      isEtf && product.ticker
+        ? normalizeTicker(product.ticker)
+        : product.type === 'CASH'
+          ? `PENSION:${token}:cash:${i + 1}`
+          : `PENSION:${token}:${i + 1}`
+    const price = isEtf && product.ticker ? krPricesByTicker.get(ticker)?.price ?? null : null
+    const quantity = product.quantity ?? 0
+    // An ETF is marked at the KR price when it has one. Otherwise it keeps its
+    // snapshot value_krw as of the snapshot date: never dropped, never zero.
+    const priced = price != null && quantity > 0
+    if (isEtf) {
+      if (priced) pensionPricedEtfs += 1
+      else {
+        // Name the reason, because each has a different fix: file the ticker,
+        // add the price, or fill in the snapshot's quantity.
+        const reason = !product.ticker ? 'no ticker' : price == null ? 'no KR price' : 'no quantity'
+        pensionUnpricedEtfs.push(`${account} ${product.ticker || `'${product.name}'`} (${reason})`)
+      }
+    }
+    const value = priced ? price * quantity : product.value
+    const cost = product.cost ?? 0
+    const unrealized = value == null ? null : value - cost
+    const unrealizedPct = unrealized == null || cost === 0 ? null : (unrealized / cost) * 100
+    pensionHoldingRows.push({
+      market: 'KR',
+      currency: 'KRW',
+      base_currency: 'KRW',
+      fx_rate_to_base: 1,
+      brokerage: text(entry.institution) || account.split('(')[0],
+      account_type: account.match(/\(([^)]+)\)/)?.[1] ?? '',
+      source_system: chosen.kind === 'csv' ? 'pension_snapshot' : 'pension_certificate',
+      as_of_date: chosen.date,
+      account,
+      ticker,
+      name: product.name || ticker,
+      quantity,
+      native_average_unit_cost: quantity > 0 ? cost / quantity : null,
+      native_cost: cost,
+      native_price: priced ? price : null,
+      native_market_value: value,
+      native_unrealized_gl: unrealized,
+      native_unrealized_gl_pct: unrealizedPct,
+      base_cost: cost,
+      base_market_value: value,
+      base_unrealized_gl: unrealized,
+      average_unit_cost: quantity > 0 ? cost / quantity : null,
+      total_cost_krw: cost,
+      current_price: priced ? price : null,
+      pe: null,
+      eps: null,
+      unrealized_gl_krw: unrealized,
+      unrealized_gl_pct: unrealizedPct,
+      long_term_qty: null,
+      short_term_qty: null,
+      lot_count: null,
+      valuation_source: priced ? 'price' : 'snapshot',
+      account_wrapper: wrapper,
+      owner,
+      asset_class: 'security',
+    })
+  })
+}
+// ---------------------------------------------------------------------------
+// Physical gold: one holding per gold account, built from its purchases.
+//
+// Grams held are the BUY grams (less any SELL), and cost is the sum of the BUY
+// amounts: the extractor already dropped each purchase's 매수출금 cash leg, and
+// storage fees (FEE) are fees, not cost. The certificate's open lots stay in
+// tax_lots_all as evidence; nothing is replayed into them. Marked at the KRX
+// gold price when there is one, otherwise held at cost.
+// ---------------------------------------------------------------------------
+const GOLD_CODE = 'M04020000'
+let goldPriceProblem = null
+const goldPrice = (() => {
+  if (!fs.existsSync(goldPricesPath)) {
+    goldPriceProblem = `no price file at ${goldPricesPath} (run fetch:gold-price)`
+    return null
+  }
+  try {
+    const doc = JSON.parse(fs.readFileSync(goldPricesPath, 'utf8'))
+    const price = Number(doc?.latest?.price)
+    const date = text(doc?.latest?.date)
+    if (doc?.code && doc.code !== GOLD_CODE) throw new Error(`code ${doc.code} is not ${GOLD_CODE}`)
+    if (!Number.isFinite(price) || price <= 0 || !date) throw new Error('no latest price')
+    return { price, date, source: text(doc.source) }
+  } catch (error) {
+    goldPriceProblem = `${goldPricesPath}: ${error instanceof Error ? error.message : String(error)}`
+    return null
+  }
+})()
+
+const goldHoldingRows = []
+const goldTradesByAccount = new Map()
+for (const r of transactionRows) {
+  if ((r.asset_class ?? assetClassFor(r, accountMap)) !== 'gold') continue
+  if (r.type !== 'BUY' && r.type !== 'SELL') continue
+  if (!goldTradesByAccount.has(r.account)) goldTradesByAccount.set(r.account, [])
+  goldTradesByAccount.get(r.account).push(r)
+}
+for (const [account, trades] of goldTradesByAccount) {
+  let grams = 0
+  let cost = 0
+  let lastTradeDate = ''
+  for (const r of [...trades].sort((a, b) => text(a.date).localeCompare(text(b.date)))) {
+    const quantity = Math.abs(number(r.quantity) ?? 0)
+    if (r.type === 'BUY') {
+      grams += quantity
+      cost += Math.abs(number(r.amount_krw) ?? number(r.settlement_krw) ?? 0)
+    } else if (grams > 0) {
+      // A sale takes its grams out at the average cost; none is on file today.
+      const sold = Math.min(quantity, grams)
+      cost -= (cost / grams) * sold
+      grams -= sold
+    }
+    if (text(r.date) > lastTradeDate) lastTradeDate = text(r.date)
+  }
+  if (!(grams > 0)) continue
+  const priced = goldPrice != null
+  const value = priced ? grams * goldPrice.price : cost
+  const unrealized = value - cost
+  const unrealizedPct = cost === 0 ? null : (unrealized / cost) * 100
+  goldHoldingRows.push({
+    market: 'KR',
+    currency: 'KRW',
+    base_currency: 'KRW',
+    fx_rate_to_base: 1,
+    brokerage: account.split('(')[0],
+    account_type: account.match(/\(([^)]+)\)/)?.[1] ?? '',
+    source_system: 'gold_certificate',
+    as_of_date: priced ? goldPrice.date : lastTradeDate,
+    account,
+    ticker: GOLD_CODE,
+    name: 'KRX 금현물',
+    quantity: grams,
+    native_average_unit_cost: cost / grams,
+    native_cost: cost,
+    native_price: priced ? goldPrice.price : null,
+    native_market_value: value,
+    native_unrealized_gl: unrealized,
+    native_unrealized_gl_pct: unrealizedPct,
+    base_cost: cost,
+    base_market_value: value,
+    base_unrealized_gl: unrealized,
+    average_unit_cost: cost / grams,
+    total_cost_krw: cost,
+    current_price: priced ? goldPrice.price : null,
+    pe: null,
+    eps: null,
+    unrealized_gl_krw: unrealized,
+    unrealized_gl_pct: unrealizedPct,
+    long_term_qty: null,
+    short_term_qty: null,
+    lot_count: null,
+    valuation_source: priced ? 'price' : 'cost',
+    account_wrapper: wrapperFor({ account }, accountMap),
+    owner: ownerFor({ account }, accountMap),
+    asset_class: 'gold',
+  })
+}
+
+// An account whose holdings now come from a pension snapshot or the gold
+// purchases keeps no other holding row: a sheet row for it would put the same
+// position in holdings_all twice. Those accounts are never stock accounts, so
+// no stock figure loses anything.
+const snapshotOwnedAccounts = new Set([...pensionHoldingRows, ...goldHoldingRows].map((r) => r.account))
+const droppedHoldingRows = holdingRows.filter((r) => snapshotOwnedAccounts.has(r.account))
+if (droppedHoldingRows.length) {
+  holdingRows = holdingRows.filter((r) => !snapshotOwnedAccounts.has(r.account))
+  console.error(
+    `[holdings] dropped ${droppedHoldingRows.length} row(s) for accounts held from a snapshot or certificate: ` +
+      [...new Set(droppedHoldingRows.map((r) => r.account))].join(', ')
+  )
+}
+insertMany(db, 'holdings', holdingRows, HOLDING_COLUMNS)
+insertMany(db, 'holdings', pensionHoldingRows, [...HOLDING_COLUMNS, 'valuation_source'])
+insertMany(db, 'holdings', goldHoldingRows, [...HOLDING_COLUMNS, 'valuation_source'])
+if (pensionHoldingRows.length) {
+  console.error(
+    `[pension] ${pensionHoldingRows.length} holding(s) from ${pensionSnapshotByAccount.size} snapshot(s): ` +
+      [...pensionSnapshotByAccount].map(([account, s]) => `${account} as of ${s.date}`).join(', ')
+  )
+}
+
+// Flows: money in and out of a pension account. The transaction rows themselves
+// are already in transactions_all, tagged by the label rule; they feed no stock
+// lot, realized or income figure (isStockRow keeps them out of each).
+// TRUST_OUT (the IRP buying its own trust products), INTEREST and REINVEST move
+// money inside the account and are not flows.
+const PENSION_FLOW_KINDS = {
+  DEPOSIT: 'contribution',
+  EMPLOYER_CONTRIBUTION: 'employer_contribution',
+  WITHDRAWAL: 'withdrawal',
+  TRANSFER_IN: 'transfer_in',
+  TRANSFER_OUT: 'transfer_out',
+}
+const pensionTransactionRows = transactionRows.filter((r) => PENSION_WRAPPERS.has(r.account_wrapper ?? wrapperFor(r, accountMap)))
+const pensionFlowRows = pensionTransactionRows
+  .filter((r) => PENSION_FLOW_KINDS[r.type])
+  .map((r) => ({
+    account: r.account,
+    account_wrapper: r.account_wrapper ?? wrapperFor(r, accountMap),
+    owner: r.owner ?? ownerFor(r, accountMap),
+    date: r.date,
+    kind: PENSION_FLOW_KINDS[r.type],
+    amount_krw: Math.abs(number(r.amount_krw) ?? number(r.settlement_krw) ?? number(r.native_amount) ?? 0),
+    source: r.source,
+  }))
+insertMany(db, 'pension_flows', pensionFlowRows, ['account', 'account_wrapper', 'owner', 'date', 'kind', 'amount_krw', 'source'])
+
+// Trades after the snapshot are stored but never replayed onto it: the holdings
+// stay at the snapshot, and the warning says how far behind it is.
+const pensionTradesAfterSnapshot = []
+{
+  const accounts = new Set([
+    ...pensionSnapshotByAccount.keys(),
+    ...pensionTransactionRows.filter((r) => r.type === 'BUY' || r.type === 'SELL').map((r) => r.account),
+  ])
+  for (const account of accounts) {
+    const snapshot = pensionSnapshotByAccount.get(account)
+    const trades = pensionTransactionRows.filter(
+      (r) => r.account === account && (r.type === 'BUY' || r.type === 'SELL') && (!snapshot || text(r.date) > snapshot.date)
+    )
+    if (!trades.length) continue
+    pensionTradesAfterSnapshot.push(
+      snapshot
+        ? `${account}: ${trades.length} trade(s) after the snapshot of ${snapshot.date}`
+        : `${account}: ${trades.length} trade(s) and no holdings snapshot at all`
+    )
+  }
+}
+
+// Year-end certificates against a like-dated snapshot. Funds have no price feed
+// here, so a later snapshot cannot be rolled back to the certificate's date; the
+// comparison is made only when the dates are equal.
+const pensionYearEndNotes = []
+const pensionYearEndBreaks = []
+for (const cert of pensionEvidence.certificates) {
+  if (typeof cert.totalKrw !== 'number' || !text(cert.asOf)) continue
+  const token = text(cert.token)
+  const snapshots = (pensionSnapshotsByToken.get(token) ?? pensionSnapshots(token)).filter((s) => s.date === text(cert.asOf))
+  const snapshot = snapshots.find((s) => s.kind === 'csv') ?? snapshots[0]
+  if (!snapshot) {
+    pensionYearEndNotes.push(`${token} ${cert.kind ?? 'certificate'}: no snapshot at ${cert.asOf} to compare`)
+    continue
+  }
+  const summed = snapshot.rows.reduce((sum, r) => sum + (r.value ?? 0), 0)
+  const tolerance = Math.max(cert.totalKrw * 0.005, 10_000)
+  const line =
+    `${token} ${cert.kind ?? 'certificate'} ${cert.asOf}: snapshot ₩${Math.round(summed).toLocaleString('en-US')} ` +
+    `vs certificate ₩${Math.round(cert.totalKrw).toLocaleString('en-US')}`
+  if (Math.abs(summed - cert.totalKrw) > tolerance) pensionYearEndBreaks.push(line)
+  else pensionYearEndNotes.push(line)
+}
+
+// US treatment of the wrappers, from the tax policy through the same helper the
+// app uses (scripts/wrapper-treatment.mjs). Until a wrapper is decided its
+// accounts stay out of the US estimate, and this says so whenever such an
+// account actually holds or trades something.
+const wrapperPolicy = loadTaxPolicy()
+const usUndecidedWrappers = DECIDABLE_WRAPPERS.filter(
+  (wrapper) => resolveWrapperTreatment(wrapperPolicy, 'US', wrapper) === 'undecided'
+)
+const wrapperRowCounts = new Map()
+for (const r of [...pensionHoldingRows, ...transactionRows, ...taxLotRows, ...dividendRows]) {
+  const wrapper = r.account_wrapper ?? wrapperFor(r, accountMap)
+  wrapperRowCounts.set(wrapper, (wrapperRowCounts.get(wrapper) ?? 0) + 1)
+}
+const usUndecidedHeld = usUndecidedWrappers.filter((w) => wrapperRowCounts.get(w))
+
 insertMany(
   db,
   'evidence_reports',
@@ -4801,7 +5293,7 @@ const badWrappers = []
 for (const table of WRAPPED_TABLES) {
   const rows = db
     .prepare(
-      `select account_wrapper as value, count(*) as n from ${table} where account_wrapper not in (${KNOWN_WRAPPERS.map(() => '?').join(', ')}) group by account_wrapper`
+      `select account_wrapper as value, count(*) as n from ${table}_all where account_wrapper not in (${KNOWN_WRAPPERS.map(() => '?').join(', ')}) group by account_wrapper`
     )
     .all(...KNOWN_WRAPPERS)
   for (const { value, n } of rows) badWrappers.push(`${table}: ${n} row(s) with wrapper '${value}'`)
@@ -4811,6 +5303,68 @@ check(
   'wrapper_assigned',
   wrappersOk,
   wrappersOk ? 'every securities row has a known account wrapper' : badWrappers.join('; '),
+  'warning'
+)
+
+check(
+  'pension_trades_after_snapshot',
+  pensionTradesAfterSnapshot.length === 0,
+  pensionTradesAfterSnapshot.length === 0
+    ? pensionSnapshotByAccount.size
+      ? `no pension trade after its account's snapshot (${[...pensionSnapshotByAccount].map(([a, s]) => `${a} ${s.date}`).join(', ')})`
+      : 'no pension snapshot and no pension trades'
+    : `${pensionTradesAfterSnapshot.join('; ')}. The trades are stored, but the holdings stay at the snapshot ` +
+      'until a newer one is filed (pension/<token>-holdings-<YYYYMMDD>.csv)',
+  'warning'
+)
+check(
+  'gold_priced',
+  goldHoldingRows.length === 0 || goldPrice != null,
+  goldHoldingRows.length === 0
+    ? 'no gold holding'
+    : goldPrice != null
+      ? goldHoldingRows
+          .map((r) => `${r.account}: ${r.quantity} g at ₩${goldPrice.price.toLocaleString('en-US')}/g as of ${goldPrice.date}`)
+          .join('; ')
+      : `${goldHoldingRows.map((r) => `${r.account}: ${r.quantity} g`).join('; ')} valued at cost, ` +
+        `because there is no KRX gold price: ${goldPriceProblem}`,
+  'warning'
+)
+
+check(
+  'pension_etf_unpriced',
+  pensionUnpricedEtfs.length === 0,
+  pensionUnpricedEtfs.length === 0
+    ? pensionPricedEtfs
+      ? `${pensionPricedEtfs} pension ETF(s) marked at the KR price`
+      : 'no ETF in any pension snapshot'
+    : `${pensionUnpricedEtfs.length} pension ETF(s) kept at the snapshot's value_krw, as of the snapshot date, ` +
+      `because they could not be marked at a KR price: ${pensionUnpricedEtfs.join('; ')}`,
+  'warning'
+)
+check(
+  'pension_snapshot_matches_year_end',
+  pensionYearEndBreaks.length === 0 && pensionEvidenceProblem == null && pensionCsvProblems.length === 0,
+  [
+    pensionEvidenceProblem && `evidence unreadable: ${pensionEvidenceProblem}`,
+    ...pensionCsvProblems.map((p) => `snapshot skipped: ${p}`),
+    pensionYearEndBreaks.length &&
+      `outside max(0.5%, ₩10,000): ${pensionYearEndBreaks.join('; ')}`,
+    pensionYearEndNotes.length && pensionYearEndNotes.join('; '),
+  ]
+    .filter(Boolean)
+    .join('. ') || 'no year-end pension certificate on file',
+  'warning'
+)
+check(
+  'us_wrapper_treatment_decided',
+  usUndecidedHeld.length === 0,
+  usUndecidedHeld.length
+    ? `US tax treatment is undecided for ${usUndecidedHeld.map((w) => `${w} (${wrapperRowCounts.get(w)} row(s))`).join(', ')}; ` +
+      'those accounts stay out of the US estimate until wrapperTreatment.US in the tax policy decides them'
+    : usUndecidedWrappers.length
+      ? `no account sits under an undecided US wrapper (undecided: ${usUndecidedWrappers.join(', ')})`
+      : 'every pension wrapper has a US treatment',
   'warning'
 )
 
@@ -4864,25 +5418,28 @@ check(
     : `${otherFindings.length} finding(s): ${otherFindings.slice(0, 3).join('; ')}`,
   'warning'
 )
-// Phase-2 guard. Rows under irp or pension_savings are stored, but the snapshot
-// writer, publish-sheet, backfill and the lot, transaction, dividend and
-// realized reads do not filter on wrapper yet, so such a row would leak into
-// the stock figures. Fails until those filters exist. The stock set is
-// STOCK_WRAPPERS in scripts/account-map.mjs and STOCK_WRAPPER_SQL in
-// lib/adapters/portfolio-db.ts.
+// The phase-1 guard, turned around now that the filters exist. Non-stock rows
+// (irp, pension_savings, or a non-security asset class) are expected in the
+// *_all tables; what must never happen is one of them reaching a stock view.
+// The views make that true by construction, and the in-memory stock figures
+// filter with isStockRow; this re-asserts the first and reports the counts.
 const nonStockRows = []
+const leakedRows = []
 for (const table of WRAPPED_TABLES) {
-  const n = db
-    .prepare(`select count(*) as n from ${table} where account_wrapper not in (${STOCK_WRAPPERS.map(() => '?').join(', ')})`)
-    .get(...STOCK_WRAPPERS).n
+  const outside = `account_wrapper not in (${STOCK_WRAPPERS.map(() => '?').join(', ')}) or asset_class != 'security'`
+  const n = db.prepare(`select count(*) as n from ${table}_all where ${outside}`).get(...STOCK_WRAPPERS).n
   if (n > 0) nonStockRows.push(`${table}: ${n} row(s)`)
+  const leaked = db.prepare(`select count(*) as n from ${table} where ${outside}`).get(...STOCK_WRAPPERS).n
+  if (leaked > 0) leakedRows.push(`${table}: ${leaked} row(s)`)
 }
 check(
   'non_stock_wrappers_absent',
-  nonStockRows.length === 0,
-  nonStockRows.length === 0
-    ? 'no row sits outside the taxable and isa wrappers'
-    : `${nonStockRows.join('; ')} outside taxable/isa; phase 2 filters (snapshot writer, publish-sheet, backfill, lot/transaction/dividend/realized reads) are not in place yet`,
+  leakedRows.length === 0,
+  leakedRows.length
+    ? `${leakedRows.join('; ')} outside the stock wrappers reached a stock view`
+    : nonStockRows.length === 0
+      ? 'no row sits outside the taxable and isa wrappers'
+      : `${nonStockRows.join('; ')} outside the stock wrappers, all kept out of the stock views`,
   'warning'
 )
 check('fx_ledger_present', fxEvents.length > 0, `${fxEvents.length} normalized FX event(s)`, 'warning')
@@ -5136,11 +5693,14 @@ if (unpairedTransferOut.length) {
   }
 }
 
+// Stock rows only, on both sides. A pension holding has no lots, and the gold
+// account has lots and (until it is valued on its own) no holding; either would
+// read as a mismatch, and this one is error severity and stops the refresh.
 const holdingsByKey = new Map()
-for (const r of holdingRows) holdingsByKey.set(`${r.account}\t${r.ticker}`, r)
+for (const r of stockOnly(holdingRows)) holdingsByKey.set(`${r.account}\t${r.ticker}`, r)
 
 const lotsByKey = new Map()
-for (const r of taxLotRows) {
+for (const r of stockOnly(taxLotRows)) {
   const key = `${r.account}\t${r.ticker}`
   const cur = lotsByKey.get(key) || { quantity: 0, cost: 0 }
   cur.quantity += r.open_quantity
@@ -5226,6 +5786,11 @@ const unmappedTypes = transactionRows.filter(
       'FEE',
       'STAKING_REWARD',
       'SHARE_REWARD',
+      // Pension cash movements (Task 3's extractors): DEPOSIT is money paid in,
+      // and becomes a pension_flows contribution; TRUST_OUT is the IRP moving
+      // cash into its own trust products, internal to the account.
+      'DEPOSIT',
+      'TRUST_OUT',
     ].includes(r.type)
 )
 const missingFxHoldings = holdingRows.filter((r) => r.currency !== r.base_currency && (r.fx_rate_to_base == null || r.base_cost == null))
@@ -5236,7 +5801,9 @@ const missingFxHoldings = holdingRows.filter((r) => r.currency !== r.base_curren
 // checklist stops being read. The bond still carries its cost basis; it simply
 // has no market value here.
 const isEquityTicker = (ticker) => /^\d{6}$/.test(String(ticker ?? ''))
-const missingKrPrices = holdingRows.filter(
+// Stock rows: a pension ETF without a price is valued at its snapshot and named
+// by `pension_etf_unpriced` instead.
+const missingKrPrices = stockOnly(holdingRows).filter(
   (r) => r.market === 'KR' && r.quantity > 0 && r.native_price == null && isEquityTicker(r.ticker)
 )
 const missingUsPrices = holdingRows.filter((r) => r.market === 'US' && r.quantity > 0 && r.native_market_value == null)
@@ -5408,7 +5975,8 @@ for (const [market, receiptFile] of [['KR', 'kr-sheet-publish.json'], ['US', 'us
   const receipt = fs.existsSync(receiptPath)
     ? (() => { try { return JSON.parse(fs.readFileSync(receiptPath, 'utf8')) } catch { return null } })()
     : null
-  const currentAsOf = holdingRows
+  // The tabs publish the Stocks view, so the as-of they lag behind is the stock rows'.
+  const currentAsOf = stockOnly(holdingRows)
     .filter((r) => r.market === market)
     .map((r) => r.as_of_date)
     .filter(Boolean)
@@ -5884,7 +6452,7 @@ const taxPolicy = loadTaxPolicy()
 const usTaxAssumptions = (taxPolicy?.jurisdictions ?? []).find((j) => j?.code === 'US')?.manualAssumptions ?? null
 const taxYear = String(usTaxAssumptions?.taxInputYear ?? new Date().getFullYear())
 const usSalesThisYear = transactionRows.filter(
-  (r) => r.market === 'US' && r.type === 'SELL' && String(r.date ?? '').slice(0, 4) === taxYear
+  (r) => r.market === 'US' && isStockRow(r) && r.type === 'SELL' && String(r.date ?? '').slice(0, 4) === taxYear
 )
 const usSalesProceeds = usSalesThisYear.reduce((sum, r) => sum + Math.abs(Number(r.native_amount) || 0), 0)
 const ytdRealizedAssumed =
@@ -5920,7 +6488,9 @@ const ytdSalesDetail = `${usSalesThisYear.length} US sale(s) in ${taxYear} total
 // between the two dates into the wrong side: lots bought near 1,450 and sold
 // near 1,350 read as a smaller dollar gain than the one realized, and a small
 // won loss can be a dollar gain. USD rows keep their native dollar gain.
-const realizedForTaxYear = realizedRows.filter((r) => r.tax_year === taxYear && !r.superseded_by)
+// Stock rows only: a sale inside an IRP or 연금저축 account is not a taxable
+// realization, and gold is not a security.
+const realizedForTaxYear = stockOnly(realizedRows).filter((r) => r.tax_year === taxYear && !r.superseded_by)
 // Only the historical table: falling back to today's rate for an acquisition
 // that predates it would bring back the single-rate error for exactly that lot.
 // Such a lot is counted as unconvertible and named in the detail instead.
@@ -6353,23 +6923,27 @@ check(
 insertMany(db, 'missing_disposals', robinhoodMissingDisposalRows, ['market', 'brokerage', 'account_type', 'ticker', 'replay_qty', 'held_qty'])
 insertMany(db, 'validation_checks', checks, ['name', 'status', 'detail', 'severity'])
 
+// The snapshot series is the Stocks view's history (the home trend, and the
+// stocks line on /net-worth), so it is written from stock rows only.
+const stockHoldingRows = stockOnly(holdingRows)
+const stockDividendRows = stockOnly(dividendRows)
 const currentValuation = valuePortfolio(
-  holdingRows.map((row) => ({
+  stockHoldingRows.map((row) => ({
     market: row.market,
     cost: row.base_cost,
     marketValue: row.base_market_value,
   }))
 )
-const nativeKrwCost = holdingRows
+const nativeKrwCost = stockHoldingRows
   .filter((row) => row.currency === 'KRW')
   .reduce((sum, row) => sum + Number(row.native_cost || 0), 0)
-const nativeUsdCost = holdingRows
+const nativeUsdCost = stockHoldingRows
   .filter((row) => row.currency === 'USD')
   .reduce((sum, row) => sum + Number(row.native_cost || 0), 0)
-const dividendsKrw = dividendRows
+const dividendsKrw = stockDividendRows
   .filter((row) => row.currency === 'KRW')
   .reduce((sum, row) => sum + Number(row.native_amount || 0), 0)
-const dividendsUsd = dividendRows
+const dividendsUsd = stockDividendRows
   .filter((row) => row.currency === 'USD')
   .reduce((sum, row) => sum + Number(row.native_amount || 0), 0)
 
@@ -6400,18 +6974,18 @@ db.prepare(`
   currentValuation.US.returnPct, currentValuation.CRYPTO.returnPct,
   nativeKrwCost, nativeUsdCost, dividendsKrw, dividendsUsd,
   currentValuation.global.positionCount,
-  holdingRows.reduce((sum, row) => sum + Number(row.quantity || 0), 0)
+  stockHoldingRows.reduce((sum, row) => sum + Number(row.quantity || 0), 0)
 )
 
 db.exec(`
-create index idx_holdings_account on holdings(account);
-create index idx_holdings_ticker on holdings(ticker);
-create index idx_tax_lots_ticker on tax_lots(ticker);
-create index idx_transactions_date on transactions(date);
-create index idx_transactions_type on transactions(type);
+create index idx_holdings_account on holdings_all(account);
+create index idx_holdings_ticker on holdings_all(ticker);
+create index idx_tax_lots_ticker on tax_lots_all(ticker);
+create index idx_transactions_date on transactions_all(date);
+create index idx_transactions_type on transactions_all(type);
 create index idx_fx_events_date on fx_events(date);
 create index idx_fx_events_institution on fx_events(institution, event_type);
-create index idx_dividends_date on dividends(date);
+create index idx_dividends_date on dividends_all(date);
 `)
 
 const report = {

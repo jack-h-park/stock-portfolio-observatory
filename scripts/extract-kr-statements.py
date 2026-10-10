@@ -74,6 +74,11 @@ MIRAE_PREFIX = "mirae-"
 TOSS_PREFIX = "toss-"
 SAMSUNG_PREFIX = "samsung-"
 BALANCE_DOCTYPE = "-balance-"
+# 삼성증권 accounts read from the English 연금저축 ledger
+# (`samsung-pension-transactions-<from>-<to>.pdf`, which the samsung- glob
+# already finds; 미래에셋 IRP and 금현물 certificates are `mirae-irp-…` and
+# `mirae-gold-…` under the mirae- glob, each its own statement series).
+SAMSUNG_PENSION_ACCOUNTS = {"삼성증권(연금저축)"}
 
 # PDF text, not filenames: pdfplumber returns Hangul in whichever normalisation
 # the generator embedded, while the literals compared against it here are
@@ -94,6 +99,10 @@ TICKER_CHANGE = re.compile(r"^([A-Z0-9.]{1,12})\s*->\s*([A-Z0-9.]{1,12})$")
 TYPE_MAP = {
     # securities in/out — these carry ticker, quantity and price
     "주식매수입고": "BUY",
+    # 금현물 (KRX physical gold): the 입고 row carries the grams in 거래수량,
+    # KRW per gram in 단가, and 거래금액 = 수량 × 단가. Its 매수출금 partner is
+    # the cash leg of the same purchase and is in CASH_LEG_TYPES.
+    "금현물매수입고": "BUY",
     "해외주식매수입고": "BUY",
     "소수해외매수입고": "BUY",
     "외화채권매수입고": "BUY",
@@ -189,7 +198,31 @@ TYPE_MAP = {
     "외화채권원화세금출금": "FEE",
     "외화예탁금세금출금": "FEE",
     "선환전차액출금": "FEE",
+    # The monthly storage fee on held gold, and the tax charged on it.
+    "금현물보관수수료": "FEE",
+    "금현물보관수수료세금": "FEE",
+    # IRP: cash moved out of the account's cash into the trust (신탁) that holds
+    # the funds and ETFs. Nothing leaves the account, so it is an internal move
+    # and not a flow; the ingest reads it that way.
+    "신탁계약출금": "TRUST_OUT",
 }
+
+# Where one 거래종류 means something different on one account. On the IRP a
+# 계좌대체입금 is money arriving from the owner's other account to be invested
+# in the pension: a contribution, which is what the IRP's principal is made of.
+# On the 종합 and 금현물 accounts the same type stays an internal transfer.
+ACCOUNT_TYPE_MAP = {
+    "미래에셋증권(IRP)": {"계좌대체입금": "DEPOSIT"},
+}
+
+# Types whose 종목번호 / 종목명 cells hold something that is not a security. The
+# 신탁계약출금 B row prints the customer's name under 종목명 and a contract code
+# under 종목번호; neither belongs in a transaction row.
+NO_SECURITY_TYPES = {"신탁계약출금"}
+
+# Accounts whose 유가잔고 is checked against the walk of their own rows. On the
+# 금현물 account it is the running gram balance printed on every 입고 row.
+BALANCE_CHECKED_ACCOUNTS = {"미래에셋증권(금현물)"}
 
 # The cash counterpart of a trade already represented by its securities leg.
 CASH_LEG_TYPES = {
@@ -203,6 +236,7 @@ CASH_LEG_TYPES = {
     "장내당일채권매수대금출금",
     "공모주청약대금출금",
     "공모주청약환불금",
+    "금현물매수출금",
 }
 
 
@@ -506,6 +540,10 @@ def account_label(pdf):
                         kind = cells[i + 1].strip()
                         if "ISA" in kind:
                             return "미래에셋증권(ISA)"
+                        # `퇴직연금_개인IRP` is printed; the label the account
+                        # map and the wrapper rule use is `IRP`.
+                        if re.search(r"IRP|퇴직연금", kind, re.I):
+                            return "미래에셋증권(IRP)"
                         return f"미래에셋증권({kind})"
     return "미래에셋증권"
 
@@ -1196,7 +1234,9 @@ def samsung_transactions(statements_dir, known_tickers, report):
                 continue
 
             ticker = ""
-            if row["name"]:
+            # A pension fund has no 종목번호 and no listing to resolve against;
+            # its name is kept and the ingest reads holdings from the snapshot.
+            if row["name"] and account not in SAMSUNG_PENSION_ACCOUNTS:
                 candidates = known_tickers.get(row["name"], set())
                 if len(candidates) == 1:
                     ticker = next(iter(candidates))
@@ -1235,8 +1275,11 @@ def samsung_transactions(statements_dir, known_tickers, report):
             count += 1
         print(f"[samsung-statement] {name}: {count} transaction(s) → {account}"
               + (f", {ceded} left to an overlapping statement" if ceded else ""))
-    breaks = check_share_balances(out, report)
-    print(f"[samsung-statement] 잔고수량 continuity: {len(out)} row(s) checked, {breaks} break(s)")
+    # The ledger's column 5 is a fund evaluation price, not a share count, so
+    # the pension rows have no printed balance to check against.
+    checked = [r for r in out if r["Account"] not in SAMSUNG_PENSION_ACCOUNTS]
+    breaks = check_share_balances(checked, report)
+    print(f"[samsung-statement] 잔고수량 continuity: {len(checked)} row(s) checked, {breaks} break(s)")
     return out
 
 
@@ -1283,10 +1326,11 @@ def main():
                 raw_type = a[1].strip()
                 if raw_type in CASH_LEG_TYPES:
                     continue
-                mapped = TYPE_MAP.get(raw_type)
+                mapped = ACCOUNT_TYPE_MAP.get(account, {}).get(raw_type) or TYPE_MAP.get(raw_type)
                 if mapped is None:
                     unmapped[raw_type] = unmapped.get(raw_type, 0) + 1
                     continue
+                security = raw_type not in NO_SECURITY_TYPES
                 currency, native, rate, krw = amount_of(a, b, c)
                 if currency != "KRW" and krw == "":
                     unconverted += 1
@@ -1295,8 +1339,8 @@ def main():
                     "Account": account,
                     "Type": mapped,
                     "Raw Type": raw_type,
-                    "Ticker": clean_ticker(a[4]),
-                    "Name": clean_name(b[4]),
+                    "Ticker": clean_ticker(a[4]) if security else "",
+                    "Name": clean_name(b[4]) if security else "",
                     "Quantity": number(b[2]),
                     "Currency": currency,
                     "Native Amount": native,
@@ -1346,6 +1390,12 @@ def main():
                 count += 1
             print(f"[kr-statement] {name}: {count} transaction(s) from {len(pdf.pages)} page(s)"
                   + (f", {ceded} left to an overlapping statement" if ceded else ""))
+
+    checked = [r for r in transactions if r["Account"] in BALANCE_CHECKED_ACCOUNTS]
+    if checked:
+        breaks = check_share_balances(checked, report)
+        print(f"[kr-statement] 유가잔고 continuity ({', '.join(sorted(BALANCE_CHECKED_ACCOUNTS))}): "
+              f"{len(checked)} row(s) checked, {breaks} break(s)")
 
     toss_snapshot = load_toss_snapshot(report)
     toss_rows = toss_transactions(statements_dir, toss_snapshot, report)

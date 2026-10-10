@@ -54,7 +54,7 @@ export default async function SavedTaxPlanPage({
   const progress = savedTaxPlanProgress(saved)
   const policyState = getTaxPolicyState()
   const livePlanSet = buildMonthlySalePlanSet({
-    lots: getTaxPlanningLots(5000),
+    lots: getTaxPlanningLots(5000, policyState.policy),
     policy: policyState.policy,
     selectedStrategy: saved.strategy,
     executionMonths: saved.executionMonths,

@@ -66,6 +66,10 @@ if (!acquireRefreshLock()) process.exit(0)
 const steps = [
   { name: 'fetch:fx', args: ['fetch:fx'] },
   { name: 'fetch:kr-prices', args: ['fetch:kr-prices'] },
+  // The KRX gold price for the 금현물 holding. Optional: Naver is outside this
+  // machine, and without a price the ingest holds the gold at cost and
+  // `gold_priced` says so.
+  { name: 'fetch:gold-price', args: ['fetch:gold-price'], optional: true },
   { name: 'fetch:toss', args: ['fetch:toss'], optional: true },
   // The Korea certificates, parsed back into the payload TSVs the ingest merges.
   //
@@ -79,6 +83,10 @@ const steps = [
   // step derives its ticker list from the database, so a certificate that adds a
   // holding also needs its price history fetched on the same run.
   { name: 'extract:kr-statements', args: ['extract:kr-statements'] },
+  // Year-end pension certificates (잔고현황 / 잔고증명서) → pension-evidence.json.
+  // Optional: they feed validation and the 삼성 pension snapshot fallback, so a
+  // broken parse must not stop the stock refresh; its findings are in the file.
+  { name: 'extract:pension-evidence', args: ['extract:pension-evidence'], optional: true },
   { name: 'extract:fx-ledger', args: ['extract:fx-ledger'] },
   // Bank deposit balances for the All-assets view. Optional: a broken bank parser
   // must not stop the stock refresh; the ingest's cash_statements_parsed and cash_*

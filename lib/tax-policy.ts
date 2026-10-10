@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { config } from '@/config'
+import { DECIDABLE_WRAPPERS, resolveWrapperTreatment } from '@/scripts/wrapper-treatment.mjs'
 
 export type FilingScenario = 'US_ONLY' | 'KR_ONLY' | 'US_AND_KR'
 
@@ -15,6 +16,14 @@ export type TaxYearProfile = {
   }[]
 }
 
+export type WrapperTreatment = 'taxable' | 'undecided' | 'deferred' | 'exempt_within_limit'
+
+export type PensionTaxCreditBand = {
+  fromYear: number
+  pensionSavingsLimitKrw: number
+  combinedLimitKrw: number
+}
+
 export type TaxPolicy = {
   version: number
   activeScenario: FilingScenario
@@ -27,6 +36,13 @@ export type TaxPolicy = {
     filingCurrency: string
     manualAssumptions: Record<string, unknown>
   }[]
+  /** Per jurisdiction, per wrapper. Absent keys take the defaults in scripts/wrapper-treatment.mjs. */
+  wrapperTreatment?: Record<string, Record<string, string>>
+  /** Korean pension tax-credit limits by the first tax year each applies to. */
+  pensionTaxCredit?: {
+    source?: string
+    byYear: PensionTaxCreditBand[]
+  }
   manualAdjustments: {
     id: string
     enabled: boolean
@@ -271,4 +287,34 @@ export function projectedWagesUsd(policy: TaxPolicy, year: number) {
   const baseWages = assumptionNumber(policy, 'US', 'wageBaseUsd', 0)
   const growthRate = assumptionNumber(policy, 'US', 'annualIncomeGrowthPct', 0) / 100
   return baseWages * Math.pow(1 + growthRate, Math.max(year - baseYear, 0))
+}
+
+/** How `jurisdiction` taxes an account under `wrapper`. The ingest's us_wrapper_treatment_decided check reads the same helper. */
+export function wrapperTreatment(policy: TaxPolicy, jurisdiction: string, wrapper: string): WrapperTreatment {
+  return resolveWrapperTreatment(policy, jurisdiction, wrapper) as WrapperTreatment
+}
+
+/** The non-brokerage wrappers whose US treatment is `taxable`: their lots join the US estimate. */
+export function usTaxableWrappers(policy: TaxPolicy): string[] {
+  return DECIDABLE_WRAPPERS.filter((wrapper: string) => wrapperTreatment(policy, 'US', wrapper) === 'taxable')
+}
+
+/**
+ * The Korean pension tax-credit limits for a tax year: the newest band whose
+ * `fromYear` is on or before it. Null when the policy has no band for that year,
+ * because the limits come from the policy file, not from the code.
+ */
+export function pensionCreditLimit(
+  policy: TaxPolicy,
+  year: number
+): { pensionSavingsLimitKrw: number; combinedLimitKrw: number } | null {
+  const bands = Array.isArray(policy.pensionTaxCredit?.byYear) ? policy.pensionTaxCredit.byYear : []
+  const band = bands
+    .filter((item) => Number.isInteger(Number(item?.fromYear)) && Number(item.fromYear) <= year)
+    .sort((a, b) => Number(b.fromYear) - Number(a.fromYear))[0]
+  if (!band) return null
+  return {
+    pensionSavingsLimitKrw: Number(band.pensionSavingsLimitKrw),
+    combinedLimitKrw: Number(band.combinedLimitKrw),
+  }
 }

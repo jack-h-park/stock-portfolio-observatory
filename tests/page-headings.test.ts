@@ -19,6 +19,7 @@ const COPY_FOR: Partial<Record<RouteHref, keyof typeof PAGE_COPY>> = {
   '/tax-planning': 'taxPlanning',
   '/tax-settings': 'taxSettings',
   '/lots': 'lots',
+  '/pension': 'pension',
   '/cost-basis': 'costBasis',
   '/dividends': 'dividends',
   '/transactions': 'transactions',

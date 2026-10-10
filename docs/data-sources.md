@@ -41,6 +41,7 @@ the same naming grammar as the other source files:
 | MG Community Credit Cooperative deposit | `mg-deposit-<from>-<to>.xls` |
 | Toss Bank | `tossbank-<last4>-<from>-<to>.xlsx`, filed decrypted; the last 4 digits and the period come from the workbook's own header block, one account per last4 |
 | Fidelity cash management account (CMA) | `fidelity-cma-<from>-<to>.csv`, filed only when the export is named `History_for_Account_<ID>[-<N>].csv` and `<ID>` is a CMA in the account map; any other Fidelity history stays a brokerage file |
+| 미래에셋 CMA (발행어음형) | `mirae-cma-<from>-<to>.pdf`: a 미래에셋 거래내역증명서 whose page 2 prints 계좌유형 `종합_CMA`. The balance is 예수금잔액 plus the 발행어음 principal held, and needs a certificate whose page 2 prints `거래구분 전체` (or that carries 발행어음 rows); one issued with `거래구분 CMA자동매매 제외`, or showing neither, writes no balances and is reported under `cash_statements_parsed`. Alias from the map's `{ "institution": "mirae", "kind": "cma" }` entry, else `미래에셋 CMA` |
 
 Three environment variables point at private, gitignored files and secrets.
 None of their contents belong in the repo:
@@ -57,6 +58,153 @@ alias (`tossbank <last4>`). A CMA's `Cash Balance` includes its core money-marke
 reinvestment row as zero movement when it checks continuity.
 
 The result shows on `/net-worth` and as a Balances column on `/accounts`.
+
+### Pension accounts and gold
+
+The IRP and 연금저축 accounts and the 미래에셋 금현물 account are filed by the
+inbox like everything else. What is new is that two of the pension sources hold
+no account at all, so their names carry a `token` from the account map.
+
+| Source | File name |
+| --- | --- |
+| 미래에셋 IRP 거래내역증명서 (page 2 `계좌유형 퇴직연금_개인IRP`) | `kr-statements/mirae-irp-transactions-<from>-<to>.pdf` |
+| 미래에셋 금현물 거래내역증명서 (page 2 `계좌유형 금현물`) | `kr-statements/mirae-gold-transactions-<from>-<to>.pdf` |
+| 삼성증권 연금저축 ledger (`LEDGER A/C TRANSACTIONS DETAIL`, `Account No.` naming 연금저축) | `kr-statements/samsung-pension-transactions-<from>-<to>.pdf` |
+| Pension holdings snapshot, made by hand | `pension/<token>-holdings-<YYYYMMDD>.csv` |
+| 미래에셋 퇴직연금 잔고현황 (year-end) | `pension/evidence/<token>-balance-status-<YYYYMMDD>.pdf` |
+| 미래에셋 IRP 잔고증명서, either title (year-end) | `pension/evidence/<token>-balance-certificate-<YYYYMMDD>.pdf` |
+| 삼성증권 연금저축 잔고증명서 (year-end) | `pension/evidence/<token>-balance-certificate-<YYYYMMDD>.pdf` |
+
+The three transaction certificates are named for the window they declare, from
+and to, never as an as-of. The evidence files are dated by the certificate's own
+기준일자, not by the day it was issued.
+
+**The holdings snapshot CSV.** UTF-8, one row per product:
+
+```csv
+type,name,ticker,quantity,cost_krw,value_krw
+ETF,Example 200,069500,3,90000,100000
+FUND,Example equity fund C-Pe,,,500000,550000
+CASH,Example cash sweep,,,0,12345
+```
+
+- `type` is one of `ETF`, `FUND`, `CASH`.
+- `ticker` is the 6-digit KRX code. It is required for `ETF` and empty otherwise.
+- `quantity` is shares for an `ETF`, and empty for `FUND` and `CASH` (funds are held in 좌, which the source does not show).
+- `cost_krw` and `value_krw` are in won.
+- The legacy header `type,name,quantity,cost_krw,value_krw` (no ticker column) is still accepted.
+
+The file holds no account and no date, so the inbox file name has to carry both:
+`<token>-holdings-<YYYYMMDD>.csv`, where `<token>` is a `pensionAccounts[].token`.
+A snapshot with any other name, or an unknown token, is refused with the name to use.
+
+**The account map entry.** `pensionAccounts` in `data/accounts.local.json`:
+
+```json
+"pensionAccounts": [
+  { "token": "irp", "account": "미래에셋증권(IRP)", "wrapper": "irp", "institution": "미래에셋증권" },
+  { "token": "pension-savings", "account": "삼성증권(연금저축)", "wrapper": "pension_savings", "institution": "삼성증권" }
+]
+```
+
+- `token` names the files.
+- `account` is the account label the extractors emit for that account.
+- The filer picks the IRP evidence entry by `wrapper: "irp"` and `institution: "미래에셋증권"`, and the 삼성 one by `institution: "삼성증권"`.
+- The 삼성 잔고증명서 prints no account type. Set `accountNumber` on the 삼성 entry; this is recommended. With it, a certificate whose page 2 does not show that 계좌번호 is refused. Without it, any 삼성 잔고증명서 holding 수익증권 matches, and the filer still files it but prints a note saying it matched on issuer, title and 수익증권 only.
+- The example map, `data/accounts.local.example.json`, pins `accountNumber` for this reason.
+- Evidence or a snapshot with no matching entry is refused, never filed under a guess.
+
+Without a map entry, an account is still classified by its label. A label naming
+`IRP` or `퇴직연금` is `irp`, `연금저축` is `pension_savings`, and `금현물` is the
+`gold` asset class. So an unmapped pension account never reads as `taxable`.
+
+**Where the ingest reads them.** Two more paths, both optional:
+
+| Variable | Holds |
+| --- | --- |
+| `STOCK_PENSION_DIR` | the snapshot CSVs (default `<STOCK_DATA_DIR>/pension`). `fetch:kr-prices` reads it too, to price the ETF rows |
+| `STOCK_PENSION_EVIDENCE_PATH` | the year-end evidence `extract:pension-evidence` writes (default `data/pension-evidence.json`) |
+| `STOCK_GOLD_PRICES_PATH` | the KRX gold price `fetch:gold-price` writes (default `data/gold-prices.json`) |
+
+The evidence file has one entry per certificate:
+`{ token, kind, asOf, totalKrw, contributionsCumulativeKrw, employerCumulativeKrw, ownCumulativeKrw, cashKrw, products[], source }`,
+each product `{ name, quantity, costKrw, valueKrw }`. `cashKrw` is set only for the
+삼성 잔고증명서: its total includes cash that is not a product, so its products plus
+`cashKrw` equal `totalKrw`. It is null elsewhere.
+
+**How the ingest uses them.**
+
+- **Holdings.** For each `pensionAccounts` entry, the newest `<token>-holdings-*.csv`
+  is the account's snapshot. With no CSV, the newest certificate that lists
+  products stands in for one, as of its `asOf`, with its `cashKrw` as a cash row.
+  Each product becomes a `holdings_all` row with the entry's `account` and
+  `wrapper`, `as_of_date` = the snapshot date, and cost = `cost_krw`. An ETF keeps
+  its ticker; a fund row gets a stable id `PENSION:<token>:<n>` and a cash row
+  `PENSION:<token>:cash:<n>`, where `<n>` is its row number in the snapshot. A priced ETF is marked at quantity × the KR price
+  (`valuation_source = 'price'`); everything else, including an ETF with no price
+  or no ticker, is valued at `value_krw` (`'snapshot'`). None of these rows is in
+  the `holdings` view or in any stock figure.
+- **Transactions.** The IRP, 연금저축 and 금현물 rows go to `transactions_all`
+  (and their interest to `dividends_all`, the gold lots to `tax_lots_all`), tagged
+  by the label rule. They never reach a stock lot, realized, income or snapshot
+  figure, and the 금현물 lots are not summed into a holding.
+- **Gold.** Each gold account (`asset_class = 'gold'`) gets one `holdings_all` row,
+  ticker `M04020000`, name `KRX 금현물`, built from its `BUY` rows: quantity is the
+  grams bought (less any sale), and cost is the sum of the purchase amounts. The
+  extractor already dropped each purchase's 금현물매수출금 cash leg, and storage
+  fees (`FEE`) are not cost. It is marked at grams × the KRX gold price
+  (`valuation_source = 'price'`, as of the price date); with no price it is held at
+  cost (`'cost'`, as of the last purchase). The purchases are not replayed into tax
+  lots.
+- **One source per account.** A sheet row for an account that has a pension
+  snapshot or a gold holding is dropped, so `holdings_all` never holds the same
+  position twice.
+- **Flows.** `pension_flows` takes the pension accounts' money movements:
+  `DEPOSIT` is a `contribution`; a `WITHDRAWAL` would be a `withdrawal`, and
+  `TRANSFER_IN` / `TRANSFER_OUT` are `transfer_in` / `transfer_out`. `TRUST_OUT`
+  (the IRP buying its own trust products), `INTEREST` and `REINVEST` stay inside
+  the account and are not flows.
+
+**Checks (all warnings).**
+
+- `pension_trades_after_snapshot`: BUY and SELL rows dated after an account's
+  snapshot. They are stored, but the holdings stay at the snapshot; the check
+  names the count and the snapshot date. File a newer CSV to clear it.
+- `pension_etf_unpriced`: an ETF kept at its snapshot value, with the reason for
+  each: no ticker, no KR price, or no quantity in the snapshot.
+- `gold_priced`: fails while a gold holding is valued at cost because
+  `data/gold-prices.json` is missing or has no usable latest price.
+
+**The KRX gold price.** `pnpm fetch:gold-price` (an optional `pnpm refresh` step,
+before the ingest) reads Naver's public KRX gold quotes, which need no key:
+`front-api/marketIndex/productDetail?category=metals&reutersCode=M04020000` for
+the current close (`result.closePrice`, a comma-grouped string in KRW per gram,
+dated by `result.localTradedAt` in Asia/Seoul) and
+`front-api/marketIndex/prices?…&pageSize=60` for daily closes (`pageSize` must be
+at least 10). It writes
+`{ source, code: "M04020000", unit: "KRW/g", fetchedAt, latest: { date, price }, history: [{ date, price }] }`.
+A response for another code or unit is refused. If either call fails the previous
+file is kept and the step exits non-zero; the refresh carries on.
+- `pension_snapshot_matches_year_end`: each certificate's `totalKrw` against the
+  snapshot with the same date (a certificate with products is one), within
+  max(0.5%, ₩10,000). Fund NAVs are not fetched, so a later snapshot cannot be
+  rolled back to the certificate's date; with no like-dated snapshot the check
+  says so and passes.
+- `us_wrapper_treatment_decided`: fails while an account under a wrapper whose
+  US treatment is `undecided` holds or trades anything. `wrapperTreatment.US` in
+  the tax policy decides it; absent, `irp` and `pension_savings` are `undecided`
+  and `isa` is `taxable`. The ingest and the app read the same defaults, from
+  `scripts/wrapper-treatment.mjs`.
+
+**Wrapper treatment and pension credit limits (`tax-policy.json`).**
+`wrapperTreatment.<KR|US>.<isa|irp|pension_savings>` is one of `taxable`,
+`undecided`, `deferred` or `exempt_within_limit`. Only `taxable` puts a
+wrapper's lots (from `tax_lots_all`) into that jurisdiction's estimate; every
+other value keeps them out, and the tax pages list the account under "Needs
+review for US tax" with its realized gains, dividends and likely-PFIC count.
+`pensionTaxCredit.byYear` lists the Korean pension tax-credit limits, each band
+applying from its `fromYear` until the next. The pre-2023 limits depended on
+income and age; the example records the common case only.
 
 **An RSU account can hold nothing, and that is why it was missed.** 삼성증권's
 주식보상 account is where RSUs vest, and its position can sit at zero — vested
@@ -308,6 +456,7 @@ was confirmed against the files already on disk.
 | Document | Recognised by | Lands in |
 | --- | --- | --- |
 | 미래에셋 거래내역증명서 | `거래내역 증 명 서` + `계좌유형` ISA/종합 on page 2 | `kr-statements/mirae-<isa\|general>-transactions-<period>[-<발급번호>]` |
+| 미래에셋 CMA 거래내역증명서 | the same, with `계좌유형 종합_CMA` (checked before 종합; the CMA shares its last four digits with the 종합 account) | `bank-statements/mirae-cma-<from>-<to>` |
 | 미래에셋 잔고증명서 | `잔 고 증 명 서` + a 계좌번호 the account map lists under `brokerageAccounts` | `kr-statements/mirae-<kind>-balance-<기준일자>-<발급번호>` |
 | 토스 거래내역서 | `거래내역서` + `발급번호` + 계좌 `137-…` | `kr-statements/toss-transactions-<period>[-NofM]` |
 | Hana USD account history PDF/XLS | PDF: a USD account number the account map lists under `bankAccounts` (`institution: "hana"`); both: USD rows, printed query window | `fx-statements/hana-usd-history-<period>` |
