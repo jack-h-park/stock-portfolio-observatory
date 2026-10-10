@@ -35,6 +35,50 @@ print(json.dumps({'rows':len(merged),'event':events[0]}))
   assert.equal(result.event.reference_customer_rate, 1444.9)
 })
 
+// The mobile screenshots print the time to the minute; the bank XLS prints it to
+// the second, and the published-rate observations are keyed on the second. When
+// a screenshot replaced the XLS row it carried its own coarser time, the
+// observation lookup missed, and the event fell back to the day's first
+// published rate — 1434.3 / 1448.3 instead of 1430.9 / 1444.9 — which reads the
+// same 1432.3 fill as a 114% preference.
+test('a screenshot merged onto the XLS row keeps the transaction-time reference rate', () => {
+  const result = runPython(`
+import importlib.util, json
+spec=importlib.util.spec_from_file_location('fx', 'scripts/extract-fx-ledger.py')
+m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+pdf={'date':'2025-10-29','time':None,'kind':'원화대가','memo':'FX마켓 살래요','branch':'','deposit':100.0,'withdrawal':0.0,'balance':0.0,'applied_rate':None,'source':'annual.pdf','source_path':'annual.pdf','page':5}
+xls={**pdf,'time':'15:54:36','balance':None,'applied_rate':1432.3,'source':'recent.xls','source_path':'recent.xls','page':None}
+shot={**pdf,'time':'15:54','balance':None,'applied_rate':1432.3,'branch':'모바일 캡처','source':'shot','source_path':'shot.json','page':None}
+merged=m.merge_hana_screenshot_rows(m.merge_hana_rows([pdf],[xls]), [shot])
+events=m.hana_events(merged, {'2025-10-29':{'base':1434.3,'ttSend':1448.3,'cashBuy':1459.4}})
+print(json.dumps({'rows':len(merged),'time':merged[0]['time'],'event':events[0]}))
+`)
+  assert.equal(result.rows, 1)
+  assert.equal(result.time, '15:54:36')
+  assert.equal(result.event.reference_base_rate, 1430.9)
+  assert.equal(result.event.reference_customer_rate, 1444.9)
+  const preference =
+    1 - (result.event.applied_rate - result.event.reference_base_rate) /
+      (result.event.reference_customer_rate - result.event.reference_base_rate)
+  assert.ok(Math.abs(preference - 0.9) < 1e-6, `preference ${preference}`)
+})
+
+test('a screenshot keeps its own time when the bank row disagrees on the minute', () => {
+  const result = runPython(`
+import importlib.util, json
+spec=importlib.util.spec_from_file_location('fx', 'scripts/extract-fx-ledger.py')
+m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+xls={'date':'2025-10-30','time':'09:01:12','kind':'원화대가','memo':'FX마켓 살래요','branch':'','deposit':100.0,'withdrawal':0.0,'balance':None,'applied_rate':1433.0,'source':'recent.xls','source_path':'recent.xls','page':None}
+shot={**xls,'date':'2025-10-29','time':'15:54','source':'shot','source_path':'shot.json'}
+merged=m.merge_hana_screenshot_rows([xls], [shot])
+print(json.dumps({'rows':len(merged),'time':merged[0]['time']}))
+`)
+  // Matched across a posting-date shift, so the bank's time is a different
+  // moment, not a more precise reading of the same one.
+  assert.equal(result.rows, 1)
+  assert.equal(result.time, '15:54')
+})
+
 test('Hana historical FX Market rate applies 90% preference and remains estimated', () => {
   const result = runPython(`
 import importlib.util, json
