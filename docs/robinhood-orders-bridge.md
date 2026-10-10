@@ -87,9 +87,12 @@ account's order history, in the same pass and under the same `fetchedAt`:
 - Call `get_equity_orders(account_number, created_at_gte)` **with no `symbol`
   filter**, and follow `next` until it is empty. The `symbol` filter first looks
   up the ticker's instrument, and a 2025 Mid-term sale that is in the CSV did not
-  come back through it. Its cause is not known yet; see Verification. A filter
-  that can drop a fill with no error has no place in a pull whose job is
-  completeness. Key executions by `instrument_id` as well as symbol.
+  come back through it. The order is recorded under an `instrument_id` that
+  the ticker no longer resolves to (see Verification, item 3). A filter that
+  can drop a fill with no error has no place in a pull whose job is
+  completeness. Key executions by `instrument_id` as well as symbol, and take
+  the row's ticker from the order's own `symbol`, which keeps the ticker it
+  traded under.
 - Use **no `state` filter**. A partially filled order that was then cancelled
   still moved shares. The bridge reads `executions[]`, not the order's state.
 - `createdAtGte` is the earliest cutoff across the accounts minus 7 days. An order
@@ -213,10 +216,18 @@ Run these once and record the results here:
    the formula is still unconfirmed.
 2. **Eastern-date mapping.** Find an extended-hours fill in the history and
    confirm its CSV `Activity Date` is the Eastern date of its timestamp.
-3. **The missing 2025 sale.** Page the unfiltered Mid-term history across
-   2025-10-22 and look for the sale the `symbol` query missed. If it is there,
-   the filter was the cause. If it is not, the August claim that orders match the
-   CSV one for one needs to be revisited before the bridge is trusted.
+3. **The missing 2025 sale — explained 2026-10-10.** The unfiltered Mid-term
+   history since 2025-10-22, 167 orders in a single page, holds the sale: one
+   execution whose quantity and price reproduce the CSV `Amount` to the cent.
+   The order carries the ticker in `symbol`, but its `instrument_id` differs
+   from the one a search for that ticker returns today. A `symbol` query
+   resolves the ticker to today's instrument first, so the sale fell outside
+   it. Why Robinhood reissued the instrument (a corporate action or a CUSIP
+   change after the position was closed, which a closed position's CSV would
+   not show) was not established. The August claim holds for this case: the
+   order was there, and only the symbol filter missed it.
+   `get_pnl_trade_history` with the same symbol filter did return the sale.
+   Only the orders query has this blind spot.
 4. **Supersession on a real download.** Ingest once before and once after the
    next CSV. Bridged executions on days the CSV covers must drop to zero, and
    `realized_lots` must not change except by fee rounding.
