@@ -10,6 +10,7 @@ const LANGUAGES = ['en', 'ko'] as const
 /** The copy module behind each route, for the routes that have one. */
 const COPY_FOR: Partial<Record<RouteHref, keyof typeof PAGE_COPY>> = {
   '/': 'overview',
+  '/net-worth': 'netWorth',
   '/daily-briefing': 'dailyBriefing',
   '/holdings': 'holdings',
   '/review': 'review',

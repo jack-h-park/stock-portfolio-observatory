@@ -86,7 +86,8 @@ while [ $# -gt 0 ]; do
 done
 
 # Every directory the ingest and the extractors read. Keep in step with
-# scripts/source-files.mjs, extract-kr-statements.py and extract-crypto-activity.py.
+# scripts/source-files.mjs, extract-kr-statements.py, extract-crypto-activity.py
+# and extract-bank-statements.py.
 # `inbox` is deliberately not here: a file nothing could identify stays there,
 # and pushing it would put an unnamed document beside the named ones on the
 # machine that reads them.
@@ -98,6 +99,7 @@ SOURCES=(
   us-tax-documents
   crypto-bithumb
   crypto-robinhood
+  bank-statements
 )
 
 # Config files under the repo's data/, pushed to the same path on the far side.

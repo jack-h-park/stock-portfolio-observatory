@@ -10,11 +10,14 @@ export const sidebar = defineCopy({
     source: 'Generated from local sources',
     language: 'Language',
     currency: 'Currency',
+    assets: 'Assets',
+    assetViews: { stocks: 'Stocks', all: 'All assets' },
     sections: [
       {
         label: 'Core Workflows',
         items: [
           { href: '/', label: 'Portfolio Overview' },
+          { href: '/net-worth', label: 'Net Worth' },
           { href: '/daily-briefing', label: "Today's Briefing" },
           { href: '/holdings', label: 'Holdings' },
           { href: '/review', label: 'Portfolio Review' },
@@ -63,11 +66,14 @@ export const sidebar = defineCopy({
     source: '로컬 원본에서 생성됨',
     language: '언어',
     currency: '화폐',
+    assets: '자산',
+    assetViews: { stocks: '주식', all: '전체 자산' },
     sections: [
       {
         label: '핵심 업무',
         items: [
           { href: '/', label: '포트폴리오 개요' },
+          { href: '/net-worth', label: '순자산' },
           { href: '/daily-briefing', label: '오늘의 브리핑' },
           { href: '/holdings', label: '보유종목' },
           { href: '/review', label: '포트폴리오 검토' },

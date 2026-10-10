@@ -4,14 +4,15 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { clsx } from 'clsx'
-import { CurrencySwitcher, LanguageSwitcher } from '@/components/LanguageSwitcher'
+import { AssetViewSwitcher, CurrencySwitcher, LanguageSwitcher } from '@/components/LanguageSwitcher'
+import type { AssetView } from '@/lib/asset-view'
 import type { DisplayCurrency } from '@/lib/currency'
 import type { Language } from '@/lib/i18n'
 import { Label } from '@/components/ui'
 import { getPageCopy } from '@/lib/ui-copy'
 
 
-export function Sidebar({ language, displayCurrency }: { language: Language; displayCurrency: DisplayCurrency }) {
+export function Sidebar({ language, displayCurrency, assetView }: { language: Language; displayCurrency: DisplayCurrency; assetView: AssetView }) {
   const copy = getPageCopy('sidebar', language)
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
@@ -116,6 +117,10 @@ export function Sidebar({ language, displayCurrency }: { language: Language; dis
           <div>
             <div className="mb-1.5 px-0.5 text-micro font-medium text-ink-3">{copy.currency}</div>
             <CurrencySwitcher displayCurrency={displayCurrency} />
+          </div>
+          <div>
+            <div className="mb-1.5 px-0.5 text-micro font-medium text-ink-3">{copy.assets}</div>
+            <AssetViewSwitcher assetView={assetView} labels={copy.assetViews} />
           </div>
         </div>
 

@@ -1,13 +1,14 @@
 import Link from 'next/link'
 import { FreshnessInline } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, Label, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, Label, MetricField, MetricHeroCard, TextLink, marketTone } from '@/components/ui'
 import { PortfolioMultiTrendChart, PortfolioTrendChart, TrendBarChart } from '@/components/charts'
 import {
   dbAvailable,
   getAccountAllocation,
   getDividendByYear,
   getMeta,
+  getNetWorth,
   getOperationalHealth,
   getOverview,
   getPortfolioSnapshots,
@@ -18,6 +19,7 @@ import type { PortfolioSnapshot } from '@/lib/adapters/portfolio-db'
 import { config } from '@/config'
 import { dividendChartAmount, fmtDateTime, fmtNumber } from '@/lib/format'
 import { convertMoney, createMoneyFormatter } from '@/lib/currency'
+import { getAssetView } from '@/lib/asset-view-server'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
@@ -125,6 +127,7 @@ export default async function OverviewPage({
 }) {
   const language = await getLanguage()
   const currencyPreferences = await getCurrencyPreferences()
+  const assetView = await getAssetView()
   const copy = getPageCopy('overview', language)
   const money = createMoneyFormatter(currencyPreferences)
   const displayBaseValue = (value: number | null | undefined) =>
@@ -166,6 +169,7 @@ export default async function OverviewPage({
   const selectedView: TrendViewKey = params.view === 'single' ? 'single' : 'combined'
   const combinedMetrics = TREND_METRICS.filter((metric) => metric.key !== 'return_pct')
   const overview = getOverview()
+  const netWorth = assetView === 'all' ? getNetWorth(overview) : null
   const portfolioSnapshots = getPortfolioSnapshots(trendRangeDays(selectedRange.days))
   const top = getTopHoldings(10)
   const accounts = getAccountAllocation()
@@ -350,6 +354,29 @@ export default async function OverviewPage({
           </div>
         </Card>
       </CardRow>
+
+      {netWorth ? (
+        <Card title={copy.totalAssets} className="mb-5">
+          <div className="text-metric font-medium tabular-nums text-ink">{money(netWorth.totalKrw, 'KRW')}</div>
+          <ul className="mt-3 grid gap-1.5">
+            {(['stocks', 'crypto', 'cash', 'pension', 'gold'] as const).map((key) => (
+              <li key={key} className="flex items-baseline justify-between gap-3 text-body">
+                <span className="text-ink-3">{copy.assetClasses[key]}</span>
+                <span className="tabular-nums text-ink">
+                  {money(netWorth.byClass[key], 'KRW')}
+                  <span className="ml-2 text-ink-3">{fmtNumber(netWorth.totalKrw > 0 ? (netWorth.byClass[key] / netWorth.totalKrw) * 100 : 0, 1)}%</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          {netWorth.unpricedCash.length > 0 ? (
+            <div className="mt-3 rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{copy.unpricedCash(netWorth.unpricedCash.length)}</div>
+          ) : null}
+          <div className="mt-3">
+            <TextLink href="/net-worth">{copy.openNetWorth}</TextLink>
+          </div>
+        </Card>
+      ) : null}
 
       <Card title={copy.marketBreakdown} info={copy.marketBreakdownInfo} className="mb-5">
         <div className="mb-5">

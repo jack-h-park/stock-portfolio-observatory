@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
+import { STOCK_WRAPPERS, loadAccountMap, tagRows } from './account-map.mjs'
 import { loadLocalEnv } from './env.mjs'
 import { portfolioDate, valuePortfolio } from './portfolio-snapshot.mjs'
 import { resolveCryptoFiles, resolveUsHoldingFiles, resolveUsTransactionFiles } from './source-files.mjs'
@@ -31,6 +32,90 @@ const refreshRunsPath = process.env.STOCK_REFRESH_RUNS_PATH || path.join(process
 // so a hand-entered assumption can be checked against the transactions the
 // ingest actually sees — see `us_ytd_realized_assumption_reviewed` below.
 const taxPolicyPath = process.env.STOCK_TAX_POLICY_PATH || path.join(process.cwd(), 'data/tax-policy.json')
+const accountMapPath = process.env.STOCK_ACCOUNT_MAP_PATH || path.join(process.cwd(), 'data/accounts.local.json')
+const accountMap = loadAccountMap(accountMapPath)
+const bankBalancesPath = process.env.STOCK_BANK_BALANCES_PATH || path.join(process.cwd(), 'data/bank-balances.json')
+// A bad deposit file must never abort the required stock ingest. Everything
+// read from it goes through normalizeBankBalances, which keeps only well-formed
+// elements and lists what it dropped; the cash_balances_readable check reports
+// the list, and nothing downstream guards its own input.
+function normalizeBankBalances(raw) {
+  const problems = []
+  const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
+  const strings = (v, label) => {
+    if (v === undefined) return []
+    if (!Array.isArray(v)) {
+      problems.push(`${label} is not an array`)
+      return []
+    }
+    return v.filter((x, i) => {
+      if (typeof x === 'string') return true
+      problems.push(`${label}[${i}] is not a string`)
+      return false
+    })
+  }
+  if (!isObject(raw)) {
+    problems.push('top level is not an object')
+    return { doc: { accounts: [], findings: [] }, problems }
+  }
+  let rawAccounts = raw.accounts
+  if (!Array.isArray(rawAccounts)) {
+    problems.push('accounts is not an array')
+    rawAccounts = []
+  }
+  const accounts = []
+  rawAccounts.forEach((a, i) => {
+    const label = `accounts[${i}]`
+    if (!isObject(a) || ['institution', 'account', 'kind', 'currency'].some((k) => typeof a[k] !== 'string')) {
+      problems.push(`${label} is not an object with string institution, account, kind and currency`)
+      return
+    }
+    if (!['KRW', 'USD'].includes(a.currency)) {
+      problems.push(`${label} has unsupported currency '${a.currency}'; account dropped`)
+      return
+    }
+    if (!['checking', 'savings', 'cma', 'deposit'].includes(a.kind)) {
+      problems.push(`${label} has unsupported kind '${a.kind}'; account dropped`)
+      return
+    }
+    let rawBalances = a.balances
+    if (!Array.isArray(rawBalances)) {
+      problems.push(`${label}.balances is not an array`)
+      rawBalances = []
+    }
+    const balances = rawBalances.filter((b, j) => {
+      const ok = isObject(b) && typeof b.date === 'string' && typeof b.balance === 'number' && Number.isFinite(b.balance)
+      if (!ok) problems.push(`${label}.balances[${j}] lacks a string date and a finite balance`)
+      return ok
+    })
+    accounts.push({
+      institution: a.institution,
+      account: a.account,
+      kind: a.kind,
+      currency: a.currency,
+      owner: typeof a.owner === 'string' && a.owner ? a.owner : 'self',
+      derived: Boolean(a.derived),
+      sources: strings(a.sources, `${label}.sources`),
+      balances: balances.map((b) => ({ date: b.date, balance: b.balance })),
+      continuityBreaks: strings(a.continuityBreaks, `${label}.continuityBreaks`),
+    })
+  })
+  const findings = raw.findings === null ? [] : strings(raw.findings, 'findings')
+  if (raw.findings === null) problems.push('findings is null')
+  return { doc: { accounts, findings }, problems }
+}
+let bankBalancesProblems = []
+const bankBalances = (() => {
+  if (!fs.existsSync(bankBalancesPath)) return { accounts: [], findings: [] }
+  try {
+    const { doc, problems } = normalizeBankBalances(JSON.parse(fs.readFileSync(bankBalancesPath, 'utf8')))
+    bankBalancesProblems = problems
+    return doc
+  } catch (error) {
+    bankBalancesProblems = [error instanceof Error ? error.message : String(error)]
+    return { accounts: [], findings: [] }
+  }
+})()
 const fxLedgerPath =
   process.env.STOCK_FX_LEDGER_PATH || path.join(outDir, 'fx-ledger.json')
 
@@ -528,6 +613,36 @@ const usPdfEvidence = loadUsPdfEvidence()
 const cryptoActivity = loadCryptoActivity()
 const cryptoPriceConfig = loadCryptoPrices()
 const fxLedger = loadFxLedger()
+// Deposits for the All-assets view. The Hana USD account is a deposit too, so it
+// is copied here from the FX ledger; fx_account_balances stays for /fx, which
+// reads it, until a later phase moves that page over. Built here, ahead of the
+// source_files registration that counts it.
+const cashRows = [
+  ...bankBalances.accounts.flatMap((account) =>
+    account.balances.map((b) => ({
+      institution: account.institution,
+      account: account.account,
+      owner: account.owner,
+      kind: account.kind,
+      currency: account.currency,
+      as_of_date: b.date,
+      balance: b.balance,
+      source: account.sources.join(', ') || path.basename(bankBalancesPath),
+      derived: account.derived ? 1 : 0,
+    }))
+  ),
+  ...(fxLedger.balances ?? []).map((b) => ({
+    institution: b.institution,
+    account: b.account,
+    owner: 'self',
+    kind: 'deposit',
+    currency: 'USD',
+    as_of_date: b.as_of_date,
+    balance: b.balance_usd,
+    source: b.source,
+    derived: 0,
+  })),
+]
 const manualMappings = loadManualMappings()
 // Loaded before the first normalizeTicker call: every ticker in this ingest,
 // from any source, is read through the rename table so the old and new symbol
@@ -559,8 +674,17 @@ function toBase(value, currency) {
   return value * fx.rate
 }
 
+// Every securities row gets its wrapper and owner here, in one place, so no
+// call site can forget to tag a row and leak a pension position into the
+// default (Stocks) view.
+const WRAPPED_TABLES = new Set(['holdings', 'tax_lots', 'realized_lots', 'transactions', 'dividends'])
+
 function insertMany(db, table, rows, columns) {
   if (rows.length === 0) return
+  if (WRAPPED_TABLES.has(table)) {
+    rows = tagRows(rows, accountMap)
+    columns = [...columns.filter((c) => c !== 'account_wrapper' && c !== 'owner'), 'account_wrapper', 'owner']
+  }
   const placeholders = columns.map(() => '?').join(', ')
   const stmt = db.prepare(`insert into ${table} (${columns.join(', ')}) values (${placeholders})`)
   const tx = db.transaction((items) => {
@@ -698,6 +822,19 @@ create table fx_events (
   note text
 );
 
+create table cash_balances (
+  id integer primary key,
+  institution text not null,
+  account text not null,
+  owner text not null default 'self',
+  kind text not null,
+  currency text not null,
+  as_of_date text not null,
+  balance real not null,
+  source text not null,
+  derived integer not null default 0
+);
+
 create table fx_account_balances (
   id integer primary key,
   institution text not null,
@@ -739,7 +876,10 @@ create table holdings (
   unrealized_gl_pct real,
   long_term_qty real,
   short_term_qty real,
-  lot_count integer
+  lot_count integer,
+  asset_class text not null default 'security',
+  account_wrapper text not null default 'taxable',
+  owner text not null default 'self'
 );
 
 create table tax_lots (
@@ -765,7 +905,9 @@ create table tax_lots (
   unit_cost real,
   holding_days integer,
   tax_term text,
-  source text
+  source text,
+  account_wrapper text not null default 'taxable',
+  owner text not null default 'self'
 );
 
 create table realized_lots (
@@ -814,7 +956,9 @@ create table realized_lots (
   -- always have, so Korea attributes there and leaves the native column null.
   dividends_native real,
   dividends_krw real,
-  source text
+  source text,
+  account_wrapper text not null default 'taxable',
+  owner text not null default 'self'
 );
 
 create table transactions (
@@ -846,7 +990,9 @@ create table transactions (
   -- they are not the same decision. Null wherever the source does not say.
   placed_agent text,
   source text,
-  page integer
+  page integer,
+  account_wrapper text not null default 'taxable',
+  owner text not null default 'self'
 );
 
 create table dividends (
@@ -869,7 +1015,9 @@ create table dividends (
   mapping_status text,
   mapping_note text,
   source text,
-  page integer
+  page integer,
+  account_wrapper text not null default 'taxable',
+  owner text not null default 'self'
 );
 
 create table validation_checks (
@@ -1149,6 +1297,20 @@ if (fs.existsSync(robinhoodSnapshotPath)) {
   db.prepare(
     'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
   ).run('robinhood_snapshot', fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, snapshot.accounts?.length ?? 0)
+}
+// Fingerprint only: the map holds account numbers and balances, which never go
+// into the database or the repo.
+if (fs.existsSync(accountMapPath)) {
+  const fp = fingerprint(accountMapPath)
+  db.prepare(
+    'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run('account_map', fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, Object.keys(accountMap.accounts).length)
+}
+if (fs.existsSync(bankBalancesPath)) {
+  const fp = fingerprint(bankBalancesPath)
+  db.prepare(
+    'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
+  ).run('bank_balances', fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, cashRows.length)
 }
 if (fs.existsSync(cryptoActivityPath)) {
   const fp = fingerprint(cryptoActivityPath)
@@ -4237,6 +4399,7 @@ insertMany(db, 'fx_events', fxLedger.events ?? [], [
   'page',
   'note',
 ])
+insertMany(db, 'cash_balances', cashRows, ['institution', 'account', 'owner', 'kind', 'currency', 'as_of_date', 'balance', 'source', 'derived'])
 insertMany(db, 'fx_account_balances', fxLedger.balances ?? [], [
   'institution',
   'account',
@@ -4302,6 +4465,28 @@ function check(name, ok, detail, severity = 'error') {
   checks.push({ name, status: ok ? 'pass' : 'fail', detail, severity })
 }
 
+// A wrapper outside the known four is what a typo in the account map looks like
+// (`irpp` for `irp`): the row would be stored, match no view filter, and vanish
+// from every total. Empty counts the same, since the column is NOT NULL but not
+// non-empty.
+const KNOWN_WRAPPERS = ['taxable', 'isa', 'irp', 'pension_savings']
+const badWrappers = []
+for (const table of WRAPPED_TABLES) {
+  const rows = db
+    .prepare(
+      `select account_wrapper as value, count(*) as n from ${table} where account_wrapper not in (${KNOWN_WRAPPERS.map(() => '?').join(', ')}) group by account_wrapper`
+    )
+    .all(...KNOWN_WRAPPERS)
+  for (const { value, n } of rows) badWrappers.push(`${table}: ${n} row(s) with wrapper '${value}'`)
+}
+const wrappersOk = badWrappers.length === 0
+check(
+  'wrapper_assigned',
+  wrappersOk,
+  wrappersOk ? 'every securities row has a known account wrapper' : badWrappers.join('; '),
+  'warning'
+)
+
 const fxEvents = fxLedger.events ?? []
 const fxEstimated = fxEvents.filter((row) => row.event_type === 'EXCHANGE' && row.rate_status === 'estimated')
 const fxBadEstimates = fxEstimated.filter(
@@ -4319,6 +4504,60 @@ const observedPreference = fxObservedPreference
     (fxObservedPreference.applied_rate - fxObservedPreference.reference_base_rate) /
       (fxObservedPreference.reference_customer_rate - fxObservedPreference.reference_base_rate)
   : null
+check(
+  'cash_balances_readable',
+  bankBalancesProblems.length === 0,
+  bankBalancesProblems.length > 0
+    ? `${bankBalancesPath}: ${bankBalancesProblems.length} problem(s): ${bankBalancesProblems.slice(0, 3).join('; ')}`
+    : fs.existsSync(bankBalancesPath) ? 'bank balances file read' : 'no bank balances file',
+  'warning'
+)
+const continuityBreaks = bankBalances.accounts.flatMap((a) => a.continuityBreaks.map((b) => `${a.account} ${b}`))
+check(
+  'cash_balance_continuity',
+  continuityBreaks.length === 0,
+  continuityBreaks.length === 0 ? 'every running-balance statement is continuous' : `${continuityBreaks.length} break(s): ${continuityBreaks.slice(0, 5).join('; ')}`,
+  'warning'
+)
+// The two anchor messages scripts/extract-bank-statements.py emits; a parse
+// failure is a different finding and is not judged here.
+const anchorFindings = bankBalances.findings.filter((f) => f.includes('no anchor balance') || f.includes('anchor is unusable'))
+check(
+  'cash_anchor_present',
+  anchorFindings.length === 0,
+  anchorFindings.length === 0 ? 'every account without a balance column has a usable anchor' : anchorFindings.join('; '),
+  'warning'
+)
+const otherFindings = bankBalances.findings.filter((f) => !anchorFindings.includes(f))
+check(
+  'cash_statements_parsed',
+  otherFindings.length === 0,
+  otherFindings.length === 0
+    ? 'every bank statement was parsed'
+    : `${otherFindings.length} finding(s): ${otherFindings.slice(0, 3).join('; ')}`,
+  'warning'
+)
+// Phase-2 guard. Rows under irp or pension_savings are stored, but the snapshot
+// writer, publish-sheet, backfill and the lot, transaction, dividend and
+// realized reads do not filter on wrapper yet, so such a row would leak into
+// the stock figures. Fails until those filters exist. The stock set is
+// STOCK_WRAPPERS in scripts/account-map.mjs and STOCK_WRAPPER_SQL in
+// lib/adapters/portfolio-db.ts.
+const nonStockRows = []
+for (const table of WRAPPED_TABLES) {
+  const n = db
+    .prepare(`select count(*) as n from ${table} where account_wrapper not in (${STOCK_WRAPPERS.map(() => '?').join(', ')})`)
+    .get(...STOCK_WRAPPERS).n
+  if (n > 0) nonStockRows.push(`${table}: ${n} row(s)`)
+}
+check(
+  'non_stock_wrappers_absent',
+  nonStockRows.length === 0,
+  nonStockRows.length === 0
+    ? 'no row sits outside the taxable and isa wrappers'
+    : `${nonStockRows.join('; ')} outside taxable/isa; phase 2 filters (snapshot writer, publish-sheet, backfill, lot/transaction/dividend/realized reads) are not in place yet`,
+  'warning'
+)
 check('fx_ledger_present', fxEvents.length > 0, `${fxEvents.length} normalized FX event(s)`, 'warning')
 check(
   'fx_estimates_have_provenance',

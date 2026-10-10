@@ -92,7 +92,7 @@ DATA_DIR = Path(os.environ.get("STOCK_DATA_DIR", Path.cwd() / "private-data"))
 INBOX_DIR = DATA_DIR / "inbox"
 PDF_PASSWORD = os.environ.get("STOCK_PDF_PASSWORD", "")
 
-# The six directories docs/data-sources.md names. Keep in step with
+# The directories docs/data-sources.md names. Keep in step with
 # scripts/push-sources.sh, which pushes exactly these.
 DIR_KR = "kr-statements"
 DIR_US_HOLDINGS = "us-holdings"
@@ -101,6 +101,7 @@ DIR_US_TAX = "us-tax-documents"
 DIR_BITHUMB = "crypto-bithumb"
 DIR_RH_CRYPTO = "crypto-robinhood"
 DIR_FX = "fx-statements"
+DIR_BANK = "bank-statements"
 
 # What lands in the inbox but is not a source. macOS writes .DS_Store into any
 # folder a Finder window has opened; a browser writes .crdownload/.part while a
@@ -431,7 +432,7 @@ def sha256_of(path):
 class Plan:
     """Where one inbox file goes, and the evidence that says so."""
 
-    def __init__(self, subdir, name, evidence, group=None, order=None):
+    def __init__(self, subdir, name, evidence, group=None, order=None, transform=None):
         self.subdir = subdir
         self.name = name
         self.evidence = evidence
@@ -440,6 +441,9 @@ class Plan:
         # all of them and can number them.
         self.group = group
         self.order = order
+        # Set when the move step must write a derived copy instead of renaming
+        # (the encrypted 토스뱅크 workbook is filed decrypted).
+        self.transform = transform
 
 
 class Refusal:
@@ -1188,6 +1192,144 @@ def detect_robinhood_transactions(doc):
     )
 
 
+def _row_dates(lines, parse):
+    found = []
+    for line in lines:
+        cell = line.split(",", 1)[0].strip().strip('"')
+        day = parse(cell)
+        if day:
+            found.append(day)
+    return found
+
+
+def detect_chase_checking(doc):
+    """Chase deposit-account activity → bank-statements/chase-checking-<first>-<last>.csv
+
+    Different header from the brokerage exports detect_chase claims. Rows are
+    newest first; the name uses the earliest and latest row dates.
+    """
+    if doc.suffix != ".csv" or not doc.lines:
+        return None
+    if not doc.lines[0].startswith("Details,Posting Date,Description,Amount,Type,Balance"):
+        return None
+    days = []
+    for line in doc.lines[1:]:
+        parts = line.split(",")
+        if len(parts) > 1:
+            day = parse_mdy(parts[1].strip())
+            if day:
+                days.append(day)
+    if not days:
+        return Refusal("Chase deposit activity export", "it has no dated rows", "re-export a window that holds activity")
+    return Plan(DIR_BANK, f"chase-checking-{compact(min(days))}-{compact(max(days))}.csv",
+                [f"rows {iso(min(days))} … {iso(max(days))}", "header Details,Posting Date,…,Balance"])
+
+
+def detect_boa(doc):
+    """Bank of America statement CSV → bank-statements/boa-checking-<begin>-<end>.csv"""
+    if doc.suffix != ".csv" or not doc.lines:
+        return None
+    if not doc.lines[0].startswith("Description,,Summary Amt."):
+        return None
+    text = "\n".join(doc.lines[:6])
+    begin = re.search(r"Beginning balance as of (\d{2}/\d{2}/\d{4})", text)
+    end = re.search(r"Ending balance as of (\d{2}/\d{2}/\d{4})", text)
+    if not (begin and end):
+        return Refusal("Bank of America statement CSV", "it has no Beginning/Ending balance lines to take a period from")
+    start, stop = parse_mdy(begin.group(1)), parse_mdy(end.group(1))
+    return Plan(DIR_BANK, f"boa-checking-{compact(start)}-{compact(stop)}.csv",
+                [f"declared period {iso(start)} … {iso(stop)}"])
+
+
+ROBINHOOD_BANK_CHECKING = ("to robinhood credit card", "to brokerage", "fid bkg svc")
+ROBINHOOD_BANK_SAVINGS = ("from personal checking", "interest payment")
+
+
+def detect_robinhood_bank(doc):
+    """Robinhood checking / savings CSV → bank-statements/robinhood-bank-<kind>-<first>-<last>.csv
+
+    The export has no account column and no balance, so the kind is read off the
+    rows. When the rows do not say, it is refused rather than guessed.
+    """
+    if doc.suffix != ".csv" or not doc.lines or doc.lines[0].strip() != "Date,Description,Amount":
+        return None
+    days = _row_dates(doc.lines[1:], parse_ymd)
+    body = "\n".join(doc.lines[1:]).lower()
+    savings = any(marker in body for marker in ROBINHOOD_BANK_SAVINGS)
+    checking = any(marker in body for marker in ROBINHOOD_BANK_CHECKING)
+    if savings == checking or not days:
+        return Refusal(
+            "Robinhood bank export",
+            "the rows do not say whether this is checking or savings (or have no dates)",
+            "name it by hand: bank-statements/robinhood-bank-<checking|savings>-<first>-<last>.csv",
+        )
+    kind = "savings" if savings else "checking"
+    return Plan(DIR_BANK, f"robinhood-bank-{kind}-{compact(min(days))}-{compact(max(days))}.csv",
+                [f"rows {iso(min(days))} … {iso(max(days))}", f"kind {kind} from the row descriptions"])
+
+
+def detect_mg_deposit(doc):
+    """새마을금고 거래내역조회 (.xls) → bank-statements/mg-deposit-<from>-<to>.xls
+
+    An .xls is not read cell by cell here (that needs soffice); its strings are
+    stored as UTF-16, so the title and the period line are found in the bytes.
+    """
+    if doc.suffix != ".xls":
+        return None
+    raw = doc.path.read_bytes()
+    if not raw.startswith(bytes.fromhex("d0cf11e0a1b11ae1")):
+        return None
+    if not all(n.encode("utf-16-le") in raw for n in ("거래내역조회", "통장(상품)명")):
+        return None
+    # Decode at both byte alignments: the UTF-16 run can start on an odd offset.
+    pattern = r"조회기간\s*:\s*(\d{4})\.(\d{2})\.(\d{2})\s*~\s*(\d{4})\.(\d{2})\.(\d{2})"
+    period = None
+    for offset in (0, 1):
+        period = re.search(pattern, raw[offset:].decode("utf-16-le", errors="ignore"))
+        if period:
+            break
+    if not period:
+        return Refusal("새마을금고 거래내역조회", "it has no 조회기간 line to take a period from")
+    g = [int(x) for x in period.groups()]
+    start, stop = date(g[0], g[1], g[2]), date(g[3], g[4], g[5])
+    return Plan(DIR_BANK, f"mg-deposit-{compact(start)}-{compact(stop)}.xls",
+                [f"조회기간 {iso(start)} … {iso(stop)}"])
+
+
+def detect_tossbank(doc):
+    """토스뱅크 거래내역 (.xlsx, password-protected) → bank-statements/tossbank-<download>.xlsx, decrypted.
+
+    This is the one detector that reads the file NAME, which every other
+    detector refuses to believe. The workbook is encrypted, so its contents
+    reveal nothing but "an encrypted Office file"; the name is the only signal
+    left that it is ours. The encryption check keeps a plain workbook that
+    merely carries the word from being claimed. The password is read here, at
+    run time, because load_local_env() has populated the environment by then.
+    """
+    if doc.suffix != ".xlsx":
+        return None
+    raw = doc.path.read_bytes()[: 1 << 20]
+    if not (raw.startswith(bytes.fromhex("d0cf11e0a1b11ae1")) and "EncryptedPackage".encode("utf-16-le") in raw):
+        return None
+    if "토스뱅크" not in nfc(doc.path.name):
+        return None  # an encrypted workbook from somewhere else is not ours to claim
+    password = os.environ.get("STOCK_TOSSBANK_PASSWORD", "")
+    if not password:
+        return Refusal(
+            "토스뱅크 export",
+            "it is password-protected and STOCK_TOSSBANK_PASSWORD is not set",
+            "set STOCK_TOSSBANK_PASSWORD in .env.local",
+        )
+    try:
+        import msoffcrypto  # noqa: F401  laptop only; the ops host never sees the encrypted file
+    except ImportError:
+        return Refusal("토스뱅크 export", "it is encrypted and msoffcrypto is not installed on this machine",
+                       "pip install msoffcrypto-tool")
+    return Plan(DIR_BANK, f"tossbank-{compact(doc.downloaded)}.xlsx",
+                ["password-protected; filed decrypted", f"download {iso(doc.downloaded)}"],
+                transform="tossbank-decrypt")
+
+
 DETECTORS = [
     ("미래에셋 거래내역증명서", detect_mirae_transactions),
     ("미래에셋 잔고증명서", detect_mirae_balance),
@@ -1204,6 +1346,11 @@ DETECTORS = [
     ("Fidelity positions CSV", detect_fidelity_positions),
     ("Merrill holdings / transactions CSV", detect_merrill),
     ("Robinhood transactions CSV", detect_robinhood_transactions),
+    ("Chase deposit activity CSV", detect_chase_checking),
+    ("Bank of America statement CSV", detect_boa),
+    ("Robinhood checking / savings CSV", detect_robinhood_bank),
+    ("새마을금고 거래내역조회 (.xls)", detect_mg_deposit),
+    ("토스뱅크 거래내역 (.xlsx, encrypted)", detect_tossbank),
 ]
 
 
@@ -1285,6 +1432,28 @@ def inbox_files():
     )
 
 
+def decrypt_tossbank(source, destination):
+    """Decrypt into a temp file beside the destination, then swap it into place.
+
+    Nothing is left at the destination unless decryption finished, and the
+    source is removed only after that. Any exception removes the temp file.
+    """
+    import msoffcrypto
+
+    temp = destination.with_name(f".{destination.name}.part")
+    try:
+        with source.open("rb") as handle:
+            office = msoffcrypto.OfficeFile(handle)
+            office.load_key(password=os.environ["STOCK_TOSSBANK_PASSWORD"])
+            with temp.open("wb") as out:
+                office.decrypt(out)
+        os.replace(temp, destination)
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        raise
+    source.unlink()
+
+
 def main(argv):
     dry_run = "--dry-run" in argv or "-n" in argv
     unknown = [a for a in argv if a not in ("--dry-run", "-n", "-h", "--help")]
@@ -1347,17 +1516,31 @@ def main(argv):
             continue
         filed.append((path, destination, shown, plan))
 
+    failed = []
     if filed:
         print("\nfiled")
-        for path, destination, shown, plan in filed:
+        for path, destination, shown, plan in list(filed):
+            if not dry_run:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if plan.transform == "tossbank-decrypt":
+                    try:
+                        decrypt_tossbank(path, destination)
+                    except Exception as error:  # wrong password, corrupt file, missing module
+                        failed.append((path, shown, f"{type(error).__name__}: {error}"))
+                        filed.remove((path, destination, shown, plan))
+                        continue
+                else:
+                    shutil.move(str(path), str(destination))
             print(f"  {path.name} → {shown}")
             for note in plan.evidence:
                 print(f"      {note}")
             if docs[path].encrypted:
                 print("      opened with STOCK_PDF_PASSWORD")
-            if not dry_run:
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(path), str(destination))
+
+    if failed:
+        print("\nFAILED — left in the inbox, nothing written")
+        for path, shown, why in failed:
+            print(f"  {path.name} → {shown}: {why}")
 
     if skipped:
         print("\nalready filed — left alone")
@@ -1388,11 +1571,11 @@ def main(argv):
             print(f"      no detector claimed it; looked for: "
                   f"{', '.join(label for label, _ in DETECTORS)}")
 
-    remaining = len(skipped) + len(conflicts) + len(refusals) + len(unidentified)
+    remaining = len(skipped) + len(conflicts) + len(refusals) + len(unidentified) + len(failed)
     print(
         f"\n{len(filed)} filed{' (dry run — nothing moved)' if dry_run and filed else ''}, "
         f"{len(skipped)} already filed, {len(conflicts)} conflict(s), "
-        f"{len(refusals) + len(unidentified)} unidentified — "
+        f"{len(refusals) + len(unidentified)} unidentified, {len(failed)} failed — "
         f"{remaining + (len(filed) if dry_run else 0)} file(s) still in the inbox"
     )
     # Always 0 unless the run itself failed. An unidentified file is a message

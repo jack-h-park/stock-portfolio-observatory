@@ -100,3 +100,12 @@ test('the summary counts accounts per market and spans every range', () => {
   assert.equal(summary.firstDate, '2019-03-04')
   assert.equal(summary.lastDate, '2026-03-02')
 })
+
+test('cash balance spans are their own kind and do not merge with securities rows', () => {
+  const rows = [
+    { kind: 'balances' as const, market: 'CASH', brokerage: 'chase', account: 'Chase checking', accountType: 'checking', start: '2026-07-01', end: '2026-10-01', count: 40 },
+  ]
+  const [account] = groupAccountRanges(rows)
+  assert.equal(account.ranges.balances?.count, 40)
+  assert.equal(account.market, 'CASH')
+})

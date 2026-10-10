@@ -136,6 +136,7 @@ export default async function AccountsPage() {
                   <span className="text-ink-3">{copy.none}</span>
                 ),
             },
+            { key: 'balances', label: copy.columns.balances, priority: 'secondary', render: (row: AccountDataRange) => span(row.ranges.balances) },
             { key: 'realized', label: copy.columns.realized, priority: 'tertiary', render: (row: AccountDataRange) => span(row.ranges.realized) },
           ]}
         />

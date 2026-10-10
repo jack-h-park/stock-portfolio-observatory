@@ -18,6 +18,7 @@ import { getPageCopy } from '@/lib/ui-copy'
  */
 export const ROUTE_HREFS = [
   '/',
+  '/net-worth',
   '/daily-briefing',
   '/holdings',
   '/review',
