@@ -319,12 +319,19 @@ make status / make stop / make logs
 **Redeploy after code updates:**
 
 ```bash
-make redeploy          # git pull --ff-only -> pnpm build -> service restart -> status
+make redeploy          # git pull --ff-only -> pnpm install --frozen-lockfile -> pnpm build -> refresh -> service restart -> status
 ```
 
 `make redeploy` is the canonical live-update path. `pnpm build` alone only writes
 a new `.next/` build; the running `next start` process keeps serving the old build
 until launchd is restarted with `make restart` or `make redeploy`.
+
+`make redeploy` also installs dependencies from the lockfile on every run, so a
+pull that bumps a package reaches `node_modules` before the build. The install
+compiles better-sqlite3 with the node the service runs under, and redeploy checks
+that the native module loads (rebuilding it once if not) before it builds. An
+install or load-check failure is reported like any other failure after the pull,
+including the MIXED STATE message when the checkout moved.
 
 Prefer `make <target>` over `pnpm <script>` when driving the host over SSH.
 A non-interactive `ssh host '...'` does not source the login profile, so `pnpm`

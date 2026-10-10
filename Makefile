@@ -101,6 +101,21 @@ restart:
 #
 # Schema and snapshot formulas ship with the app. Refresh before restart so
 # hermes-runner never serves a new reader against pre-migration trend rows.
+#
+# The install runs on every redeploy, not only when package.json or
+# pnpm-lock.yaml changed: with nothing to do it takes a few seconds, and a
+# diff of $before..$after misses the re-run that the MIXED STATE message asks
+# for, where the pull is a no-op but node_modules was never brought up to the
+# lockfile. On 2026-10-10 a dependency-bump PR deployed with a redeploy that had
+# no install step; it reported success while node_modules kept the old,
+# vulnerable versions until an install by hand.
+#
+# better-sqlite3 is a native module, built by the install script that
+# pnpm.onlyBuiltDependencies allows. $(PNPM) puts NODE_BIN first on PATH, so it
+# compiles against the same node the plist runs `next start` under. The load
+# check proves that before the build: if the binding is missing or was built for
+# another node, one rebuild is tried, and a second failure stops the redeploy
+# instead of letting the service crash on its first query.
 redeploy: require-tools
 	@set -e; \
 	before=$$(git rev-parse HEAD); \
@@ -119,6 +134,10 @@ redeploy: require-tools
 	  fi; \
 	  exit 1; \
 	}; \
+	$(PNPM) install --frozen-lockfile || fail "pnpm install --frozen-lockfile"; \
+	sqlite_ok() { $(PNPM) exec node -e "new (require('better-sqlite3'))(':memory:').close()"; }; \
+	sqlite_ok || { echo "better-sqlite3 does not load under $(NODE_EXE); rebuilding it"; \
+	  $(PNPM) rebuild better-sqlite3 && sqlite_ok; } || fail "better-sqlite3 load check"; \
 	$(PNPM) build   || fail "pnpm build"; \
 	$(PNPM) refresh || fail "pnpm refresh"; \
 	launchctl kickstart -k gui/$(shell id -u)/$(PLIST_LABEL) || fail "launchctl kickstart"
