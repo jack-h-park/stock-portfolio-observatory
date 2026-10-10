@@ -1834,7 +1834,11 @@ if (tossSnapshot?.accounts?.length) {
   const fills = []
   for (const account of tossSnapshot.accounts) {
     for (const order of account.orders ?? []) {
-      if (text(order.status) !== 'FILLED') continue
+      // Shares moved if any filled, whatever the order's final status. The status
+      // says how the order ENDED: a limit sell for 196 shares that filled 61 at
+      // the close and had the rest rejected reads REJECTED, and skipping it left
+      // those 61 open in the lots with no live position behind them. An order
+      // that filled nothing is dropped below by its zero quantity.
       const exec = order.execution ?? {}
       // filledAt over orderedAt: an order placed before the close and filled the
       // next session belongs to the day the shares actually moved, which is the

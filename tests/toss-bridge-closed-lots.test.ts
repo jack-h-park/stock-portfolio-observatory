@@ -60,6 +60,18 @@ function sell(symbol: string, date: string, quantity: number, price: number) {
   }
 }
 
+// An order Toss closed before it was complete: part filled, the rest rejected
+// or cancelled. The status names how the order ended, not whether shares moved,
+// so the shares that did fill are only visible in `execution`.
+function partlyFilledSell(symbol: string, date: string, ordered: number, filled: number, price: number, status = 'REJECTED') {
+  return {
+    symbol, side: 'SELL', status, orderType: 'LIMIT', price, quantity: ordered, currency: 'KRW',
+    orderedAt: `${date}T06:26:00Z`, canceledAt: `${date}T06:34:00Z`,
+    execution: { filledAt: `${date}T06:30:07Z`, filledQuantity: filled, filledAmount: filled * price,
+      averageFilledPrice: price, commission: 0, tax: 0 },
+  }
+}
+
 function holding(symbol: string, quantity: number, unit: number) {
   return {
     symbol, name: symbol, currency: 'KRW', marketCountry: 'KR', quantity, averagePurchasePrice: unit,
@@ -68,7 +80,7 @@ function holding(symbol: string, quantity: number, unit: number) {
   }
 }
 
-function ingest(soldQuantity = 10) {
+function ingest(soldQuantity = 10, soldOrders?: object[]) {
   const dir = mkdtempSync(path.join(tmpdir(), 'toss-bridge-'))
   writeSheetPayloads(dir)
   const kr = path.join(dir, 'kr-statements')
@@ -91,7 +103,7 @@ function ingest(soldQuantity = 10) {
       fetchedAt: new Date().toISOString(),
       accounts: [{
         holdings: { items: [holding('KEPT', 2, 2000)] },
-        orders: [sell('SOLD', '2026-09-23', soldQuantity, 1500), sell('KEPT', '2026-09-23', 2, 2500)],
+        orders: [...(soldOrders ?? [sell('SOLD', '2026-09-23', soldQuantity, 1500)]), sell('KEPT', '2026-09-23', 2, 2500)],
       }],
     }),
     'utf8'
@@ -143,4 +155,30 @@ test('a lot the bridge only partly closes, with no live position, is still named
   assert.match(String(provenance?.detail), /1 open lot\(s\) have no live position at all \(SOLD\)/)  // How old the statement behind the lots is, so a disagreement reads as the
   // drift of a dated source rather than as an unexplained defect.
   assert.match(String(provenance?.detail), /statements through 2026-07-02 \(\d+d ago\) plus 2 order fill\(s\) bridged since/)
+})
+
+// A limit sell for the whole position filled 4 shares at the close and Toss
+// rejected the rest; a market sell the next day took the other 6. The bridge
+// read only FILLED orders, so the 4 never left the lots: the position read as
+// closed at the broker and still open here, and the 4 shares' gain was missing.
+for (const status of ['REJECTED', 'CANCELED']) {
+  test(`shares filled on a ${status} order still close lots`, () => {
+    const { lots, realized, check } = ingest(10, [
+      partlyFilledSell('SOLD', '2026-09-22', 10, 4, 1500, status),
+      sell('SOLD', '2026-09-23', 6, 1500),
+    ])
+
+    assert.deepEqual(lots.map((l) => [l.ticker, l.open_quantity]), [['KEPT', 2]])
+    const sold = realized.filter((r) => r.ticker === 'SOLD')
+    assert.equal(sold.reduce((sum, r) => sum + r.quantity_sold, 0), 10)
+    assert.equal(sold.reduce((sum, r) => sum + r.realized_gl_krw, 0), 5000)
+    assert.equal(check('toss_holdings_lots_provenance')?.status, 'pass')
+  })
+}
+
+// The other side of the same rule: an order that ended without filling
+// anything moved no shares, whatever its status.
+test('a rejected order that filled nothing closes no lots', () => {
+  const { lots } = ingest(10, [partlyFilledSell('SOLD', '2026-09-22', 10, 0, 1500), sell('SOLD', '2026-09-23', 6, 1500)])
+  assert.deepEqual(lots.map((l) => [l.ticker, l.open_quantity]), [['KEPT', 2], ['SOLD', 4]])
 })
