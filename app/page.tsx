@@ -323,7 +323,13 @@ export default async function OverviewPage({
   const latestSnapshot = trendRows[trendRows.length - 1]
   const latestTrendCoverage = latestSnapshot?.[selectedCoverageField] ?? null
   const latestPositionCoverage = selectedScope === 'global' ? latestSnapshot?.position_coverage ?? null : null
-  const missingTrendPoints = trendData.length - valuedTrendData.length
+  // In the deposits scope a date before the first balance is not a gap: there was
+  // nothing to value yet, and "gap" here means low price coverage. Count from
+  // the date deposits start.
+  const missingTrendPoints =
+    selectedScope === 'deposits' && deposits?.since
+      ? trendData.filter((point) => point.date >= deposits.since! && typeof point.value !== 'number').length
+      : trendData.length - valuedTrendData.length
   const trendValueLabel = (value: number) => selectedMetric.key === 'return_pct' ? `${fmtNumber(value, 1)}%` : money(value * 1_000_000, currencyPreferences.displayCurrency)
   const trendChangeLabel = selectedMetric.key === 'return_pct'
     ? `${trendChange >= 0 ? '+' : ''}${fmtNumber(trendChange, 1)}%p`
@@ -667,7 +673,7 @@ export default async function OverviewPage({
         <div className="mt-1 text-label text-ink-3">
           {trendData.length ? copy.trendRangeSummary(trendData[0].date, trendData[trendData.length - 1].date, valuedTrendData.length, trendData.length, missingTrendPoints) : copy.snapshotsOnce}
         </div>
-        {deposits?.since ? <div className="mt-1 text-label text-ink-3">{copy.depositsSince(deposits.since)}</div> : null}
+        {deposits?.since ? <div className="mt-1 text-label text-ink-3">{copy.depositsSince(deposits.since)} {copy.depositsInGlobal}</div> : null}
         <div className="mt-2 text-label leading-relaxed text-ink-3">
           {copy.trendExplanation}
         </div>
