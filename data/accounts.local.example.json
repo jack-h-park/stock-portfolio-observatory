@@ -1,0 +1,13 @@
+{
+  "accounts": {
+    "Example Pension IRP": { "wrapper": "irp", "owner": "self" }
+  },
+  "bankAccounts": [
+    { "institution": "chase", "last4": "0000", "kind": "checking", "currency": "USD", "alias": "Chase checking" },
+    { "institution": "robinhood-bank", "kind": "checking", "currency": "USD", "alias": "Robinhood checking" },
+    { "institution": "robinhood-bank", "kind": "savings", "currency": "USD", "alias": "Robinhood savings" }
+  ],
+  "anchors": [
+    { "alias": "Robinhood checking", "date": "2026-01-31", "balance": 100.0 }
+  ]
+}
