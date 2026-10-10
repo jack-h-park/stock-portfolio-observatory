@@ -12,8 +12,9 @@ export type NetWorth = {
   history: { month: string; stocks: number | null; cash: number }[]
 }
 
-const toKrw = (currency: 'KRW' | 'USD', amount: number, usdKrw: number | null) =>
-  currency === 'KRW' ? amount : usdKrw && usdKrw > 0 ? amount * usdKrw : null
+// Only KRW and USD are priced. Any other currency is unpriced rather than guessed at.
+const toKrw = (currency: string, amount: number, usdKrw: number | null) =>
+  currency === 'KRW' ? amount : currency === 'USD' && usdKrw && usdKrw > 0 ? amount * usdKrw : null
 
 export function summarizeNetWorth(input: { stocksKrw: number; cryptoKrw: number; cash: CashAccountBalance[]; usdKrw: number | null }): Omit<NetWorth, 'history'> {
   const cash = input.cash.map((row) => ({ ...row, krw: toKrw(row.currency, row.balance, input.usdKrw) }))
@@ -28,15 +29,16 @@ export function summarizeNetWorth(input: { stocksKrw: number; cryptoKrw: number;
 }
 
 export function monthEndCash(
-  series: { account: string; currency: 'KRW' | 'USD'; date: string; balance: number }[],
+  series: { institution: string; account: string; currency: 'KRW' | 'USD'; date: string; balance: number }[],
   rateAt: (date: string) => number | null
 ): { month: string; cash: number }[] {
   const months = [...new Set(series.map((row) => row.date.slice(0, 7)))].sort()
-  const accounts = [...new Set(series.map((row) => row.account))]
+  const key = (row: { institution: string; account: string }) => `${row.institution}|${row.account}`
+  const accounts = [...new Set(series.map(key))]
   return months.map((month) => {
     let cash = 0
     for (const account of accounts) {
-      const last = series.filter((row) => row.account === account && row.date.slice(0, 7) <= month).sort((a, b) => a.date.localeCompare(b.date)).at(-1)
+      const last = series.filter((row) => key(row) === account && row.date.slice(0, 7) <= month).sort((a, b) => a.date.localeCompare(b.date)).at(-1)
       if (!last) continue
       const krw = toKrw(last.currency, last.balance, rateAt(last.date))
       if (krw != null) cash += krw

@@ -7,7 +7,10 @@ import type { TaxPlanningLot } from '@/lib/tax-planning'
 import { monthEndCash, summarizeNetWorth, type NetWorth } from '@/lib/net-worth'
 import { groupAccountRanges, type AccountDataRange, type RangeKind, type RangeRow } from '@/lib/account-ranges'
 
-/** The default (Stocks) view: taxable and ISA securities only. Every holdings total goes through this. */
+/**
+ * The default (Stocks) view: taxable and ISA securities only. Every holdings total goes through this.
+ * Keep in step with STOCK_WRAPPERS in scripts/account-map.mjs.
+ */
 export const STOCK_WRAPPER_SQL = "account_wrapper in ('taxable','isa')"
 
 /** The same filter with the column qualified, for a query that aliases holdings or joins another table that has the column. */
@@ -952,25 +955,23 @@ function withCumulativeRealized(conn: Database.Database, snapshots: PortfolioSna
   })
 }
 
-export function getNetWorth(): NetWorth {
-  const overview = getOverview()
+export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWorth {
+  const overview = precomputed ?? getOverview()
   const conn = db()
   try {
     const hasTable = (name: string) =>
       Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(name))
-    // One row per account: the newest date, and the highest id when a date repeats.
+    // One row per (institution, account): the newest date, and the highest id when a date repeats.
     const latest = hasTable('cash_balances')
       ? (conn
           .prepare(
-            `select c.institution, c.account, c.kind, c.currency, c.as_of_date as asOfDate, c.balance, c.derived
-               from cash_balances c
-              where c.id = (
-                select x.id from cash_balances x
-                 where x.account = c.account
-                 order by x.as_of_date desc, x.id desc
-                 limit 1
-              )
-              order by c.account`
+            `select institution, account, kind, currency, as_of_date as asOfDate, balance, derived
+               from (
+                 select *, row_number() over (partition by institution, account order by as_of_date desc, id desc) as rn
+                   from cash_balances
+               )
+              where rn = 1
+              order by institution, account`
           )
           .all() as any[])
       : []
@@ -984,7 +985,7 @@ export function getNetWorth(): NetWorth {
       cash: latest.map((row) => ({ ...row, derived: Boolean(row.derived) })),
     })
     const series = hasTable('cash_balances')
-      ? (conn.prepare('select account, currency, as_of_date as date, balance from cash_balances order by as_of_date').all() as any[])
+      ? (conn.prepare('select institution, account, currency, as_of_date as date, balance from cash_balances order by as_of_date, id').all() as any[])
       : []
     const rates = hasTable('historical_fx_rates')
       ? (conn.prepare('select price_date, rate from historical_fx_rates order by price_date').all() as { price_date: string; rate: number }[])

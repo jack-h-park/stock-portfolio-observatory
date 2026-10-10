@@ -6,12 +6,21 @@
 // fresh checkout have none, and every account then falls back to the label rule.
 import fs from 'node:fs'
 
-/** The wrappers the default (Stocks) view shows. Everything else needs the All-assets view. */
+/**
+ * The wrappers the default (Stocks) view shows. Everything else needs the All-assets view.
+ * Keep in step with STOCK_WRAPPER_SQL in lib/adapters/portfolio-db.ts.
+ */
 export const STOCK_WRAPPERS = Object.freeze(['taxable', 'isa'])
 
 export function loadAccountMap(file) {
   if (!file || !fs.existsSync(file)) return { accounts: {}, bankAccounts: [], anchors: [] }
-  const raw = JSON.parse(fs.readFileSync(file, 'utf8'))
+  let raw
+  try {
+    raw = JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch (e) {
+    // Fail closed: an empty map would silently re-tag every account as taxable.
+    throw new Error(`account map ${file} is not valid JSON: ${e.message}`)
+  }
   return {
     accounts: raw.accounts ?? {},
     bankAccounts: raw.bankAccounts ?? [],

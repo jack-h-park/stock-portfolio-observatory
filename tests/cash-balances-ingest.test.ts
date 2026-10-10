@@ -134,7 +134,7 @@ test('no bank-balances file is an empty table and passing checks', () => {
   const db = ingest()
   assert.equal((db.prepare('select count(*) as n from cash_balances').get() as any).n, 0)
   const statuses = (db.prepare("select status from validation_checks where name like 'cash_%'").all() as any[]).map((c) => c.status)
-  assert.deepEqual(statuses, ['pass', 'pass', 'pass'])
+  assert.deepEqual(statuses, ['pass', 'pass', 'pass', 'pass'])
 })
 
 for (const [label, content] of [
@@ -204,3 +204,50 @@ for (const [label, doc, rows] of [
     assert.match(check.detail, /bank-balances\.json/)
   })
 }
+
+test('cash_statements_parsed fails on extractor findings that are not anchor messages', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'cash-src-'))
+  const file = path.join(dir, 'bank-balances.json')
+  const statusOf = () =>
+    (ingest({ STOCK_BANK_BALANCES_PATH: file }).prepare("select status, severity, detail from validation_checks where name = 'cash_statements_parsed'").get() as any)
+  for (const finding of [
+    'x.csv could not be parsed',
+    'y.xls parsed to zero rows',
+    'no soffice binary; XLS statements skipped',
+    'z.xls XLS conversion failed',
+  ]) {
+    writeFileSync(file, JSON.stringify({ accounts: [], findings: [finding] }))
+    const check = statusOf()
+    assert.equal(check.status, 'fail', finding)
+    assert.equal(check.severity, 'warning')
+    assert.ok(check.detail.includes(finding))
+  }
+  writeFileSync(file, JSON.stringify({ accounts: [], findings: ['Chase checking: no anchor balance in the account map; balances not derived'] }))
+  assert.equal(statusOf().status, 'pass')
+})
+
+test('non_stock_wrappers_absent passes by default and fails while a non-stock wrapper has rows', () => {
+  const pass = ingestAccounts({}).prepare("select status, severity from validation_checks where name = 'non_stock_wrappers_absent'").get() as any
+  assert.equal(pass.status, 'pass')
+  assert.equal(pass.severity, 'warning')
+  const fail = ingestAccounts({ accounts: { 'Alpha Pension Acct': { wrapper: 'irp' } } })
+    .prepare("select status, severity, detail from validation_checks where name = 'non_stock_wrappers_absent'").get() as any
+  assert.equal(fail.status, 'fail')
+  assert.equal(fail.severity, 'warning')
+  assert.match(fail.detail, /transactions/)
+  assert.match(fail.detail, /phase 2/)
+})
+
+test('accounts with an unsupported currency or kind are dropped and reported', () => {
+  const { check, rows } = ingestBank({
+    accounts: [
+      GOOD_ACCOUNT,
+      { ...GOOD_ACCOUNT, account: 'Euro acct', currency: 'EUR' },
+      { ...GOOD_ACCOUNT, account: 'Odd kind acct', kind: 'brokerage' },
+    ],
+    findings: [],
+  })
+  assert.deepEqual(rows.map((r) => r.account), ['Chase checking'])
+  assert.equal(check.status, 'fail')
+  assert.match(check.detail, /EUR|currency/)
+})

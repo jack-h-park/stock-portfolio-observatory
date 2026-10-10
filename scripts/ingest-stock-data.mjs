@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
-import { loadAccountMap, tagRows } from './account-map.mjs'
+import { STOCK_WRAPPERS, loadAccountMap, tagRows } from './account-map.mjs'
 import { loadLocalEnv } from './env.mjs'
 import { portfolioDate, valuePortfolio } from './portfolio-snapshot.mjs'
 import { resolveCryptoFiles, resolveUsHoldingFiles, resolveUsTransactionFiles } from './source-files.mjs'
@@ -68,6 +68,14 @@ function normalizeBankBalances(raw) {
     const label = `accounts[${i}]`
     if (!isObject(a) || ['institution', 'account', 'kind', 'currency'].some((k) => typeof a[k] !== 'string')) {
       problems.push(`${label} is not an object with string institution, account, kind and currency`)
+      return
+    }
+    if (!['KRW', 'USD'].includes(a.currency)) {
+      problems.push(`${label} has unsupported currency '${a.currency}'; account dropped`)
+      return
+    }
+    if (!['checking', 'savings', 'cma', 'deposit'].includes(a.kind)) {
+      problems.push(`${label} has unsupported kind '${a.kind}'; account dropped`)
       return
     }
     let rawBalances = a.balances
@@ -4518,6 +4526,36 @@ check(
   'cash_anchor_present',
   anchorFindings.length === 0,
   anchorFindings.length === 0 ? 'every account without a balance column has a usable anchor' : anchorFindings.join('; '),
+  'warning'
+)
+const otherFindings = bankBalances.findings.filter((f) => !anchorFindings.includes(f))
+check(
+  'cash_statements_parsed',
+  otherFindings.length === 0,
+  otherFindings.length === 0
+    ? 'every bank statement was parsed'
+    : `${otherFindings.length} finding(s): ${otherFindings.slice(0, 3).join('; ')}`,
+  'warning'
+)
+// Phase-2 guard. Rows under irp or pension_savings are stored, but the snapshot
+// writer, publish-sheet, backfill and the lot, transaction, dividend and
+// realized reads do not filter on wrapper yet, so such a row would leak into
+// the stock figures. Fails until those filters exist. The stock set is
+// STOCK_WRAPPERS in scripts/account-map.mjs and STOCK_WRAPPER_SQL in
+// lib/adapters/portfolio-db.ts.
+const nonStockRows = []
+for (const table of WRAPPED_TABLES) {
+  const n = db
+    .prepare(`select count(*) as n from ${table} where account_wrapper not in (${STOCK_WRAPPERS.map(() => '?').join(', ')})`)
+    .get(...STOCK_WRAPPERS).n
+  if (n > 0) nonStockRows.push(`${table}: ${n} row(s)`)
+}
+check(
+  'non_stock_wrappers_absent',
+  nonStockRows.length === 0,
+  nonStockRows.length === 0
+    ? 'no row sits outside the taxable and isa wrappers'
+    : `${nonStockRows.join('; ')} outside taxable/isa; phase 2 filters (snapshot writer, publish-sheet, backfill, lot/transaction/dividend/realized reads) are not in place yet`,
   'warning'
 )
 check('fx_ledger_present', fxEvents.length > 0, `${fxEvents.length} normalized FX event(s)`, 'warning')

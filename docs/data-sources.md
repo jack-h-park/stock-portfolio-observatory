@@ -37,7 +37,7 @@ the same naming grammar as the other source files:
 | Chase checking | `chase-checking-<from>-<to>.csv` |
 | Bank of America checking | `boa-checking-<from>-<to>.csv` |
 | Robinhood bank | `robinhood-bank-<checking\|savings>-<from>-<to>.csv` |
-| Mirae Asset deposit | `mg-deposit-<from>-<to>.xls` |
+| MG Community Credit Cooperative deposit | `mg-deposit-<from>-<to>.xls` |
 | Toss Bank | `tossbank-<YYYYMMDD>.xlsx`, filed decrypted and not yet parsed |
 
 Three environment variables point at private, gitignored files and secrets.

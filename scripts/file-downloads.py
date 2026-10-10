@@ -92,7 +92,7 @@ DATA_DIR = Path(os.environ.get("STOCK_DATA_DIR", Path.cwd() / "private-data"))
 INBOX_DIR = DATA_DIR / "inbox"
 PDF_PASSWORD = os.environ.get("STOCK_PDF_PASSWORD", "")
 
-# The six directories docs/data-sources.md names. Keep in step with
+# The directories docs/data-sources.md names. Keep in step with
 # scripts/push-sources.sh, which pushes exactly these.
 DIR_KR = "kr-statements"
 DIR_US_HOLDINGS = "us-holdings"

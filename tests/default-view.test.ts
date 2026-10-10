@@ -36,6 +36,10 @@ test('rows outside the stock wrappers do not change the default overview or hold
   db.prepare(
     `insert into cash_balances (institution, account, owner, kind, currency, as_of_date, balance, source, derived) values ('x','A','self','checking','KRW','2026-10-01',100000,'t',0)`
   ).run()
+  // The same account label at another institution is a different account, with its own latest balance.
+  db.prepare(
+    `insert into cash_balances (institution, account, owner, kind, currency, as_of_date, balance, source, derived) values ('y','A','self','checking','KRW','2026-09-01',7,'t',0)`
+  ).run()
   db.close()
 
   assert.equal(JSON.stringify(adapter.getOverview().totals), before)
@@ -44,6 +48,8 @@ test('rows outside the stock wrappers do not change the default overview or hold
   assert.ok(!adapter.getHoldings().some((row) => row.ticker === '069500'), 'the holdings list must not include the IRP ticker')
   assert.ok(adapter.getHoldings().some((row) => row.ticker === '005930'))
   // The cash row shows up in net worth, never in the stock figures.
-  assert.equal(adapter.getNetWorth().cash.length, 1)
-  assert.equal(adapter.getNetWorth().byClass.cash, 100000)
+  assert.equal(adapter.getNetWorth().cash.length, 2)
+  assert.equal(adapter.getNetWorth().byClass.cash, 100007)
+  // A precomputed overview is accepted and gives the same answer.
+  assert.deepEqual(adapter.getNetWorth(adapter.getOverview()), adapter.getNetWorth())
 })

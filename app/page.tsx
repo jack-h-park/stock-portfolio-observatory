@@ -169,7 +169,7 @@ export default async function OverviewPage({
   const selectedView: TrendViewKey = params.view === 'single' ? 'single' : 'combined'
   const combinedMetrics = TREND_METRICS.filter((metric) => metric.key !== 'return_pct')
   const overview = getOverview()
-  const netWorth = assetView === 'all' ? getNetWorth() : null
+  const netWorth = assetView === 'all' ? getNetWorth(overview) : null
   const portfolioSnapshots = getPortfolioSnapshots(trendRangeDays(selectedRange.days))
   const top = getTopHoldings(10)
   const accounts = getAccountAllocation()

@@ -81,7 +81,8 @@ const steps = [
   { name: 'extract:kr-statements', args: ['extract:kr-statements'] },
   { name: 'extract:fx-ledger', args: ['extract:fx-ledger'] },
   // Bank deposit balances for the All-assets view. Optional: a broken bank parser
-  // must not stop the stock refresh, and the cash_balances freshness shows its age.
+  // must not stop the stock refresh; the ingest's cash_statements_parsed and cash_*
+  // checks report what failed (coverage freshness is a later phase).
   { name: 'extract:bank-statements', args: ['extract:bank-statements'], optional: true },
   { name: 'extract:us-pdf-evidence', args: ['extract:us-pdf-evidence'] },
   { name: 'fetch:us-prices', args: ['fetch:us-prices'] },

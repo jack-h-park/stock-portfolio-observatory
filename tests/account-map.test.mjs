@@ -32,3 +32,15 @@ test('a row that already carries a wrapper keeps it', () => {
   const [row] = tagRows([{ account: 'Anything', account_wrapper: 'pension_savings' }], loadAccountMap(undefined))
   assert.equal(row.account_wrapper, 'pension_savings')
 })
+
+test('a malformed map file fails closed with its path in the message', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'acct-map-'))
+  const file = path.join(dir, 'accounts.local.json')
+  writeFileSync(file, '{"accounts": {')
+  assert.throws(() => loadAccountMap(file), (error) => {
+    assert.ok(error instanceof Error)
+    assert.ok(error.message.includes(file))
+    assert.match(error.message, /is not valid JSON/)
+    return true
+  })
+})
