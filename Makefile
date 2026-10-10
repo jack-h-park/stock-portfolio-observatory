@@ -28,7 +28,15 @@ NODE_BIN := $(dir $(NODE_EXE))
 
 # pnpm spawns node and the package scripts spawn it again, so an absolute pnpm
 # is not enough on its own — node's directory has to be on PATH for the children.
-PNPM := PATH="$(NODE_BIN):$$PATH" $(PNPM_BIN)
+# The rest of TOOL_DIRS goes on PATH too, behind node's directory: the scripts
+# also find tools by name, and `ssh host 'make redeploy'` starts with a PATH that
+# has none of them. On 2026-10-09 a redeploy's refresh ran without ~/.local/bin,
+# the FX extractor found no `soffice`, and the Hana XLS rows dropped out of the
+# FX ledger until a refresh with the cron's PATH put them back.
+empty :=
+space := $(empty) $(empty)
+TOOL_PATH := $(subst $(space),:,$(strip $(TOOL_DIRS)))
+PNPM := PATH="$(NODE_BIN):$(TOOL_PATH):$$PATH" $(PNPM_BIN)
 
 .PHONY: install ingest refresh dev build start stop restart redeploy status refresh-status wait-listen require-tools install-service install-refresh-service uninstall-service uninstall-refresh-service install-push-service uninstall-push-service push-status push-sources file-downloads file-downloads-dry logs typecheck
 
