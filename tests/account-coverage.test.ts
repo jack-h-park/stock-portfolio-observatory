@@ -84,6 +84,34 @@ test('one Robinhood row per account, as stale as its transaction CSVs even when 
   assert.equal(longterm.status, 'current')
 })
 
+test('a missing disposal marks only its own account, even when that account\'s CSV is recent', async () => {
+  const gaps = new Database(dbPath)
+  gaps.exec(`create table missing_disposals (market text, brokerage text, account_type text, ticker text, replay_qty real, held_qty real)`)
+  gaps.prepare('insert into missing_disposals values (?, ?, ?, ?, ?, ?)').run('US', 'Robinhood', 'Long-term', 'WIDG', 9, 0)
+  gaps.prepare('insert into missing_disposals values (?, ?, ?, ?, ?, ?)').run('US', 'Robinhood', 'Long-term', 'ACME', 143, 0)
+  gaps.close()
+  try {
+    const { getAccountCoverage } = await import('../lib/adapters/portfolio-db')
+    const rows = getAccountCoverage().rows.filter((row) => row.brokerage === 'Robinhood')
+
+    // Long-term's CSV is three days old, so by date alone it is current.
+    const longterm = rows.find((row) => row.account === 'Robinhood Long-term')!
+    assert.equal(longterm.status, 'action_needed')
+    assert.deepEqual(longterm.missingDisposals, ['ACME', 'WIDG'])
+    const csv = longterm.sources.find((source) => source.label === 'CSV')!
+    assert.equal(csv.status, 'action_needed')
+    assert.deepEqual(csv.missingDisposals, ['ACME', 'WIDG'])
+    assert.match(longterm.action, /매도 기록 누락 2종목\(ACME, WIDG\)/)
+
+    // The others carry nothing extra.
+    for (const row of rows.filter((row) => row !== longterm)) assert.deepEqual(row.missingDisposals, [])
+  } finally {
+    const cleanup = new Database(dbPath)
+    cleanup.exec('drop table missing_disposals')
+    cleanup.close()
+  }
+})
+
 test('without a snapshot to tie them, holdings and transaction labels stay apart rather than being guessed together', async () => {
   writeFileSync(snapshotPath, 'not json')
   const holdingsOnly = new Database(dbPath)

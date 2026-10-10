@@ -1023,6 +1023,16 @@ create table dividends (
   owner text not null default 'self'
 );
 
+create table missing_disposals (
+  id integer primary key,
+  market text not null,
+  brokerage text not null,
+  account_type text not null,
+  ticker text not null,
+  replay_qty real,
+  held_qty real
+);
+
 create table validation_checks (
   id integer primary key,
   name text not null,
@@ -3339,6 +3349,10 @@ let usReplayAsOfSkew = []
 let robinhoodReplayMismatches = []
 // The other direction, and it is a different failure — see where they are split.
 let robinhoodReplayMissingDisposals = []
+// The same disposals, one row per account that holds more in the replay than
+// the broker reports — stored as `missing_disposals` so the account coverage
+// table can mark the account that needs a download, rather than the whole run.
+let robinhoodMissingDisposalRows = []
 let usReplayReconcilableCount = 0
 // `${brokerage}|${ticker}` -> ascending [date, quantity held after that date's
 // rows]. Needed to divide a dividend by the shares that actually earned it.
@@ -3778,6 +3792,43 @@ function usHoldingDays(from, to) {
     postSnapshotNet.set(key, (postSnapshotNet.get(key) ?? 0) + signed)
   }
 
+  // Which accounts a brokerage-level missing disposal belongs to. The position is
+  // reconciled per brokerage (see above), but the lots below it are per account,
+  // and both sides carry the strategy name in `account_type`: transactions as
+  // "Mid-term", holdings as account "Robinhood 1478" with type "Mid-term". So the
+  // account is the one whose replayed lots exceed what it holds. When no single
+  // account does (shares moved between accounts in a way the replay did not
+  // follow), every account still holding replay lots is named: a coverage row
+  // asking one account too many for a CSV costs a download, naming none costs
+  // the gap.
+  const accountTypeByAccount = new Map()
+  for (const r of rows) if (r.account && r.account_type) accountTypeByAccount.set(r.account, r.account_type)
+  const missingDisposalAccounts = (posKey) => {
+    const [brokerage, ticker] = posKey.split('|')
+    const replayByType = new Map()
+    for (const lotKey of lotKeysByPosition.get(posKey) ?? []) {
+      const account = lotKey.split('|')[1]
+      const type = accountTypeByAccount.get(account) ?? account
+      const qty = (openLots.get(lotKey) ?? []).reduce((sum, lot) => sum + lot.qty, 0)
+      if (qty > 1e-9) replayByType.set(type, (replayByType.get(type) ?? 0) + qty)
+    }
+    const heldByType = new Map()
+    for (const h of holdingRows) {
+      if (h.market !== 'US' || h.brokerage !== brokerage || text(h.ticker) !== ticker) continue
+      const type = text(h.account_type) || text(h.account)
+      heldByType.set(type, (heldByType.get(type) ?? 0) + (number(h.quantity) ?? 0))
+    }
+    const over = [...replayByType].filter(([type, qty]) => qty - (heldByType.get(type) ?? 0) > 1e-3)
+    return (over.length ? over : [...replayByType]).map(([type, qty]) => ({
+      market: 'US',
+      brokerage,
+      account_type: type,
+      ticker,
+      replay_qty: usRound(qty, 6),
+      held_qty: usRound(heldByType.get(type) ?? 0, 6),
+    }))
+  }
+
   for (const key of new Set([...usReplayQty.keys(), ...usHoldingQty.keys()])) {
     if (!reconcilableBrokerages.has(key.split('|')[0])) continue
     const replayed = usReplayQty.get(key) ?? 0
@@ -3813,8 +3864,10 @@ function usHoldingDays(from, to) {
         // the failure this pipeline keeps rediscovering. Sharing one warning
         // with the benign case is what made "the CSV is a few days old" and
         // "a sale is missing from the books" sound identical.
-        if (replayed > held) robinhoodReplayMissingDisposals.push(entry)
-        else robinhoodReplayMismatches.push(entry)
+        if (replayed > held) {
+          robinhoodReplayMissingDisposals.push(entry)
+          robinhoodMissingDisposalRows.push(...missingDisposalAccounts(key))
+        } else robinhoodReplayMismatches.push(entry)
       } else usReplayMismatches.push(entry)
     }
   }
@@ -6027,9 +6080,19 @@ const robinhoodDisposalBacking = !robinhoodSnapshotHasOrders
 // falls in are all missing, and missing downward, which is the direction that
 // never announces itself.
 //
-// ERROR, so the refresh exits non-zero and says so. That is the difference the
-// split exists to make: a stale CSV should be quiet, a sale nobody recorded
-// should not. It clears the moment the CSV covering that disposal is downloaded.
+// It belongs to an ACCOUNT, not to the run. It used to be an ERROR, which
+// failed every refresh while it stood: the database, the prices and every other
+// account were already current, yet the run read 'failed', the sheet publishes
+// for all accounts were skipped, a redeploy stopped half way, and the alert said
+// prices had stopped updating. One account's missing CSV is not that.
+//
+// So it is a warning, and the loudness moves to where the remedy is: each
+// disposal is stored per account in `missing_disposals`, and the account
+// coverage table (/data-ops, the weekly reminder) marks that account as needing
+// its transactions CSV, naming the tickers. The refresh alert still speaks once
+// when the count of failing checks changes. It clears the moment the CSV
+// covering that disposal is downloaded.
+const missingDisposalAccountNames = [...new Set(robinhoodMissingDisposalRows.map((r) => r.account_type))].sort()
 check(
   'robinhood_replay_missing_disposal',
   robinhoodSnapshotLotCount === 0 || robinhoodReplayMissingDisposals.length === 0,
@@ -6039,8 +6102,11 @@ check(
       ? 'no Robinhood position holds more in the replay than the broker reports' + robinhoodDisposalBacking
       : `${robinhoodReplayMissingDisposals.length} Robinhood position(s) hold FEWER shares than the replay: a ` +
         `disposal is missing from the transaction history, so its proceeds and realized gain are not on the books ` +
-        `(download the CSV covering it): ${robinhoodReplayMissingDisposals.slice(0, 6).join('; ')}` +
-        robinhoodDisposalBacking
+        `(download the CSV covering it` +
+        (missingDisposalAccountNames.length ? ` for ${missingDisposalAccountNames.join(', ')}` : '') +
+        `): ${robinhoodReplayMissingDisposals.slice(0, 6).join('; ')}` +
+        robinhoodDisposalBacking,
+  'warning'
 )
 
 // The Robinhood orders bridge, shaped like `toss_orders_bridge_statement`. It
@@ -6265,6 +6331,7 @@ check(
   'warning'
 )
 
+insertMany(db, 'missing_disposals', robinhoodMissingDisposalRows, ['market', 'brokerage', 'account_type', 'ticker', 'replay_qty', 'held_qty'])
 insertMany(db, 'validation_checks', checks, ['name', 'status', 'detail', 'severity'])
 
 const currentValuation = valuePortfolio(

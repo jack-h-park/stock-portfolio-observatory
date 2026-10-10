@@ -177,7 +177,7 @@ test('a snapshot with no orders behaves as before, and both checks say the order
   assert.deepEqual(out.realized, [])
   const disposal = out.check('robinhood_replay_missing_disposal')
   assert.equal(disposal?.status, 'fail')
-  assert.equal(disposal?.severity, 'error')
+  assert.equal(disposal?.severity, 'warning')
   assert.match(disposal?.detail ?? '', /the snapshot holds no orders/)
 
   const bridge = out.check('robinhood_orders_bridge_csv')

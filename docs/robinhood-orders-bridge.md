@@ -189,7 +189,11 @@ is how the two sources meet.
 - **Unchanged.** `robinhood_replay_missing_disposal` and
   `robinhood_holdings_replay_provenance` keep their meaning. Once the bridge works,
   what they report is limited to what is not an order: a transfer or a corporate
-  action.
+  action. (Since 2026-10-10 `robinhood_replay_missing_disposal` is a warning, not
+  an error: each disposal is stored per account in `missing_disposals`, and the
+  account coverage table and the weekly reminder mark that account as needing its
+  transactions CSV. One account's gap no longer fails the refresh, holds back the
+  sheet publishes or stops a redeploy.)
 - `us_ytd_realized_assumption_reviewed` already prints the replay's per-market
   split. Its detail adds how much of the US figure is bridged, because that part
   is provisional until a CSV replaces it.

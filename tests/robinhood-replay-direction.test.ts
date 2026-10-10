@@ -21,7 +21,8 @@ import { writeSheetPayloads } from './sheet-payloads'
 //   replay ABOVE holdings — the replay still holds shares the broker says are
 //   gone. Something disposed of them and the books do not know, so the proceeds,
 //   the realized gain and the tax year are all missing, and missing DOWNWARD.
-//   Error.
+//   Its own check, scoped to the account that needs the CSV: a warning on the
+//   run, a `missing_disposals` row for the account coverage table.
 //
 // The real case that prompted this: SPCX read replay 1 vs holdings 6 after a
 // purchase on 2026-08-11 that the 2026-07-31 CSV could not contain.
@@ -70,15 +71,18 @@ function ingest(held: number, boughtInCsv: number) {
   const snapshotPath = path.join(dir, 'robinhood-snapshot.json')
   writeFileSync(snapshotPath, JSON.stringify(snapshot(held)), 'utf8')
 
-  // An ERROR-severity check exits non-zero and still writes the database —
-  // which is the state the disposal test below is asserting on.
+  // allowFailure because this fixture carries no FX rates, which fails an
+  // unrelated ERROR check. Whether a missing disposal fails the run is pinned by
+  // its severity below: 'warning' never sets the exit code.
   const dbPath = runIngest(dir, { env: { STOCK_ROBINHOOD_SNAPSHOT_PATH: snapshotPath }, allowFailure: true })
 
   const db = new Database(dbPath, { readonly: true })
-  return (name: string) =>
+  const check = (name: string) =>
     db.prepare('select status, severity, detail from validation_checks where name = ?').get(name) as
       | { status: string; severity: string; detail: string }
       | undefined
+  const gaps = () => db.prepare('select account_type, ticker, replay_qty, held_qty from missing_disposals').all()
+  return Object.assign(check, { gaps })
 }
 
 test('shares the replay has not seen arrive stay a warning, and do not read as a missing sale', () => {
@@ -96,7 +100,7 @@ test('shares the replay has not seen arrive stay a warning, and do not read as a
   assert.equal(disposals?.status, 'pass')
 })
 
-test('shares the broker no longer has are an error, because a disposal is missing', () => {
+test('shares the broker no longer has are a missing disposal, scoped to the account that needs the CSV', () => {
   // The mirror image: the CSV recorded 6 bought, the broker reports 1 left. Five
   // shares left the account and no row on the books says so, so their proceeds
   // and realized gain are absent.
@@ -104,8 +108,10 @@ test('shares the broker no longer has are an error, because a disposal is missin
 
   const disposals = check('robinhood_replay_missing_disposal')
   assert.equal(disposals?.status, 'fail')
-  assert.equal(disposals?.severity, 'error')
+  assert.equal(disposals?.severity, 'warning')
   assert.match(disposals?.detail ?? '', /disposal is missing/)
+  assert.match(disposals?.detail ?? '', /for Mid-term/)
+  assert.deepEqual(check.gaps(), [{ account_type: 'Mid-term', ticker: 'SPCX', replay_qty: 6, held_qty: 1 }])
 
   // And the quiet one does not also fire — one situation, one voice.
   assert.equal(check('robinhood_holdings_replay_provenance')?.status, 'pass')
@@ -115,4 +121,5 @@ test('a replay that agrees with the broker fires neither', () => {
   const check = ingest(6, 6)
   assert.equal(check('robinhood_holdings_replay_provenance')?.status, 'pass')
   assert.equal(check('robinhood_replay_missing_disposal')?.status, 'pass')
+  assert.deepEqual(check.gaps(), [])
 })

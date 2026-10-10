@@ -149,3 +149,18 @@ test('a summary written before sources existed still reads as before', () => {
   const message = coverageMessage(doc([row({ sources: undefined })]))
   assert.match(message, /미래에셋증권\(ISA\) — 2026-07-15까지 반영/)
 })
+
+test('a missing sale is named under its account’s CSV line, and only there', () => {
+  const message = coverageMessage(
+    doc([
+      rhAccount('Robinhood Long-term · 3333', [
+        rhSource({}),
+        // Three days old, so current by date — the missing sale is what makes it due.
+        rhCsv('longterm', '2026-10-06', '2026-10-05', 3, { missingDisposals: ['ACME', 'WIDG'] }),
+      ]),
+      rhAccount('Robinhood Mid-term · 2222', [rhSource({}), rhCsv('midterm', '2026-08-11', '2026-08-10', 59)]),
+    ])
+  )
+  assert.match(message, /Robinhood Long-term · 3333 — 2026-10-06까지 반영[^\n]*\n[^\n]*longterm[^\n]*\n {2}⚠️ 매도 기록 누락 2종목 \(ACME, WIDG\)/)
+  assert.equal(message.match(/매도 기록 누락/g)?.length, 1)
+})
