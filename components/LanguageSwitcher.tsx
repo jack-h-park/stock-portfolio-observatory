@@ -8,6 +8,7 @@ import {
   DISPLAY_CURRENCY_LABELS,
   type DisplayCurrency,
 } from '@/lib/currency'
+import { ASSET_VIEWS, ASSET_VIEW_COOKIE, type AssetView } from '@/lib/asset-view'
 import { LANGUAGE_COOKIE, LANGUAGE_LABELS, type Language } from '@/lib/i18n'
 
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365
@@ -45,6 +46,22 @@ export function CurrencySwitcher({ displayCurrency }: { displayCurrency: Display
       options={DISPLAY_CURRENCIES.map((option) => ({ value: option, label: DISPLAY_CURRENCY_LABELS[option] }))}
       onChange={(next) => {
         persist(DISPLAY_CURRENCY_COOKIE, next)
+        router.refresh()
+      }}
+    />
+  )
+}
+
+export function AssetViewSwitcher({ assetView, labels }: { assetView: AssetView; labels: Record<AssetView, string> }) {
+  const router = useRouter()
+
+  return (
+    <SegmentedControl
+      label="Assets"
+      value={assetView}
+      options={ASSET_VIEWS.map((option) => ({ value: option, label: labels[option] }))}
+      onChange={(next) => {
+        persist(ASSET_VIEW_COOKIE, next)
         router.refresh()
       }}
     />

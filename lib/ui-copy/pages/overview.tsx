@@ -3,6 +3,10 @@ import { defineCopy } from '@/lib/ui-copy/define'
 export const overview = defineCopy({
   en: {
     title: 'Portfolio Overview',
+    totalAssets: 'Total assets',
+    assetClasses: { stocks: 'Stocks', crypto: 'Crypto', cash: 'Cash', pension: 'Pension', gold: 'Gold' },
+    openNetWorth: 'Open net worth',
+    unpricedCash: (count: number) => `${count} deposit account(s) without an FX rate are not in the total.`,
     emphasis: 'Overview',
     subtitle: (ingestedAt: string, fx: string | null) =>
       `Read-only status loaded from local investment data at ${ingestedAt}.${fx ? ` Applied FX: ${fx}.` : ''}`,
@@ -107,6 +111,10 @@ export const overview = defineCopy({
   },
   ko: {
     title: '포트폴리오 개요',
+    totalAssets: '총자산',
+    assetClasses: { stocks: '주식', crypto: '암호화폐', cash: '현금', pension: '연금', gold: '금' },
+    openNetWorth: '순자산 열기',
+    unpricedCash: (count: number) => `환율이 없는 예금 계좌 ${count}개는 합계에 포함되지 않았습니다.`,
     emphasis: '개요',
     subtitle: (ingestedAt: string, fx: string | null) =>
       `로컬 투자 자료를 ${ingestedAt}에 불러온 읽기 전용 현황입니다.${fx ? ` 적용 환율: ${fx}.` : ''}`,

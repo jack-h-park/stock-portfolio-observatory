@@ -10,6 +10,8 @@ export const sidebar = defineCopy({
     source: 'Generated from local sources',
     language: 'Language',
     currency: 'Currency',
+    assets: 'Assets',
+    assetViews: { stocks: 'Stocks', all: 'All assets' },
     sections: [
       {
         label: 'Core Workflows',
@@ -63,6 +65,8 @@ export const sidebar = defineCopy({
     source: '로컬 원본에서 생성됨',
     language: '언어',
     currency: '화폐',
+    assets: '자산',
+    assetViews: { stocks: '주식', all: '전체 자산' },
     sections: [
       {
         label: '핵심 업무',
