@@ -9,6 +9,10 @@ jobs:
   sample-build:
     name: Sample mode build
     runs-on: ubuntu-latest
+    # Sample mode and the tests run with no account map. The extractors block a
+    # refresh on a missing map unless this says that is intended.
+    env:
+      STOCK_ALLOW_NO_ACCOUNT_MAP: '1'
 
     steps:
       - name: Checkout

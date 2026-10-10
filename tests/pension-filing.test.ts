@@ -77,46 +77,64 @@ function fileDownloads(files: Record<string, string | Buffer>, map?: object) {
 }
 
 // --- 미래에셋 거래내역증명서: the IRP and the 금현물 accounts -------------------
+//
+// Which account a certificate belongs to is the account map's entry for the full
+// 계좌번호 it prints (scripts/mirae_accounts.py). These numbers are invented.
 
-const miraeCertificate = (accountType: string, window = '2020/01/01 ~ 2026/10/10') =>
+const MIRAE_NUMBERS = { irp: '900-000000001', gold: '900-000000002', cma: '900-000000003', general: '900-000000004' }
+const MIRAE_MAP = {
+  ...PENSION_MAP,
+  pensionAccounts: [{ ...PENSION_MAP.pensionAccounts[0], accountNumber: MIRAE_NUMBERS.irp }, PENSION_MAP.pensionAccounts[1]],
+  brokerageAccounts: [
+    { institution: 'mirae', accountNumber: MIRAE_NUMBERS.gold, kind: 'gold' },
+    { institution: 'mirae', accountNumber: MIRAE_NUMBERS.general, kind: 'general' },
+  ],
+  bankAccounts: [{ institution: 'mirae', kind: 'cma', accountNumber: MIRAE_NUMBERS.cma, currency: 'KRW', alias: '예시 CMA' }],
+}
+
+const miraeCertificate = (accountType: string, number: string, window = '2020/01/01 ~ 2026/10/10') =>
   pdfOf([
     ['거래내역 증 명 서', 'N O. 2026-001-00000099', '제공내역(provided information)', window, '미래에셋증권 대표이사 예시대표'],
     [
       '계좌정보 페이지: 01/01',
-      `계좌번호 000-00 계좌유형 ${accountType} 고객명 예시고객 거래일자 20200101 ~ 20261010`,
+      `계좌번호 ${number} 계좌유형 ${accountType} 고객명 예시고객 거래일자 20200101 ~ 20261010`,
       '거래구분 CMA자동매매 제외 상품구분 전체 종목구분 전체 CMARP/MMW포함 N',
     ],
   ])
 
-test('a 미래에셋 IRP certificate files by its own 계좌유형, with no account number in the repo', () => {
-  const out = fileDownloads({ '거래내역증명서_20261010_1.pdf': miraeCertificate('퇴직연금_개인IRP') })
+test('a 미래에셋 IRP certificate files by the pensionAccounts entry for its 계좌번호', () => {
+  const out = fileDownloads({ '거래내역증명서_20261010_1.pdf': miraeCertificate('퇴직연금_개인IRP', MIRAE_NUMBERS.irp) }, MIRAE_MAP)
   assert.match(out, /→ kr-statements\/mirae-irp-transactions-20200101-20261010\.pdf/)
-  assert.match(out, /계좌유형 irp/)
+  assert.match(out, /\*\*\*\*0001 is irp in the account map/)
+  assert.doesNotMatch(out, /900-?000000001/)
 })
 
 test('a 미래에셋 금현물 certificate files as gold, named for its whole window rather than as an as-of', () => {
-  const out = fileDownloads({ '거래내역증명서_20261010_2.pdf': miraeCertificate('금현물', '2026/01/01 ~ 2026/10/10') })
+  const out = fileDownloads({ '거래내역증명서_20261010_2.pdf': miraeCertificate('금현물', MIRAE_NUMBERS.gold, '2026/01/01 ~ 2026/10/10') }, MIRAE_MAP)
   assert.match(out, /→ kr-statements\/mirae-gold-transactions-20260101-20261010\.pdf/)
 })
 
-// 미래에셋 has two accounts whose numbers share their last four digits: the
-// 종합 brokerage account prints 계좌유형 `종합`, and the CMA (발행어음형)
-// prints `종합_CMA`. The CMA is a deposit account, so it files as a bank
-// statement and never reaches the KR statement extractor's mirae-* glob.
-test('a 미래에셋 certificate with 계좌유형 종합_CMA files as the CMA bank statement', () => {
-  const out = fileDownloads({ 'x.pdf': miraeCertificate('종합_CMA') })
+// The CMA is a deposit account, so it files as a bank statement and never
+// reaches the KR statement extractor's mirae-* glob.
+test('a 미래에셋 certificate whose number the map lists as the CMA files as the CMA bank statement', () => {
+  const out = fileDownloads({ 'x.pdf': miraeCertificate('종합_CMA', MIRAE_NUMBERS.cma) }, MIRAE_MAP)
   assert.match(out, /→ bank-statements\/mirae-cma-20200101-20261010\.pdf/)
   assert.doesNotMatch(out, /kr-statements\/mirae-general/)
 })
 
-test('a 미래에셋 certificate with 계좌유형 종합 still files as the general account', () => {
-  const out = fileDownloads({ 'x.pdf': miraeCertificate('종합') })
+test('a 미래에셋 certificate whose number the map lists as the general account files as it', () => {
+  const out = fileDownloads({ 'x.pdf': miraeCertificate('종합', MIRAE_NUMBERS.general) }, MIRAE_MAP)
   assert.match(out, /→ kr-statements\/mirae-general-transactions-20200101-20261010-99\.pdf/)
 })
 
-test('an unknown 계좌유형 with an unknown account number is still refused', () => {
-  const out = fileDownloads({ 'x.pdf': miraeCertificate('예시유형') })
-  assert.match(out, /recognised but not filed[\s\S]*names neither 계좌유형/)
+test('a recognisable 계좌유형 does not file a certificate whose number the map lacks', () => {
+  for (const type of ['퇴직연금_개인IRP', '종합', '예시유형']) {
+    const out = fileDownloads({ 'x.pdf': miraeCertificate(type, '900-000000099') }, MIRAE_MAP)
+    assert.match(out, /recognised but not filed[\s\S]*\*\*\*\*0099 is not in the account map/)
+  }
+  // With no map file at all the refusal names the missing file.
+  const out = fileDownloads({ 'x.pdf': miraeCertificate('종합', MIRAE_NUMBERS.general) })
+  assert.match(out, /recognised but not filed[\s\S]*no-map\.json does not exist/)
 })
 
 // --- 삼성증권 연금저축 ledger ---------------------------------------------------
@@ -199,13 +217,13 @@ const IRP_BALANCE_STATUS = pdfOf([
   ['합 계 1,000,000 1 1,100,000', '위와 같이 퇴직연금 잔고현황을 확인합니다.', '2026년 10월 08일 미래에셋증권'],
 ])
 
-const irpBalanceCertificate = (title: string) =>
+const irpBalanceCertificate = (title: string, number = MIRAE_NUMBERS.irp) =>
   pdfOf([
     [
       title,
       '인쇄자 : 온라인 발급 Page : 1 / 2',
       '계좌번호 계 좌 명 부 기 명 실명확인번호',
-      '000-00-000000-0 예시고객',
+      `${number} 예시고객`,
       '기 준 일 자 발 급 일 시 용 도 출 력 평 가',
       '2024-12-31 2026-10-08 10:00:00 관공서제출용 계좌별 세전',
       '▶ 유가증권잔고',
@@ -214,7 +232,7 @@ const irpBalanceCertificate = (title: string) =>
     ],
     [
       '보 유 유 가 증 권 상 세 명 세 서',
-      '계좌번호 : 000-00-000000-0 기 준 일 : 2024-12-31 발 급 번 호 : 2026-001-00000001',
+      `계좌번호 : ${number} 기 준 일 : 2024-12-31 발 급 번 호 : 2026-001-00000001`,
       '종 목 명 수 량 매 입 단 가 기 준 가 평 가 금 액 비 고',
       '개인형IRP 1,000,000.00 1,100,000 신탁',
       '▷ 상장주식, 코스닥상장주식, 선물옵션, 금현물은 기준일자의 현재가',
@@ -241,16 +259,44 @@ const samsungBalanceCertificate = (asOf = '2025.12.31') =>
     ],
   ])
 
-test('the IRP 잔고현황 files as year-end evidence, dated by its 기준일자', () => {
+// The 잔고현황 prints no 계좌번호, only a 플랜번호: the one document not identified by
+// its account number (see docs/data-sources.md).
+test('the IRP 잔고현황 files as year-end evidence, dated by its 기준일자, when the map has one IRP entry', () => {
   const out = fileDownloads({ '잔고현황.pdf': IRP_BALANCE_STATUS }, PENSION_MAP)
   assert.match(out, /→ pension\/evidence\/irp-balance-status-20251231\.pdf/)
 })
 
-test('both titles of the IRP 잔고증명서 file as evidence, and the 미래에셋 balance detector stands aside', () => {
+const TWO_IRPS = (pins: (string | undefined)[]) => ({
+  pensionAccounts: [
+    { token: 'irp', account: '미래에셋증권(IRP)', wrapper: 'irp', institution: '미래에셋증권', planNumber: pins[0] },
+    { token: 'irp-2', account: '미래에셋증권(IRP2)', wrapper: 'irp', institution: '미래에셋증권', planNumber: pins[1] },
+  ],
+})
+
+test('with two IRP entries the 잔고현황 is refused unless a planNumber picks one', () => {
+  assert.match(fileDownloads({ '잔고현황.pdf': IRP_BALANCE_STATUS }, TWO_IRPS([undefined, undefined])), /recognised but not filed[\s\S]*planNumber/)
+  assert.match(fileDownloads({ '잔고현황.pdf': IRP_BALANCE_STATUS }, TWO_IRPS(['111-111-111', '000-000-000'])),
+    /→ pension\/evidence\/irp-2-balance-status-20251231\.pdf/)
+})
+
+test('a pinned planNumber that does not match the 잔고현황 refuses it', () => {
+  const pinned = { pensionAccounts: [{ ...PENSION_MAP.pensionAccounts[0], planNumber: '111-111-111' }] }
+  assert.match(fileDownloads({ '잔고현황.pdf': IRP_BALANCE_STATUS }, pinned), /recognised but not filed[\s\S]*플랜번호/)
+})
+
+test('both titles of the IRP 잔고증명서 file as evidence by the entry for their 계좌번호, and the 미래에셋 balance detector stands aside', () => {
   for (const title of ['특 정 (종 목) 잔 고 증 명 서', '잔 고 증 명 서']) {
-    const out = fileDownloads({ 'cert.pdf': irpBalanceCertificate(title) }, PENSION_MAP)
+    const out = fileDownloads({ 'cert.pdf': irpBalanceCertificate(title) }, MIRAE_MAP)
     assert.match(out, /→ pension\/evidence\/irp-balance-certificate-20241231\.pdf/, title)
     assert.doesNotMatch(out, /recognised but not filed/, title)
+  }
+})
+
+test('an IRP 잔고증명서 whose 계좌번호 is not in the map is refused, even with one IRP entry', () => {
+  for (const map of [MIRAE_MAP, PENSION_MAP]) {
+    const out = fileDownloads({ 'cert.pdf': irpBalanceCertificate('잔 고 증 명 서', '900-000000098') }, map)
+    assert.match(out, /recognised but not filed[\s\S]*\*\*\*\*0098 is not in the account map/)
+    assert.doesNotMatch(out, /→ pension\/evidence/)
   }
 })
 
