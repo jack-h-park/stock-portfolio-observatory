@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import Database from 'better-sqlite3'
 import { config } from '@/config'
 import type { TaxPlanningLot } from '@/lib/tax-planning'
-import { monthEndCash, summarizeNetWorth, type NetWorth } from '@/lib/net-worth'
+import { depositsSeries, monthEndCash, summarizeNetWorth, type CashBalanceRow, type NetWorth } from '@/lib/net-worth'
 import { groupAccountRanges, type AccountDataRange, type RangeKind, type RangeRow } from '@/lib/account-ranges'
 
 /**
@@ -964,6 +964,41 @@ function withCumulativeRealized(conn: Database.Database, snapshots: PortfolioSna
   })
 }
 
+// USD/KRW on a date: the latest historical rate on or before it, else the
+// current spot rate. Shared by the net-worth history and the deposits series so
+// both convert a dated balance the same way.
+function usdKrwRateAt(conn: Database.Database): (date: string) => number | null {
+  const hasTable = (name: string) =>
+    Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(name))
+  const usd = hasTable('fx_rates')
+    ? (conn
+        .prepare("select rate from fx_rates where from_currency = 'USD' and to_currency = 'KRW' order by as_of_date desc limit 1")
+        .get() as { rate: number } | undefined)
+    : undefined
+  const rates = hasTable('historical_fx_rates')
+    ? (conn.prepare('select price_date, rate from historical_fx_rates order by price_date').all() as { price_date: string; rate: number }[])
+    : []
+  return (date: string) => rates.filter((r) => r.price_date <= date).at(-1)?.rate ?? usd?.rate ?? null
+}
+
+// Deposits in KRW on each snapshot date, for the overview trend in the
+// all-assets view. Rows are read in (date, id) order so a repeated date keeps
+// its last row, the same as the latest-balance read in getNetWorth.
+export function getDepositsSeries(dates: string[]): ReturnType<typeof depositsSeries> {
+  const conn = db()
+  try {
+    const hasCash = conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'cash_balances'").get()
+    const rows = hasCash
+      ? (conn
+          .prepare('select institution, account, currency, as_of_date as date, balance from cash_balances order by as_of_date, id')
+          .all() as CashBalanceRow[])
+      : []
+    return depositsSeries(dates, rows, usdKrwRateAt(conn))
+  } finally {
+    conn.close()
+  }
+}
+
 export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWorth {
   const overview = precomputed ?? getOverview()
   const conn = db()
@@ -996,10 +1031,7 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
     const series = hasTable('cash_balances')
       ? (conn.prepare('select institution, account, currency, as_of_date as date, balance from cash_balances order by as_of_date, id').all() as any[])
       : []
-    const rates = hasTable('historical_fx_rates')
-      ? (conn.prepare('select price_date, rate from historical_fx_rates order by price_date').all() as { price_date: string; rate: number }[])
-      : []
-    const rateAt = (date: string) => rates.filter((r) => r.price_date <= date).at(-1)?.rate ?? usd?.rate ?? null
+    const rateAt = usdKrwRateAt(conn)
     // Ordered by date, so the Map keeps the last snapshot of each month.
     const stocksByMonth = new Map<string, number>(
       hasTable('portfolio_snapshots')

@@ -52,4 +52,13 @@ test('rows outside the stock wrappers do not change the default overview or hold
   assert.equal(adapter.getNetWorth().byClass.cash, 100007)
   // A precomputed overview is accepted and gives the same answer.
   assert.deepEqual(adapter.getNetWorth(adapter.getOverview()), adapter.getNetWorth())
+  // The overview's deposits series reads the same rows: each account's last balance on or before the date.
+  assert.deepEqual(adapter.getDepositsSeries(['2026-08-31', '2026-09-15', '2026-10-02']), {
+    series: [
+      { date: '2026-08-31', krw: null },
+      { date: '2026-09-15', krw: 7 },
+      { date: '2026-10-02', krw: 100007 },
+    ],
+    since: '2026-09-01',
+  })
 })
