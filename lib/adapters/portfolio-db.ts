@@ -12,7 +12,7 @@ import { groupAccountRanges, type AccountDataRange, type AssetType, type RangeKi
 import { foreignAccountMaxima, isUsBrokerage, isUsCashInstitution, maxBalance, treasuryRateFor, type BalancePoint, type ForeignAccountInput, type ForeignAccountMaxima } from '@/lib/fbar'
 import treasuryRates from '@/data/treasury-reporting-rates.json'
 import { loadAccountMap } from '@/scripts/account-map.mjs'
-import { retiredBankAccounts } from '@/lib/bank-accounts'
+import { retiredBankAccounts, retiredBrokerageAccounts } from '@/lib/bank-accounts'
 import { createLotValuer } from '@/scripts/lot-valuation.mjs'
 
 /**
@@ -1236,7 +1236,8 @@ function closedOn(points: BalancePoint[], retiredOn: string): BalancePoint[] {
  *   at cost where no price reaches a position, plus the uninvested cash the
  *   statements print (brokerage_cash) carried forward to each month-end, but
  *   never past or between the statement periods (brokerage_cash_coverage);
- *   `cashIncluded` says whether any reached the year;
+ *   `cashIncluded` says whether any reached the year. A brokerageAccounts
+ *   entry with `retiredOn` ends its account's series on that date;
  * - crypto exchange accounts outside the US firms, valued the same way from
  *   their lots, as reference rows kept out of the aggregate;
  * - pension accounts, from their certificate and snapshot totals;
@@ -1279,8 +1280,11 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
     // A retired account (the map's `retiredOn`) holds nothing after that date:
     // its series closes at zero, and a later year has no row for it.
     let retired = new Map<string, string | null>()
+    let retiredBrokerage = new Map<string, string | null>()
     try {
-      retired = retiredBankAccounts(loadAccountMap(config.stockAccountMapPath).bankAccounts)
+      const accountMap = loadAccountMap(config.stockAccountMapPath)
+      retired = retiredBankAccounts(accountMap.bankAccounts)
+      retiredBrokerage = retiredBrokerageAccounts(accountMap.brokerageAccounts)
     } catch {
       // An unreadable map is the ingest's failure to report; here no account is retired.
     }
@@ -1486,13 +1490,18 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
     // runs from 1 January to 31 December and a cash line inside it falls on or
     // before 1 January. A first line in March leaves the months before it with
     // no cash, so that year is partial.
-    const cashCovers = (id: string) => {
-      const period = (periods.get(id) ?? []).find((p) => p.start <= start && p.end >= end)
+    const cashCovers = (id: string, until: string) => {
+      const period = (periods.get(id) ?? []).find((p) => p.start <= start && p.end >= until)
       if (!period) return false
       return [...(cashPools.get(id)?.values() ?? [])].some((pool) => pool.points.some((p) => p.date >= period.start && p.date <= start))
     }
 
     for (const [id, { institution, account, kind }] of identities) {
+      // A closed account (the map's brokerageAccounts `retiredOn`) holds nothing
+      // after that date, whatever balance its last statement line left: its
+      // series closes at zero, and a later year has no row for it.
+      const retiredOn = kind === 'brokerage' ? (retiredBrokerage.get(account) ?? null) : null
+      if (retiredOn && retiredOn < start) continue
       const points: BalancePoint[] = []
       let cashIncluded = false
       for (const date of dates) {
@@ -1505,8 +1514,11 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
       // An account with no lots needs cash inside the year, not only a balance
       // carried in from the year before.
       if (!securities.has(id) && !points.some((point) => point.date >= start)) continue
-      const found = maxBalance(points, year, 'month_end')
-      add(institution, account, kind, found && cashIncluded && !cashCovers(id) ? { ...found, coverage: 'partial' } : found, { cashIncluded })
+      const closesInYear = retiredOn != null && retiredOn <= end
+      const found = maxBalance(retiredOn ? closedOn(points, retiredOn) : points, year, 'month_end')
+      // The year it closed needs cash only up to the closing date.
+      const covered = cashCovers(id, closesInYear ? retiredOn : end)
+      add(institution, account, kind, found && cashIncluded && !covered ? { ...found, coverage: 'partial' } : found, { cashIncluded })
     }
 
     // Pensions: certificate and snapshot totals.

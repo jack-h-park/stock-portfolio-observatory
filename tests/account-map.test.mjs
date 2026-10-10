@@ -7,7 +7,7 @@ import { STOCK_WRAPPERS, assetClassFor, loadAccountMap, tagRows, wrapperFor } fr
 
 test('no map file is an empty map, not an error', () => {
   const map = loadAccountMap(path.join(tmpdir(), 'does-not-exist.json'))
-  assert.deepEqual(map, { accounts: {}, bankAccounts: [], anchors: [], pensionAccounts: [] })
+  assert.deepEqual(map, { accounts: {}, bankAccounts: [], anchors: [], pensionAccounts: [], brokerageAccounts: [] })
 })
 
 test('ISA is recognised from the account label; everything else defaults to taxable', () => {
@@ -45,7 +45,7 @@ test('a malformed map file fails closed with its path in the message', () => {
   })
 })
 
-const empty = { accounts: {}, bankAccounts: [], anchors: [], pensionAccounts: [] }
+const empty = { accounts: {}, bankAccounts: [], anchors: [], pensionAccounts: [], brokerageAccounts: [] }
 
 test('an unmapped pension or gold account is classified by its label, never as taxable', () => {
   assert.equal(wrapperFor({ account: '미래에셋증권(IRP)' }, empty), 'irp')

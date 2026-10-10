@@ -6,7 +6,7 @@ import test from 'node:test'
 import Database from 'better-sqlite3'
 import { config } from '@/config'
 import { foreignAccountMaxima, isUsBrokerage, isUsCashInstitution, lastCompleteYear, maxBalance, treasuryRateFor } from '../lib/fbar'
-import { bankAccountName, retiredBankAccounts } from '../lib/bank-accounts'
+import { bankAccountName, brokerageAccountLabel, retiredBankAccounts, retiredBrokerageAccounts } from '../lib/bank-accounts'
 import treasuryRates from '../data/treasury-reporting-rates.json'
 
 // No real account map: a test that needs one writes its own.
@@ -460,6 +460,66 @@ test('a retired cash account ends its series on its retirement date', async () =
     assert.ok(!getForeignAccountMaxima(2025).rows.some((row) => row.id === 'tossbank|Example savings'))
     // Another institution's account with the same alias is not retired.
     assert.ok(getForeignAccountMaxima(2025).rows.some((row) => row.id === 'mg|Example savings'))
+  } finally {
+    config.stockAccountMapPath = saved
+  }
+})
+
+test('retiredBrokerageAccounts keys closed brokerage accounts by their transaction label', () => {
+  assert.equal(brokerageAccountLabel({ institution: 'mirae', kind: 'general' }), '미래에셋증권(종합)')
+  assert.equal(brokerageAccountLabel({ institution: 'mirae', kind: 'isa' }), '미래에셋증권(ISA)')
+  assert.equal(brokerageAccountLabel({ institution: 'mirae', kind: 'general', account: 'Example Broker(second)' }), 'Example Broker(second)')
+  assert.equal(brokerageAccountLabel({ institution: 'example', kind: 'general' }), null)
+  const retired = retiredBrokerageAccounts([
+    { institution: 'mirae', kind: 'general', retiredOn: '2024-05-20' },
+    { institution: 'mirae', kind: 'isa' },
+    { institution: 'example', kind: 'general', account: 'Example Broker(old)', retired: true },
+    { institution: 'example', kind: 'general', account: 'Example Broker(typo)', retiredOn: 'May' },
+    // No label to key it by: ignored rather than guessed.
+    { institution: 'example', kind: 'general', retiredOn: '2024-05-20' },
+  ])
+  assert.deepEqual(
+    [...retired.entries()],
+    [
+      ['미래에셋증권(종합)', '2024-05-20'],
+      ['Example Broker(old)', null],
+    ]
+  )
+})
+
+test('a closed brokerage account ends its series on its closing date, whatever balance its statements leave', async () => {
+  config.stockDbPath = scenarioDb({
+    extra: (db) => {
+      brokerageCash(db, [
+        ['Example Broker', 'Example Broker(closed)', 'KRW', 'KRW', '2023-12-31', 50_000],
+        ['Example Broker', 'Example Broker(closed)', 'KRW', 'KRW', '2024-03-10', 900_000],
+        // The last line printed before the account closed; the statement runs on past it.
+        ['Example Broker', 'Example Broker(closed)', 'KRW', 'KRW', '2024-05-07', 300_000],
+      ])
+      cashCoverage(db, [
+        ['Example Broker', 'Example Broker(closed)', '2023-01-01', '2023-12-31'],
+        ['Example Broker', 'Example Broker(closed)', '2024-01-01', '2024-10-10'],
+      ])
+    },
+  })
+  const { getForeignAccountMaxima } = await import('../lib/adapters/portfolio-db')
+  const rowFor = (year: number) => getForeignAccountMaxima(year).rows.find((row) => row.id === 'Example Broker|Example Broker(closed)')
+  // Without the map entry, the statement ending on 10 October leaves the year partial.
+  assert.equal(rowFor(2024)!.coverage, 'partial')
+
+  const mapPath = path.join(mkdtempSync(path.join(tmpdir(), 'fbar-closed-')), 'accounts.local.json')
+  writeFileSync(
+    mapPath,
+    JSON.stringify({ brokerageAccounts: [{ institution: 'example', kind: 'general', account: 'Example Broker(closed)', retiredOn: '2024-05-20' }] })
+  )
+  const saved = config.stockAccountMapPath
+  config.stockAccountMapPath = mapPath
+  try {
+    // The closing year is complete up to the closing date, and its maximum stands.
+    const closing = rowFor(2024)!
+    assert.deepEqual([closing.maxKrw, closing.maxDate, closing.coverage, closing.cashIncluded], [900_000, '2024-03-31', 'month_end', true])
+    // Nothing after the closing date: the year after has no row.
+    assert.equal(rowFor(2025), undefined)
   } finally {
     config.stockAccountMapPath = saved
   }

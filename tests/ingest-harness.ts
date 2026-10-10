@@ -75,6 +75,8 @@ export function ingestEnv(dir: string, overrides: Record<string, string> = {}) {
     env[key] = value
   }
   env.STOCK_DATA_DIR = dir
+  // Fixtures carry no account map; say so, as CI and sample mode do (scripts/mirae_accounts.py).
+  env.STOCK_ALLOW_NO_ACCOUNT_MAP = '1'
   env.STOCK_DB_PATH = path.join(dir, 'out.db')
   for (const [key, name] of Object.entries(INGEST_PATHS)) {
     env[key] = path.join(dir, 'absent', name)
