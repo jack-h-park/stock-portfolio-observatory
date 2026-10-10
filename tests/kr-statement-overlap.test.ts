@@ -34,7 +34,9 @@ probes = json.loads(sys.argv[3])
 mod.statement_coverage = lambda path, report: tuple(docs[path.stem]["period"])
 mod.statement_account_number = lambda path: docs[path.stem].get("account")
 findings = []
-plan = mod.statements_to_read([Path(f"/fixture/{stem}.pdf") for stem in docs], lambda k, d: findings.append(k))
+# An account map, when the case gives one, decides which numbers are distinct declared accounts.
+distinct = mod.mapped_distinct_accounts(json.loads(sys.argv[4])) if len(sys.argv) > 4 else None
+plan = mod.statements_to_read([Path(f"/fixture/{stem}.pdf") for stem in docs], lambda k, d: findings.append(k), distinct)
 print(json.dumps({
     "read": [p.stem for p in plan],
     "cedes": {f"{stem}@{day}": plan.cedes(Path(f"/fixture/{stem}.pdf"), day) for stem, day in probes},
@@ -44,12 +46,12 @@ print(json.dumps({
 
 type Doc = { period: [string, string]; account?: string | null }
 
-function plan(docs: Record<string, Doc>, probes: [string, string][] = []) {
+function plan(docs: Record<string, Doc>, probes: [string, string][] = [], map?: object) {
   const harness = path.join(mkdtempSync(path.join(tmpdir(), 'kr-overlap-')), 'harness.py')
   writeFileSync(harness, HARNESS, 'utf8')
   const out = execFileSync(
     PY,
-    [harness, path.join(REPO_ROOT, 'scripts/extract-kr-statements.py'), JSON.stringify(docs), JSON.stringify(probes)],
+    [harness, path.join(REPO_ROOT, 'scripts/extract-kr-statements.py'), JSON.stringify(docs), JSON.stringify(probes), ...(map ? [JSON.stringify(map)] : [])],
     { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
   )
   // The extractor prints what it decided; the harness's answer is the last line.
@@ -104,6 +106,51 @@ test('two accounts under one filename series are not deduplicated against each o
   // Contained by period, but a different account: neither is dropped or trimmed.
   assert.equal(result.read.length, 2)
   assert.equal(result.cedes['mirae-general-transactions-2024-2025-2222@2025-06-01'], false)
+  assert.deepEqual(result.findings, ['account-mismatch'])
+})
+
+// One account printed in two formats is still one account: the digits decide.
+// The numbers are invented.
+const SAME_DASHED = '900-000000077'
+const SAME_REDASHED = '900-00-0000077'
+const OVERLAPPING = {
+  'mirae-general-transactions-2024-2025-4444': { period: ['2024-01-01', '2025-12-31'] as [string, string], account: SAME_DASHED },
+  'mirae-general-transactions-20230101-20261011-5555': { period: ['2023-01-01', '2026-10-11'] as [string, string], account: SAME_REDASHED },
+}
+const GENERAL_MAP = (...numbers: string[]) => ({
+  brokerageAccounts: numbers.map((accountNumber) => ({ institution: 'mirae', accountNumber, kind: 'general' })),
+})
+
+test('one account printed in two formats is one account: the contained statement is superseded', () => {
+  for (const map of [undefined, GENERAL_MAP(SAME_DASHED)]) {
+    const result = plan(OVERLAPPING, [], map)
+    assert.deepEqual(result.read, ['mirae-general-transactions-20230101-20261011-5555'], JSON.stringify(map))
+    assert.deepEqual(result.findings, [])
+  }
+})
+
+test('two mapped accounts of the series kind are two accounts, read side by side without a mismatch', () => {
+  const result = plan(
+    {
+      'mirae-general-transactions-2024-2025-2222': { period: ['2024-01-01', '2025-12-31'], account: ACCOUNT_A },
+      'mirae-general-transactions-20230101-20261011-3333': { period: ['2023-01-01', '2026-10-11'], account: ACCOUNT_B },
+    },
+    [],
+    GENERAL_MAP(ACCOUNT_A, ACCOUNT_B)
+  )
+  assert.equal(result.read.length, 2)
+  assert.deepEqual(result.findings, [])
+})
+
+test('a mapped number of another kind in a general series is still an account-mismatch', () => {
+  const result = plan(
+    {
+      'mirae-general-transactions-2024-2025-2222': { period: ['2024-01-01', '2025-12-31'], account: ACCOUNT_A },
+      'mirae-general-transactions-20230101-20261011-3333': { period: ['2023-01-01', '2026-10-11'], account: ACCOUNT_B },
+    },
+    [],
+    { ...GENERAL_MAP(ACCOUNT_A), bankAccounts: [{ institution: 'mirae', kind: 'cma', accountNumber: ACCOUNT_B, alias: '예시 CMA' }] }
+  )
   assert.deepEqual(result.findings, ['account-mismatch'])
 })
 

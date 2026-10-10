@@ -57,8 +57,9 @@ DATA_DIR = Path(os.environ.get("STOCK_DATA_DIR", Path.cwd() / "private-data"))
 OUT_DIR = Path(os.environ.get("STOCK_KR_STATEMENTS_DIR", Path.cwd() / "data/kr-statements"))
 PDF_PASSWORD = os.environ.get("STOCK_PDF_PASSWORD", "")
 # The gitignored account map: which 미래에셋 account each full 계좌번호 is, and
-# its label (scripts/mirae_accounts.py). Absent in CI and sample mode.
-ACCOUNT_MAP_PATH = Path(os.environ.get("STOCK_ACCOUNT_MAP_PATH", Path.cwd() / "data" / "accounts.local.json"))
+# its label (scripts/mirae_accounts.py). Absent in CI and sample mode, which say
+# so with STOCK_ALLOW_NO_ACCOUNT_MAP=1; a relative path is taken against the repo.
+ACCOUNT_MAP_PATH = mirae_accounts.map_path()
 TOSS_SNAPSHOT_PATH = Path(os.environ.get("STOCK_TOSS_SNAPSHOT_PATH", Path.cwd() / "data/toss-snapshot.json"))
 TOSS_ACCOUNT = os.environ.get("STOCK_TOSS_ACCOUNT_LABEL", "토스증권")
 
@@ -459,10 +460,12 @@ def statements_to_read(pdfs, report, distinct_accounts=None):
     silently losing half of 2023 and two thirds of 2024 (4,871 transactions). So
     `-NofM` is stripped to get the document, and documents are what get compared.
 
-    `distinct_accounts(a, b)`, given two printed numbers, says they are two
-    accounts the account map declares. A second 종합 account files under the same
-    `mirae-general-transactions-` series as the first, and that is not a misfiled
-    statement, so it is not reported.
+    `distinct_accounts(series, a, b)`, given a filename series and two printed
+    numbers, says they are two different accounts the account map declares, both
+    of the series' kind (`mirae_distinct_accounts`). A second 종합 account files
+    under the same `mirae-general-transactions-` series as the first, and that is
+    not a misfiled statement, so it is not reported. A CMA number in that series
+    still is.
     """
     documents = {}
     for path in pdfs:
@@ -476,10 +479,15 @@ def statements_to_read(pdfs, report, distinct_accounts=None):
         coverage[key] = statement_coverage(parts[0], report)
         accounts[key] = statement_account_number(parts[0])
 
+    def printed(key):
+        # One account printed as `NNN-NNNNNNNNN` and as `NNN-NN-NNNNNNN` is one
+        # account: compare the digits (and any mask), not the dashes.
+        return re.sub(r"[^0-9*]", "", accounts[key]) if accounts[key] else None
+
     def same_account(a, b):
         # A statement that prints no number cannot be told apart, so it is
         # compared with its series as before rather than read alongside it.
-        return accounts[a] is None or accounts[b] is None or accounts[a] == accounts[b]
+        return printed(a) is None or printed(b) is None or printed(a) == printed(b)
 
     dated = sorted(
         (k, coverage[k]) for k in coverage if coverage[k][0] and coverage[k][1]
@@ -495,7 +503,8 @@ def statements_to_read(pdfs, report, distinct_accounts=None):
     mismatched = set()
     for key, (start, end), other, (o_start, o_end) in pairs:
         if not same_account(key, other):
-            declared = distinct_accounts is not None and distinct_accounts(accounts[key], accounts[other])
+            declared = distinct_accounts is not None and distinct_accounts(
+                statement_series(key), accounts[key], accounts[other])
             if not declared and (o_start <= end and start <= o_end) and (key, other) not in mismatched:
                 mismatched.add((key, other))
                 report(
@@ -563,6 +572,24 @@ def account_label(pdf):
     return "미래에셋증권"
 
 
+def mapped_distinct_accounts(account_map):
+    """`distinct_accounts(series, a, b)` for statements_to_read, from the account map.
+
+    True only when the two numbers differ (by digits) and both are map entries of
+    the kind the filename series names (`mirae-general-…` → general). Anything
+    else under one series is still a misfiled statement.
+    """
+    kinds = {e["number"]: e["kind"] for e in mirae_accounts.entries(account_map)}
+
+    def distinct(series, a, b):
+        da, db = mirae_accounts.digits(a), mirae_accounts.digits(b)
+        parts = series.split("-")
+        kind = parts[1] if series.startswith(MIRAE_PREFIX) and len(parts) > 1 else None
+        return bool(kind) and da != db and kinds.get(da) == kind and kinds.get(db) == kind
+
+    return distinct
+
+
 def mirae_account(pdf, name, account_map, colliding):
     """(label, finding): the account a 미래에셋 statement's rows go under.
 
@@ -576,8 +603,8 @@ def mirae_account(pdf, name, account_map, colliding):
     if account_map is None:
         label = account_label(pdf)
         return label, ("mirae-no-account-map",
-                       f"{name}: labelled {label} by its printed 계좌유형 — there is no account map, "
-                       "so two accounts of one type would merge")
+                       f"{name}: labelled {label} by its printed 계좌유형 — with no account map, "
+                       "two accounts of one type would merge")
     numbers = sorted(set(mirae_accounts.account_numbers(page.extract_text() or "" for page in pdf.pages)))
     unmapped = "mirae-unmapped-account"
     if not numbers:
@@ -1478,12 +1505,17 @@ def main():
     collisions, colliding = mirae_accounts.label_collisions(account_map)
     for detail in collisions:
         report("mirae-account-label-collision", detail)
-    mapped_numbers = {e["number"] for e in mirae_accounts.entries(account_map)}
+    # No map at all labels by 계좌유형. That is fine in CI and sample mode, which
+    # say so with STOCK_ALLOW_NO_ACCOUNT_MAP=1; anywhere else — a fresh host, a
+    # mistyped STOCK_ACCOUNT_MAP_PATH — it blocks the refresh.
+    blocking_kinds = set(BLOCKING_KINDS)
+    if account_map is None and not map_problem:
+        report("mirae-no-account-map", mirae_accounts.missing_map(ACCOUNT_MAP_PATH))
+        if not mirae_accounts.no_map_allowed():
+            blocking_kinds.add("mirae-no-account-map")
 
-    def distinct_accounts(a, b):
-        return mirae_accounts.digits(a) in mapped_numbers and mirae_accounts.digits(b) in mapped_numbers
-
-    pdfs = statements_to_read(sorted(statements_dir.glob(f"{MIRAE_PREFIX}*.pdf")), report, distinct_accounts)
+    pdfs = statements_to_read(sorted(statements_dir.glob(f"{MIRAE_PREFIX}*.pdf")), report,
+                              mapped_distinct_accounts(account_map))
     if not pdfs:
         print(f"ERROR: no 미래에셋 statements in {statements_dir}", file=sys.stderr)
         return 1
@@ -1749,7 +1781,7 @@ def main():
             "rows": len(details),
             "distinct": len(unique),
             "drops_rows": kind in DROPPING_KINDS,
-            "blocking": kind in BLOCKING_KINDS,
+            "blocking": kind in blocking_kinds,
             "samples": unique[:10],
         })
     if unmapped:

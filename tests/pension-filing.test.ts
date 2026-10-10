@@ -132,8 +132,9 @@ test('a recognisable 계좌유형 does not file a certificate whose number the m
     const out = fileDownloads({ 'x.pdf': miraeCertificate(type, '900-000000099') }, MIRAE_MAP)
     assert.match(out, /recognised but not filed[\s\S]*\*\*\*\*0099 is not in the account map/)
   }
+  // With no map file at all the refusal names the missing file.
   const out = fileDownloads({ 'x.pdf': miraeCertificate('종합', MIRAE_NUMBERS.general) })
-  assert.match(out, /recognised but not filed[\s\S]*not in the account map/)
+  assert.match(out, /recognised but not filed[\s\S]*no-map\.json does not exist/)
 })
 
 // --- 삼성증권 연금저축 ledger ---------------------------------------------------
@@ -216,13 +217,13 @@ const IRP_BALANCE_STATUS = pdfOf([
   ['합 계 1,000,000 1 1,100,000', '위와 같이 퇴직연금 잔고현황을 확인합니다.', '2026년 10월 08일 미래에셋증권'],
 ])
 
-const irpBalanceCertificate = (title: string) =>
+const irpBalanceCertificate = (title: string, number = MIRAE_NUMBERS.irp) =>
   pdfOf([
     [
       title,
       '인쇄자 : 온라인 발급 Page : 1 / 2',
       '계좌번호 계 좌 명 부 기 명 실명확인번호',
-      '000-00-000000-0 예시고객',
+      `${number} 예시고객`,
       '기 준 일 자 발 급 일 시 용 도 출 력 평 가',
       '2024-12-31 2026-10-08 10:00:00 관공서제출용 계좌별 세전',
       '▶ 유가증권잔고',
@@ -231,7 +232,7 @@ const irpBalanceCertificate = (title: string) =>
     ],
     [
       '보 유 유 가 증 권 상 세 명 세 서',
-      '계좌번호 : 000-00-000000-0 기 준 일 : 2024-12-31 발 급 번 호 : 2026-001-00000001',
+      `계좌번호 : ${number} 기 준 일 : 2024-12-31 발 급 번 호 : 2026-001-00000001`,
       '종 목 명 수 량 매 입 단 가 기 준 가 평 가 금 액 비 고',
       '개인형IRP 1,000,000.00 1,100,000 신탁',
       '▷ 상장주식, 코스닥상장주식, 선물옵션, 금현물은 기준일자의 현재가',
@@ -258,16 +259,44 @@ const samsungBalanceCertificate = (asOf = '2025.12.31') =>
     ],
   ])
 
-test('the IRP 잔고현황 files as year-end evidence, dated by its 기준일자', () => {
+// The 잔고현황 prints no 계좌번호, only a 플랜번호: the one document not identified by
+// its account number (see docs/data-sources.md).
+test('the IRP 잔고현황 files as year-end evidence, dated by its 기준일자, when the map has one IRP entry', () => {
   const out = fileDownloads({ '잔고현황.pdf': IRP_BALANCE_STATUS }, PENSION_MAP)
   assert.match(out, /→ pension\/evidence\/irp-balance-status-20251231\.pdf/)
 })
 
-test('both titles of the IRP 잔고증명서 file as evidence, and the 미래에셋 balance detector stands aside', () => {
+const TWO_IRPS = (pins: (string | undefined)[]) => ({
+  pensionAccounts: [
+    { token: 'irp', account: '미래에셋증권(IRP)', wrapper: 'irp', institution: '미래에셋증권', planNumber: pins[0] },
+    { token: 'irp-2', account: '미래에셋증권(IRP2)', wrapper: 'irp', institution: '미래에셋증권', planNumber: pins[1] },
+  ],
+})
+
+test('with two IRP entries the 잔고현황 is refused unless a planNumber picks one', () => {
+  assert.match(fileDownloads({ '잔고현황.pdf': IRP_BALANCE_STATUS }, TWO_IRPS([undefined, undefined])), /recognised but not filed[\s\S]*planNumber/)
+  assert.match(fileDownloads({ '잔고현황.pdf': IRP_BALANCE_STATUS }, TWO_IRPS(['111-111-111', '000-000-000'])),
+    /→ pension\/evidence\/irp-2-balance-status-20251231\.pdf/)
+})
+
+test('a pinned planNumber that does not match the 잔고현황 refuses it', () => {
+  const pinned = { pensionAccounts: [{ ...PENSION_MAP.pensionAccounts[0], planNumber: '111-111-111' }] }
+  assert.match(fileDownloads({ '잔고현황.pdf': IRP_BALANCE_STATUS }, pinned), /recognised but not filed[\s\S]*플랜번호/)
+})
+
+test('both titles of the IRP 잔고증명서 file as evidence by the entry for their 계좌번호, and the 미래에셋 balance detector stands aside', () => {
   for (const title of ['특 정 (종 목) 잔 고 증 명 서', '잔 고 증 명 서']) {
-    const out = fileDownloads({ 'cert.pdf': irpBalanceCertificate(title) }, PENSION_MAP)
+    const out = fileDownloads({ 'cert.pdf': irpBalanceCertificate(title) }, MIRAE_MAP)
     assert.match(out, /→ pension\/evidence\/irp-balance-certificate-20241231\.pdf/, title)
     assert.doesNotMatch(out, /recognised but not filed/, title)
+  }
+})
+
+test('an IRP 잔고증명서 whose 계좌번호 is not in the map is refused, even with one IRP entry', () => {
+  for (const map of [MIRAE_MAP, PENSION_MAP]) {
+    const out = fileDownloads({ 'cert.pdf': irpBalanceCertificate('잔 고 증 명 서', '900-000000098') }, map)
+    assert.match(out, /recognised but not filed[\s\S]*\*\*\*\*0098 is not in the account map/)
+    assert.doesNotMatch(out, /→ pension\/evidence/)
   }
 })
 

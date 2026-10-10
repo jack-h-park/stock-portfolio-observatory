@@ -187,6 +187,7 @@ function runKrExtract(samsungTotal = '500,120') {
       STOCK_TOSS_SNAPSHOT_PATH: path.join(dataDir, 'no-toss.json'),
       // No account map: the 미래에셋 labels come from 계좌유형 (mirae-account-identity.test.ts covers the map).
       STOCK_ACCOUNT_MAP_PATH: path.join(dataDir, 'no-map.json'),
+      STOCK_ALLOW_NO_ACCOUNT_MAP: '1',
       STOCK_PDF_PASSWORD: '',
       STOCK_KR_AS_OF: '',
     },
@@ -476,7 +477,7 @@ function runBank(files: Record<string, Page[]>, map?: object) {
   const result = spawnSync(PY, ['scripts/extract-bank-statements.py'], {
     cwd: REPO_ROOT,
     encoding: 'utf8',
-    env: { ...process.env, PYTHONPATH: stubDir(), STOCK_DATA_DIR: dataDir, STOCK_BANK_BALANCES_PATH: out, STOCK_ACCOUNT_MAP_PATH: mapPath, STOCK_PDF_PASSWORD: '' },
+    env: { ...process.env, PYTHONPATH: stubDir(), STOCK_DATA_DIR: dataDir, STOCK_BANK_BALANCES_PATH: out, STOCK_ACCOUNT_MAP_PATH: mapPath, STOCK_ALLOW_NO_ACCOUNT_MAP: '1', STOCK_PDF_PASSWORD: '' },
   })
   assert.equal(result.status, 0, `bank extractor exited ${result.status}: ${result.stderr}`)
   return JSON.parse(readFileSync(out, 'utf8'))

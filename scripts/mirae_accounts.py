@@ -29,9 +29,36 @@ Messages show a number as `***-**-****1234`: the last four only.
 from __future__ import annotations
 
 import json
+import os
 import re
 import unicodedata
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_MAP = "data/accounts.local.json"
+
+
+def map_path():
+    """Where the account map is. A relative STOCK_ACCOUNT_MAP_PATH is taken against
+    the repo root, never the working directory, so the filer and every extractor
+    read the same file wherever they are run from."""
+    return REPO_ROOT / (os.environ.get("STOCK_ACCOUNT_MAP_PATH") or DEFAULT_MAP)
+
+
+def no_map_allowed():
+    """CI, the tests and sample mode have no map and say so with STOCK_ALLOW_NO_ACCOUNT_MAP=1.
+    Anywhere else a missing map is a fault: every 미래에셋 label would be read off
+    계좌유형, which is exactly what merges two accounts of one type."""
+    return os.environ.get("STOCK_ALLOW_NO_ACCOUNT_MAP") == "1"
+
+
+def missing_map(path):
+    """The finding for a map file that is not there, naming where it was looked for."""
+    allowed = "" if no_map_allowed() else (
+        " — create it, or point STOCK_ACCOUNT_MAP_PATH at it; set STOCK_ALLOW_NO_ACCOUNT_MAP=1 "
+        "only in CI or sample mode")
+    return f"the account map {path} does not exist{allowed}"
+
 
 DEFAULT_LABELS = {
     "general": "미래에셋증권(종합)",
@@ -135,7 +162,7 @@ def entries(account_map):
                 and digits(entry.get("accountNumber"))):
             out.append({"number": digits(entry["accountNumber"]), "kind": "irp",
                         "label": entry.get("label") or entry.get("account") or DEFAULT_LABELS["irp"],
-                        "section": "pensionAccounts"})
+                        "section": "pensionAccounts", "token": entry.get("token")})
     return out
 
 

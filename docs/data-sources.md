@@ -48,7 +48,7 @@ None of their contents belong in the repo:
 
 | Variable | Holds |
 | --- | --- |
-| `STOCK_ACCOUNT_MAP_PATH` | the account map: account numbers, institution aliases, wrappers and anchor balances (`data/accounts.local.json`, relative to the repo). The filer reads it to tell a CMA from a brokerage history, which 미래에셋 account a certificate belongs to (by its full 계좌번호, across `brokerageAccounts`, `bankAccounts` and `pensionAccounts`), and which Hana PDF is the USD account (`bankAccounts`, `institution: "hana"`), and the extractor to name accounts; a filer that needs one of those entries and finds none refuses the file and names the entry to add; `push-sources.sh` copies it to the refresh host with the other config files, and a missing map is skipped without failing the push |
+| `STOCK_ACCOUNT_MAP_PATH` | the account map: account numbers, institution aliases, wrappers and anchor balances (`data/accounts.local.json`; a relative path is taken against the repo root by the filer and every extractor alike, never the working directory). The filer reads it to tell a CMA from a brokerage history, which 미래에셋 account a certificate belongs to (by its full 계좌번호, across `brokerageAccounts`, `bankAccounts` and `pensionAccounts`), and which Hana PDF is the USD account (`bankAccounts`, `institution: "hana"`), and the extractor to name accounts; a filer that needs one of those entries and finds none refuses the file and names the entry to add; `push-sources.sh` copies it to the refresh host with the other config files, and a missing map is skipped without failing the push |
 | `STOCK_BANK_BALANCES_PATH` | the extracted deposit balances (`bank-balances.json`) that the refresh loads into `cash_balances` |
 | `STOCK_TOSSBANK_PASSWORD` | the password for Toss Bank's encrypted workbook; read on the laptop only, never on the refresh host (files in `bank-statements/` are already decrypted) |
 
@@ -95,7 +95,21 @@ that disagree are refused. It looks the number up across the three lists and
 files by the kind it finds there. A number the map does not list is refused even
 when 계좌유형 is recognisable: the message shows the number masked to its last
 four digits (`***-**-****1234`) and the entry to add, and the file stays in the
-inbox. The destinations are unchanged.
+inbox. With no map file at all, the refusal names the path it looked at and
+says the file is missing. The destinations are unchanged. A 잔고증명서 files only
+for the 종합 and ISA accounts; a 금현물 or CMA one is refused, since nothing reads
+it.
+
+The IRP's year-end 잔고증명서 is identified the same way: its 계좌번호 (cover and
+page 2) must be the IRP entry's `accountNumber`, and that entry's `token` names
+the evidence file.
+
+**The one exception: the IRP 퇴직연금 잔고현황.** It prints no 계좌번호 at all,
+only a 플랜번호 (the pension plan's number, which is not the account number) and
+제도유형 개인형IRP. It is filed only when that 플랜번호 picks exactly one IRP
+entry: by the entry's optional `planNumber` when any IRP entry sets one, or,
+when none does, because the map has exactly one IRP entry. Otherwise it is
+refused. Set `planNumber` on the IRP entry to pin it.
 
 **The extractors** label the rows by the same entry:
 
@@ -110,13 +124,21 @@ inbox. The destinations are unchanged.
 - A statement whose number the map lacks is skipped with a dropping finding
   (`mirae-unmapped-account`), never labelled by its 계좌유형. So is a CMA
   certificate found in `kr-statements/`.
-- With no account map at all (CI, sample mode) the labels are read off
-  계좌유형 as before, and a note says so (`mirae-no-account-map`; for the CMA, a
-  note in `bank-balances.json`).
+- With no account map file the labels are read off 계좌유형 as before, and
+  `mirae-no-account-map` names the path that is missing. That is a **blocking**
+  finding (for the CMA, a finding in `bank-balances.json`) unless
+  `STOCK_ALLOW_NO_ACCOUNT_MAP=1` says no map is intended, in which case it is a
+  note. CI, the test harness and sample mode set it; a refresh host never should.
+  A `STOCK_ACCOUNT_MAP_PATH` naming a file that does not exist is the same case:
+  it blocks.
 
 Two mapped accounts of one kind file under the same filename series
 (`mirae-general-transactions-…`), so the KR extractor does not report them as an
-`account-mismatch`.
+`account-mismatch`: both numbers must differ by digits and both be map entries of
+the kind the series names. A number of another kind in that series (a CMA under
+`mirae-general-`) is still a blocking `account-mismatch`. One account printed in
+two formats (`NNN-NNNNNNNNN`, `NNN-NN-NNNNNNN`) is one account: numbers are
+compared by their digits.
 
 ### Pension accounts and gold
 
@@ -130,8 +152,8 @@ no account at all, so their names carry a `token` from the account map.
 | 미래에셋 금현물 거래내역증명서 (계좌번호 = a `kind: "gold"` entry; page 2 `계좌유형 금현물`) | `kr-statements/mirae-gold-transactions-<from>-<to>.pdf` |
 | 삼성증권 연금저축 ledger (`LEDGER A/C TRANSACTIONS DETAIL`, `Account No.` naming 연금저축) | `kr-statements/samsung-pension-transactions-<from>-<to>.pdf` |
 | Pension holdings snapshot, made by hand | `pension/<token>-holdings-<YYYYMMDD>.csv` |
-| 미래에셋 퇴직연금 잔고현황 (year-end) | `pension/evidence/<token>-balance-status-<YYYYMMDD>.pdf` |
-| 미래에셋 IRP 잔고증명서, either title (year-end) | `pension/evidence/<token>-balance-certificate-<YYYYMMDD>.pdf` |
+| 미래에셋 퇴직연금 잔고현황 (year-end; prints no 계좌번호, see [the exception](#미래에셋-account-identity)) | `pension/evidence/<token>-balance-status-<YYYYMMDD>.pdf` |
+| 미래에셋 IRP 잔고증명서, either title (year-end; 계좌번호 = the IRP entry's `accountNumber`) | `pension/evidence/<token>-balance-certificate-<YYYYMMDD>.pdf` |
 | 삼성증권 연금저축 잔고증명서 (year-end) | `pension/evidence/<token>-balance-certificate-<YYYYMMDD>.pdf` |
 
 The three transaction certificates are named for the window they declare, from
@@ -168,7 +190,7 @@ A snapshot with any other name, or an unknown token, is refused with the name to
 
 - `token` names the files.
 - `account` is the account label the extractors emit for that account.
-- The filer picks the IRP evidence entry by `wrapper: "irp"` and `institution: "미래에셋증권"`, and the 삼성 one by `institution: "삼성증권"`.
+- The filer picks the IRP 잔고증명서's entry by the `accountNumber` it prints, the IRP 잔고현황's by its 플랜번호 (an optional `planNumber`, or the only `wrapper: "irp"`, `institution: "미래에셋증권"` entry), and the 삼성 one by `institution: "삼성증권"`.
 - The IRP entry's `accountNumber` is what files and labels the IRP 거래내역증명서: see [미래에셋 account identity](#미래에셋-account-identity).
 - The 삼성 잔고증명서 prints no account type. Set `accountNumber` on the 삼성 entry; this is recommended. With it, a certificate whose page 2 does not show that 계좌번호 is refused. Without it, any 삼성 잔고증명서 holding 수익증권 matches, and the filer still files it but prints a note saying it matched on issuer, title and 수익증권 only.
 - The example map, `data/accounts.local.example.json`, pins `accountNumber` for this reason.
@@ -637,7 +659,7 @@ was confirmed against the files already on disk.
 | --- | --- | --- |
 | 미래에셋 거래내역증명서 | `거래내역 증 명 서` + a full 계좌번호 the account map lists as `isa`, `general`, `gold` or the IRP; 계좌유형 on page 2 must agree with that kind | `kr-statements/mirae-<isa\|general>-transactions-<period>[-<발급번호>]`, `kr-statements/mirae-<irp\|gold>-transactions-<from>-<to>` |
 | 미래에셋 CMA 거래내역증명서 | the same, with a 계좌번호 the map lists as `kind: "cma"` under `bankAccounts` (the CMA shares its last four digits with the 종합 account, so only the full number tells them apart) | `bank-statements/mirae-cma-<from>-<to>` |
-| 미래에셋 잔고증명서 | `잔 고 증 명 서` + a full 계좌번호 the account map lists under `brokerageAccounts` | `kr-statements/mirae-<kind>-balance-<기준일자>-<발급번호>` |
+| 미래에셋 잔고증명서 | `잔 고 증 명 서` + a full 계좌번호 the account map lists under `brokerageAccounts` as `isa` or `general` | `kr-statements/mirae-<isa\|general>-balance-<기준일자>-<발급번호>` |
 | 토스 거래내역서 | `거래내역서` + `발급번호` + 계좌 `137-…` | `kr-statements/toss-transactions-<period>[-NofM]` |
 | Hana USD account history PDF/XLS | PDF: a USD account number the account map lists under `bankAccounts` (`institution: "hana"`); both: USD rows, printed query window | `fx-statements/hana-usd-history-<period>` |
 | 삼성 주식보상 | `계좌거래내역` + `종합(주식보상)` | `kr-statements/samsung-rsu-transactions-<계좌 last 5>` |

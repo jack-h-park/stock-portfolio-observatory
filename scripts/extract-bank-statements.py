@@ -10,14 +10,18 @@ balance includes its core money-market position (see FIDELITY_CORE_FUNDS).
 """
 from __future__ import annotations
 
-import csv, io, importlib.util, json, os, re, subprocess, tempfile, unicodedata
+import csv, io, importlib.util, json, os, re, subprocess, sys, tempfile, unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import mirae_accounts  # noqa: E402  (beside this file)
 
 DATA_DIR = Path(os.environ.get("STOCK_DATA_DIR", Path.cwd() / "private-data"))
 SOURCE_DIR = DATA_DIR / "bank-statements"
 OUT_PATH = Path(os.environ.get("STOCK_BANK_BALANCES_PATH", Path.cwd() / "data" / "bank-balances.json"))
-MAP_PATH = Path(os.environ.get("STOCK_ACCOUNT_MAP_PATH", Path.cwd() / "data" / "accounts.local.json"))
+# A relative STOCK_ACCOUNT_MAP_PATH is taken against the repo root, as by the filer.
+MAP_PATH = mirae_accounts.map_path()
 
 
 def _num(text):
@@ -435,15 +439,20 @@ def _mirae_cma_groups(paths, account_map, map_present, findings, notes):
     certificate whose number the map lacks is skipped with a finding, and two
     entries that would share one label are refused rather than merged.
 
-    With no account map at all (CI, sample mode) every certificate goes under the
-    one default name, as before, and a note says so: {None: paths}.
+    With no account map at all every certificate goes under the one default name,
+    as before. In CI and sample mode (STOCK_ALLOW_NO_ACCOUNT_MAP=1) a note says
+    so; anywhere else it is a finding, naming where the map was looked for.
     """
     if not map_present:
-        notes.append(f"{len(paths)} 미래에셋 CMA certificate(s) named {DEFAULT_ALIASES[('mirae', 'cma')]} by type: "
-                     "there is no account map, so two CMA accounts would merge")
+        if mirae_accounts.no_map_allowed():
+            notes.append(f"{len(paths)} 미래에셋 CMA certificate(s) named {DEFAULT_ALIASES[('mirae', 'cma')]} by type: "
+                         "there is no account map, so two CMA accounts would merge")
+        else:
+            findings.append(f"미래에셋 CMA: {mirae_accounts.missing_map(MAP_PATH)}; {len(paths)} certificate(s) "
+                            f"named {DEFAULT_ALIASES[('mirae', 'cma')]} by type")
         return {None: list(paths)}
     kr = _kr_statements_module()
-    ma = kr.mirae_accounts
+    ma = mirae_accounts
     collisions, colliding = ma.label_collisions({"bankAccounts": account_map.get("bankAccounts", [])})
     findings.extend(f"미래에셋 CMA: {detail}" for detail in collisions)
     groups = {}

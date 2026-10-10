@@ -61,7 +61,8 @@ test('a 미래에셋 certificate takes its account type from the map entry for i
 })
 
 test('a 미래에셋 certificate whose 계좌번호 the map does not declare is refused, naming the entry to add', () => {
-  for (const map of [undefined, { brokerageAccounts: [] }]) {
+  // With no map file at all the refusal says the file is missing instead (mirae-account-identity.test.ts).
+  for (const map of [{ brokerageAccounts: [] }]) {
     for (const [detector, pages] of [['detect_mirae_transactions', MIRAE_TRANSACTIONS], ['detect_mirae_balance', MIRAE_BALANCE]] as const) {
       const out = detect(detector, [...pages], map)
       assert.equal(out.plan, undefined)

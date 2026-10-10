@@ -87,8 +87,16 @@ test('two 종합 certificates sharing their last four digits: only the mapped nu
   assert.doesNotMatch(said(mapped), /111-?000000042|111000000042/)
 })
 
+test('with no map file the filer says the map is missing and where it looked, not which entry to add', () => {
+  const out = detect('detect_mirae_transactions', [cover(), page2(GENERAL_A, '종합')])
+  assert.equal(out.plan, undefined)
+  assert.match(out.reason, /no-map\.json/)
+  assert.match(out.reason, /does not exist/)
+  assert.doesNotMatch(out.remedy ?? '', /^add /)
+})
+
 test('a recognisable 계좌유형 does not file a certificate whose number the map lacks', () => {
-  for (const map of [undefined, { brokerageAccounts: [] }]) {
+  for (const map of [{}, { brokerageAccounts: [] }]) {
     const out = detect('detect_mirae_transactions', [cover(), page2(GENERAL_A, '종합')], map)
     assert.equal(out.plan, undefined, JSON.stringify(out))
     assert.match(out.reason, /0042/)
@@ -136,8 +144,10 @@ test('a 잔고증명서 is identified by its full number too, never by a shared 
   const other = detect('detect_mirae_balance', balance(GENERAL_B), MAP)
   assert.equal(other.plan, undefined, JSON.stringify(other))
   assert.match(other.reason, /\*\*\*\*0042/)
-  // The CMA shares the 종합 account's last four; its balance has no destination here.
+  // The CMA shares the 종합 account's last four; its balance has no destination here,
+  // and neither has the 금현물 account's: nothing reads one.
   assert.equal(detect('detect_mirae_balance', balance(CMA), MAP).plan, undefined)
+  assert.equal(detect('detect_mirae_balance', balance(GOLD), MAP).plan, undefined)
 })
 
 // --- the extractors ----------------------------------------------------------
@@ -224,7 +234,7 @@ function readTsv(file: string): Record<string, string>[] {
 }
 
 /** Run the KR extractor over `files` (name → pages) with `map`, or with no map file at all. */
-function runKr(files: Record<string, Page[]>, map?: object) {
+function runKr(files: Record<string, Page[]>, map?: object, env: Record<string, string> = {}) {
   const dataDir = mkdtempSync(path.join(tmpdir(), 'mirae-identity-kr-'))
   const outDir = path.join(dataDir, 'out')
   for (const [name, pages] of Object.entries(files)) writeDoc(path.join(dataDir, 'kr-statements', name), pages)
@@ -240,8 +250,10 @@ function runKr(files: Record<string, Page[]>, map?: object) {
       STOCK_KR_STATEMENTS_DIR: outDir,
       STOCK_TOSS_SNAPSHOT_PATH: path.join(dataDir, 'no-toss.json'),
       STOCK_ACCOUNT_MAP_PATH: mapPath,
+      STOCK_ALLOW_NO_ACCOUNT_MAP: '',
       STOCK_PDF_PASSWORD: '',
       STOCK_KR_AS_OF: '',
+      ...env,
     },
   })
   assert.equal(result.status, 0, `extractor exited ${result.status}: ${result.stderr}`)
@@ -309,11 +321,13 @@ test('a CMA certificate in kr-statements is skipped: the map says it is a bank a
   assert.match(run.finding('mirae-unmapped-account')?.samples.join('\n') ?? '', /cma/)
 })
 
+const ALLOW_NO_MAP = { STOCK_ALLOW_NO_ACCOUNT_MAP: '1' }
+
 test('with no map at all the labels stay type-based, and a finding says so', () => {
   const run = runKr({
     ...TWO_GENERALS,
     'mirae-isa-transactions-2024.pdf': certificate(ISA, 'ISA', '2024/01/01 ~ 2024/12/31', [deposit('2024/03/06', '3,000')]),
-  })
+  }, undefined, ALLOW_NO_MAP)
   // Today's behaviour: by 계좌유형, so the two 종합 numbers share one label.
   assert.deepEqual(accounts(run.transactions), ['미래에셋증권(ISA)', '미래에셋증권(종합)'])
   const note = run.finding('mirae-no-account-map')
@@ -322,8 +336,35 @@ test('with no map at all the labels stay type-based, and a finding says so', () 
   assert.ok(!note.blocking)
 })
 
+test('a missing map blocks the refresh unless STOCK_ALLOW_NO_ACCOUNT_MAP=1 says CI or sample mode', () => {
+  const run = runKr(TWO_GENERALS)
+  const missing = run.finding('mirae-no-account-map')
+  assert.ok(missing, JSON.stringify(run.findings))
+  assert.equal(missing.blocking, true)
+  assert.match(missing.samples.join('\n'), /no-map\.json/)
+  assert.match(missing.samples.join('\n'), /does not exist/)
+})
+
+test('a relative STOCK_ACCOUNT_MAP_PATH is taken against the repo root, the same for every tool', () => {
+  const program = `
+import sys
+sys.path.insert(0, 'scripts')
+import mirae_accounts
+print(mirae_accounts.map_path())
+`
+  const run = (value: string | undefined) =>
+    execFileSync(PY, ['-c', program], {
+      cwd: ROOT,
+      env: { ...process.env, STOCK_ACCOUNT_MAP_PATH: value ?? '' },
+      encoding: 'utf8',
+    }).trim()
+  assert.equal(run('data/example-map.json'), path.join(ROOT, 'data/example-map.json'))
+  assert.equal(run('/abs/map.json'), '/abs/map.json')
+  assert.equal(run(undefined), path.join(ROOT, 'data/accounts.local.json'))
+})
+
 /** Run the bank extractor over `files` with `map`, or with no map file at all. */
-function runBank(files: Record<string, Page[]>, map?: object) {
+function runBank(files: Record<string, Page[]>, map?: object, env: Record<string, string> = {}) {
   const dataDir = mkdtempSync(path.join(tmpdir(), 'mirae-identity-bank-'))
   for (const [name, pages] of Object.entries(files)) writeDoc(path.join(dataDir, 'bank-statements', name), pages)
   const mapPath = path.join(dataDir, map ? 'map.json' : 'no-map.json')
@@ -332,7 +373,7 @@ function runBank(files: Record<string, Page[]>, map?: object) {
   const result = spawnSync(PY, ['scripts/extract-bank-statements.py'], {
     cwd: ROOT,
     encoding: 'utf8',
-    env: { ...process.env, PYTHONPATH: stubDir(), STOCK_DATA_DIR: dataDir, STOCK_BANK_BALANCES_PATH: out, STOCK_ACCOUNT_MAP_PATH: mapPath, STOCK_PDF_PASSWORD: '' },
+    env: { ...process.env, PYTHONPATH: stubDir(), STOCK_DATA_DIR: dataDir, STOCK_BANK_BALANCES_PATH: out, STOCK_ACCOUNT_MAP_PATH: mapPath, STOCK_ALLOW_NO_ACCOUNT_MAP: '', STOCK_PDF_PASSWORD: '', ...env },
   })
   assert.equal(result.status, 0, `bank extractor exited ${result.status}: ${result.stderr}`)
   return JSON.parse(readFileSync(out, 'utf8'))
@@ -371,8 +412,14 @@ test('two CMA entries sharing an alias are refused rather than merged', () => {
 })
 
 test('with no map the CMA keeps its type-based name, and a note says so', () => {
-  const doc = runBank({ 'mirae-cma-20260101-20261010.pdf': cmaDoc(CMA, '2026/01/02') })
+  const doc = runBank({ 'mirae-cma-20260101-20261010.pdf': cmaDoc(CMA, '2026/01/02') }, undefined, ALLOW_NO_MAP)
   assert.deepEqual(doc.accounts.map((a: { account: string }) => a.account), ['미래에셋 CMA'])
   assert.deepEqual(doc.findings, [])
   assert.ok(doc.notes.some((n: string) => /no account map/.test(n)), JSON.stringify(doc.notes))
+})
+
+test('without STOCK_ALLOW_NO_ACCOUNT_MAP a missing map is a finding for the CMA, naming the path', () => {
+  const doc = runBank({ 'mirae-cma-20260101-20261010.pdf': cmaDoc(CMA, '2026/01/02') })
+  assert.equal(doc.findings.length, 1, JSON.stringify(doc.findings))
+  assert.match(doc.findings[0], /no-map\.json does not exist/)
 })

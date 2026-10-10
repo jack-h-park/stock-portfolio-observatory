@@ -98,7 +98,7 @@ INBOX_DIR = DATA_DIR / "inbox"
 PDF_PASSWORD = os.environ.get("STOCK_PDF_PASSWORD", "")
 # The gitignored account map. It lives in the repo's data/, not in STOCK_DATA_DIR,
 # so a relative STOCK_ACCOUNT_MAP_PATH resolves against the repo, as the other tools do.
-ACCOUNT_MAP_PATH = REPO_ROOT / os.environ.get("STOCK_ACCOUNT_MAP_PATH", "data/accounts.local.json")
+ACCOUNT_MAP_PATH = mirae_accounts.map_path()
 
 # The directories docs/data-sources.md names. Keep in step with
 # scripts/push-sources.sh, which pushes exactly these.
@@ -522,14 +522,22 @@ def doc_page_texts(doc):
     return texts
 
 
-def mirae_account(what, numbers, printed_type=None):
+def mirae_account(what, numbers, printed_type=None, expected_kind=None):
     """(entry, refusal): the account-map entry for the one full 계좌번호 in `numbers`.
 
     `numbers` is every occurrence on every page. They must agree, the map must
     list the number, and a printed 계좌유형, if it names a kind, must be the
-    map's kind.
+    map's kind. `expected_kind` is what the document otherwise says it is, for
+    the entry the refusal tells you to add.
     """
     printed_kind = mirae_accounts.type_kind(printed_type) if printed_type else None
+    if not ACCOUNT_MAP_PATH.exists():
+        return None, Refusal(
+            what,
+            f"the account map {ACCOUNT_MAP_PATH} does not exist, so no 미래에셋 account can be identified; "
+            "the file stays in the inbox",
+            "create the account map (see data/accounts.local.example.json), or set STOCK_ACCOUNT_MAP_PATH to it",
+        )
     distinct = sorted(set(numbers))
     if not distinct:
         return None, Refusal(
@@ -561,7 +569,7 @@ def mirae_account(what, numbers, printed_type=None):
             what,
             f"계좌번호 {mirae_accounts.mask(number)} is not in the account map{typed}, and only the "
             "full number decides which 미래에셋 account a document belongs to; the file stays in the inbox",
-            mirae_accounts.remedy(printed_kind, number),
+            mirae_accounts.remedy(printed_kind or expected_kind, number),
         )
     if printed_kind and printed_kind != entry["kind"]:
         return None, Refusal(
@@ -688,7 +696,9 @@ def detect_mirae_balance(doc):
     if refusal:
         return refusal
     kind = entry["kind"]
-    if kind not in mirae_accounts.BROKERAGE_KINDS:
+    # The 종합 and ISA balances are checkpoints the KR extractor reads. Nothing
+    # reads a 금현물, CMA or IRP one from here (the IRP's is pension evidence).
+    if kind not in ("isa", "general"):
         return Refusal(
             "미래에셋 잔고증명서",
             f"계좌번호 {mirae_accounts.mask(entry['number'])} is the {kind} account, and this filer "
@@ -1766,18 +1776,52 @@ def irp_entry(entry):
 
 
 def detect_irp_balance_status(doc):
-    """미래에셋 퇴직연금 잔고현황 → pension/evidence/<token>-balance-status-<기준일자>.pdf"""
+    """미래에셋 퇴직연금 잔고현황 → pension/evidence/<token>-balance-status-<기준일자>.pdf
+
+    THE ONE 미래에셋 DOCUMENT NOT IDENTIFIED BY ITS 계좌번호, because it prints
+    none: its 고객정보 block carries a 플랜번호 (the pension plan's number, not the
+    account's) and the 제도유형 개인형IRP. So it files only when the 플랜번호 picks
+    exactly one IRP entry: by that entry's `planNumber` when any IRP entry pins
+    one, or, when none does, because the map has exactly one IRP entry. Anything
+    else is refused rather than filed under a guess.
+    """
     if not is_irp_balance_status(doc):
         return None
     what = "미래에셋 퇴직연금 잔고현황"
-    match = re.search(r"기준일자:?(\d{4}-\d{2}-\d{2})", despace(doc.page_text(0)))
+    cover = despace(doc.page_text(0))
+    match = re.search(r"기준일자:?(\d{4}-\d{2}-\d{2})", cover)
     if not match:
         return Refusal(what, "no `기준일자 : YYYY-MM-DD` on page 1, and evidence is dated by the day it is AS OF")
-    entry, refusal = pension_account(irp_entry, what)
-    if refusal:
+    plan = re.search(r"플랜번호:?(\d[\d-]*\d)", cover)
+    if not plan:
+        return Refusal(what, "page 1 prints neither a 계좌번호 nor a 플랜번호, so which IRP it belongs to is unknown")
+    plan_number = digits(plan.group(1))
+    entries, problem = account_map_list("pensionAccounts")
+    if problem:
+        return Refusal(what, problem, "fix the JSON, or move the file aside")
+    irps = [e for e in entries if irp_entry(e) and e.get("token")]
+    pinned = [e for e in irps if digits(e.get("planNumber"))]
+    shown = f"플랜번호 ending {plan_number[-4:]}"
+    evidence = ["제도유형 개인형IRP"]
+    if pinned:
+        found = [e for e in pinned if digits(e["planNumber"]) == plan_number]
+        if len(found) != 1:
+            return Refusal(what, f"its {shown} matches {len(found)} IRP entries' planNumber in the account map",
+                           "set planNumber on the IRP entry in pensionAccounts to the 플랜번호 this document prints")
+        entry = found[0]
+        evidence.append(f"{shown} is the planNumber of pensionAccounts token {entry['token']}")
+    elif len(irps) == 1:
+        entry = irps[0]
+        evidence.append(f"{shown}; the map's only IRP entry (it prints no 계좌번호 — set planNumber to pin it)")
+    elif not irps:
+        _, refusal = pension_account(irp_entry, what)
         return refusal
+    else:
+        return Refusal(what, f"it prints no 계좌번호, and the account map has {len(irps)} IRP entries with no "
+                             "planNumber to pick one",
+                       "set planNumber on each IRP entry in pensionAccounts to the 플랜번호 its 잔고현황 prints")
     as_of = parse_ymd(match.group(1))
-    return evidence_plan(entry["token"], "balance-status", as_of, [f"기준일자 {iso(as_of)}", "제도유형 개인형IRP"])
+    return evidence_plan(entry["token"], "balance-status", as_of, [f"기준일자 {iso(as_of)}", *evidence])
 
 
 def detect_irp_balance_certificate(doc):
@@ -1785,6 +1829,8 @@ def detect_irp_balance_certificate(doc):
 
     Two titles have been issued for the same document (`잔 고 증 명 서` and
     `특 정 (종 목) 잔 고 증 명 서`); both despace to one containing 잔고증명서.
+    Which IRP it is comes from its 계좌번호 (cover and page 2), whose
+    pensionAccounts entry gives the token, like every other 미래에셋 document.
     """
     if not is_irp_balance_certificate(doc):
         return None
@@ -1792,11 +1838,21 @@ def detect_irp_balance_certificate(doc):
     match = re.search(r"기준일자발급일시.*?(\d{4}-\d{2}-\d{2})", despace(doc.page_text(0)), re.S)
     if not match:
         return Refusal(what, "no 기준일자 on the cover, and evidence is dated by the day it is AS OF")
-    entry, refusal = pension_account(irp_entry, what)
+    numbers = mirae_accounts.balance_cover_numbers(doc.page_text(0)) + mirae_accounts.account_numbers(doc_page_texts(doc))
+    entry, refusal = mirae_account(what, numbers, expected_kind="irp")
     if refusal:
         return refusal
+    shown = mirae_accounts.mask(entry["number"])
+    if entry["kind"] != "irp":
+        return Refusal(what, f"its page 2 holds 개인형IRP, but the account map lists {shown} as {entry['kind']}",
+                       f"check the entry in {entry['section']}, or move the file aside")
+    if not entry.get("token"):
+        return Refusal(what, f"the IRP entry for {shown} has no token, and the token is what the file is named by",
+                       "add the token to that pensionAccounts entry")
     as_of = parse_ymd(match.group(1))
-    return evidence_plan(entry["token"], "balance-certificate", as_of, [f"기준일자 {iso(as_of)}", "page 2 holding 개인형IRP"])
+    return evidence_plan(entry["token"], "balance-certificate", as_of,
+                         [f"기준일자 {iso(as_of)}", "page 2 holding 개인형IRP",
+                          f"계좌번호 {shown} is pensionAccounts token {entry['token']}"])
 
 
 def detect_samsung_pension_certificate(doc):
