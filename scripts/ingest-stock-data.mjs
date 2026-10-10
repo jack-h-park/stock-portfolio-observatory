@@ -2766,7 +2766,7 @@ const usOverlapOnlyInEarlier = []
   }
 
   const signature = (r) =>
-    [r.date, text(r.ticker), text(r.type), usRound(number(r.quantity) ?? 0, 6), usRound(number(r.native_amount) ?? 0, 4)].join(' ')
+    [r.date, text(r.ticker), text(r.type), usRound(number(r.quantity) ?? 0, 6), usRound(number(r.native_amount) ?? 0, 4)].join('\0')
 
   const byAccount = new Map()
   for (const span of spans.values()) {
