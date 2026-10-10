@@ -41,7 +41,8 @@ create table holdings (
   unrealized_gl_pct real,
   long_term_qty real,
   short_term_qty real,
-  lot_count integer
+  lot_count integer,
+  account_wrapper text not null default 'taxable'
 );
 create table tax_lots (
   id integer primary key,

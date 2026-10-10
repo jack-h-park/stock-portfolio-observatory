@@ -4,7 +4,16 @@ import { createHash } from 'node:crypto'
 import Database from 'better-sqlite3'
 import { config } from '@/config'
 import type { TaxPlanningLot } from '@/lib/tax-planning'
+import { monthEndCash, summarizeNetWorth, type NetWorth } from '@/lib/net-worth'
 import { groupAccountRanges, type AccountDataRange, type RangeKind, type RangeRow } from '@/lib/account-ranges'
+
+/** The default (Stocks) view: taxable and ISA securities only. Every holdings total goes through this. */
+export const STOCK_WRAPPER_SQL = "account_wrapper in ('taxable','isa')"
+
+/** The same filter with the column qualified, for a query that aliases holdings or joins another table that has the column. */
+function stockWrapperFor(alias: string) {
+  return `${alias}.${STOCK_WRAPPER_SQL}`
+}
 
 export type Holding = {
   id: number
@@ -713,6 +722,7 @@ export function getOverview() {
             on l.market = h.market
            and l.account = h.account
            and l.ticker = h.ticker
+          where ${stockWrapperFor("h")}
           group by h.id
         ), term_ready_holdings as (
           select
@@ -942,6 +952,59 @@ function withCumulativeRealized(conn: Database.Database, snapshots: PortfolioSna
   })
 }
 
+export function getNetWorth(): NetWorth {
+  const overview = getOverview()
+  const conn = db()
+  try {
+    const hasTable = (name: string) =>
+      Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(name))
+    // One row per account: the newest date, and the highest id when a date repeats.
+    const latest = hasTable('cash_balances')
+      ? (conn
+          .prepare(
+            `select c.institution, c.account, c.kind, c.currency, c.as_of_date as asOfDate, c.balance, c.derived
+               from cash_balances c
+              where c.id = (
+                select x.id from cash_balances x
+                 where x.account = c.account
+                 order by x.as_of_date desc, x.id desc
+                 limit 1
+              )
+              order by c.account`
+          )
+          .all() as any[])
+      : []
+    const usd = conn
+      .prepare("select rate from fx_rates where from_currency = 'USD' and to_currency = 'KRW' order by as_of_date desc limit 1")
+      .get() as { rate: number } | undefined
+    const summary = summarizeNetWorth({
+      stocksKrw: (overview.totals.kr_base_market_value ?? 0) + (overview.totals.us_base_market_value ?? 0),
+      cryptoKrw: overview.totals.crypto_base_market_value ?? 0,
+      usdKrw: usd?.rate ?? null,
+      cash: latest.map((row) => ({ ...row, derived: Boolean(row.derived) })),
+    })
+    const series = hasTable('cash_balances')
+      ? (conn.prepare('select account, currency, as_of_date as date, balance from cash_balances order by as_of_date').all() as any[])
+      : []
+    const rates = hasTable('historical_fx_rates')
+      ? (conn.prepare('select price_date, rate from historical_fx_rates order by price_date').all() as { price_date: string; rate: number }[])
+      : []
+    const rateAt = (date: string) => rates.filter((r) => r.price_date <= date).at(-1)?.rate ?? usd?.rate ?? null
+    // Ordered by date, so the Map keeps the last snapshot of each month.
+    const stocksByMonth = new Map<string, number>(
+      hasTable('portfolio_snapshots')
+        ? (conn
+            .prepare('select substr(snapshot_date,1,7) as month, global_base_market_value as v from portfolio_snapshots order by snapshot_date')
+            .all() as any[]).map((r) => [r.month, r.v])
+        : []
+    )
+    const history = monthEndCash(series, rateAt).map((row) => ({ ...row, stocks: stocksByMonth.get(row.month) ?? null }))
+    return { ...summary, history }
+  } finally {
+    conn.close()
+  }
+}
+
 export function getHoldings(limit = 200): Holding[] {
   const conn = db()
   try {
@@ -951,6 +1014,7 @@ export function getHoldings(limit = 200): Holding[] {
           native_unrealized_gl, native_unrealized_gl_pct, base_cost, base_market_value, base_unrealized_gl,
           total_cost_krw, long_term_qty, short_term_qty, lot_count
          from holdings
+         where ${STOCK_WRAPPER_SQL}
          order by market, currency, native_cost desc
          limit ?`
       )
@@ -1034,7 +1098,7 @@ export function getCostBasisHoldings(limit = 1000): CostBasisHolding[] {
             ) as price_date,
             sum(coalesce(h.base_market_value, 0)) over () as portfolio_base_market_value
           from holdings h
-          where h.quantity != 0
+          where h.quantity != 0 and ${stockWrapperFor("h")}
         )
         select *
         from priced_holdings
@@ -1527,6 +1591,7 @@ function reviewPositionSelect() {
     end as short_term_ratio,
     coalesce(sum(lot_count), 0) as lot_count
    from holdings
+   where ${STOCK_WRAPPER_SQL}
    group by market, currency, ticker, name`
 }
 
@@ -1544,7 +1609,7 @@ export function getPortfolioReview(): PortfolioReview {
           coalesce(sum(base_unrealized_gl), 0) as base_unrealized_gl,
           sum(case when coalesce(base_unrealized_gl, 0) > 0 then 1 else 0 end) as positive_positions,
           sum(case when coalesce(base_unrealized_gl, 0) < 0 then 1 else 0 end) as negative_positions
-         from holdings`
+         from holdings where ${STOCK_WRAPPER_SQL}`
       )
       .get() as PortfolioReview['totals']
 
@@ -1556,6 +1621,7 @@ export function getPortfolioReview(): PortfolioReview {
           coalesce(sum(base_market_value), 0) as base_market_value,
           coalesce(sum(base_unrealized_gl), 0) as base_unrealized_gl
          from holdings
+         where ${STOCK_WRAPPER_SQL}
          group by market
          order by base_market_value desc, base_cost desc`
       )
@@ -1658,6 +1724,7 @@ export function getMarketBreakdown(): MarketBreakdown[] {
           sum(base_market_value) as base_market_value,
           sum(base_unrealized_gl) as base_unrealized_gl
          from holdings
+         where ${STOCK_WRAPPER_SQL}
          group by market, currency
          order by base_market_value desc, base_cost desc`
       )
@@ -1679,7 +1746,7 @@ export function getIncomeReview(): IncomeReview {
         `select
           coalesce(sum(base_market_value), 0) as market_value,
           coalesce(sum(coalesce(base_cost, total_cost_krw)), 0) as cost_basis
-         from holdings`
+         from holdings where ${STOCK_WRAPPER_SQL}`
       )
       .get() as { market_value: number; cost_basis: number }
     const totals = conn
@@ -1750,6 +1817,7 @@ export function getIncomeReview(): IncomeReview {
              sum(base_market_value) as market_value,
              sum(coalesce(base_cost, total_cost_krw)) as cost_basis
            from holdings
+           where ${STOCK_WRAPPER_SQL}
            group by market, ticker
          )
          select income.*,
@@ -1840,7 +1908,7 @@ export function getCryptoPremium(): CryptoPremium {
       .prepare(
         `select ticker, coalesce(sum(quantity), 0) as quantity
          from holdings
-         where market = 'CRYPTO' and currency = 'KRW'
+         where ${STOCK_WRAPPER_SQL} and market = 'CRYPTO' and currency = 'KRW'
          group by ticker`
       )
       .all() as { ticker: string; quantity: number }[]
@@ -1909,7 +1977,7 @@ export function getRebalanceReview(): RebalanceReview {
           coalesce(sum(base_market_value), 0) as base_market_value,
           coalesce(sum(coalesce(base_cost, total_cost_krw)), 0) as base_cost,
           count(*) as position_count
-         from holdings`
+         from holdings where ${STOCK_WRAPPER_SQL}`
       )
       .get() as RebalanceReview['totals']
     const baseSelect = reviewPositionSelect()
@@ -2200,7 +2268,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
     const sourceRows = conn.prepare('select * from source_files order by name').all() as any[]
     const holdingRows = conn
       .prepare(`select market, coalesce(brokerage, 'Unknown') as brokerage, account, account_type, max(as_of_date) as covered_through
-                from holdings group by market, brokerage, account, account_type`)
+                from holdings where ${STOCK_WRAPPER_SQL} group by market, brokerage, account, account_type`)
       .all() as CoverageDbRow[]
     const transactionRows = conn
       .prepare(`select market, coalesce(brokerage, 'Unknown') as brokerage, account, account_type, max(date) as covered_through
@@ -2519,7 +2587,7 @@ export function getDataOpsReview(): DataOpsReview {
       .prepare(
         `select market, currency, brokerage, account, ticker, name, quantity, native_cost, base_cost
          from holdings
-         where (native_market_value is null or base_market_value is null)
+         where ${STOCK_WRAPPER_SQL} and (native_market_value is null or base_market_value is null)
            and not (market = 'KR' and length(trim(ticker)) != 6)
          order by coalesce(base_cost, total_cost_krw) desc
          limit 50`
@@ -2630,6 +2698,7 @@ export function getReconciliationReview(): ReconciliationReview {
              count(distinct account) as holding_accounts,
              coalesce(sum(coalesce(base_cost, total_cost_krw)), 0) as holding_base_cost
            from holdings
+           where ${STOCK_WRAPPER_SQL}
            group by market, coalesce(brokerage, 'Unassigned')
          ),
          lot_summary as (
@@ -2686,6 +2755,7 @@ export function getReconciliationReview(): ReconciliationReview {
              coalesce(sum(coalesce(base_cost, total_cost_krw)), 0) as holding_base_cost,
              1 as holding_present
            from holdings
+           where ${STOCK_WRAPPER_SQL}
            group by market, coalesce(brokerage, 'Unassigned'), ticker
          ),
          l as (
@@ -2756,7 +2826,7 @@ export function getReconciliationReview(): ReconciliationReview {
       .prepare(
         `select market, currency, brokerage, ticker, name, native_cost, base_cost
          from holdings
-         where native_market_value is null
+         where ${STOCK_WRAPPER_SQL} and native_market_value is null
            and not (market = 'KR' and length(trim(ticker)) != 6)
          order by coalesce(base_cost, total_cost_krw) desc
          limit 30`
@@ -2768,7 +2838,7 @@ export function getReconciliationReview(): ReconciliationReview {
           count(distinct market) as market_count,
           count(distinct coalesce(brokerage, 'Unassigned')) as brokerage_count,
           count(distinct market || ':' || ticker) as position_count
-         from holdings`
+         from holdings where ${STOCK_WRAPPER_SQL}`
       )
       .get() as Pick<ReconciliationReview['totals'], 'market_count' | 'brokerage_count' | 'position_count'>
     const lotTotals = conn.prepare("select count(distinct market || ':' || ticker) as count from tax_lots").get() as { count: number }
@@ -2849,7 +2919,7 @@ export function getPositionDetail(market: string, ticker: string): PositionDetai
           native_unrealized_gl, native_unrealized_gl_pct, base_cost, base_market_value, base_unrealized_gl,
           total_cost_krw, long_term_qty, short_term_qty, lot_count
          from holdings
-         where market = ? and ticker = ?
+         where ${STOCK_WRAPPER_SQL} and market = ? and ticker = ?
          order by coalesce(base_market_value, base_cost, total_cost_krw) desc, account`
       )
       .all(market, ticker) as Holding[]
@@ -2860,6 +2930,7 @@ export function getPositionDetail(market: string, ticker: string): PositionDetai
              max(current_price) as current_price,
              max(case when quantity > 0 then native_market_value / quantity else null end) as implied_price
            from holdings
+           where ${STOCK_WRAPPER_SQL}
            group by market, brokerage, account, ticker
          )
          select tax_lots.id, tax_lots.market, tax_lots.currency, tax_lots.brokerage, tax_lots.account, tax_lots.ticker,
@@ -2921,7 +2992,7 @@ export function getPositionDetail(market: string, ticker: string): PositionDetai
           coalesce(sum(short_term_qty), 0) as short_term_qty,
           coalesce(sum(lot_count), 0) as lot_count
          from holdings
-         where market = ? and ticker = ?`
+         where ${STOCK_WRAPPER_SQL} and market = ? and ticker = ?`
       )
       .get(market, ticker) as PositionDetail['totals']
     const lotTotals = conn
@@ -3001,6 +3072,7 @@ export function getTaxPlanningLots(limit = 500): TaxPlanningLot[] {
              max(current_price) as current_price,
              max(case when quantity > 0 then native_market_value / quantity else null end) as implied_price
            from holdings
+           where ${STOCK_WRAPPER_SQL}
            group by market, brokerage, account, ticker
          ),
          enriched_lots as (
@@ -3062,13 +3134,14 @@ export function getTopHoldings(limit = 10) {
            (
              select h2.name
              from holdings h2
-             where h2.market = holdings.market and h2.ticker = holdings.ticker
+             where ${stockWrapperFor("h2")} and h2.market = holdings.market and h2.ticker = holdings.ticker
              order by coalesce(h2.base_cost, 0) desc, h2.id
              limit 1
            ) as name,
            coalesce(sum(base_cost), 0) as value,
            coalesce(sum(base_cost), 0) as base_cost
          from holdings
+         where ${STOCK_WRAPPER_SQL}
          group by market, ticker
          order by base_cost desc, value desc
          limit ?`
@@ -3086,6 +3159,7 @@ export function getAccountAllocation() {
       .prepare(
         `select market, currency, account, coalesce(sum(native_cost), 0) as value, count(*) as count
          from holdings
+         where ${STOCK_WRAPPER_SQL}
          group by market, currency, account
          order by market, currency, value desc`
       )
