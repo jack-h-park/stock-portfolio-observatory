@@ -4761,9 +4761,12 @@ check(
 )
 // Holdings and lots come from two sources that age differently — the API
 // snapshot is hourly, the statements are as old as the last download — so this
-// is a staleness measure, not a data error. A non-zero count names the
-// positions that have traded since the newest 거래내역서 and is expected to
-// reappear whenever the account trades; it closes again on the next statement.
+// is a staleness measure, not a data error. Since the orders bridge books every
+// fill the API returns after the newest 거래내역서, a non-zero count names what
+// it cannot: an after-hours fill, or a row that is not an order. It closes again
+// on the next statement — which is why the detail names that statement's last
+// date and age. Without it, "3 disagree" read as a defect when it was a
+// multi-week-old statement doing exactly what an old statement does.
 //
 // The two halves are reported separately because they mean different things. A
 // quantity that disagrees is ordinary drift — the account bought since the
@@ -4781,7 +4784,10 @@ check(
     // positions being current, which is what `toss_positions_fresh` reports.
     ? 'no Open API snapshot — no second provenance to compare against (see toss_positions_fresh)'
     : `${differentProvenance.length} of ${tossHoldingCount} live Toss position(s) disagree with the lots rebuilt ` +
-      `from the statements` +
+      (tossBridgeCutoff
+        ? `from the statements through ${tossBridgeCutoff} (${Math.floor(daysSince(tossBridgeCutoff))}d ago) ` +
+          `plus ${tossBridgedFills} order fill(s) bridged since`
+        : 'from the statements (no Toss statement on file to date them)') +
       (tossOrphanLots.length
         ? `; ${tossOrphanLots.length} open lot(s) have no live position at all (${tossOrphanLots.join(', ')})`
         : ''),

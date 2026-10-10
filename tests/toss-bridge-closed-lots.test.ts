@@ -140,5 +140,7 @@ test('a lot the bridge only partly closes, with no live position, is still named
   assert.deepEqual(lots.map((l) => [l.ticker, l.open_quantity]), [['KEPT', 2], ['SOLD', 4]])
   const provenance = check('toss_holdings_lots_provenance')
   assert.equal(provenance?.status, 'fail')
-  assert.match(String(provenance?.detail), /1 open lot\(s\) have no live position at all \(SOLD\)/)
+  assert.match(String(provenance?.detail), /1 open lot\(s\) have no live position at all \(SOLD\)/)  // How old the statement behind the lots is, so a disagreement reads as the
+  // drift of a dated source rather than as an unexplained defect.
+  assert.match(String(provenance?.detail), /statements through 2026-07-02 \(\d+d ago\) plus 2 order fill\(s\) bridged since/)
 })
