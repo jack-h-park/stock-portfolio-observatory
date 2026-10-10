@@ -6,11 +6,11 @@ import path from 'node:path'
 import test from 'node:test'
 
 // A dollar trade in a Korean account carries its won amount on the certificate:
-// 외화거래금액 times the 환율 the broker applied that day. The lot walk used to
-// keep only the dollars, leaving the ingest to convert the cost at whatever date
-// it had to hand, which was the SALE date. Every won gain on a dollar lot then
-// lost the currency's move over the holding period: a QQQ share bought for
-// ₩436,919 in 2021 was costed at ₩531,016, the 2025 rate.
+// the foreign-currency amount times the exchange rate the broker applied that
+// day. The lot walk used to keep only the dollars, leaving the ingest to convert
+// the cost at whatever date it had to hand, which was the SALE date. Every won
+// gain on a dollar lot then lost the currency's move over the holding period: a
+// QQQ share bought for ₩436,919 in 2021 was costed at ₩531,016, the 2025 rate.
 //
 // Same harness as kr-lot-notes: the module imports pdfplumber at load time, and
 // nothing here reads a PDF.
@@ -127,8 +127,9 @@ test('a lot with no won figure is left for the ingest to convert at its acquisit
 })
 
 test('a fractional share moved in with no cash leg takes the currency its trades are booked in', () => {
-  // 소수해외대체입고 books no amount, so the certificate leaves the currency at
-  // KRW while the 단가 is in dollars: BRK.B's $7.29 lot was costed at ₩7.
+  // A fractional foreign-share transfer-in (`소수해외대체입고`) books no amount,
+  // so the certificate leaves the currency at KRW while the unit price is in
+  // dollars: BRK.B's $7.29 lot was costed at ₩7.
   const r = buildLots([
     row({
       Date: '2025-07-10', Type: 'TRANSFER_IN', 'Raw Type': '소수해외대체입고', Ticker: 'BRK.B',
