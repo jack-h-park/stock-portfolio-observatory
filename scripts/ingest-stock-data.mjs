@@ -885,6 +885,22 @@ create table cash_balances (
   derived integer not null default 0
 );
 
+-- Uninvested cash in the Korean brokerage accounts, as the statements print it
+-- (data/kr-statements/cash.tsv): one row per account, pool and day. Read only
+-- by the FBAR maximum-balance table, which adds it to the account's securities.
+create table brokerage_cash (
+  id integer primary key,
+  institution text not null,
+  account text not null,
+  pool text not null,
+  currency text not null,
+  as_of_date text not null,
+  balance real not null,
+  source text not null,
+  account_wrapper text not null,
+  asset_class text not null
+);
+
 create table fx_account_balances (
   id integer primary key,
   institution text not null,
@@ -4873,6 +4889,26 @@ insertMany(db, 'fx_events', fxLedger.events ?? [], [
   'note',
 ])
 insertMany(db, 'cash_balances', cashRows, ['institution', 'account', 'owner', 'kind', 'currency', 'as_of_date', 'balance', 'source', 'derived'])
+// The wrapper and asset class are the account's, by the same rules as its
+// securities rows, so the reader can keep a pension's or the gold account's cash
+// out of a brokerage figure.
+const brokerageCashRows = (readTsvAt(krStatementsDir, 'cash.tsv')?.rows ?? [])
+  .map((r) => {
+    const account = text(r.Account)
+    return {
+      institution: account.split('(')[0],
+      account,
+      pool: text(r.Pool),
+      currency: text(r.Currency),
+      as_of_date: text(r.Date),
+      balance: number(r.Balance),
+      source: text(r.Source),
+      account_wrapper: wrapperFor({ account }, accountMap),
+      asset_class: assetClassFor({ account }, accountMap),
+    }
+  })
+  .filter((r) => r.account && r.pool && r.currency && r.as_of_date && r.balance != null)
+insertMany(db, 'brokerage_cash', brokerageCashRows, ['institution', 'account', 'pool', 'currency', 'as_of_date', 'balance', 'source', 'account_wrapper', 'asset_class'])
 insertMany(db, 'fx_account_balances', fxLedger.balances ?? [], [
   'institution',
   'account',

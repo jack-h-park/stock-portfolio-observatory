@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import Database from 'better-sqlite3'
 import { config } from '@/config'
 import { foreignAccountMaxima, isUsBrokerage, isUsCashInstitution, lastCompleteYear, maxBalance, treasuryRateFor } from '../lib/fbar'
+import { bankAccountName, retiredBankAccounts } from '../lib/bank-accounts'
 import treasuryRates from '../data/treasury-reporting-rates.json'
+
+// No real account map: a test that needs one writes its own.
+config.stockAccountMapPath = path.join(mkdtempSync(path.join(tmpdir(), 'fbar-map-')), 'absent.json')
 
 // Invented figures throughout; the repository is public. The Treasury rates
 // are public data.
@@ -131,9 +135,48 @@ test('foreignAccountMaxima with no rate leaves every maxUsd null', () => {
   assert.equal(r.aggregateMaxUsd, null)
 })
 
+test('foreignAccountMaxima keeps crypto exchange rows out of the aggregate, with their own subtotal', () => {
+  const r = foreignAccountMaxima(2024, { krwPerUsd: 1_000, date: '2024-12-31' }, [
+    { institution: 'X', account: 'A', kind: 'brokerage', maxKrw: 5_000_000, maxDate: '2024-06-30', coverage: 'month_end', cashIncluded: false },
+    { institution: 'Ex', account: 'Ex', kind: 'crypto', maxKrw: 2_000_000, maxDate: '2024-03-31', coverage: 'month_end', cashIncluded: false },
+  ])
+  assert.deepEqual(r.rows.map((row) => row.id), ['X|A'])
+  assert.equal(r.rows[0].cashIncluded, false)
+  assert.equal(r.aggregateMaxUsd, 5_000)
+  assert.deepEqual(r.cryptoRows, [
+    { id: 'Ex|Ex', institution: 'Ex', account: 'Ex', kind: 'crypto', maxKrw: 2_000_000, maxDate: '2024-03-31', maxUsd: 2_000, coverage: 'month_end', understated: true, cashIncluded: false },
+  ])
+  assert.equal(r.cryptoSubtotalMaxUsd, 2_000)
+  assert.equal(foreignAccountMaxima(2026, null, []).cryptoSubtotalMaxUsd, null)
+})
+
+test('bankAccountName names an entry the way the bank extractor names its account', () => {
+  assert.equal(bankAccountName({ institution: 'tossbank', last4: '1111', kind: 'savings', alias: 'Example savings' }), 'Example savings')
+  assert.equal(bankAccountName({ institution: 'tossbank', last4: '1111', kind: 'savings' }), 'tossbank 1111')
+  assert.equal(bankAccountName({ institution: 'mirae', kind: 'cma' }), '미래에셋 CMA')
+  assert.equal(bankAccountName({ institution: 'mg', kind: 'deposit' }), 'mg deposit')
+})
+
+test('retiredBankAccounts lists entries marked retired, with the retirement date when one is given', () => {
+  const retired = retiredBankAccounts([
+    { institution: 'tossbank', last4: '1111', kind: 'savings', alias: 'Example savings', retiredOn: '2024-06-30' },
+    { institution: 'mg', last4: '2222', kind: 'deposit', retired: true },
+    { institution: 'hana', kind: 'fx', alias: 'Example USD' },
+    { institution: 'boa', kind: 'checking', alias: 'Example old', retired: false },
+    { institution: 'bad', kind: 'checking', retiredOn: 'soon' },
+  ])
+  assert.deepEqual(
+    [...retired.entries()],
+    [
+      ['tossbank|Example savings', '2024-06-30'],
+      ['mg|mg 2222', null],
+    ]
+  )
+})
+
 // --- adapter ----------------------------------------------------------------
 
-function scenarioDb({ withFx = true } = {}) {
+function scenarioDb({ withFx = true, extra }: { withFx?: boolean; extra?: (db: Database.Database) => void } = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), 'fbar-'))
   const dbPath = path.join(dir, 'fbar.db')
   const db = new Database(dbPath)
@@ -201,8 +244,20 @@ function scenarioDb({ withFx = true } = {}) {
   db.prepare(
     "insert into transactions_all (market, currency, date, account, type, ticker, quantity, amount_krw, settlement_krw, asset_class) values ('KR', 'KRW', '2024-02-01', 'Example(gold)', 'BUY', 'GOLD', 10, 1_000_000, 1_000_000, 'gold')"
   ).run()
+  extra?.(db)
   db.close()
   return dbPath
+}
+
+const BROKERAGE_CASH_TABLE = `create table brokerage_cash (id integer primary key, institution text not null, account text not null, pool text not null, currency text not null,
+  as_of_date text not null, balance real not null, source text not null, account_wrapper text not null default 'taxable', asset_class text not null default 'security')`
+
+function brokerageCash(db: Database.Database, rows: [string, string, string, string, string, number, string?][]) {
+  db.exec(BROKERAGE_CASH_TABLE)
+  const insert = db.prepare(
+    "insert into brokerage_cash (institution, account, pool, currency, as_of_date, balance, source, account_wrapper) values (?, ?, ?, ?, ?, ?, 'x', ?)"
+  )
+  for (const [institution, account, pool, currency, date, balance, wrapper] of rows) insert.run(institution, account, pool, currency, date, balance, wrapper ?? 'taxable')
 }
 
 test('getForeignAccountMaxima excludes US institutions and converts at the Treasury rate', async () => {
@@ -279,4 +334,124 @@ test('a USD account with neither a Treasury rate nor a market rate keeps its row
   assert.ok(usd, 'the row is listed, not skipped')
   assert.equal(usd.maxKrw, null)
   assert.equal(usd.maxUsd, null)
+})
+
+test('brokerage rows add the uninvested cash carried forward to each month-end', async () => {
+  config.stockDbPath = scenarioDb({
+    extra: (db) =>
+      brokerageCash(db, [
+        ['Example KR Broker', 'Example KR general', 'KRW', 'KRW', '2023-12-20', 100_000],
+        ['Example KR Broker', 'Example KR general', 'KRW', 'KRW', '2024-06-15', 400_000],
+        ['Example KR Broker', 'Example KR general', 'KRW', 'KRW', '2024-08-01', 0],
+        // The statement's coverage end: the balance stands through it.
+        ['Example KR Broker', 'Example KR general', 'KRW', 'KRW', '2024-12-31', 0],
+        // A dollar pool, converted at the month-end USD/KRW rate.
+        ['Example KR Broker', 'Example KR overseas', 'USD', 'USD', '2024-12-10', 1_000],
+        ['Example KR Broker', 'Example KR overseas', 'USD', 'USD', '2024-12-31', 1_000],
+        // An account holding only cash still has a row.
+        ['Example Rewards', 'Example Rewards(stock comp)', 'KRW', 'KRW', '2023-12-31', 5_000],
+        ['Example Rewards', 'Example Rewards(stock comp)', 'KRW', 'KRW', '2024-03-01', 9_000],
+        ['Example Rewards', 'Example Rewards(stock comp)', 'KRW', 'KRW', '2024-12-31', 9_000],
+        // A pension account's cash is in its certificate totals already.
+        ['Example', 'Example(IRP)', 'KRW', 'KRW', '2024-05-01', 99_000_000, 'irp'],
+        // A US brokerage is never foreign.
+        ['Robinhood', 'Example US brokerage', 'USD', 'USD', '2024-05-01', 99_000],
+      ]),
+  })
+  const { getForeignAccountMaxima } = await import('../lib/adapters/portfolio-db')
+  const r = getForeignAccountMaxima(2024)
+  const byId = new Map(r.rows.map((row) => [row.id, row]))
+
+  // 15 shares at 20,000 plus 400,000 of cash on 2024-06-30.
+  const kr = byId.get('Example KR Broker|Example KR general')!
+  assert.deepEqual([kr.maxKrw, kr.maxDate, kr.coverage, kr.understated, kr.cashIncluded], [700_000, '2024-06-30', 'month_end', true, true])
+
+  // 2 × 150 × 1,400 of stock plus $1,000 × 1,400 on 2024-12-31.
+  const overseas = byId.get('Example KR Broker|Example KR overseas')!
+  assert.deepEqual([overseas.maxKrw, overseas.maxDate, overseas.cashIncluded], [420_000 + 1_400_000, '2024-12-31', true])
+
+  const rewards = byId.get('Example Rewards|Example Rewards(stock comp)')!
+  assert.deepEqual([rewards.kind, rewards.maxKrw, rewards.maxDate, rewards.coverage, rewards.cashIncluded], ['brokerage', 9_000, '2024-03-31', 'month_end', true])
+
+  assert.equal(byId.get('Example|Example(IRP)')!.maxKrw, 8_000_000)
+  assert.equal(byId.get('Example|Example(IRP)')!.cashIncluded, undefined)
+  assert.ok(!r.rows.some((row) => row.institution === 'Robinhood'))
+})
+
+test('cash history that stops before 31 December makes the brokerage row partial', async () => {
+  config.stockDbPath = scenarioDb({
+    extra: (db) =>
+      brokerageCash(db, [
+        ['Example KR Broker', 'Example KR general', 'KRW', 'KRW', '2023-12-20', 100_000],
+        ['Example KR Broker', 'Example KR general', 'KRW', 'KRW', '2024-08-01', 0],
+      ]),
+  })
+  const { getForeignAccountMaxima } = await import('../lib/adapters/portfolio-db')
+  const kr = getForeignAccountMaxima(2024).rows.find((row) => row.id === 'Example KR Broker|Example KR general')!
+  assert.equal(kr.coverage, 'partial')
+  assert.equal(kr.cashIncluded, true)
+  // Before the cash history starts, the year has no cash in it.
+  const early = getForeignAccountMaxima(2023).rows.find((row) => row.id === 'Example KR Broker|Example KR general')!
+  assert.equal(early.cashIncluded, true)
+  assert.equal(early.coverage, 'partial')
+})
+
+test('a brokerage account with no cash history says so, and other kinds carry no cash flag', async () => {
+  config.stockDbPath = scenarioDb()
+  const { getForeignAccountMaxima } = await import('../lib/adapters/portfolio-db')
+  const r = getForeignAccountMaxima(2024)
+  for (const row of r.rows) assert.equal(row.cashIncluded, row.kind === 'brokerage' ? false : undefined, row.id)
+})
+
+test('crypto exchanges are reference rows: foreign ones only, month-end values, outside the aggregate', async () => {
+  config.stockDbPath = scenarioDb({
+    extra: (db) => {
+      const lot = db.prepare(
+        "insert into tax_lots_all (market, currency, brokerage, account, ticker, acquired_date, open_quantity, native_cost_basis, cost_basis_krw) values ('CRYPTO', ?, ?, ?, ?, ?, ?, ?, ?)"
+      )
+      lot.run('KRW', 'Example Exchange', 'Example Exchange', 'BTC', '2023-05-01', 0.1, 3_000_000, 3_000_000)
+      // Robinhood Crypto is a US account.
+      lot.run('USD', 'Robinhood', 'Robinhood Crypto', 'ETH', '2023-05-01', 1, 2_000, 2_600_000)
+      const price = db.prepare("insert into historical_prices (market, ticker, symbol, currency, price_date, close, source) values ('CRYPTO', ?, ?, 'USD', ?, ?, 'x')")
+      price.run('BTC', 'BTC', '2023-12-29', 40_000)
+      price.run('BTC', 'BTC', '2024-03-28', 70_000)
+      price.run('BTC', 'BTC', '2024-12-31', 90_000)
+      price.run('ETH', 'ETH', '2024-03-28', 999_999)
+    },
+  })
+  const { getForeignAccountMaxima } = await import('../lib/adapters/portfolio-db')
+  const r = getForeignAccountMaxima(2024)
+  assert.ok(!r.rows.some((row) => row.kind === 'crypto'))
+  assert.deepEqual(r.cryptoRows.map((row) => row.id), ['Example Exchange|Example Exchange'])
+  const exchange = r.cryptoRows[0]
+  // 0.1 × 90,000 × 1,400 on 2024-12-31.
+  assert.deepEqual(
+    [exchange.kind, exchange.maxKrw, exchange.maxDate, exchange.coverage, exchange.understated, exchange.cashIncluded],
+    ['crypto', 0.1 * 90_000 * 1_400, '2024-12-31', 'month_end', true, false]
+  )
+  assert.equal(r.cryptoSubtotalMaxUsd, exchange.maxUsd)
+  assert.equal(r.aggregateMaxUsd, r.rows.reduce((sum, row) => sum + (row.maxUsd ?? 0), 0))
+})
+
+test('a retired cash account ends its series on its retirement date', async () => {
+  config.stockDbPath = scenarioDb()
+  const mapPath = path.join(mkdtempSync(path.join(tmpdir(), 'fbar-retired-')), 'accounts.local.json')
+  writeFileSync(
+    mapPath,
+    JSON.stringify({ bankAccounts: [{ institution: 'tossbank', last4: '0000', kind: 'savings', alias: 'Example savings', retiredOn: '2024-06-30' }] })
+  )
+  const saved = config.stockAccountMapPath
+  config.stockAccountMapPath = mapPath
+  try {
+    const { getForeignAccountMaxima } = await import('../lib/adapters/portfolio-db')
+    // The year it closed is complete: nothing is held after the retirement date.
+    const closing = getForeignAccountMaxima(2024).rows.find((row) => row.id === 'tossbank|Example savings')!
+    assert.deepEqual([closing.maxKrw, closing.maxDate, closing.coverage], [3_000_000, '2024-04-02', 'daily'])
+    // Later years carry nothing forward, even though a later balance row exists.
+    assert.ok(!getForeignAccountMaxima(2025).rows.some((row) => row.id === 'tossbank|Example savings'))
+    // Another institution's account with the same alias is not retired.
+    assert.ok(getForeignAccountMaxima(2025).rows.some((row) => row.id === 'mg|Example savings'))
+  } finally {
+    config.stockAccountMapPath = saved
+  }
 })

@@ -15,7 +15,7 @@
 export type FbarCoverage = 'daily' | 'month_end' | 'year_end' | 'partial'
 export type FbarResolution = Exclude<FbarCoverage, 'partial'>
 export type BalancePoint = { date: string; valueKrw: number }
-export type FbarKind = 'cash' | 'brokerage' | 'pension' | 'gold'
+export type FbarKind = 'cash' | 'brokerage' | 'pension' | 'gold' | 'crypto'
 
 /**
  * The highest value in `year`. The last point before the year is carried in as
@@ -64,8 +64,10 @@ export function treasuryRateFor(year: number, rates: TreasuryRate[]): { krwPerUs
  * foreign. Brokerage accounts are split by brokerage: Robinhood, Fidelity,
  * Chase and Merrill are domestic; every other broker is foreign, whatever the
  * market of its lots (a Korean broker's US-stock lots count). Crypto exchanges
- * are left out of this table, and brokerage rows value securities only, not the
- * account's uninvested cash, which is one reason they are marked understated.
+ * follow the brokerage rule (Robinhood Crypto is domestic) and are listed apart,
+ * as reference rows outside the aggregate. A brokerage row adds the account's
+ * uninvested cash where its statements print a running balance, and says
+ * `cashIncluded: false` where they do not.
  */
 export const US_CASH_INSTITUTIONS: readonly string[] = ['chase', 'boa', 'robinhood-bank', 'fidelity']
 
@@ -103,6 +105,8 @@ export type ForeignAccountInput = {
   coverage: FbarCoverage
   /** A USD account's maximum in dollars, which is its FBAR figure as it stands. */
   maxUsdNative?: number
+  /** Brokerage and crypto rows: whether the account's uninvested cash is in the value. */
+  cashIncluded?: boolean
 }
 export type ForeignAccountRow = {
   /** `institution|account`: two institutions can use the same account alias. */
@@ -115,12 +119,18 @@ export type ForeignAccountRow = {
   maxUsd: number | null
   coverage: FbarCoverage
   understated: boolean
+  /** Present on brokerage and crypto rows only. */
+  cashIncluded?: boolean
 }
 export type ForeignAccountMaxima = {
   year: number
   rate: { krwPerUsd: number; date: string } | null
+  /** Every foreign account except crypto exchanges. */
   rows: ForeignAccountRow[]
   aggregateMaxUsd: number | null
+  /** Crypto exchange accounts, for reference only: never in `aggregateMaxUsd`. */
+  cryptoRows: ForeignAccountRow[]
+  cryptoSubtotalMaxUsd: number | null
 }
 
 /**
@@ -129,14 +139,15 @@ export type ForeignAccountMaxima = {
  * and its won figure is that times the same rate. With no rate for the year,
  * every USD figure is null and the won figures stand as given (null for a USD
  * account no rate of any kind can convert). Any row not
- * found from daily balances may be understated.
+ * found from daily balances may be understated. Crypto exchange rows go to
+ * `cryptoRows` with their own subtotal and stay out of the aggregate.
  */
 export function foreignAccountMaxima(
   year: number,
   rate: { krwPerUsd: number; date: string } | null,
   accounts: ForeignAccountInput[]
 ): ForeignAccountMaxima {
-  const rows = accounts.map(({ maxUsdNative, ...account }): ForeignAccountRow => {
+  const all = accounts.map(({ maxUsdNative, cashIncluded, ...account }): ForeignAccountRow => {
     const native = maxUsdNative != null && rate
     return {
       id: `${account.institution}|${account.account}`,
@@ -148,7 +159,11 @@ export function foreignAccountMaxima(
       maxUsd: !rate ? null : native ? maxUsdNative : account.maxKrw == null ? null : account.maxKrw / rate.krwPerUsd,
       coverage: account.coverage,
       understated: account.coverage !== 'daily',
+      ...(cashIncluded != null ? { cashIncluded } : {}),
     }
   })
-  return { year, rate, rows, aggregateMaxUsd: rate ? rows.reduce((sum, row) => sum + (row.maxUsd ?? 0), 0) : null }
+  const rows = all.filter((row) => row.kind !== 'crypto')
+  const cryptoRows = all.filter((row) => row.kind === 'crypto')
+  const sumUsd = (list: ForeignAccountRow[]) => (rate ? list.reduce((sum, row) => sum + (row.maxUsd ?? 0), 0) : null)
+  return { year, rate, rows, aggregateMaxUsd: sumUsd(rows), cryptoRows, cryptoSubtotalMaxUsd: sumUsd(cryptoRows) }
 }

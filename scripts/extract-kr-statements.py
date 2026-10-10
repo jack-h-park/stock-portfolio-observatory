@@ -601,6 +601,81 @@ DIVIDEND_COLUMNS = [
     "Date", "Account", "Symbol", "Name", "Currency", "Native Amount", "FX Rate",
     "Amount (KRW)", "Type", "Source", "Page",
 ]
+# The uninvested cash each account held at the end of each day the statements
+# print a balance, one row per pool. Read by the FBAR maximum-balance table,
+# which adds it to the account's securities; nothing else depends on it.
+CASH_COLUMNS = ["Date", "Account", "Pool", "Currency", "Balance", "Source", "Page"]
+
+
+def mirae_cash_points(row_a, row_b):
+    """[(pool, currency, balance)] printed on one 미래에셋 record.
+
+    예수금잔액 (row A col 7) is the won cash after the line; 외화예수금 (col 9)
+    the foreign cash in the currency 통화코드 (row B col 10) names. Every line
+    carries them, the cash legs this parser otherwise drops included, which is
+    why the balance is read before the type is looked at. A securities leg
+    leaves both blank, and a blank is no reading rather than a zero: the cash
+    leg beside it prints the balance.
+    """
+    points = []
+    krw = nfc(row_a[7]).strip()
+    if krw:
+        points.append(("KRW", "KRW", number(krw)))
+    foreign = nfc(row_a[9]).strip()
+    code = nfc(row_b[10]).strip()
+    if foreign and code and code != "KRW":
+        points.append((code, code, number(foreign)))
+    return points
+
+
+def toss_cash_point(row):
+    """(pool, currency, balance) for one Toss line, or None when 잔액 is blank.
+
+    The 원화 and 달러 sections keep separate 잔액 columns that never agree on a
+    shared date, so each is its own pool. Both print won (see toss_statements),
+    so the 달러 pool's figure is already in KRW.
+    """
+    if not row.get("cash_printed"):
+        return None
+    pool = "USD" if str(row.get("section") or "").startswith("달러") else "KRW"
+    return (pool, "KRW", row["cash_balance"])
+
+
+def samsung_cash_point(row):
+    """(pool, currency, balance) for one 삼성증권 line: 현금잔액, in won."""
+    if not row.get("cash_printed"):
+        return None
+    return ("KRW", "KRW", row["cash_balance"])
+
+
+def cash_row(date, account, point, source, page):
+    pool, currency, balance = point
+    return {"Date": date, "Account": account, "Pool": pool, "Currency": currency,
+            "Balance": balance, "Source": source, "Page": page}
+
+
+def end_of_day_cash(points, as_of_map):
+    """The last balance per (account, pool, date), plus one row at the coverage end.
+
+    `points` are CASH_COLUMNS dicts in statement order, so a later line on the
+    same day wins. The certificate's coverage end (`as_of_map`, the same dates
+    the lots use) is something the statement positively tells us: no line after
+    the last one means the balance stood until then. Each pool's last balance is
+    repeated on that date, so a quiet December still reaches 31 December.
+    """
+    last = {}
+    for point in points:
+        last[(point["Account"], point["Pool"], point["Date"])] = point
+    rows = list(last.values())
+    final = {}
+    for point in sorted(rows, key=lambda p: p["Date"]):
+        final[(point["Account"], point["Pool"])] = point
+    for (account, _pool), point in final.items():
+        through = as_of_map.get(account)
+        if through and through > point["Date"]:
+            rows.append({**point, "Date": through, "Page": ""})
+    return sorted(rows, key=lambda p: (p["Account"], p["Pool"], p["Date"]))
+
 
 
 def amount_of(row_a, row_b, row_c):
@@ -1101,7 +1176,7 @@ def load_toss_snapshot(report):
     return None
 
 
-def toss_transactions(statements_dir, snapshot, report):
+def toss_transactions(statements_dir, snapshot, report, cash=None):
     """Toss 거래내역서 rows in the shared TRANSACTION_COLUMNS shape.
 
     `report(kind, detail)` collects everything that could not be handled, for
@@ -1127,6 +1202,9 @@ def toss_transactions(statements_dir, snapshot, report):
             if pdfs.cedes(pdf_path, row["date"]):
                 ceded += 1
                 continue
+            point = toss_cash_point(row)
+            if point is not None and cash is not None:
+                cash.append(cash_row(row["date"], TOSS_ACCOUNT, point, name, row["page"]))
             mapped, _label = toss_statements.classify(row["raw_type"])
             if mapped is None:
                 report("unmapped-type", f"{row['raw_type']} ({name} p{row['page']})")
@@ -1195,7 +1273,7 @@ def toss_transactions(statements_dir, snapshot, report):
     return out
 
 
-def samsung_transactions(statements_dir, known_tickers, report):
+def samsung_transactions(statements_dir, known_tickers, report, cash=None):
     """삼성증권 주식보상 rows in the shared TRANSACTION_COLUMNS shape.
 
     The statement names its security and never numbers it — there is no 종목번호
@@ -1228,6 +1306,11 @@ def samsung_transactions(statements_dir, known_tickers, report):
             if pdfs.cedes(pdf_path, row["date"]):
                 ceded += 1
                 continue
+            # The pension ledger's balance column is not read here: that account
+            # is valued from its holdings snapshots, cash included.
+            point = samsung_cash_point(row)
+            if point is not None and cash is not None and account not in SAMSUNG_PENSION_ACCOUNTS:
+                cash.append(cash_row(row["date"], account, point, name, row["page"]))
             mapped = samsung_statements.classify(row["raw_type"])
             if mapped is None:
                 report("samsung-unmapped-type", f"{row['raw_type']} ({name} p{row['page']})")
@@ -1303,6 +1386,7 @@ def main():
 
     transactions = []
     dividends = []
+    cash = []
     unmapped = {}
     skipped_locked = []
     unconverted = 0
@@ -1324,6 +1408,8 @@ def main():
                     ceded += 1
                     continue
                 raw_type = a[1].strip()
+                for point in mirae_cash_points(a, b):
+                    cash.append(cash_row(a[0].strip().replace("/", "-"), account, point, name, page_no))
                 if raw_type in CASH_LEG_TYPES:
                     continue
                 mapped = ACCOUNT_TYPE_MAP.get(account, {}).get(raw_type) or TYPE_MAP.get(raw_type)
@@ -1398,7 +1484,7 @@ def main():
               f"{len(checked)} row(s) checked, {breaks} break(s)")
 
     toss_snapshot = load_toss_snapshot(report)
-    toss_rows = toss_transactions(statements_dir, toss_snapshot, report)
+    toss_rows = toss_transactions(statements_dir, toss_snapshot, report, cash)
     transactions.extend(toss_rows)
     # Toss files income under 거래구분 the same way 미래에셋 does, so the same
     # rule puts it in the income table: the ingest checks that the two counts
@@ -1426,7 +1512,7 @@ def main():
     for row in transactions:
         if row["Name"] and row["Ticker"]:
             known_tickers.setdefault(row["Name"], set()).add(row["Ticker"])
-    samsung_rows = samsung_transactions(statements_dir, known_tickers, report)
+    samsung_rows = samsung_transactions(statements_dir, known_tickers, report, cash)
     transactions.extend(samsung_rows)
     # Same income rule as the other two brokers; the ingest checks that the
     # transaction and dividend counts agree.
@@ -1466,6 +1552,8 @@ def main():
     write_tsv(OUT_DIR / "taxlots.tsv", TAXLOT_COLUMNS, taxlots)
     write_tsv(OUT_DIR / "realized.tsv", REALIZED_COLUMNS, realized)
     write_as_of(OUT_DIR / "as-of.json", as_of_map)
+    cash_rows = end_of_day_cash(cash, as_of_map)
+    write_tsv(OUT_DIR / "cash.tsv", CASH_COLUMNS, cash_rows)
 
     by_currency = {}
     for r in transactions:
@@ -1476,6 +1564,7 @@ def main():
     as_of_shown = ", ".join(f"{a} {d}" for a, d in sorted(as_of_map.items()))
     print(f"Wrote {OUT_DIR}/taxlots.tsv ({len(taxlots)} open lot(s), as of — {as_of_shown})")
     print(f"Wrote {OUT_DIR}/realized.tsv ({len(realized)} realized lot(s))")
+    print(f"Wrote {OUT_DIR}/cash.tsv ({len(cash_rows)} end-of-day cash balance(s))")
     # These reached stderr and stopped there, which is the same shape as the
     # `unmapped-type` failure this file already paid for: the run printed the
     # problem and every check passed. On 2026-08-10 a split stopped being

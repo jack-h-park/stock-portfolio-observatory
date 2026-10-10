@@ -260,3 +260,28 @@ create table source_files (name text primary key, filename text not null, path t
     config.stockDbPath = saved
   }
 })
+
+test('a retired cash account leaves the reminder; the others stay', async () => {
+  const { config } = await import('@/config')
+  const { getSupplementaryCoverage } = await import('../lib/adapters/portfolio-db')
+  const retiredMap = path.join(dir, 'retired.json')
+  writeFileSync(
+    retiredMap,
+    JSON.stringify({
+      bankAccounts: [
+        { institution: 'Example Bank', kind: 'deposit', alias: '••1234', retired: true },
+        // Same alias at another institution: not this account.
+        { institution: 'Other Bank', kind: 'cma', alias: 'CMA ••5678', retiredOn: '2020-01-01' },
+      ],
+    })
+  )
+  const saved = config.stockAccountMapPath
+  config.stockAccountMapPath = retiredMap
+  try {
+    const labels = getSupplementaryCoverage().rows.map((row) => row.label)
+    assert.ok(!labels.includes('Example Bank ••1234'))
+    assert.ok(labels.includes('Sample Securities CMA ••5678'))
+  } finally {
+    config.stockAccountMapPath = saved
+  }
+})

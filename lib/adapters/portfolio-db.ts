@@ -12,6 +12,7 @@ import { groupAccountRanges, type AccountDataRange, type AssetType, type RangeKi
 import { foreignAccountMaxima, isUsBrokerage, isUsCashInstitution, maxBalance, treasuryRateFor, type BalancePoint, type ForeignAccountInput, type ForeignAccountMaxima } from '@/lib/fbar'
 import treasuryRates from '@/data/treasury-reporting-rates.json'
 import { loadAccountMap } from '@/scripts/account-map.mjs'
+import { retiredBankAccounts } from '@/lib/bank-accounts'
 import { createLotValuer } from '@/scripts/lot-valuation.mjs'
 
 /**
@@ -1194,16 +1195,32 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
 }
 
 /**
+ * A closed account's balance history: the points up to `retiredOn`, then zero
+ * from the next day through the end of that year, so the closing year is read
+ * as complete and nothing is carried past the closure.
+ */
+function closedOn(points: BalancePoint[], retiredOn: string): BalancePoint[] {
+  const next = new Date(Date.parse(`${retiredOn}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10)
+  const yearEnd = `${retiredOn.slice(0, 4)}-12-31`
+  return [...points.filter((point) => point.date <= retiredOn), { date: next, valueKrw: 0 }, { date: next > yearEnd ? next : yearEnd, valueKrw: 0 }]
+}
+
+/**
  * Each foreign account's maximum value in `year`, for FBAR and Form 8938. Foreign
  * is everything not held at a US institution:
  *
  * - cash outside the US banks (isUsCashInstitution), from daily balances
- *   carried forward; a USD account's maximum is read in dollars;
+ *   carried forward; a USD account's maximum is read in dollars. A bankAccounts
+ *   entry with `retiredOn` ends its account's series on that date;
  * - stock accounts outside the US brokerages (isUsBrokerage), KR and US market
  *   alike, so a Korean broker's US stocks count: month-end values of the lots
  *   held times the historical price, converted at that date's USD/KRW rate when
  *   the quote is in dollars (the reconstruction the month-end backfill uses),
- *   at cost where no price reaches a position. Crypto is not included;
+ *   at cost where no price reaches a position, plus the uninvested cash the
+ *   statements print (brokerage_cash) carried forward to each month-end;
+ *   `cashIncluded` says whether any reached the year;
+ * - crypto exchange accounts outside the US firms, valued the same way from
+ *   their lots, as reference rows kept out of the aggregate;
  * - pension accounts, from their certificate and snapshot totals;
  * - the gold account, grams held times the latest KRX price, at cost before
  *   the first stored price (partial when any of the year is at cost).
@@ -1241,6 +1258,14 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
     }
 
     // Cash: one series per (institution, account), in the account's own currency.
+    // A retired account (the map's `retiredOn`) holds nothing after that date:
+    // its series closes at zero, and a later year has no row for it.
+    let retired = new Map<string, string | null>()
+    try {
+      retired = retiredBankAccounts(loadAccountMap(config.stockAccountMapPath).bankAccounts)
+    } catch {
+      // An unreadable map is the ingest's failure to report; here no account is retired.
+    }
     const rateAt = usdKrwRateAt(conn)
     const cashByAccount = new Map<string, { institution: string; account: string; currency: string; points: BalancePoint[] }>()
     if (hasTable('cash_balances')) {
@@ -1255,7 +1280,10 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
         cashByAccount.set(key, entry)
       }
     }
-    for (const { institution, account, currency, points } of cashByAccount.values()) {
+    for (const [key, { institution, account, currency, points: history }] of cashByAccount) {
+      const retiredOn = retired.get(key) ?? null
+      if (retiredOn && retiredOn < start) continue
+      const points = retiredOn ? closedOn(history, retiredOn) : history
       const found = maxBalance(points, year)
       if (!found) continue
       if (currency === 'USD') {
@@ -1269,52 +1297,73 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
       }
     }
 
-    // Stock accounts outside the US brokerages, KR and US market: month-end
-    // values, with the prior year-end as 1 January.
+    // Brokerage and crypto exchange accounts outside the US firms: month-end
+    // values, with the prior year-end as 1 January. Securities are the lots held
+    // times the historical price (the month-end backfill's reconstruction); a
+    // brokerage account adds its uninvested cash where the statements print it.
+    const monthEnds = [`${year - 1}-12-31`]
+    for (let month = 1; month <= 12; month += 1) monthEnds.push(new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10))
+    const dates = monthEnds.filter((d) => d <= today)
+    const identities = new Map<string, { institution: string; account: string; kind: 'brokerage' | 'crypto' }>()
+    const identify = <T extends { brokerage: string | null; account: string }>(lots: T[], kind: 'brokerage' | 'crypto') =>
+      lots
+        .filter((lot) => !isUsBrokerage(lot.brokerage, lot.account))
+        .map((lot) => {
+          const institution = lot.brokerage?.trim() || institutionOf(lot.account)
+          const id = `${institution}|${lot.account}`
+          identities.set(id, { institution, account: lot.account, kind })
+          // The valuer groups by account, so each lot's account becomes its row id.
+          return { ...lot, account: id }
+        })
+    type OpenLot = { market: string; brokerage: string | null; account: string; ticker: string; acquired_date: string; open_quantity: number; cost_basis_krw: number }
+    type RealizedLot = {
+      market: string
+      brokerage: string | null
+      account: string
+      ticker: string
+      acquired_date: string | null
+      sold_date: string | null
+      quantity_sold: number | null
+      cost_basis_krw: number | null
+    }
     const lotsTable = hasTable('tax_lots_all') ? 'tax_lots_all' : hasTable('tax_lots') ? 'tax_lots' : null
     const realizedTable = hasTable('realized_lots_all') ? 'realized_lots_all' : hasTable('realized_lots') ? 'realized_lots' : null
-    if (lotsTable) {
-      const stockOnly = (table: string) => (columnsOf(table).has('asset_class') ? ` and ${STOCK_ROW_SQL}` : '')
-      const brokerageOf = (table: string) => (columnsOf(table).has('brokerage') ? 'brokerage' : 'null as brokerage')
-      // The valuer groups by account, so each lot's account becomes its row id.
-      const identities = new Map<string, { institution: string; account: string }>()
-      const foreignOnly = <T extends { brokerage: string | null; account: string }>(lots: T[]) =>
-        lots
-          .filter((lot) => !isUsBrokerage(lot.brokerage, lot.account))
-          .map((lot) => {
-            const institution = lot.brokerage?.trim() || institutionOf(lot.account)
-            const id = `${institution}|${lot.account}`
-            identities.set(id, { institution, account: lot.account })
-            return { ...lot, account: id }
-          })
-      const openLots = foreignOnly(
-        conn
-          .prepare(
-            `select market, ${brokerageOf(lotsTable)}, account, ticker, acquired_date, open_quantity, cost_basis_krw
-               from ${lotsTable} where market in ('KR', 'US')${stockOnly(lotsTable)}`
+    const stockOnly = (table: string) => (columnsOf(table).has('asset_class') ? ` and ${STOCK_ROW_SQL}` : '')
+    const brokerageOf = (table: string) => (columnsOf(table).has('brokerage') ? 'brokerage' : 'null as brokerage')
+    // Crypto lots carry no wrapper that matters; every exchange account counts.
+    const lotFilter = { brokerage: (table: string) => `market in ('KR', 'US')${stockOnly(table)}`, crypto: () => "market = 'CRYPTO'" }
+    const openLots: OpenLot[] = []
+    const realizedLots: RealizedLot[] = []
+    for (const kind of ['brokerage', 'crypto'] as const) {
+      if (lotsTable) {
+        openLots.push(
+          ...identify(
+            conn
+              .prepare(
+                `select market, ${brokerageOf(lotsTable)}, account, ticker, acquired_date, open_quantity, cost_basis_krw
+                   from ${lotsTable} where ${lotFilter[kind](lotsTable)}`
+              )
+              .all() as OpenLot[],
+            kind
           )
-          .all() as { market: string; brokerage: string | null; account: string; ticker: string; acquired_date: string; open_quantity: number; cost_basis_krw: number }[]
-      )
-      const realizedLots = realizedTable
-        ? foreignOnly(
+        )
+      }
+      if (lotsTable && realizedTable) {
+        realizedLots.push(
+          ...identify(
             conn
               .prepare(
                 `select market, ${brokerageOf(realizedTable)}, account, ticker, acquired_date, sold_date, quantity_sold, cost_basis_krw
-                   from ${realizedTable} where market in ('KR', 'US')${stockOnly(realizedTable)}`
+                   from ${realizedTable} where ${lotFilter[kind](realizedTable)}`
               )
-              .all() as {
-              market: string
-              brokerage: string | null
-              account: string
-              ticker: string
-              acquired_date: string | null
-              sold_date: string | null
-              quantity_sold: number | null
-              cost_basis_krw: number | null
-            }[]
+              .all() as RealizedLot[],
+            kind
           )
-        : []
-      const historicalPrices = hasTable('historical_prices')
+        )
+      }
+    }
+    const historicalPrices =
+      lotsTable && hasTable('historical_prices')
         ? (conn
             .prepare(
               `select market, ticker, ${columnsOf('historical_prices').has('currency') ? 'currency' : "case when market = 'KR' then 'KRW' end as currency"}, price_date, close
@@ -1322,33 +1371,83 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
             )
             .all() as { market: string; ticker: string; currency: string | null; price_date: string; close: number }[])
         : []
-      const historicalFxRates = hasTable('historical_fx_rates')
-        ? (conn.prepare('select price_date, rate from historical_fx_rates order by price_date').all() as { price_date: string; rate: number }[])
-        : []
-      const valuer = createLotValuer({ openLots, realizedLots, historicalPrices, historicalFxRates })
-      const firstLot = new Map<string, string>()
-      for (const lot of [...openLots, ...realizedLots]) {
-        const date = String(lot.acquired_date ?? '').slice(0, 10)
-        if (date && (!firstLot.has(lot.account) || date < firstLot.get(lot.account)!)) firstLot.set(lot.account, date)
-      }
-      const dates = [`${year - 1}-12-31`]
-      for (let month = 1; month <= 12; month += 1) dates.push(new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10))
-      const pointsByAccount = new Map<string, BalancePoint[]>()
-      for (const date of dates.filter((d) => d <= today)) {
-        const totals = new Map<string, number>()
-        // A position no price reaches counts at cost rather than at nothing.
-        for (const position of valuer.valuedPositionsAt(date)) totals.set(position.account, (totals.get(position.account) ?? 0) + (position.marketValue ?? position.cost))
-        for (const [account, first] of firstLot) {
-          if (first > date) continue
-          pointsByAccount.set(account, [...(pointsByAccount.get(account) ?? []), { date, valueKrw: totals.get(account) ?? 0 }])
-        }
-      }
-      for (const [id, points] of pointsByAccount) {
-        const { institution, account } = identities.get(id)!
-        add(institution, account, 'brokerage', maxBalance(points, year, 'month_end'))
+    const historicalFxRates = hasTable('historical_fx_rates')
+      ? (conn.prepare('select price_date, rate from historical_fx_rates order by price_date').all() as { price_date: string; rate: number }[])
+      : []
+    const valuer = createLotValuer({ openLots, realizedLots, historicalPrices, historicalFxRates })
+    const firstLot = new Map<string, string>()
+    for (const lot of [...openLots, ...realizedLots]) {
+      const date = String(lot.acquired_date ?? '').slice(0, 10)
+      if (date && (!firstLot.has(lot.account) || date < firstLot.get(lot.account)!)) firstLot.set(lot.account, date)
+    }
+    const securities = new Map<string, Map<string, number>>()
+    for (const date of dates) {
+      const totals = new Map<string, number>()
+      // A position no price reaches counts at cost rather than at nothing.
+      for (const position of valuer.valuedPositionsAt(date)) totals.set(position.account, (totals.get(position.account) ?? 0) + (position.marketValue ?? position.cost))
+      for (const [id, first] of firstLot) {
+        if (first > date) continue
+        const byDate = securities.get(id) ?? new Map<string, number>()
+        byDate.set(date, totals.get(id) ?? 0)
+        securities.set(id, byDate)
       }
     }
 
+    // Uninvested cash: each pool's printed balance, carried forward. Stock
+    // wrappers only, like the lots: a pension's cash is in its certificate totals.
+    const cashPools = new Map<string, Map<string, { currency: string; points: { date: string; balance: number }[] }>>()
+    if (hasTable('brokerage_cash')) {
+      const filter = columnsOf('brokerage_cash').has('asset_class') ? ` where ${STOCK_ROW_SQL}` : ''
+      const rows = conn
+        .prepare(`select institution, account, pool, currency, as_of_date as date, balance from brokerage_cash${filter} order by as_of_date, id`)
+        .all() as { institution: string; account: string; pool: string; currency: string; date: string; balance: number }[]
+      for (const row of rows) {
+        if (isUsBrokerage(row.institution, row.account)) continue
+        const id = `${row.institution}|${row.account}`
+        if (!identities.has(id)) identities.set(id, { institution: row.institution, account: row.account, kind: 'brokerage' })
+        const pools = cashPools.get(id) ?? new Map()
+        const pool = pools.get(row.pool) ?? { currency: row.currency, points: [] }
+        const last = pool.points.at(-1)
+        // A repeated date keeps its last row.
+        if (last?.date === row.date) last.balance = Number(row.balance)
+        else pool.points.push({ date: row.date, balance: Number(row.balance) })
+        pools.set(row.pool, pool)
+        cashPools.set(id, pools)
+      }
+    }
+    const cashAt = (id: string, date: string): number | null => {
+      let total: number | null = null
+      for (const { currency, points } of cashPools.get(id)?.values() ?? []) {
+        const point = points.filter((p) => p.date <= date).at(-1)
+        if (!point) continue
+        const krwPer = currency === 'KRW' ? 1 : currency === 'USD' ? valuer.fxRate(date) : null
+        // A pool no rate converts adds nothing; the row is understated already.
+        if (krwPer == null) continue
+        total = (total ?? 0) + point.balance * krwPer
+      }
+      return total
+    }
+    // The cash history covers the year when it reaches back to 1 January and on
+    // to 31 December (the extractor dates a pool's last row at the statement's
+    // coverage end, so a quiet December still reaches it).
+    const cashCovers = (id: string) => {
+      const all = [...(cashPools.get(id)?.values() ?? [])].flatMap((pool) => pool.points.map((p) => p.date))
+      return all.some((d) => d <= start) && all.some((d) => d >= end)
+    }
+
+    for (const [id, { institution, account, kind }] of identities) {
+      const points: BalancePoint[] = []
+      let cashIncluded = false
+      for (const date of dates) {
+        const held = securities.get(id)?.get(date)
+        const cash = kind === 'brokerage' ? cashAt(id, date) : null
+        if (held == null && cash == null) continue
+        if (cash != null) cashIncluded = true
+        points.push({ date, valueKrw: (held ?? 0) + (cash ?? 0) })
+      }
+      const found = maxBalance(points, year, 'month_end')
+      add(institution, account, kind, found && cashIncluded && !cashCovers(id) ? { ...found, coverage: 'partial' } : found, { cashIncluded })
+    }
     // Pensions: certificate and snapshot totals.
     if (hasTable('pension_points')) {
       const rows = conn.prepare('select account, date, value_krw as valueKrw from pension_points order by date, id').all() as {
@@ -3186,7 +3285,8 @@ const SUPPLEMENTARY_MAX_LAG_DAYS: Record<SupplementaryCoverageKind, number> = {
 }
 
 /**
- * How far each supplementary asset's files reach: one row per cash account, per
+ * How far each supplementary asset's files reach: one row per cash account (less
+ * the ones the map marks `retired` or `retiredOn`), per
  * pension account in the map, per gold account, and one for the gold price.
  * Dates, labels and status only, never an amount: this feeds the weekly
  * reminder, which leaves the machine. Deposits, pensions and gold have no
@@ -3213,6 +3313,16 @@ export function getSupplementaryCoverage(): SupplementaryCoverage {
       rows.push({ kind, label, latestDate, lagDays, maxLagDays, status: coverageStatus(lagDays, maxLagDays), action })
     }
 
+    // The map's retired accounts, and its pension list. An unreadable map is the
+    // ingest's failure to report; here it means none of either.
+    let accountMap: ReturnType<typeof loadAccountMap> | null = null
+    try {
+      accountMap = loadAccountMap(config.stockAccountMapPath)
+    } catch {
+      accountMap = null
+    }
+    const retired = retiredBankAccounts(accountMap?.bankAccounts)
+
     if (hasTable('cash_balances')) {
       const cash = conn
         .prepare(
@@ -3222,6 +3332,8 @@ export function getSupplementaryCoverage(): SupplementaryCoverage {
         )
         .all() as { institution: string; account: string; isCma: number; latest: string | null; sources: string | null }[]
       for (const row of cash) {
+        // A closed account has nothing more to download.
+        if (retired.has(`${row.institution}|${row.account}`)) continue
         const label = `${row.institution} ${row.account}`
         // A quiet account has no balance row near its statement's end, so the
         // statement's own period end counts too; otherwise a fresh download of a
@@ -3233,13 +3345,7 @@ export function getSupplementaryCoverage(): SupplementaryCoverage {
 
     // Every pension account the map lists, filed or not: one with no snapshot yet
     // is 'missing', which is the reminder's whole point.
-    let pensionAccounts: { token?: unknown; account?: unknown; wrapper?: unknown }[] = []
-    try {
-      pensionAccounts = loadAccountMap(config.stockAccountMapPath).pensionAccounts ?? []
-    } catch {
-      // An unreadable map is the ingest's failure to report; here it means no rows.
-      pensionAccounts = []
-    }
+    const pensionAccounts: { token?: unknown; account?: unknown; wrapper?: unknown }[] = accountMap?.pensionAccounts ?? []
     const snapshotStmt = hasTable('holdings_all')
       ? conn.prepare(
           `select max(as_of_date) as latest from holdings_all where account = ? and (? is null or account_wrapper = ?) and ${PENSION_ROW_SQL}`

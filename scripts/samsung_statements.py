@@ -246,6 +246,7 @@ def parse(path, source_name, password, report):
                         "tax": number(line_at(cells[COL_TAX_FEE], 0)),
                         "fee": number(line_at(cells[COL_TAX_FEE], 1)),
                         "cash_balance": number(line_at(cells[COL_BALANCE], 0)),
+                        "cash_printed": bool(line_at(cells[COL_BALANCE], 0).strip()),
                         # 잔고수량 — the broker's own running share count. The
                         # ledger prints a fund evaluation price there instead,
                         # which is no count at all.
