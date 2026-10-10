@@ -494,8 +494,8 @@ test('a year between two statements is partial, not month-end, and its cash is n
     extra: (db) => {
       oldLot(db, 'Example KR gap')
       brokerageCash(db, [
-        ['Example KR Broker', 'Example KR gap', 'KRW', 'KRW', '2022-03-01', 100_000],
-        ['Example KR Broker', 'Example KR gap', 'KRW', 'KRW', '2024-02-01', 200_000],
+        ['Example KR Broker', 'Example KR gap', 'KRW', 'KRW', '2022-01-01', 100_000],
+        ['Example KR Broker', 'Example KR gap', 'KRW', 'KRW', '2024-01-01', 200_000],
       ])
       cashCoverage(db, [
         ['Example KR Broker', 'Example KR gap', '2022-01-01', '2022-12-31'],
@@ -554,4 +554,54 @@ test('an account with both brokerage and crypto lots keeps its brokerage row and
   assert.deepEqual([brokerage.kind, brokerage.maxKrw], ['brokerage', 300_000])
   const crypto = r.cryptoRows.find((row) => row.id === 'Example KR Broker|Example KR general')!
   assert.deepEqual([crypto.kind, crypto.maxKrw], ['crypto', 0.1 * 40_000 * 1_400])
+})
+
+// One invented account (lot from 2021, so its securities cover every year) with the given cash rows and statement periods.
+function cashScenario(cash: [string, number][], periods: [string, string][]) {
+  return scenarioDb({
+    extra: (db) => {
+      oldLot(db, 'Example KR cash')
+      brokerageCash(db, cash.map(([date, balance]) => ['Example KR Broker', 'Example KR cash', 'KRW', 'KRW', date, balance]))
+      cashCoverage(db, periods.map(([from, to]) => ['Example KR Broker', 'Example KR cash', from, to]))
+    },
+  })
+}
+
+async function cashRow(year: number) {
+  const { getForeignAccountMaxima } = await import('../lib/adapters/portfolio-db')
+  return getForeignAccountMaxima(year).rows.find((row) => row.id === 'Example KR Broker|Example KR cash')!
+}
+
+test('a month-end before a period\'s first cash line takes no balance from an earlier period', async () => {
+  config.stockDbPath = cashScenario(
+    [
+      ['2022-01-01', 500_000],
+      ['2024-02-15', 50_000],
+    ],
+    [
+      ['2022-01-01', '2022-12-31'],
+      ['2024-01-01', '2024-12-31'],
+    ]
+  )
+  // 2024-01-31 is securities only (10,000), not 510,000; the maximum is 20,000 + 50,000 on 2024-06-30.
+  const row = await cashRow(2024)
+  assert.deepEqual([row.maxKrw, row.maxDate], [70_000, '2024-06-30'])
+})
+
+test('a declared full-year period whose first cash line comes in March is partial', async () => {
+  config.stockDbPath = cashScenario([['2024-03-01', 50_000]], [['2024-01-01', '2024-12-31']])
+  const row = await cashRow(2024)
+  assert.deepEqual([row.coverage, row.cashIncluded], ['partial', true])
+})
+
+test('adjacent statement periods merge into a covered year', async () => {
+  config.stockDbPath = cashScenario(
+    [['2024-01-01', 50_000]],
+    [
+      ['2024-01-01', '2024-06-30'],
+      ['2024-07-01', '2024-12-31'],
+    ]
+  )
+  const row = await cashRow(2024)
+  assert.deepEqual([row.coverage, row.maxKrw, row.maxDate], ['month_end', 70_000, '2024-06-30'])
 })

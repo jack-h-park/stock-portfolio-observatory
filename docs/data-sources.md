@@ -424,8 +424,10 @@ certificate totals, and the gold account is valued in grams. The Toss Open API
 snapshot carries today's cash only and is not used, so Toss cash stops at the
 newest statement. A pool's currency decides conversion: `USD` pools are real
 dollars, converted at the month-end USD/KRW rate, and won pools are added as
-they stand. A brokerage row with cash in the year is `partial` unless one
-unbroken statement period runs from 1 January to 31 December; a row with no
+they stand. A balance is read only from lines inside the period that contains
+the date, so a month-end before a period's first line has no cash. A brokerage
+row with cash in the year is `partial` unless one unbroken statement period runs
+from 1 January to 31 December and has a cash line on or before 1 January; a row with no
 cash in the year carries `cashIncluded: false`, and the page notes "Cash not
 included". An account with no lots gets a row only for a year with cash inside
 it. The 미래에셋 ISA

@@ -1447,12 +1447,14 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
       }
       periods.set(id, merged)
     }
-    const coveredOn = (id: string, date: string) => (periods.get(id) ?? []).some((p) => p.start <= date && date <= p.end)
+    const periodOn = (id: string, date: string) => (periods.get(id) ?? []).find((p) => p.start <= date && date <= p.end)
     const cashAt = (id: string, date: string): number | null => {
-      if (!coveredOn(id, date)) return null
+      const period = periodOn(id, date)
+      if (!period) return null
       let total: number | null = null
       for (const { currency, points } of cashPools.get(id)?.values() ?? []) {
-        const point = points.filter((p) => p.date <= date).at(-1)
+        // Only this period's lines: a balance from before a gap does not reach across it.
+        const point = points.filter((p) => p.date >= period.start && p.date <= date).at(-1)
         if (!point) continue
         // A pool's currency, not its name, decides conversion: Toss's dollar
         // section is printed in won and is added as it stands.
@@ -1464,8 +1466,14 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
       return total
     }
     // The cash history covers the year only when one unbroken statement period
-    // runs from 1 January to 31 December.
-    const cashCovers = (id: string) => (periods.get(id) ?? []).some((p) => p.start <= start && p.end >= end)
+    // runs from 1 January to 31 December and a cash line inside it falls on or
+    // before 1 January. A first line in March leaves the months before it with
+    // no cash, so that year is partial.
+    const cashCovers = (id: string) => {
+      const period = (periods.get(id) ?? []).find((p) => p.start <= start && p.end >= end)
+      if (!period) return false
+      return [...(cashPools.get(id)?.values() ?? [])].some((pool) => pool.points.some((p) => p.date >= period.start && p.date <= start))
+    }
 
     for (const [id, { institution, account, kind }] of identities) {
       const points: BalancePoint[] = []
