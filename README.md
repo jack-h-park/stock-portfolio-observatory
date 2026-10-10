@@ -408,12 +408,16 @@ no environment and never a login shell.
 
 It carries two things, from two roots. Broker sources travel from the data
 directory; the files in the script's `CONFIG` list travel from the repo's
-`data/`, which is why `STOCK_PROD_REPO_DIR` exists. Those are `tax-policy.json`
-and `manual-mappings.json` — one holds a W-2 wage base and year-to-date realized
-figures, the other the dated payments each override was confirmed against — so
-both stay out of git and off any history, and the push forces `0600` on the far
-side rather than widening it to this machine's mode. The version each replaces
-is kept in `data/.push-backup/`.
+`data/`, which is why `STOCK_PROD_REPO_DIR` exists. Those are
+`manual-mappings.json` and `accounts.local.json` — the dated payments each
+override was confirmed against, and the account map with its anchor balances —
+so both stay out of git and off any history, and the push forces `0600` on the
+far side rather than widening it to this machine's mode. The version each
+replaces is kept in `data/.push-backup/`.
+
+`tax-policy.json` is deliberately not on that list. It is edited on the host,
+through `/tax-settings`, and the host's copy is the authority; pushing a laptop
+copy over it reverted every save made there within the hour.
 
 Downloading stays manual — Chase, Merrill and Fidelity all want a browser session
 with MFA. This automates the second step, not the first.

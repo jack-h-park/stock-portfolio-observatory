@@ -19,6 +19,7 @@
 #
 #   sources  — arrive here, are read there            → pushed
 #   config   — edited here, read there                 → pushed (see CONFIG)
+#   tax-policy.json — edited THERE, in the app          → never pushed
 #   inbox/   — a staging area, filed then emptied      → never pushed
 #   outputs/ — written there by every refresh          → never touched
 #   briefing-archive/ — written there by the briefing  → never touched
@@ -36,9 +37,8 @@
 # gain replay that would not reconcile. Nothing said "these two files differ";
 # the pipeline just disagreed with itself.
 #
-# All three config files travel this way, and for the same reason: a git history is
-# forever. tax-policy.json carries a W-2 wage base and year-to-date realized
-# figures. manual-mappings.json reads as symbols and classification rules, but
+# Both config files travel this way, and for the same reason: a git history is
+# forever. manual-mappings.json reads as symbols and classification rules, but
 # each override names a real payment — date, won amount, and the statement it
 # was confirmed against — which is a portfolio in a form a public repo would
 # keep permanently. It was tracked in git until this repo was opened up.
@@ -116,11 +116,19 @@ SOURCES=(
 # would overwrite what the refresh host just computed with whatever this machine
 # last built. Only files a person edits belong here.
 #
-# One entry per file a person edits and both machines read. Neither is in git,
-# so this is the only way either of them travels — which is also why there is
-# only ever one way to change one file.
+# One entry per file a person edits HERE and both machines read. Neither is in
+# git, so this is the only way either of them travels — which is also why there
+# is only ever one way to change one file.
+#
+# tax-policy.json is not one of them, because it is not edited here. The app's
+# /tax-settings page saves it on the refresh host, and pushing a laptop copy
+# over it reverted every such save within the hour: on 2026-10-10 a saved
+# year-to-date realized figure was back to the day-old laptop version twenty
+# minutes later, with the laptop file's mtime and size, while the check it
+# was entered to satisfy kept failing. The host's copy is the one the app
+# writes and the refresh reads, so it is the authority, and nothing here
+# touches it. To change it, use /tax-settings on the host.
 CONFIG=(
-  tax-policy.json
   manual-mappings.json
   accounts.local.json
 )
@@ -192,9 +200,9 @@ fi
 #                 an unchanged file leaves no backup and no churn.
 # Permissions ride along in -a rather than a --chmod flag: macOS ships openrsync,
 # which advertises --chmod and rejects every value for it. The config files
-# carry real financial detail — a W-2 wage base and realized figures in one, the
-# dated payments behind each override in another, account aliases and anchor
-# balances in the third — so all are 0600 on both machines. chmod them here and
+# carry real financial detail — the dated payments behind each override in one,
+# account aliases and anchor balances in the other — so both are 0600 on both
+# machines. chmod them here and
 # -a carries that across, which is the honest fix anyway. A 0644 local copy of
 # any was already too open before it ever left.
 config=()
