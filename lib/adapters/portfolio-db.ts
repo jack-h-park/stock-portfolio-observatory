@@ -3680,7 +3680,10 @@ export function getPositionDetail(market: string, ticker: string): PositionDetai
       .prepare(
         `with holding_prices as (
            select market, brokerage, account, ticker,
-             max(current_price) as current_price,
+             -- The price in the holding's own currency, which is the lot's. current_price is
+             -- in the base currency for some sources (crypto stores KRW for a coin quoted in
+             -- USD), so it stands in only where the two currencies are the same.
+             max(coalesce(native_price, case when currency = base_currency then current_price end)) as current_price,
              max(case when quantity > 0 then native_market_value / quantity else null end) as implied_price
            from holdings
            where ${STOCK_WRAPPER_SQL}
@@ -3841,7 +3844,10 @@ export function getTaxPlanningLots(limit = 500, policy: TaxPolicy = getTaxPolicy
       .prepare(
         `with holding_prices as (
            select market, brokerage, account, ticker,
-             max(current_price) as current_price,
+             -- The price in the holding's own currency, which is the lot's. current_price is
+             -- in the base currency for some sources (crypto stores KRW for a coin quoted in
+             -- USD), so it stands in only where the two currencies are the same.
+             max(coalesce(native_price, case when currency = base_currency then current_price end)) as current_price,
              max(case when quantity > 0 then native_market_value / quantity else null end) as implied_price
            from ${holdingsTable} as h
            where ${rowFilter('h')}
