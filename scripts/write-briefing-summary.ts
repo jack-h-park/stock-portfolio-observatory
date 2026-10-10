@@ -266,6 +266,9 @@ const summary = {
       method: row.method,
       requiredArtifact: row.requiredArtifact,
       destination: row.destination,
+      // Tickers whose sale is missing from this account's history: the account
+      // needs its CSV whatever its dates say.
+      missingDisposals: row.missingDisposals,
       // Present when the account is several artifacts that age separately; the
       // reminder names each stale one rather than the account as a whole.
       sources: row.sources.map((source) => ({
@@ -279,6 +282,7 @@ const summary = {
         overdueDays: source.overdueDays,
         requiredArtifact: source.requiredArtifact,
         destination: source.destination,
+        missingDisposals: source.missingDisposals ?? [],
       })),
     })),
   },

@@ -84,7 +84,16 @@ MISSING="$(printf '%s\n' "$OUT" | grep -F '[source] MISSING' | sed 's/^\[source\
 # new fact and should speak — but no timestamps and no durations.
 FINGERPRINT=""
 MESSAGE=""
-if [ "$RC" -ne 0 ]; then
+if [ "$RC" -ne 0 ] && printf '%s\n' "$OUT" | grep -qF '(ingest wrote the database but failed an ERROR check'; then
+  # The ingest finished and replaced the database; only its ERROR checks failed.
+  # Prices, the site and the summary are current, and only the sheet publishes
+  # were held back. Saying "prices stop updating" here sent people looking for a
+  # broken fetch that did not exist.
+  CHECKS="$(printf '%s\n' "$OUT" | grep -oE '"name": "[a-z0-9_]+"' | sed -E 's/"name": "([^"]+)"/\1/' | sort -u | paste -sd', ' -)"
+  FINGERPRINT="validation-error:${CHECKS:-unknown}"
+  MESSAGE="⚠️ Observatory refresh: the ingest failed a validation check${CHECKS:+ ($CHECKS)}
+The database and prices are current; only the sheet publishes were held back. Details: /health"
+elif [ "$RC" -ne 0 ]; then
   ERR="$(printf '%s\n' "$OUT" | grep -iE 'error|failed|refusing' | tail -1)"
   # Keyed on the failing step, not the error text: the text carries paths and
   # temp-dir names that differ every run, which would re-alert forever.

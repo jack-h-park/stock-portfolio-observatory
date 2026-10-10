@@ -274,6 +274,13 @@ export type AccountCoverageSource = {
   status: AccountCoverageStatus
   requiredArtifact: string
   destination: string
+  /**
+   * Tickers whose disposal is missing from this artifact's history: the broker
+   * no longer holds them, the replay still does. Non-empty forces the source to
+   * 'action_needed' however recent its last row, because the sale is in the
+   * window the next download covers and its gain is off the books until then.
+   */
+  missingDisposals?: string[]
 }
 
 export type AccountCoverage = {
@@ -307,6 +314,8 @@ export type AccountCoverage = {
    * reader that ignores this still reports the account as stale when any part is.
    */
   sources: AccountCoverageSource[]
+  /** Tickers with a missing disposal in this account (see AccountCoverageSource). */
+  missingDisposals: string[]
 }
 
 export type AccountCoverageSummary = {
@@ -2291,6 +2300,17 @@ export function getAccountCoverage(): AccountCoverageSummary {
     const checks = new Map(checkRows.map((row) => [row.name, row]))
     const robinhoodSnapshot = readJson(config.stockRobinhoodSnapshotPath)
     const robinhoodAccount = robinhoodAccountResolver(robinhoodSnapshot, transactionRows)
+    // Written by the ingest per account (the strategy name, which is the
+    // Robinhood coverage key). Absent from a database older than the table.
+    const missingDisposalsByAccount = new Map<string, string[]>()
+    if (conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'missing_disposals'").get()) {
+      for (const row of conn
+        .prepare('select brokerage, account_type, ticker from missing_disposals order by ticker')
+        .all() as { brokerage: string; account_type: string; ticker: string }[]) {
+        const key = `${row.brokerage}|${row.account_type}`
+        missingDisposalsByAccount.set(key, [...(missingDisposalsByAccount.get(key) ?? []), row.ticker])
+      }
+    }
     const coverageKey = (row: CoverageDbRow) => {
       if (row.market === 'US' && row.brokerage === 'Robinhood') return `US|Robinhood|${robinhoodAccount(row)}`
       return row.market === 'US' ? `${row.market}|${row.brokerage}|${row.brokerage}` : `${row.market}|${row.brokerage}|${row.account}`
@@ -2327,6 +2347,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
       const names = [...(accountNames.get(key) ?? new Set<string>())]
       const account = (market === 'US' && brokerage === 'Robinhood' ? robinhoodAccountLabel(rawAccount, names) : names.join(' / ')) || rawAccount || brokerage
       let sources: AccountCoverageSource[] = []
+      let missingDisposals: string[] = []
       let coveredThrough = isoDate(holding?.covered_through ?? transaction?.covered_through)
       let apiCoveredThrough: string | null = null
       const statementCoveredThrough = isoDate(market === 'KR' ? krStatementAsOf[account] ?? statement?.covered_through : statement?.covered_through)
@@ -2364,7 +2385,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
         // than reporting transactions it may well have under another label.
         if (transaction) {
           const token = rawAccount.toLowerCase().replace(/[^a-z]/g, '')
-          sources.push(coverageSource({
+          const csv = coverageSource({
             label: 'CSV',
             method: 'manual',
             coveredThrough: isoDate(transaction.covered_through),
@@ -2373,7 +2394,9 @@ export function getAccountCoverage(): AccountCoverageSummary {
             // The export names no account, so the file is named by hand; the
             // window shape is what the ingest reads beside the year-to-date.
             destination: `us-transactions/robinhood-transactions-${token}-YYYYMMDD-YYYYMMDD.csv`,
-          }))
+          })
+          missingDisposals = missingDisposalsByAccount.get(`${brokerage}|${rawAccount}`) ?? []
+          sources.push(missingDisposals.length ? { ...csv, status: 'action_needed', missingDisposals } : csv)
         }
         const behind = worstSource(sources)
         method = behind.method
@@ -2382,9 +2405,11 @@ export function getAccountCoverage(): AccountCoverageSummary {
         destination = sources.length > 1 ? 'data/robinhood-snapshot.json + us-transactions/' : 'data/robinhood-snapshot.json'
         coveredThrough = behind.coveredThrough
         maxLagDays = behind.maxLagDays
-        action = sources.length > 1
+        action = (missingDisposals.length
+          ? `매도 기록 누락 ${missingDisposals.length}종목(${missingDisposals.join(', ')}): 이 계좌의 거래내역 CSV가 들어와야 실현손익이 잡힙니다. `
+          : '') + (sources.length > 1
           ? 'snapshot은 Robinhood MCP에서 다시 생성하고, 거래내역 CSV는 계좌별로 다운로드해 이름을 붙여 us-transactions/에 넣으세요. 둘 중 오래된 쪽이 계좌 기준일입니다.'
-          : 'Robinhood MCP에서 계좌 snapshot과 lot을 다시 생성하세요. broker CSV를 inbox에 넣는 작업이 아닙니다.'
+          : 'Robinhood MCP에서 계좌 snapshot과 lot을 다시 생성하세요. broker CSV를 inbox에 넣는 작업이 아닙니다.')
         detail = sources.length > 1
           ? 'MCP snapshot의 fetchedAt과 거래내역 CSV의 마지막 거래일 중 오래된 쪽을 기준으로 계산합니다.'
           : checks.get('robinhood_snapshot_fresh')?.detail ?? 'MCP snapshot의 fetchedAt을 기준으로 계산합니다.'
@@ -2476,6 +2501,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
         action,
         detail,
         sources,
+        missingDisposals,
       })
     }
 

@@ -39,7 +39,15 @@ const ORDER = { missing: 0, action_needed: 1, due_soon: 2, current: 3 }
 function items(rows) {
   return rows.flatMap((row) =>
     Array.isArray(row.sources) && row.sources.length > 1
-      ? row.sources.map((source) => ({ ...row, ...source, account: row.account, brokerage: row.brokerage }))
+      ? row.sources.map((source) => ({
+          ...row,
+          ...source,
+          account: row.account,
+          brokerage: row.brokerage,
+          // The row's list belongs to the source that carries it (the CSV), not to
+          // every artifact of the account.
+          missingDisposals: source.missingDisposals ?? [],
+        }))
       : [row]
   )
 }
@@ -50,7 +58,7 @@ function groupRows(rows) {
   for (const row of rows) {
     // The destination is part of what to do: two accounts' CSVs that happen to
     // stop on the same day are still two files with two names.
-    const key = [row.brokerage, row.status, row.coveredThrough, row.downloadFrom, row.requiredArtifact, row.method, row.destination].join('|')
+    const key = [row.brokerage, row.status, row.coveredThrough, row.downloadFrom, row.requiredArtifact, row.method, row.destination, disposals(row).join(',')].join('|')
     const group = groups.get(key)
     if (group) group.accounts.push(row.account)
     else groups.set(key, { ...row, accounts: [row.account] })
@@ -58,6 +66,11 @@ function groupRows(rows) {
   return [...groups.values()].sort(
     (a, b) => ORDER[a.status] - ORDER[b.status] || (b.lagDays ?? 9999) - (a.lagDays ?? 9999) || a.brokerage.localeCompare(b.brokerage)
   )
+}
+
+/** Tickers sold out of the account with no sale on its books; empty for older summaries. */
+function disposals(row) {
+  return Array.isArray(row.missingDisposals) ? row.missingDisposals : []
 }
 
 function accountLabel(group) {
@@ -82,7 +95,11 @@ function line(group) {
       : group.method === 'manual'
         ? `→ ${from}${group.requiredArtifact} 다운로드 → 직접 저장: ${group.destination}`
         : `→ ${from}${group.requiredArtifact} 다운로드 → ${group.destination}`
-  return `• ${accountLabel(group)} — ${reach}\n  ${next}`
+  // A missing sale is why a recent CSV still has to be downloaded, and what it
+  // costs until then: the gain is not on the books.
+  const sold = disposals(group)
+  const gap = sold.length ? `\n  ⚠️ 매도 기록 누락 ${sold.length}종목 (${sold.join(', ')}): 이 기간 CSV가 들어와야 실현손익이 잡힙니다` : ''
+  return `• ${accountLabel(group)} — ${reach}\n  ${next}${gap}`
 }
 
 /**
