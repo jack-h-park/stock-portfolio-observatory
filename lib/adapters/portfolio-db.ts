@@ -8,7 +8,7 @@ import { getTaxPolicyState, usTaxableWrappers, wrapperTreatment, type TaxPolicy,
 import { ASSET_CLASSES, depositsSeries, summarizeNetWorth, totalAssetsSeries, type AsOfNote, type CashBalanceRow, type NetWorth, type TotalAssetsSeries } from '@/lib/net-worth'
 import type { PensionContributionYear } from '@/lib/pension'
 import { groupAccountRanges, type AccountDataRange, type AssetType, type RangeKind, type RangeRow } from '@/lib/account-ranges'
-import { foreignAccountMaxima, isUsCashInstitution, maxBalance, treasuryRateFor, type BalancePoint, type ForeignAccountInput, type ForeignAccountMaxima } from '@/lib/fbar'
+import { foreignAccountMaxima, isUsBrokerage, isUsCashInstitution, maxBalance, treasuryRateFor, type BalancePoint, type ForeignAccountInput, type ForeignAccountMaxima } from '@/lib/fbar'
 import treasuryRates from '@/data/treasury-reporting-rates.json'
 import { loadAccountMap } from '@/scripts/account-map.mjs'
 import { createLotValuer } from '@/scripts/lot-valuation.mjs'
@@ -1198,15 +1198,21 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
  *
  * - cash outside the US banks (isUsCashInstitution), from daily balances
  *   carried forward; a USD account's maximum is read in dollars;
- * - KR-market stock accounts, from month-end values of the lots held times the
- *   historical price (the reconstruction the month-end backfill uses), at cost
- *   where no price reaches a position;
+ * - stock accounts outside the US brokerages (isUsBrokerage), KR and US market
+ *   alike, so a Korean broker's US stocks count: month-end values of the lots
+ *   held times the historical price, converted at that date's USD/KRW rate when
+ *   the quote is in dollars (the reconstruction the month-end backfill uses),
+ *   at cost where no price reaches a position. Crypto is not included;
  * - pension accounts, from their certificate and snapshot totals;
  * - the gold account, grams held times the latest KRX price, at cost before
  *   the first stored price (partial when any of the year is at cost).
  *
  * USD figures use the Treasury year-end rate in data/treasury-reporting-rates.json.
  * An account with nothing in or before the year, or a zero maximum, is left out.
+ * A USD account no rate of any kind can convert stays in, with a null won figure.
+ * Rows are identified by `institution|account`; for pensions and gold the
+ * institution is the account name before its parenthesis, as the ingest derives
+ * `brokerage`.
  */
 export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
   const rate = treasuryRateFor(year, treasuryRates.rates)
@@ -1220,13 +1226,22 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
     const columnsOf = (name: string) =>
       new Set((conn.prepare(`pragma table_info(${name})`).all() as { name: string }[]).map((column) => column.name))
     const accounts: ForeignAccountInput[] = []
-    const add = (account: string, kind: ForeignAccountInput['kind'], found: ReturnType<typeof maxBalance>, extra: Partial<ForeignAccountInput> = {}) => {
-      if (found && found.maxKrw > 0) accounts.push({ account, kind, maxKrw: found.maxKrw, maxDate: found.date, coverage: found.coverage, ...extra })
+    const institutionOf = (account: string) => account.split('(')[0].trim() || account
+    const add = (
+      institution: string,
+      account: string,
+      kind: ForeignAccountInput['kind'],
+      found: { maxKrw: number | null; date: string; coverage: ForeignAccountInput['coverage'] } | null,
+      extra: Partial<ForeignAccountInput> = {}
+    ) => {
+      if (!found) return
+      const positive = found.maxKrw != null ? found.maxKrw > 0 : (extra.maxUsdNative ?? 0) > 0
+      if (positive) accounts.push({ institution, account, kind, maxKrw: found.maxKrw, maxDate: found.date, coverage: found.coverage, ...extra })
     }
 
     // Cash: one series per (institution, account), in the account's own currency.
     const rateAt = usdKrwRateAt(conn)
-    const cashByAccount = new Map<string, { account: string; currency: string; points: BalancePoint[] }>()
+    const cashByAccount = new Map<string, { institution: string; account: string; currency: string; points: BalancePoint[] }>()
     if (hasTable('cash_balances')) {
       const rows = conn
         .prepare('select institution, account, currency, as_of_date as date, balance from cash_balances order by as_of_date, id')
@@ -1234,39 +1249,69 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
       for (const row of rows) {
         if (isUsCashInstitution(row.institution)) continue
         const key = `${row.institution}|${row.account}`
-        const entry = cashByAccount.get(key) ?? { account: row.account, currency: row.currency, points: [] }
+        const entry = cashByAccount.get(key) ?? { institution: row.institution, account: row.account, currency: row.currency, points: [] }
         entry.points.push({ date: row.date, valueKrw: Number(row.balance) })
         cashByAccount.set(key, entry)
       }
     }
-    for (const { account, currency, points } of cashByAccount.values()) {
+    for (const { institution, account, currency, points } of cashByAccount.values()) {
       const found = maxBalance(points, year)
       if (!found) continue
       if (currency === 'USD') {
         // Dollars in, dollars out. Without a Treasury rate the won figure falls
-        // back to the market rate on the date of the maximum.
-        const marketRate = rateAt(found.date)
-        if (!rate && marketRate == null) continue
-        add(account, 'cash', { ...found, maxKrw: found.maxKrw * (rate?.krwPerUsd ?? marketRate ?? 0) }, { maxUsdNative: found.maxKrw })
+        // back to the market rate on the date of the maximum, and with neither
+        // it is null: the row stays, the page says why it has no won figure.
+        const krwPerUsd = rate?.krwPerUsd ?? rateAt(found.date)
+        add(institution, account, 'cash', { ...found, maxKrw: krwPerUsd == null ? null : found.maxKrw * krwPerUsd }, { maxUsdNative: found.maxKrw })
       } else if (currency === 'KRW') {
-        add(account, 'cash', found)
+        add(institution, account, 'cash', found)
       }
     }
 
-    // KR-market stock accounts: month-end values, with the prior year-end as 1 January.
+    // Stock accounts outside the US brokerages, KR and US market: month-end
+    // values, with the prior year-end as 1 January.
     const lotsTable = hasTable('tax_lots_all') ? 'tax_lots_all' : hasTable('tax_lots') ? 'tax_lots' : null
     const realizedTable = hasTable('realized_lots_all') ? 'realized_lots_all' : hasTable('realized_lots') ? 'realized_lots' : null
     if (lotsTable) {
       const stockOnly = (table: string) => (columnsOf(table).has('asset_class') ? ` and ${STOCK_ROW_SQL}` : '')
-      const openLots = conn
-        .prepare(`select market, account, ticker, acquired_date, open_quantity, cost_basis_krw from ${lotsTable} where market = 'KR'${stockOnly(lotsTable)}`)
-        .all() as { market: string; account: string; ticker: string; acquired_date: string; open_quantity: number; cost_basis_krw: number }[]
+      const brokerageOf = (table: string) => (columnsOf(table).has('brokerage') ? 'brokerage' : 'null as brokerage')
+      // The valuer groups by account, so each lot's account becomes its row id.
+      const identities = new Map<string, { institution: string; account: string }>()
+      const foreignOnly = <T extends { brokerage: string | null; account: string }>(lots: T[]) =>
+        lots
+          .filter((lot) => !isUsBrokerage(lot.brokerage, lot.account))
+          .map((lot) => {
+            const institution = lot.brokerage?.trim() || institutionOf(lot.account)
+            const id = `${institution}|${lot.account}`
+            identities.set(id, { institution, account: lot.account })
+            return { ...lot, account: id }
+          })
+      const openLots = foreignOnly(
+        conn
+          .prepare(
+            `select market, ${brokerageOf(lotsTable)}, account, ticker, acquired_date, open_quantity, cost_basis_krw
+               from ${lotsTable} where market in ('KR', 'US')${stockOnly(lotsTable)}`
+          )
+          .all() as { market: string; brokerage: string | null; account: string; ticker: string; acquired_date: string; open_quantity: number; cost_basis_krw: number }[]
+      )
       const realizedLots = realizedTable
-        ? (conn
-            .prepare(
-              `select market, account, ticker, acquired_date, sold_date, quantity_sold, cost_basis_krw from ${realizedTable} where market = 'KR'${stockOnly(realizedTable)}`
-            )
-            .all() as { market: string; account: string; ticker: string; acquired_date: string | null; sold_date: string | null; quantity_sold: number | null; cost_basis_krw: number | null }[])
+        ? foreignOnly(
+            conn
+              .prepare(
+                `select market, ${brokerageOf(realizedTable)}, account, ticker, acquired_date, sold_date, quantity_sold, cost_basis_krw
+                   from ${realizedTable} where market in ('KR', 'US')${stockOnly(realizedTable)}`
+              )
+              .all() as {
+              market: string
+              brokerage: string | null
+              account: string
+              ticker: string
+              acquired_date: string | null
+              sold_date: string | null
+              quantity_sold: number | null
+              cost_basis_krw: number | null
+            }[]
+          )
         : []
       const historicalPrices = hasTable('historical_prices')
         ? (conn
@@ -1297,7 +1342,10 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
           pointsByAccount.set(account, [...(pointsByAccount.get(account) ?? []), { date, valueKrw: totals.get(account) ?? 0 }])
         }
       }
-      for (const [account, points] of pointsByAccount) add(account, 'brokerage', maxBalance(points, year, 'month_end'))
+      for (const [id, points] of pointsByAccount) {
+        const { institution, account } = identities.get(id)!
+        add(institution, account, 'brokerage', maxBalance(points, year, 'month_end'))
+      }
     }
 
     // Pensions: certificate and snapshot totals.
@@ -1309,7 +1357,7 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
       }[]
       const byAccount = new Map<string, BalancePoint[]>()
       for (const row of rows) byAccount.set(row.account, [...(byAccount.get(row.account) ?? []), { date: row.date, valueKrw: Number(row.valueKrw) }])
-      for (const [account, points] of byAccount) add(account, 'pension', maxBalance(points, year, 'year_end'))
+      for (const [account, points] of byAccount) add(institutionOf(account), account, 'pension', maxBalance(points, year, 'year_end'))
     }
 
     // Gold: the value changes only on a purchase or a price date, so a point on
@@ -1344,7 +1392,7 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
         // Prices only accrue, so the year is at cost somewhere exactly when its first held day is.
         const firstHeld = list[0].date > start ? list[0].date : start
         const atCost = firstHeld <= end && valueOn(firstHeld).atCost
-        add(account, 'gold', atCost ? { ...found, coverage: 'partial' } : found)
+        add(institutionOf(account), account, 'gold', atCost ? { ...found, coverage: 'partial' } : found)
       }
     }
 

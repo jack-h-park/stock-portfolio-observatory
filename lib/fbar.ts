@@ -22,8 +22,10 @@ export type FbarKind = 'cash' | 'brokerage' | 'pension' | 'gold'
  * the balance held on 1 January, so an account that did not move all year still
  * has its maximum. The history covers the year when it reaches back to 1 January
  * (a point on or before it) and forward to 31 December (a point on or after it);
- * otherwise the coverage is `partial`, whatever the resolution. Ties keep the
- * earliest date. Null when no point falls in or before the year.
+ * otherwise the coverage is `partial`, whatever the resolution. The carried-in
+ * value is the last point before the year (of several on that date, the last
+ * given). Within the year every point competes: the highest wins, and a tie
+ * keeps the earliest date. Null when no point falls in or before the year.
  *
  * `valueKrw` is the account's own unit: a USD account passes dollars and reads
  * its maximum in dollars.
@@ -35,7 +37,8 @@ export function maxBalance(
 ): { maxKrw: number; date: string; coverage: FbarCoverage } | null {
   const start = `${year}-01-01`
   const end = `${year}-12-31`
-  // Stable sort: points that share a date keep their input order, so the last wins.
+  // Stable sort: points that share a date keep their input order, which decides
+  // only which pre-year point is carried in.
   const sorted = [...points].sort((a, b) => a.date.localeCompare(b.date))
   const carried = sorted.filter((point) => point.date < start).at(-1)
   const inYear = sorted.filter((point) => point.date >= start && point.date <= end)
@@ -67,24 +70,44 @@ export function isUsCashInstitution(institution: string) {
   return US_CASH_INSTITUTIONS.includes(institution.trim().toLowerCase())
 }
 
+/**
+ * US brokerages, as the ingest names them in `brokerage` and as the prefix of
+ * `account`. A brokerage account is foreign unless it is held at one of these,
+ * whatever market its securities trade on: a Korean broker's US stocks are
+ * still a foreign account.
+ */
+export const US_BROKERAGES: readonly string[] = ['robinhood', 'fidelity', 'chase', 'merrill']
+
+export function isUsBrokerage(brokerage: string | null | undefined, account: string) {
+  const name = (brokerage ?? '').trim().toLowerCase()
+  if (name) return US_BROKERAGES.includes(name)
+  const first = account.trim().toLowerCase().split(/\s+/)[0] ?? ''
+  return US_BROKERAGES.includes(first)
+}
+
 /** The last calendar year that has ended on `today` (YYYY-MM-DD). */
 export function lastCompleteYear(today: string) {
   return Number(today.slice(0, 4)) - 1
 }
 
 export type ForeignAccountInput = {
+  institution: string
   account: string
   kind: FbarKind
-  maxKrw: number
+  /** Null only for a USD account with no rate of any kind to convert it. */
+  maxKrw: number | null
   maxDate: string
   coverage: FbarCoverage
   /** A USD account's maximum in dollars, which is its FBAR figure as it stands. */
   maxUsdNative?: number
 }
 export type ForeignAccountRow = {
+  /** `institution|account`: two institutions can use the same account alias. */
+  id: string
+  institution: string
   account: string
   kind: FbarKind
-  maxKrw: number
+  maxKrw: number | null
   maxDate: string
   maxUsd: number | null
   coverage: FbarCoverage
@@ -101,7 +124,8 @@ export type ForeignAccountMaxima = {
  * Rows for the table. A KRW maximum is converted at the Treasury year-end rate,
  * as the FBAR instructions direct. A USD account keeps its own dollar maximum,
  * and its won figure is that times the same rate. With no rate for the year,
- * every USD figure is null and the won figures stand as given. Any row not
+ * every USD figure is null and the won figures stand as given (null for a USD
+ * account no rate of any kind can convert). Any row not
  * found from daily balances may be understated.
  */
 export function foreignAccountMaxima(
@@ -112,11 +136,13 @@ export function foreignAccountMaxima(
   const rows = accounts.map(({ maxUsdNative, ...account }): ForeignAccountRow => {
     const native = maxUsdNative != null && rate
     return {
+      id: `${account.institution}|${account.account}`,
+      institution: account.institution,
       account: account.account,
       kind: account.kind,
       maxKrw: native ? maxUsdNative * rate.krwPerUsd : account.maxKrw,
       maxDate: account.maxDate,
-      maxUsd: !rate ? null : native ? maxUsdNative : account.maxKrw / rate.krwPerUsd,
+      maxUsd: !rate ? null : native ? maxUsdNative : account.maxKrw == null ? null : account.maxKrw / rate.krwPerUsd,
       coverage: account.coverage,
       understated: account.coverage !== 'daily',
     }

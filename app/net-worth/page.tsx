@@ -214,14 +214,18 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
               : fbarCopy.noRate(fbarYear)}
           </p>
           <p>{fbarCopy.understatedNote}</p>
+          {fbar.rows.some((row) => row.maxKrw == null) ? (
+            <p>{fbarCopy.unpriced(fbar.rows.filter((row) => row.maxKrw == null).map((row) => `${row.institution} ${row.account}`).join(', '))}</p>
+          ) : null}
         </div>
         <DataTable
           caption={fbarCopy.title}
           rows={fbar.rows}
-          getRowKey={(row: ForeignAccountRow) => `${row.kind}|${row.account}`}
+          getRowKey={(row: ForeignAccountRow) => row.id}
           emptyMessage={fbarCopy.empty(fbarYear)}
           columns={[
-            { key: 'account', label: fbarCopy.columns.account, render: (row: ForeignAccountRow) => <span className="font-medium text-ink">{row.account}</span> },
+            { key: 'institution', label: fbarCopy.columns.institution, render: (row: ForeignAccountRow) => <span className="font-medium text-ink">{row.institution}</span> },
+            { key: 'account', label: fbarCopy.columns.account, render: (row: ForeignAccountRow) => row.account },
             { key: 'kind', label: fbarCopy.columns.kind, priority: 'secondary', render: (row: ForeignAccountRow) => fbarCopy.kinds[row.kind] },
             {
               key: 'coverage',
@@ -244,7 +248,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
               label: fbarCopy.columns.maxKrw,
               align: 'right',
               nowrap: true,
-              render: (row: ForeignAccountRow) => <span className="tabular-nums">{formatKrw(row.maxKrw)}</span>,
+              render: (row: ForeignAccountRow) => <span className="tabular-nums">{row.maxKrw == null ? copy.none : formatKrw(row.maxKrw)}</span>,
             },
             ...(fbar.rate
               ? [
@@ -262,7 +266,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
         {fbar.rows.length ? (
           <div className="mt-3 flex flex-wrap justify-end gap-x-6 gap-y-1 text-body">
             <span className="text-ink-3">{fbarCopy.aggregate}</span>
-            <span className="font-medium tabular-nums text-ink">{formatKrw(fbar.rows.reduce((sum, row) => sum + row.maxKrw, 0))}</span>
+            <span className="font-medium tabular-nums text-ink">{formatKrw(fbar.rows.reduce((sum, row) => sum + (row.maxKrw ?? 0), 0))}</span>
             {fbar.aggregateMaxUsd != null ? <span className="font-medium tabular-nums text-ink">{formatUsd(fbar.aggregateMaxUsd)}</span> : null}
           </div>
         ) : null}
