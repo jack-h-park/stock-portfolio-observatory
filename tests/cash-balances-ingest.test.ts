@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -29,4 +29,66 @@ test('securities tables carry account_wrapper and owner; holdings carry asset_cl
   const check = db.prepare("select status, severity from validation_checks where name = 'wrapper_assigned'").get() as any
   assert.equal(check.status, 'pass')
   assert.equal(check.severity, 'warning')
+})
+
+const TRANSACTION_COLUMNS = [
+  'Date', 'Account', 'Type', 'Raw Type', 'Ticker', 'Name', 'Quantity',
+  'Currency', 'Native Amount', 'FX Rate',
+  'Amount (KRW)', 'Settlement (KRW)', 'Unit Price', 'Fee', 'Tax', 'Balance',
+  'Source', 'Page',
+]
+
+function txRow(account: string) {
+  return {
+    Date: '2022-08-09', Account: account, Type: 'SHARE_REWARD', 'Raw Type': 'reward',
+    Ticker: 'AAA', Name: 'Invented Corp', Quantity: 1, Currency: 'KRW',
+    'Native Amount': 1000, 'FX Rate': 1300, 'Amount (KRW)': 1000, 'Settlement (KRW)': 0,
+    'Unit Price': 1000, Fee: 0, Tax: 0, Balance: 1, Source: 'invented.pdf', Page: 1,
+  } as Record<string, string | number>
+}
+
+// Three invented accounts through the real transactions path, with a map that
+// sets one of them and says nothing about the other two.
+function ingestAccounts(map: unknown) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'wrapper-ingest-'))
+  writeSheetPayloads(dir)
+  const kr = path.join(dir, 'kr-statements')
+  mkdirSync(kr, { recursive: true })
+  const rows = ['Alpha Pension Acct', 'Beta Broker (ISA)', 'Gamma Ordinary'].map(txRow)
+  writeFileSync(
+    path.join(kr, 'transactions.tsv'),
+    [TRANSACTION_COLUMNS.join('\t'), ...rows.map((r) => TRANSACTION_COLUMNS.map((c) => String(r[c] ?? '')).join('\t'))].join('\n') + '\n',
+    'utf8'
+  )
+  const mapPath = path.join(dir, 'map.json')
+  writeFileSync(mapPath, JSON.stringify(map), 'utf8')
+  const dbPath = runIngest(dir, {
+    env: { STOCK_KR_STATEMENTS_DIR: kr, STOCK_ACCOUNT_MAP_PATH: mapPath },
+    allowFailure: true,
+  })
+  return new Database(dbPath, { readonly: true })
+}
+
+test('the account map and the label rule decide the wrapper stored on ingested rows', () => {
+  const db = ingestAccounts({ accounts: { 'Alpha Pension Acct': { wrapper: 'irp' } } })
+  const wrapperOf = (account: string) =>
+    (db.prepare('select account_wrapper as w, owner from transactions where account = ?').get(account) as any)
+  assert.equal(wrapperOf('Alpha Pension Acct')?.w, 'irp')
+  assert.equal(wrapperOf('Beta Broker (ISA)')?.w, 'isa')
+  assert.equal(wrapperOf('Gamma Ordinary')?.w, 'taxable')
+  assert.equal(wrapperOf('Alpha Pension Acct')?.owner, 'self')
+  const check = db.prepare("select status from validation_checks where name = 'wrapper_assigned'").get() as any
+  assert.equal(check.status, 'pass')
+})
+
+test('wrapper_assigned fails, as a warning, on a wrapper the map misspells', () => {
+  const db = ingestAccounts({ accounts: { 'Alpha Pension Acct': { wrapper: 'irpp' } } })
+  const check = db
+    .prepare("select status, severity, detail from validation_checks where name = 'wrapper_assigned'")
+    .get() as any
+  assert.equal(check.status, 'fail')
+  assert.equal(check.severity, 'warning')
+  assert.match(check.detail, /transactions/)
+  assert.match(check.detail, /irpp/)
+  assert.match(check.detail, /1 row/)
 })

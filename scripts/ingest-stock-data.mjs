@@ -4333,16 +4333,25 @@ function check(name, ok, detail, severity = 'error') {
   checks.push({ name, status: ok ? 'pass' : 'fail', detail, severity })
 }
 
-const unwrapped = ['holdings', 'tax_lots', 'realized_lots', 'transactions', 'dividends'].map((table) => [
-  table,
-  db.prepare(`select count(*) as n from ${table} where account_wrapper is null or account_wrapper = ''`).get().n,
-])
+// A wrapper outside the known four is what a typo in the account map looks like
+// (`irpp` for `irp`): the row would be stored, match no view filter, and vanish
+// from every total. Empty counts the same, since the column is NOT NULL but not
+// non-empty.
+const KNOWN_WRAPPERS = ['taxable', 'isa', 'irp', 'pension_savings']
+const badWrappers = []
+for (const table of WRAPPED_TABLES) {
+  const rows = db
+    .prepare(
+      `select account_wrapper as value, count(*) as n from ${table} where account_wrapper not in (${KNOWN_WRAPPERS.map(() => '?').join(', ')}) group by account_wrapper`
+    )
+    .all(...KNOWN_WRAPPERS)
+  for (const { value, n } of rows) badWrappers.push(`${table}: ${n} row(s) with wrapper '${value}'`)
+}
+const wrappersOk = badWrappers.length === 0
 check(
   'wrapper_assigned',
-  unwrapped.every(([, n]) => n === 0),
-  unwrapped.every(([, n]) => n === 0)
-    ? 'every securities row has an account wrapper'
-    : unwrapped.filter(([, n]) => n > 0).map(([t, n]) => `${t}: ${n} row(s) without a wrapper`).join('; '),
+  wrappersOk,
+  wrappersOk ? 'every securities row has a known account wrapper' : badWrappers.join('; '),
   'warning'
 )
 
