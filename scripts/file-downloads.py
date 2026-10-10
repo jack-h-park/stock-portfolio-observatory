@@ -988,13 +988,18 @@ def fidelity_row_dates(doc):
     return rows
 
 
-def named_cma_id(doc):
-    """The Fidelity account ID in the file name when the account map says it is a CMA, else None."""
+def cma_detector_owns(doc):
+    """True when detect_fidelity_cma answers for this file, with a Plan or with a Refusal.
+
+    That is a CMA-shaped name whose ID the map declares as a CMA, or whose map cannot
+    be read: then only the CMA detector's refusal (which names the map problem) may
+    stand, never a brokerage plan and never a double claim.
+    """
     found = FIDELITY_HISTORY_NAME.match(nfc(doc.path.name))
     if not found:
-        return None
-    ids, _problem = mapped_cma_ids()
-    return found.group(1) if found.group(1) in ids else None
+        return False
+    ids, problem = mapped_cma_ids()
+    return bool(problem) or found.group(1) in ids
 
 
 def detect_fidelity(doc):
@@ -1008,7 +1013,7 @@ def detect_fidelity(doc):
     """
     if not fidelity_history_has_header(doc):
         return None
-    if named_cma_id(doc):
+    if cma_detector_owns(doc):
         return None
     downloaded = fidelity_downloaded(doc)
     if not downloaded:
@@ -1022,6 +1027,8 @@ def detect_fidelity(doc):
         return refuse_empty_export("Fidelity transactions export", downloaded, "downloaded")
     period = period_from_rows(rows, downloaded)
     evidence = [f"Date downloaded {iso(downloaded)}", f"rows {iso(min(rows))} … {iso(max(rows))}"]
+    if FIDELITY_HISTORY_NAME.match(nfc(doc.path.name)) and not ACCOUNT_MAP_PATH.exists():
+        evidence.append("no account map: filed as brokerage; declare a CMA in data/accounts.local.json if this is one")
     return Plan(DIR_US_TRANSACTIONS, f"fidelity-transactions-{period}.csv", evidence)
 
 
@@ -1443,11 +1450,13 @@ def detect_tossbank(doc):
     """
     if doc.suffix != ".xlsx":
         return None
-    raw = doc.path.read_bytes()
-    if not (raw[: 1 << 20].startswith(bytes.fromhex("d0cf11e0a1b11ae1")) and "EncryptedPackage".encode("utf-16-le") in raw[: 1 << 20]):
+    with doc.path.open("rb") as handle:
+        head = handle.read(1 << 20)
+    if not (head.startswith(bytes.fromhex("d0cf11e0a1b11ae1")) and "EncryptedPackage".encode("utf-16-le") in head):
         return None
     if "토스뱅크" not in nfc(doc.path.name):
         return None  # an encrypted workbook from somewhere else is not ours to claim
+    raw = doc.path.read_bytes()  # ours: now the whole file is needed to decrypt
     password = os.environ.get("STOCK_TOSSBANK_PASSWORD", "")
     if not password:
         return Refusal(

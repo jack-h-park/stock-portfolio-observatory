@@ -194,11 +194,31 @@ test('the numbered re-download name of a mapped CMA is a CMA too', () => {
 })
 
 test('the same Fidelity file with no map, or an unmapped ID, is brokerage as before', () => {
-  assert.match(fileDownloads({ 'History_for_Account_Z00000001.csv': FIDELITY_HISTORY }), /→ us-transactions\/fidelity-transactions-20260901-20260930\.csv/)
+  const noMap = fileDownloads({ 'History_for_Account_Z00000001.csv': FIDELITY_HISTORY })
+  assert.match(noMap, /→ us-transactions\/fidelity-transactions-20260901-20260930\.csv/)
+  assert.match(noMap, /no account map: filed as brokerage/)
   assert.match(fileDownloads({ 'History_for_Account_Z99999999.csv': FIDELITY_HISTORY }, { map: CMA_MAP }), /→ us-transactions\/fidelity-transactions-/)
 })
 
 test('a CMA name on a file without the Fidelity history header is not claimed', () => {
   const out = fileDownloads({ 'History_for_Account_Z00000001.csv': 'a,b,c\n1,2,3' }, { map: CMA_MAP })
   assert.match(out, /unidentified[\s\S]*History_for_Account_Z00000001\.csv/)
+})
+
+test('a corrupt account map refuses a CMA-named history, naming the map, and the rest of the inbox still files', () => {
+  const dataDir = mkdtempSync(path.join(tmpdir(), 'bank-inbox-'))
+  mkdirSync(path.join(dataDir, 'inbox'), { recursive: true })
+  writeFileSync(path.join(dataDir, 'bad-map.json'), '{bad')
+  writeFileSync(path.join(dataDir, 'inbox', 'History_for_Account_Z00000001.csv'), FIDELITY_HISTORY)
+  writeFileSync(path.join(dataDir, 'inbox', 'Chase0000_Activity_20261009.csv'), CHASE_CHECKING)
+  const result = spawnSync(PY, ['scripts/file-downloads.py'], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    env: { ...process.env, STOCK_DATA_DIR: dataDir, STOCK_ACCOUNT_MAP_PATH: path.join(dataDir, 'bad-map.json') },
+  })
+  assert.equal(result.status, 0, result.stderr)
+  assert.doesNotMatch(result.stderr, /Traceback|more than one detector/)
+  assert.match(result.stdout, /recognised but not filed[\s\S]*History_for_Account_Z00000001\.csv[\s\S]*bad-map\.json could not be read/)
+  assert.deepEqual(readdirSync(path.join(dataDir, 'bank-statements')), ['chase-checking-20260915-20261001.csv'])
+  assert.equal(existsSync(path.join(dataDir, 'inbox', 'History_for_Account_Z00000001.csv')), true)
 })

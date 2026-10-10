@@ -145,7 +145,9 @@ def parse_tossbank(path, findings=None):
     book = openpyxl.load_workbook(path, read_only=False, data_only=True)
     rows = [list(r) for r in book.worksheets[0].iter_rows(values_only=True)]
     wanted = ("거래 일시", "거래 금액", "거래 후 잔액")
-    header_at = next(i for i, r in enumerate(rows) if all(w in [_cell_text(c) for c in r] for w in wanted))
+    header_at = next((i for i, r in enumerate(rows) if all(w in [_cell_text(c) for c in r] for w in wanted)), None)
+    if header_at is None:
+        raise ValueError("no header row with 거래 일시, 거래 금액 and 거래 후 잔액 was found")
     header = [_cell_text(c) for c in rows[header_at]]
     col = {name: header.index(name) for name in wanted}
     kind_col, memo_col = header.index("적요") if "적요" in header else None, header.index("메모") if "메모" in header else None

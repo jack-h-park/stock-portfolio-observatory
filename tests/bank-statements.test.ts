@@ -294,3 +294,13 @@ print(json.dumps({"amounts": [x["amount"] for x in t], "breaks": m.continuity_br
   assert.deepEqual(r.amounts, [100, -5])
   assert.deepEqual(r.breaks, [])
 })
+
+test('a 토스뱅크 workbook with no header row is a finding that says so, and the other accounts are kept', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'toss-nohdr-'))
+  mkdirSync(path.join(dir, 'bank-statements'))
+  execFileSync('python3', ['-c', 'import sys, openpyxl; wb = openpyxl.Workbook(); wb.active.append([None, "nothing here"]); wb.save(sys.argv[1])', path.join(dir, 'bank-statements', 'tossbank-0000-a-b.xlsx')])
+  const doc = extract(dir)
+  assert.equal(doc.findings.length, 1)
+  assert.match(doc.findings[0], /tossbank-0000-a-b\.xlsx: could not be parsed \(ValueError: no header row with 거래 일시/)
+  assert.doesNotMatch(doc.findings[0], /StopIteration/)
+})
