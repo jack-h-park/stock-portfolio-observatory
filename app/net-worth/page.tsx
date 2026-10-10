@@ -1,14 +1,16 @@
+import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, MetricField } from '@/components/ui'
 import { CardRow } from '@/components/layout'
 import { StackedAssetChart } from '@/components/charts'
-import { getMeta, getNetWorth, getSnapshotDates, getTotalAssetsSeries } from '@/lib/adapters/portfolio-db'
+import { getForeignAccountMaxima, getMeta, getNetWorth, getSnapshotDates, getTotalAssetsSeries, portfolioToday } from '@/lib/adapters/portfolio-db'
 import { convertMoney, createMoneyFormatter, formatKrw, formatUsd } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { fmtDate, fmtDateTime } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { routeMetadata, routeSection } from '@/lib/page-names'
+import { lastCompleteYear, type ForeignAccountRow } from '@/lib/fbar'
 import { ASSET_CLASSES, type NetWorth, type TotalAssetsPoint } from '@/lib/net-worth'
 import { getPageCopy } from '@/lib/ui-copy'
 
@@ -18,7 +20,11 @@ export const generateMetadata = routeMetadata('/net-worth')
 type CashRow = NetWorth['cash'][number]
 type HistoryRow = TotalAssetsPoint & { month: string }
 
-export default async function NetWorthPage() {
+/** The first year the FBAR table offers: the Treasury rates file starts here. */
+const FBAR_FIRST_YEAR = 2020
+
+export default async function NetWorthPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const params = await searchParams
   const language = await getLanguage()
   const copy = getPageCopy('netWorth', language)
   // Every KRW figure in the display currency, as the Overview shows it. The
@@ -40,6 +46,13 @@ export default async function NetWorthPage() {
     netWorth.asOfNotes.filter((note) => note.assetClass === key).map((note) => copy.asOfNote(note.label, fmtDate(note.asOf))).join(' · ')
   const amount = (value: number | null) => <span className="tabular-nums">{value == null ? copy.none : money(value)}</span>
   const kindLabel = (kind: string) => (kind in copy.kinds ? copy.kinds[kind as keyof typeof copy.kinds] : kind)
+  // FBAR: the last complete year unless ?fbarYear= names another offered year.
+  const currentYear = Number(portfolioToday().slice(0, 4))
+  const fbarYears = Array.from({ length: currentYear - FBAR_FIRST_YEAR + 1 }, (_, i) => FBAR_FIRST_YEAR + i)
+  const requestedYear = Number(Array.isArray(params.fbarYear) ? params.fbarYear[0] : params.fbarYear)
+  const fbarYear = fbarYears.includes(requestedYear) ? requestedYear : lastCompleteYear(portfolioToday())
+  const fbar = getForeignAccountMaxima(fbarYear)
+  const fbarCopy = copy.fbar
 
   return (
     <>
@@ -172,6 +185,88 @@ export default async function NetWorthPage() {
           />
         </Card>
       ) : null}
+
+      <Card
+        title={fbarCopy.title}
+        className="mt-5"
+        action={
+          <nav aria-label={fbarCopy.yearLabel} className="flex flex-wrap items-center justify-end gap-1">
+            {fbarYears.map((year) => (
+              <Link
+                key={year}
+                href={`/net-worth?fbarYear=${year}`}
+                scroll={false}
+                aria-current={year === fbarYear ? 'page' : undefined}
+                className={`rounded-sm border px-2 py-1 text-label font-medium ${year === fbarYear ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
+              >
+                {year}
+              </Link>
+            ))}
+          </nav>
+        }
+      >
+        <div className="mb-3 flex flex-col gap-1 text-label leading-relaxed text-ink-3">
+          <p className="font-medium text-ink-2">{fbarCopy.note}</p>
+          <p>{fbarCopy.method}</p>
+          <p>
+            {fbar.rate
+              ? fbarCopy.rate(fbar.rate.krwPerUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), fmtDate(fbar.rate.date))
+              : fbarCopy.noRate(fbarYear)}
+          </p>
+          <p>{fbarCopy.understatedNote}</p>
+        </div>
+        <DataTable
+          caption={fbarCopy.title}
+          rows={fbar.rows}
+          getRowKey={(row: ForeignAccountRow) => `${row.kind}|${row.account}`}
+          emptyMessage={fbarCopy.empty(fbarYear)}
+          columns={[
+            { key: 'account', label: fbarCopy.columns.account, render: (row: ForeignAccountRow) => <span className="font-medium text-ink">{row.account}</span> },
+            { key: 'kind', label: fbarCopy.columns.kind, priority: 'secondary', render: (row: ForeignAccountRow) => fbarCopy.kinds[row.kind] },
+            {
+              key: 'coverage',
+              label: fbarCopy.columns.coverage,
+              render: (row: ForeignAccountRow) => (
+                <span>
+                  {fbarCopy.coverage[row.coverage]}
+                  {row.understated ? (
+                    <>
+                      {' '}
+                      <Badge tone="warning">{fbarCopy.understated}</Badge>
+                    </>
+                  ) : null}
+                </span>
+              ),
+            },
+            { key: 'maxDate', label: fbarCopy.columns.maxDate, nowrap: true, render: (row: ForeignAccountRow) => <span className="tabular-nums">{fmtDate(row.maxDate)}</span> },
+            {
+              key: 'maxKrw',
+              label: fbarCopy.columns.maxKrw,
+              align: 'right',
+              nowrap: true,
+              render: (row: ForeignAccountRow) => <span className="tabular-nums">{formatKrw(row.maxKrw)}</span>,
+            },
+            ...(fbar.rate
+              ? [
+                  {
+                    key: 'maxUsd',
+                    label: fbarCopy.columns.maxUsd,
+                    align: 'right' as const,
+                    nowrap: true,
+                    render: (row: ForeignAccountRow) => <span className="tabular-nums">{row.maxUsd == null ? copy.none : formatUsd(row.maxUsd)}</span>,
+                  },
+                ]
+              : []),
+          ]}
+        />
+        {fbar.rows.length ? (
+          <div className="mt-3 flex flex-wrap justify-end gap-x-6 gap-y-1 text-body">
+            <span className="text-ink-3">{fbarCopy.aggregate}</span>
+            <span className="font-medium tabular-nums text-ink">{formatKrw(fbar.rows.reduce((sum, row) => sum + row.maxKrw, 0))}</span>
+            {fbar.aggregateMaxUsd != null ? <span className="font-medium tabular-nums text-ink">{formatUsd(fbar.aggregateMaxUsd)}</span> : null}
+          </div>
+        ) : null}
+      </Card>
     </>
   )
 }

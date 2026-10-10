@@ -8,7 +8,10 @@ import { getTaxPolicyState, usTaxableWrappers, wrapperTreatment, type TaxPolicy,
 import { ASSET_CLASSES, depositsSeries, summarizeNetWorth, totalAssetsSeries, type AsOfNote, type CashBalanceRow, type NetWorth, type TotalAssetsSeries } from '@/lib/net-worth'
 import type { PensionContributionYear } from '@/lib/pension'
 import { groupAccountRanges, type AccountDataRange, type AssetType, type RangeKind, type RangeRow } from '@/lib/account-ranges'
+import { foreignAccountMaxima, isUsCashInstitution, maxBalance, treasuryRateFor, type BalancePoint, type ForeignAccountInput, type ForeignAccountMaxima } from '@/lib/fbar'
+import treasuryRates from '@/data/treasury-reporting-rates.json'
 import { loadAccountMap } from '@/scripts/account-map.mjs'
+import { createLotValuer } from '@/scripts/lot-valuation.mjs'
 
 /**
  * The default (Stocks) view: taxable and ISA securities only. Every holdings total goes through this.
@@ -1184,6 +1187,168 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
       goldKrw: Number(others.gold),
       asOfNotes,
     })
+  } finally {
+    conn.close()
+  }
+}
+
+/**
+ * Each foreign account's maximum value in `year`, for FBAR and Form 8938. Foreign
+ * is everything not held at a US institution:
+ *
+ * - cash outside the US banks (isUsCashInstitution), from daily balances
+ *   carried forward; a USD account's maximum is read in dollars;
+ * - KR-market stock accounts, from month-end values of the lots held times the
+ *   historical price (the reconstruction the month-end backfill uses), at cost
+ *   where no price reaches a position;
+ * - pension accounts, from their certificate and snapshot totals;
+ * - the gold account, grams held times the latest KRX price, at cost before
+ *   the first stored price (partial when any of the year is at cost).
+ *
+ * USD figures use the Treasury year-end rate in data/treasury-reporting-rates.json.
+ * An account with nothing in or before the year, or a zero maximum, is left out.
+ */
+export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
+  const rate = treasuryRateFor(year, treasuryRates.rates)
+  const today = portfolioToday()
+  const start = `${year}-01-01`
+  const end = `${year}-12-31`
+  const conn = db()
+  try {
+    const hasTable = (name: string) =>
+      Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(name))
+    const columnsOf = (name: string) =>
+      new Set((conn.prepare(`pragma table_info(${name})`).all() as { name: string }[]).map((column) => column.name))
+    const accounts: ForeignAccountInput[] = []
+    const add = (account: string, kind: ForeignAccountInput['kind'], found: ReturnType<typeof maxBalance>, extra: Partial<ForeignAccountInput> = {}) => {
+      if (found && found.maxKrw > 0) accounts.push({ account, kind, maxKrw: found.maxKrw, maxDate: found.date, coverage: found.coverage, ...extra })
+    }
+
+    // Cash: one series per (institution, account), in the account's own currency.
+    const rateAt = usdKrwRateAt(conn)
+    const cashByAccount = new Map<string, { account: string; currency: string; points: BalancePoint[] }>()
+    if (hasTable('cash_balances')) {
+      const rows = conn
+        .prepare('select institution, account, currency, as_of_date as date, balance from cash_balances order by as_of_date, id')
+        .all() as { institution: string; account: string; currency: string; date: string; balance: number }[]
+      for (const row of rows) {
+        if (isUsCashInstitution(row.institution)) continue
+        const key = `${row.institution}|${row.account}`
+        const entry = cashByAccount.get(key) ?? { account: row.account, currency: row.currency, points: [] }
+        entry.points.push({ date: row.date, valueKrw: Number(row.balance) })
+        cashByAccount.set(key, entry)
+      }
+    }
+    for (const { account, currency, points } of cashByAccount.values()) {
+      const found = maxBalance(points, year)
+      if (!found) continue
+      if (currency === 'USD') {
+        // Dollars in, dollars out. Without a Treasury rate the won figure falls
+        // back to the market rate on the date of the maximum.
+        const marketRate = rateAt(found.date)
+        if (!rate && marketRate == null) continue
+        add(account, 'cash', { ...found, maxKrw: found.maxKrw * (rate?.krwPerUsd ?? marketRate ?? 0) }, { maxUsdNative: found.maxKrw })
+      } else if (currency === 'KRW') {
+        add(account, 'cash', found)
+      }
+    }
+
+    // KR-market stock accounts: month-end values, with the prior year-end as 1 January.
+    const lotsTable = hasTable('tax_lots_all') ? 'tax_lots_all' : hasTable('tax_lots') ? 'tax_lots' : null
+    const realizedTable = hasTable('realized_lots_all') ? 'realized_lots_all' : hasTable('realized_lots') ? 'realized_lots' : null
+    if (lotsTable) {
+      const stockOnly = (table: string) => (columnsOf(table).has('asset_class') ? ` and ${STOCK_ROW_SQL}` : '')
+      const openLots = conn
+        .prepare(`select market, account, ticker, acquired_date, open_quantity, cost_basis_krw from ${lotsTable} where market = 'KR'${stockOnly(lotsTable)}`)
+        .all() as { market: string; account: string; ticker: string; acquired_date: string; open_quantity: number; cost_basis_krw: number }[]
+      const realizedLots = realizedTable
+        ? (conn
+            .prepare(
+              `select market, account, ticker, acquired_date, sold_date, quantity_sold, cost_basis_krw from ${realizedTable} where market = 'KR'${stockOnly(realizedTable)}`
+            )
+            .all() as { market: string; account: string; ticker: string; acquired_date: string | null; sold_date: string | null; quantity_sold: number | null; cost_basis_krw: number | null }[])
+        : []
+      const historicalPrices = hasTable('historical_prices')
+        ? (conn
+            .prepare(
+              `select market, ticker, ${columnsOf('historical_prices').has('currency') ? 'currency' : "case when market = 'KR' then 'KRW' end as currency"}, price_date, close
+                 from historical_prices order by market, ticker, price_date`
+            )
+            .all() as { market: string; ticker: string; currency: string | null; price_date: string; close: number }[])
+        : []
+      const historicalFxRates = hasTable('historical_fx_rates')
+        ? (conn.prepare('select price_date, rate from historical_fx_rates order by price_date').all() as { price_date: string; rate: number }[])
+        : []
+      const valuer = createLotValuer({ openLots, realizedLots, historicalPrices, historicalFxRates })
+      const firstLot = new Map<string, string>()
+      for (const lot of [...openLots, ...realizedLots]) {
+        const date = String(lot.acquired_date ?? '').slice(0, 10)
+        if (date && (!firstLot.has(lot.account) || date < firstLot.get(lot.account)!)) firstLot.set(lot.account, date)
+      }
+      const dates = [`${year - 1}-12-31`]
+      for (let month = 1; month <= 12; month += 1) dates.push(new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10))
+      const pointsByAccount = new Map<string, BalancePoint[]>()
+      for (const date of dates.filter((d) => d <= today)) {
+        const totals = new Map<string, number>()
+        // A position no price reaches counts at cost rather than at nothing.
+        for (const position of valuer.valuedPositionsAt(date)) totals.set(position.account, (totals.get(position.account) ?? 0) + (position.marketValue ?? position.cost))
+        for (const [account, first] of firstLot) {
+          if (first > date) continue
+          pointsByAccount.set(account, [...(pointsByAccount.get(account) ?? []), { date, valueKrw: totals.get(account) ?? 0 }])
+        }
+      }
+      for (const [account, points] of pointsByAccount) add(account, 'brokerage', maxBalance(points, year, 'month_end'))
+    }
+
+    // Pensions: certificate and snapshot totals.
+    if (hasTable('pension_points')) {
+      const rows = conn.prepare('select account, date, value_krw as valueKrw from pension_points order by date, id').all() as {
+        account: string
+        date: string
+        valueKrw: number
+      }[]
+      const byAccount = new Map<string, BalancePoint[]>()
+      for (const row of rows) byAccount.set(row.account, [...(byAccount.get(row.account) ?? []), { date: row.date, valueKrw: Number(row.valueKrw) }])
+      for (const [account, points] of byAccount) add(account, 'pension', maxBalance(points, year, 'year_end'))
+    }
+
+    // Gold: the value changes only on a purchase or a price date, so a point on
+    // each of those (and today, the holding still standing) is the daily series.
+    if (hasTable('transactions_all') && columnsOf('transactions_all').has('asset_class')) {
+      const buys = (
+        conn
+          .prepare(
+            `select account, substr(date, 1, 10) as date, abs(coalesce(quantity, 0)) as grams, abs(coalesce(amount_krw, settlement_krw, 0)) as costKrw
+               from transactions_all where asset_class = 'gold' and type = 'BUY' order by date, id`
+          )
+          .all() as { account: string; date: string; grams: number; costKrw: number }[]
+      ).filter((buy) => buy.grams > 0)
+      const prices = hasTable('gold_prices') ? (conn.prepare('select date, price from gold_prices order by date').all() as { date: string; price: number }[]) : []
+      const byAccount = new Map<string, typeof buys>()
+      for (const buy of buys) byAccount.set(buy.account, [...(byAccount.get(buy.account) ?? []), buy])
+      for (const [account, list] of byAccount) {
+        const valueOn = (date: string) => {
+          const held = list.filter((buy) => buy.date <= date)
+          const price = prices.filter((row) => row.date <= date).at(-1)
+          return {
+            valueKrw: price ? held.reduce((sum, buy) => sum + buy.grams, 0) * price.price : held.reduce((sum, buy) => sum + buy.costKrw, 0),
+            atCost: held.length > 0 && !price,
+          }
+        }
+        const dates = [...new Set([...list.map((buy) => buy.date), ...prices.map((row) => row.date).filter((d) => d >= list[0].date), today])].sort()
+        const found = maxBalance(
+          dates.map((date) => ({ date, valueKrw: valueOn(date).valueKrw })),
+          year
+        )
+        if (!found) continue
+        // Prices only accrue, so the year is at cost somewhere exactly when its first held day is.
+        const firstHeld = list[0].date > start ? list[0].date : start
+        const atCost = firstHeld <= end && valueOn(firstHeld).atCost
+        add(account, 'gold', atCost ? { ...found, coverage: 'partial' } : found)
+      }
+    }
+
+    return foreignAccountMaxima(year, rate, accounts)
   } finally {
     conn.close()
   }

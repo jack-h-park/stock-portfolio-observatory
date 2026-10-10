@@ -1,0 +1,37 @@
+{
+  "source": "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/od/rates_of_exchange?fields=record_date,country_currency_desc,exchange_rate&filter=country_currency_desc:eq:Korea-Won,record_date:in:(2020-12-31,2021-12-31,2022-12-31,2023-12-31,2024-12-31,2025-12-31)&sort=record_date",
+  "dataset": "U.S. Treasury Reporting Rates of Exchange (Fiscal Data, rates_of_exchange)",
+  "retrieved": "2026-10-10",
+  "rates": [
+    {
+      "year": 2020,
+      "date": "2020-12-31",
+      "krwPerUsd": 1087.66
+    },
+    {
+      "year": 2021,
+      "date": "2021-12-31",
+      "krwPerUsd": 1188.92
+    },
+    {
+      "year": 2022,
+      "date": "2022-12-31",
+      "krwPerUsd": 1252.61
+    },
+    {
+      "year": 2023,
+      "date": "2023-12-31",
+      "krwPerUsd": 1299.22
+    },
+    {
+      "year": 2024,
+      "date": "2024-12-31",
+      "krwPerUsd": 1473.27
+    },
+    {
+      "year": 2025,
+      "date": "2025-12-31",
+      "krwPerUsd": 1443.75
+    }
+  ]
+}

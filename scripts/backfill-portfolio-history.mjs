@@ -1,16 +1,13 @@
 import Database from 'better-sqlite3'
 import path from 'node:path'
 import { loadLocalEnv } from './env.mjs'
+import { createLotValuer, dateOnly } from './lot-valuation.mjs'
 import { valuePortfolio } from './portfolio-snapshot.mjs'
 
 loadLocalEnv()
 
 const dbPath = process.env.STOCK_DB_PATH || path.join(process.cwd(), 'private-data/outputs/stock-portfolio-observatory/stock-portfolio-observatory.db')
 const db = new Database(dbPath)
-
-function dateOnly(value) {
-  return String(value ?? '').slice(0, 10)
-}
 
 function monthEnds(firstDate, lastDate) {
   const first = new Date(`${firstDate}T00:00:00Z`)
@@ -58,57 +55,7 @@ try {
     .prepare('select market, base_cost as cost, base_market_value as marketValue from holdings where quantity != 0')
     .all()
 
-  const pricesByTicker = new Map()
-  for (const row of historicalPrices) {
-    const key = `${row.market}:${row.ticker}`
-    if (!pricesByTicker.has(key)) pricesByTicker.set(key, [])
-    pricesByTicker.get(key).push(row)
-  }
-  const fxByDate = new Map(historicalFxRates.map((row) => [row.price_date, Number(row.rate)]))
-  const latestFx = historicalFxRates.length ? Number(historicalFxRates[historicalFxRates.length - 1].rate) : null
-
-  function latestPrice(market, ticker, date) {
-    const rows = pricesByTicker.get(`${market}:${ticker}`) ?? []
-    let result = null
-    for (const row of rows) {
-      if (row.price_date > date) break
-      result = row
-    }
-    return result
-  }
-
-  function fxRate(date) {
-    if (fxByDate.has(date)) return fxByDate.get(date)
-    let result = null
-    for (const row of historicalFxRates) {
-      if (row.price_date > date) break
-      result = Number(row.rate)
-    }
-    return result ?? latestFx
-  }
-
-  function positionsAt(date) {
-    const positions = new Map()
-    for (const lot of openLots) {
-      const acquiredDate = dateOnly(lot.acquired_date)
-      if (!acquiredDate || acquiredDate > date) continue
-      const key = `${lot.market}\t${lot.account}\t${lot.ticker}`
-      const position = positions.get(key) ?? { quantity: 0, cost: 0 }
-      position.quantity += Number(lot.open_quantity || 0)
-      position.cost += Number(lot.cost_basis_krw || 0)
-      positions.set(key, position)
-    }
-    for (const lot of realizedLots) {
-      const acquiredDate = dateOnly(lot.acquired_date)
-      if (!acquiredDate || acquiredDate > date || (lot.sold_date && dateOnly(lot.sold_date) <= date)) continue
-      const key = `${lot.market}\t${lot.account}\t${lot.ticker}`
-      const position = positions.get(key) ?? { quantity: 0, cost: 0 }
-      position.quantity += Number(lot.quantity_sold || 0)
-      position.cost += Number(lot.cost_basis_krw || 0)
-      positions.set(key, position)
-    }
-    return positions
-  }
+  const { valuedPositionsAt } = createLotValuer({ openLots, realizedLots, historicalPrices, historicalFxRates })
 
   // Columns as a list, with the placeholders counted from it. Hand-maintaining a
   // parallel run of `?` is a standing trap: adding the four crypto columns to the
@@ -143,25 +90,9 @@ try {
       const usdCost = activeOpenLots.filter((lot) => lot.currency === 'USD').reduce((sum, lot) => sum + Number(lot.native_cost_basis || 0), 0)
       const dividendsKrw = activeDividends.filter((row) => row.currency === 'KRW').reduce((sum, row) => sum + Number(row.native_amount || 0), 0)
       const dividendsUsd = activeDividends.filter((row) => row.currency === 'USD').reduce((sum, row) => sum + Number(row.native_amount || 0), 0)
-      const positions = positionsAt(date)
-      let totalShares = 0
-      const valuationPositions = []
-      for (const [key, rawPosition] of positions) {
-        const [market, , ticker] = key.split('\t')
-        const quantity = Math.max(0, rawPosition.quantity)
-        if (!quantity) continue
-        totalShares += quantity
-        const price = latestPrice(market, ticker, date)
-        // Quote currency, not the account's market, decides whether FX applies.
-        // A US security held in a Korean account is stored under market=KR so its
-        // lots stay with that account, while its historical quote is still USD.
-        const rate = price?.currency === 'KRW' ? 1 : fxRate(date)
-        valuationPositions.push({
-          market,
-          cost: rawPosition.cost,
-          marketValue: price != null && rate != null ? quantity * Number(price.close) * rate : null,
-        })
-      }
+      const valued = valuedPositionsAt(date)
+      const totalShares = valued.reduce((sum, position) => sum + position.quantity, 0)
+      const valuationPositions = valued.map(({ market, cost, marketValue }) => ({ market, cost, marketValue }))
       const valuation = valuePortfolio(valuationPositions)
       const shareCount = totalShares || activeOpenLots.reduce((sum, lot) => sum + Number(lot.open_quantity || 0), 0)
       insert.run(
