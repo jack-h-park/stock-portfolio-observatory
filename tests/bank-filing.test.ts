@@ -114,10 +114,11 @@ function encryptedWorkbook(dir: string, password: string, opts: { last4?: string
     'plain, out, password, last4, period, layout = sys.argv[1:7]',
     'wb = openpyxl.Workbook(); ws = wb.active; ws.title = "토스뱅크 거래내역"',
     'if layout == "toss":',
-    '    ws.append(["토스뱅크 거래내역"]); ws.append(["성명", "Example Holder"]); ws.append(["계좌번호", f"****-****-{last4}"]); ws.append(["조회기간", period])',
-    '    ws.append([]); ws.append([]); ws.append([])',
-    '    ws.append(["거래 일시", "적요", "거래 유형", "거래 기관", "계좌번호", "거래 금액", "거래 후 잔액", "메모"])',
-    '    ws.append(["2026.09.01 10:00:00", "example", "입금", "", "", 100.0, 100.0, ""])',
+    '    # the real export puts everything one column in: column A is empty',
+    '    ws.append([None, "토스뱅크 거래내역"]); ws.append([None, "성명", "Example Holder"]); ws.append([None, "계좌번호", f"****-****-{last4}"]); ws.append([None, "조회기간", period])',
+    '    ws.append([]); ws.append([None, "※ example notice"]); ws.append([None, "※ example notice"]); ws.append([])',
+    '    ws.append([None, "거래 일시", "적요", "거래 유형", "거래 기관", "계좌번호", "거래 금액", "거래 후 잔액", "메모"])',
+    '    ws.append([None, "2026.09.01 10:00:00", "example", "입금", "", "", 100.0, 100.0, ""])',
     'else:',
     '    ws["A1"] = "example"; ws["B1"] = 42',
     'wb.save(plain)',
@@ -151,7 +152,7 @@ test('토스뱅크 decrypts into bank-statements with the right password and rem
   const filed = readdirSync(path.join(dataDir, 'bank-statements'))
   assert.deepEqual(filed, ['tossbank-1234-20220725-20261010.xlsx'], out)
   assert.equal(existsSync(path.join(dataDir, 'inbox', '토스뱅크_거래내역.xlsx')), false)
-  const read = spawnSync(PY, ['-c', 'import sys, openpyxl; print(openpyxl.load_workbook(sys.argv[1]).active["A3"].value)', path.join(dataDir, 'bank-statements', filed[0])], { encoding: 'utf8' })
+  const read = spawnSync(PY, ['-c', 'import sys, openpyxl; print(openpyxl.load_workbook(sys.argv[1]).active["B3"].value)', path.join(dataDir, 'bank-statements', filed[0])], { encoding: 'utf8' })
   assert.equal(read.stdout.trim(), '계좌번호', read.stderr)
 })
 

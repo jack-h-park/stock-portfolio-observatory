@@ -1408,9 +1408,12 @@ def read_tossbank_identity(raw, password):
         raise ValueError(f"it has an unexpected layout (not readable as a workbook: {type(error).__name__})")
 
     def labelled(label):
+        # The real export starts every row with an empty column A, so the label is
+        # not in the first cell; take the first non-empty cell after it wherever it is.
         for row in top:
-            if row and row[0] == label and len(row) > 1:
-                return row[1]
+            if label in row:
+                after = [c for c in row[row.index(label) + 1:] if c]
+                return after[0] if after else None
         return None
 
     number, window = labelled("계좌번호"), labelled("조회기간")

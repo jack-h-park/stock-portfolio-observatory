@@ -137,7 +137,7 @@ def _cell_num(value):
     return _num(_cell_text(value))
 
 
-def parse_tossbank(path):
+def parse_tossbank(path, findings=None):
     """토스뱅크 거래내역 workbook (already decrypted): header row by cells, newest first, signed amounts."""
     import openpyxl
 
@@ -163,8 +163,21 @@ def parse_tossbank(path):
                        _cell_text(r[kind_col]) if kind_col is not None and len(r) > kind_col else "",
                        _cell_text(r[memo_col]) if memo_col is not None and len(r) > memo_col else ""))
     parsed.sort(key=lambda t: t[0])  # stable: equal timestamps stay in chronological file order
-    return [{"date": s[:10], "seq": i, "description": f"{desc} {memo}".strip(), "amount": a, "balance": b}
-            for i, (s, a, b, desc, memo) in enumerate(parsed)]
+    out = [{"date": s[:10], "seq": i, "description": f"{desc} {memo}".strip(), "amount": a, "balance": b}
+           for i, (s, a, b, desc, memo) in enumerate(parsed)]
+    # Some rows (promotions, interest, a few deposits) print no `거래 후 잔액`. Leaving them blank would
+    # drop their amount from the next row's continuity check, which then reports a false break, and
+    # would leave a stale end-of-day balance when the blank row is the day's last. A blank takes the
+    # previous printed balance plus its own amount; the next row's printed balance still checks it.
+    filled, previous = 0, None
+    for txn in out:
+        if txn["balance"] is None and previous is not None:
+            txn["balance"] = round(previous + txn["amount"], 2)
+            filled += 1
+        previous = txn["balance"]
+    if filled and findings is not None:
+        findings.append(f"{Path(path).name}: {filled} row(s) printed no balance; each was taken as the previous balance plus its amount")
+    return out
 
 
 def merge_txns(groups):
@@ -258,7 +271,7 @@ FAMILIES = [
     ("robinhood-bank-checking-", "robinhood-bank", "checking", "USD", lambda p, f: parse_robinhood_bank(p.read_text(encoding="utf-8-sig")), None),
     ("robinhood-bank-savings-", "robinhood-bank", "savings", "USD", lambda p, f: parse_robinhood_bank(p.read_text(encoding="utf-8-sig")), None),
     ("mg-deposit-", "mg", "deposit", "KRW", lambda p, f: parse_mg_rows(_xls_rows(p, f)), None),
-    ("tossbank-", "tossbank", "checking", "KRW", lambda p, f: parse_tossbank(p), r"^tossbank-(\d{4})-"),
+    ("tossbank-", "tossbank", "checking", "KRW", lambda p, f: parse_tossbank(p, f), r"^tossbank-(\d{4})-"),
     ("fidelity-cma-", "fidelity", "cma", "USD", lambda p, f: parse_fidelity_cma(p.read_text(encoding="utf-8-sig")), None),
 ]
 

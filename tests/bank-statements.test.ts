@@ -161,16 +161,17 @@ print(json.dumps({"eod": m.end_of_day(t), "breaks": m.continuity_breaks(t), "seq
 const TOSS_HEADER = ['거래 일시', '적요', '거래 유형', '거래 기관', '계좌번호', '거래 금액', '거래 후 잔액', '메모']
 
 /** Write an openpyxl workbook shaped like a 토스뱅크 export; `rows` are newest first. */
-function writeTossWorkbook(file: string, last4: string, rows: Array<[string, string, number, number]>) {
+function writeTossWorkbook(file: string, last4: string, rows: Array<[string, string, number, number | null]>) {
   const script = [
     'import json, sys, openpyxl',
     'file, last4, rows, header = sys.argv[1], sys.argv[2], json.loads(sys.argv[3]), json.loads(sys.argv[4])',
     'wb = openpyxl.Workbook(); ws = wb.active; ws.title = "토스뱅크 거래내역"',
-    'ws.append(["토스뱅크 거래내역"]); ws.append(["성명", "Example Holder"]); ws.append(["계좌번호", f"****-****-{last4}"])',
-    'ws.append(["조회기간", "2026.01.01 - 2026.10.10"])',
-    'for _ in range(3): ws.append([])',
-    'ws.append(header)',
-    'for r in rows: ws.append([r[0], r[1], "입금", "", "", r[2], r[3], ""])',
+    '# the real export puts everything one column in: column A is empty',
+    'ws.append([None, "토스뱅크 거래내역"]); ws.append([None, "성명", "Example Holder"]); ws.append([None, "계좌번호", f"****-****-{last4}"])',
+    'ws.append([None, "조회기간", "2026.01.01 - 2026.10.10"])',
+    'for _ in range(4): ws.append([])',
+    'ws.append([None] + header)',
+    'for r in rows: ws.append([None, r[0], r[1], "입금", "", "", r[2], r[3], ""])',
     'wb.save(file)',
   ].join('\n')
   execFileSync('python3', ['-c', script, file, last4, JSON.stringify(rows), JSON.stringify(TOSS_HEADER)])
@@ -217,6 +218,23 @@ test('토스뱅크 same-second rows keep their file order, and a gap is a contin
   // 09-02 is consistent only if the same-second rows are read b1 then b2; 09-03 is the real gap.
   assert.equal(a.continuityBreaks.length, 1)
   assert.match(a.continuityBreaks[0], /2026-09-03/)
+})
+
+test('a 토스뱅크 row with no balance gets previous balance plus amount, so the next row is not a false break', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'toss-blank-'))
+  mkdirSync(path.join(dir, 'bank-statements'))
+  writeTossWorkbook(path.join(dir, 'bank-statements', 'tossbank-0000-a-b.xlsx'), '0000', [
+    ['2026.09.03 10:00:00', 'after', -100.0, 1000.0],
+    ['2026.09.02 10:00:00', 'promo', 100.0, null],
+    ['2026.09.01 10:00:00', 'pay', 1000.0, 1000.0],
+  ])
+  const doc = extract(dir)
+  const a = doc.accounts[0]
+  // 09-01: 1000; the blank row makes 1100; the next row's -100 lands on 1000 as printed.
+  assert.deepEqual(a.balances, [{ date: '2026-09-01', balance: 1000 }, { date: '2026-09-02', balance: 1100 }, { date: '2026-09-03', balance: 1000 }])
+  assert.deepEqual(a.continuityBreaks, [])
+  assert.equal(doc.findings.length, 1)
+  assert.match(doc.findings[0], /tossbank-0000-a-b\.xlsx: 1 row\(s\) printed no balance/)
 })
 
 test('two 토스뱅크 last4 values give two accounts, and the map overrides kind and alias by last4', () => {
