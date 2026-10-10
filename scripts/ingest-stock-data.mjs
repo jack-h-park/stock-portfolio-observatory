@@ -5756,7 +5756,9 @@ fs.writeFileSync(path.join(outDir, 'validation-report.json'), JSON.stringify(rep
 db.close()
 
 // Two different questions, deliberately answered by two different counts:
-// `failed` decides the exit code — only an ERROR aborts the refresh. The
+// `failed` decides the exit code — only an ERROR fails the refresh (which then
+// still runs backfill:history, derived from this database, and skips the sheet
+// publishes; see the comment above the step loop in refresh.mjs). The
 // printed line reports EVERY check that did not pass, warnings included,
 // because the refresh cron greps exactly this line to decide whether to alert.
 // Counting warnings as "passing" here made that alert unreachable for the one

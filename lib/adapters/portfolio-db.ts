@@ -243,6 +243,26 @@ export type OperationalHealth = {
 
 export type AccountCoverageStatus = 'current' | 'due_soon' | 'action_needed' | 'missing'
 
+/**
+ * One of the separate artifacts an account's coverage is made of, when there is
+ * more than one and each goes stale on its own. Robinhood is the case: its
+ * positions come from the MCP snapshot and its trades from hand-downloaded CSVs,
+ * and a fresh snapshot says nothing about whether the CSVs reach the same day.
+ */
+export type AccountCoverageSource = {
+  /** Short name for a table cell: 'MCP', 'CSV'. */
+  label: string
+  method: 'inbox' | 'mcp'
+  coveredThrough: string | null
+  downloadFrom: string | null
+  lagDays: number | null
+  maxLagDays: number
+  overdueDays: number | null
+  status: AccountCoverageStatus
+  requiredArtifact: string
+  destination: string
+}
+
 export type AccountCoverage = {
   id: string
   market: string
@@ -265,6 +285,12 @@ export type AccountCoverage = {
   lastFile: string | null
   action: string
   detail: string
+  /**
+   * Non-empty when the row stands for several artifacts that age separately. The row's
+   * own date, status and method are those of the one furthest behind, so a
+   * reader that ignores this still reports the account as stale when any part is.
+   */
+  sources: AccountCoverageSource[]
 }
 
 export type AccountCoverageSummary = {
@@ -2090,6 +2116,74 @@ function latestSourceFilename(sourceRows: any[], needles: string[]) {
   return matches.sort((a, b) => Number(b.mtime_ms ?? 0) - Number(a.mtime_ms ?? 0))[0]?.filename ?? null
 }
 
+type CoverageDbRow = { market: string; brokerage: string; account: string; account_type: string | null; covered_through: string | null }
+
+const COVERAGE_STATUS_RANK: Record<AccountCoverageStatus, number> = { missing: 0, action_needed: 1, due_soon: 2, current: 3 }
+
+function coverageSource(input: Pick<AccountCoverageSource, 'label' | 'method' | 'coveredThrough' | 'maxLagDays' | 'requiredArtifact' | 'destination'>): AccountCoverageSource {
+  const lagDays = calendarAgeDays(input.coveredThrough)
+  return {
+    ...input,
+    // A regenerated snapshot has no start date; only a download does.
+    downloadFrom: input.method === 'inbox' ? subtractCalendarDays(input.coveredThrough, 1) : null,
+    lagDays,
+    overdueDays: lagDays == null ? null : Math.max(0, lagDays - input.maxLagDays),
+    status: coverageStatus(lagDays, input.maxLagDays),
+  }
+}
+
+/** The source the account's own status should report: the worst status, then the oldest date. */
+function worstSource(sources: AccountCoverageSource[]) {
+  return [...sources].sort(
+    (a, b) =>
+      COVERAGE_STATUS_RANK[a.status] - COVERAGE_STATUS_RANK[b.status] ||
+      String(a.coveredThrough ?? '').localeCompare(String(b.coveredThrough ?? ''))
+  )[0]
+}
+
+/**
+ * The name one Robinhood account goes by on both sides of the database.
+ *
+ * Transactions carry the strategy name the CSV was filed under ("Mid-term", in
+ * `account_type`), holdings the last four of the account number ("Robinhood
+ * 1234"), so the same account used to arrive here as two rows. The snapshot is
+ * what ties them: each of its accounts has both. Without a snapshot the lots
+ * come from the Gain/Loss PDFs, which know only the number, and the two names
+ * are left apart — a wrong fold would put one account's trades under another's
+ * positions, where two rows for one account only cost a line of the table.
+ */
+function robinhoodAccountResolver(snapshot: any, transactionRows: CoverageDbRow[]) {
+  const strategies = new Set(
+    transactionRows
+      .filter((row) => row.market === 'US' && row.brokerage === 'Robinhood' && row.account_type)
+      .map((row) => String(row.account_type))
+  )
+  const strategyByLabel = new Map<string, string>()
+  for (const account of snapshot?.accounts ?? []) {
+    const nickname = String(account?.nickname ?? '').trim()
+    const hint = String(account?.accountNumber ?? account?.account_number ?? '').slice(-4)
+    const label = String(account?.account ?? '').trim() || `Robinhood ${hint}`.trim()
+    if (nickname && strategies.has(nickname)) strategyByLabel.set(label, nickname)
+  }
+  return (row: CoverageDbRow) => {
+    const accountType = String(row.account_type ?? '')
+    if (strategies.has(accountType) && row.account === `Robinhood ${accountType}`) return accountType
+    return strategyByLabel.get(row.account) ?? row.account
+  }
+}
+
+/**
+ * "Robinhood Mid-term · 1234" for a folded account; the plain label otherwise.
+ * Separated by spaces, not wrapped in brackets, so the briefing summary's
+ * account masking reads the number as the bare token it already knows.
+ */
+function robinhoodAccountLabel(key: string, names: string[]) {
+  const primary = names.find((name) => name === `Robinhood ${key}`)
+  if (!primary) return names.join(' / ')
+  const others = names.filter((name) => name !== primary).map((name) => name.replace(/^Robinhood\s+/, ''))
+  return [primary, ...others].join(' · ')
+}
+
 /**
  * Translate the ingest's source and validation evidence into an account-level
  * checklist. File fingerprints answer “did the file change?”; this answers
@@ -2101,13 +2195,13 @@ export function getAccountCoverage(): AccountCoverageSummary {
   try {
     const sourceRows = conn.prepare('select * from source_files order by name').all() as any[]
     const holdingRows = conn
-      .prepare(`select market, coalesce(brokerage, 'Unknown') as brokerage, account, max(as_of_date) as covered_through
-                from holdings group by market, brokerage, account`)
-      .all() as { market: string; brokerage: string; account: string; covered_through: string | null }[]
+      .prepare(`select market, coalesce(brokerage, 'Unknown') as brokerage, account, account_type, max(as_of_date) as covered_through
+                from holdings group by market, brokerage, account, account_type`)
+      .all() as CoverageDbRow[]
     const transactionRows = conn
-      .prepare(`select market, coalesce(brokerage, 'Unknown') as brokerage, account, max(date) as covered_through
-                from transactions group by market, brokerage, account`)
-      .all() as { market: string; brokerage: string; account: string; covered_through: string | null }[]
+      .prepare(`select market, coalesce(brokerage, 'Unknown') as brokerage, account, account_type, max(date) as covered_through
+                from transactions group by market, brokerage, account, account_type`)
+      .all() as CoverageDbRow[]
     // The period end each Korean 거래내역서 declares, per account, written by
     // extract-kr-statements.py beside its TSVs. This is what a KR account's
     // statement actually covers. The newest open tax lot, used here before, is
@@ -2117,13 +2211,17 @@ export function getAccountCoverage(): AccountCoverageSummary {
     // "statement" date ran ahead of the statement.
     const krStatementAsOf: Record<string, string> = readJson(path.join(config.stockKrStatementsDir, 'as-of.json'))?.accounts ?? {}
     const statementRows = conn
-      .prepare(`select market, coalesce(brokerage, 'Unknown') as brokerage, account, max(as_of_date) as covered_through
-                from tax_lots group by market, brokerage, account`)
-      .all() as { market: string; brokerage: string; account: string; covered_through: string | null }[]
+      .prepare(`select market, coalesce(brokerage, 'Unknown') as brokerage, account, account_type, max(as_of_date) as covered_through
+                from tax_lots group by market, brokerage, account, account_type`)
+      .all() as CoverageDbRow[]
     const checkRows = conn.prepare('select name, detail, status from validation_checks').all() as { name: string; detail: string; status: string }[]
     const checks = new Map(checkRows.map((row) => [row.name, row]))
-    const coverageKey = (row: { market: string; brokerage: string; account: string }) =>
-      row.market === 'US' && row.brokerage !== 'Robinhood' ? `${row.market}|${row.brokerage}|${row.brokerage}` : `${row.market}|${row.brokerage}|${row.account}`
+    const robinhoodSnapshot = readJson(config.stockRobinhoodSnapshotPath)
+    const robinhoodAccount = robinhoodAccountResolver(robinhoodSnapshot, transactionRows)
+    const coverageKey = (row: CoverageDbRow) => {
+      if (row.market === 'US' && row.brokerage === 'Robinhood') return `US|Robinhood|${robinhoodAccount(row)}`
+      return row.market === 'US' ? `${row.market}|${row.brokerage}|${row.brokerage}` : `${row.market}|${row.brokerage}|${row.account}`
+    }
     const holdingsByKey = new Map<string, (typeof holdingRows)[number]>()
     const txByKey = new Map<string, (typeof transactionRows)[number]>()
     const statementByKey = new Map<string, (typeof statementRows)[number]>()
@@ -2153,7 +2251,9 @@ export function getAccountCoverage(): AccountCoverageSummary {
       const holding = holdingsByKey.get(key)
       const transaction = txByKey.get(key)
       const statement = statementByKey.get(key)
-      const account = [...(accountNames.get(key) ?? new Set())].join(' / ') || rawAccount || brokerage
+      const names = [...(accountNames.get(key) ?? new Set<string>())]
+      const account = (market === 'US' && brokerage === 'Robinhood' ? robinhoodAccountLabel(rawAccount, names) : names.join(' / ')) || rawAccount || brokerage
+      let sources: AccountCoverageSource[] = []
       let coveredThrough = isoDate(holding?.covered_through ?? transaction?.covered_through)
       let apiCoveredThrough: string | null = null
       const statementCoveredThrough = isoDate(market === 'KR' ? krStatementAsOf[account] ?? statement?.covered_through : statement?.covered_through)
@@ -2169,15 +2269,52 @@ export function getAccountCoverage(): AccountCoverageSummary {
       if (market === 'KR' && statementCoveredThrough) coveredThrough = statementCoveredThrough
 
       if (market === 'US' && brokerLower === 'robinhood') {
-        method = 'mcp'
-        requiredArtifact = 'Robinhood MCP snapshot + tax lots'
-        format = 'JSON'
-        destination = 'data/robinhood-snapshot.json'
-        const snapshot = readJson(config.stockRobinhoodSnapshotPath)
-        coveredThrough = isoDate(snapshot?.fetchedAt) ?? isoDate(sourceRows.find((row) => row.name === 'robinhood_snapshot')?.mtime_ms ? new Date(Number(sourceRows.find((row) => row.name === 'robinhood_snapshot').mtime_ms)).toISOString() : null)
-        maxLagDays = 7
-        action = 'Robinhood MCP에서 계좌 snapshot과 lot을 다시 생성하세요. broker CSV를 inbox에 넣는 작업이 아닙니다.'
-        detail = checks.get('robinhood_snapshot_fresh')?.detail ?? 'MCP snapshot의 fetchedAt을 기준으로 계산합니다.'
+        // Two artifacts, aging separately. The snapshot gives positions and lots;
+        // the CSVs give the trades the replay checks walk. Reading the snapshot
+        // alone, a freshly regenerated one marked every account current while
+        // its CSVs stopped two months earlier, and the ingest failed on sales
+        // with no disposal behind them — so the account is only as current as
+        // the older of the two, and each says what to do about itself.
+        const snapshotRow = sourceRows.find((row) => row.name === 'robinhood_snapshot')
+        const snapshotDate =
+          isoDate(robinhoodSnapshot?.fetchedAt) ?? (snapshotRow?.mtime_ms ? isoDate(new Date(Number(snapshotRow.mtime_ms)).toISOString()) : null)
+        sources = [coverageSource({
+          label: 'MCP',
+          method: 'mcp',
+          coveredThrough: snapshotDate,
+          maxLagDays: 7,
+          requiredArtifact: 'Robinhood MCP snapshot + tax lots',
+          destination: 'data/robinhood-snapshot.json',
+        })]
+        // An account the CSVs do not know by name (a holdings label with no
+        // snapshot to translate it) keeps the snapshot alone, as before, rather
+        // than reporting transactions it may well have under another label.
+        if (transaction) {
+          const token = rawAccount.toLowerCase().replace(/[^a-z]/g, '')
+          sources.push(coverageSource({
+            label: 'CSV',
+            method: 'inbox',
+            coveredThrough: isoDate(transaction.covered_through),
+            maxLagDays: 14,
+            requiredArtifact: 'Robinhood transactions CSV',
+            // The export names no account, so the file is named by hand; the
+            // window shape is what the ingest reads beside the year-to-date.
+            destination: `us-transactions/robinhood-transactions-${token}-YYYYMMDD-YYYYMMDD.csv`,
+          }))
+        }
+        const behind = worstSource(sources)
+        method = behind.method
+        requiredArtifact = sources.map((source) => source.requiredArtifact).join(' + ')
+        format = sources.length > 1 ? 'JSON + CSV' : 'JSON'
+        destination = sources.length > 1 ? 'data/robinhood-snapshot.json + us-transactions/' : 'data/robinhood-snapshot.json'
+        coveredThrough = behind.coveredThrough
+        maxLagDays = behind.maxLagDays
+        action = sources.length > 1
+          ? 'snapshot은 Robinhood MCP에서 다시 생성하고, 거래내역 CSV는 계좌별로 다운로드해 이름을 붙여 us-transactions/에 넣으세요. 둘 중 오래된 쪽이 계좌 기준일입니다.'
+          : 'Robinhood MCP에서 계좌 snapshot과 lot을 다시 생성하세요. broker CSV를 inbox에 넣는 작업이 아닙니다.'
+        detail = sources.length > 1
+          ? 'MCP snapshot의 fetchedAt과 거래내역 CSV의 마지막 거래일 중 오래된 쪽을 기준으로 계산합니다.'
+          : checks.get('robinhood_snapshot_fresh')?.detail ?? 'MCP snapshot의 fetchedAt을 기준으로 계산합니다.'
       } else if (market === 'US') {
         requiredArtifact = `${brokerage} holdings CSV + transactions CSV`
         format = 'CSV × 2'
@@ -2233,12 +2370,15 @@ export function getAccountCoverage(): AccountCoverageSummary {
 
       const lagDays = calendarAgeDays(coveredThrough)
       // Ask for one day before the last covered date so the next export has a
-      // deliberate overlap and cannot hide an edge-of-window transaction.
-      const downloadFrom = subtractCalendarDays(method === 'mixed' ? statementCoveredThrough ?? coveredThrough : coveredThrough, 1)
+      // deliberate overlap and cannot hide an edge-of-window transaction. With
+      // separate sources, the one that is downloaded is the one that has a start.
+      const downloadFrom = sources.length
+        ? sources.find((source) => source.method === 'inbox')?.downloadFrom ?? null
+        : subtractCalendarDays(method === 'mixed' ? statementCoveredThrough ?? coveredThrough : coveredThrough, 1)
       const apiLagDays = calendarAgeDays(apiCoveredThrough)
       const statementLagDays = calendarAgeDays(statementCoveredThrough)
       const overdueDays = lagDays == null ? null : Math.max(0, lagDays - maxLagDays)
-      const status = coverageStatus(lagDays, maxLagDays)
+      const status = sources.length ? worstSource(sources).status : coverageStatus(lagDays, maxLagDays)
       const sourceNeedles = [brokerLower.replace(/증권|\s+/g, ''), account.toLowerCase().replace(/\s+/g, '')]
       rows.push({
         id: key,
@@ -2262,6 +2402,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
         lastFile: latestSourceFilename(sourceRows, sourceNeedles),
         action,
         detail,
+        sources,
       })
     }
 
