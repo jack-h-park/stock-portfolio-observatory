@@ -32,8 +32,11 @@ elif case["fn"] == "toss":
 elif case["fn"] == "samsung":
     point = mod.samsung_cash_point(case["row"])
     out = list(point) if point else None
+elif case["fn"] == "coverage":
+    declared = {tuple(k.split("|")): tuple(v) for k, v in case["declared"].items()}
+    out = mod.cash_coverage(case["points"], declared)
 else:
-    out = mod.end_of_day_cash(case["points"], case["asOf"])
+    out = mod.end_of_day_cash(case["points"])
 print(json.dumps(out, ensure_ascii=False))
 `
 
@@ -68,7 +71,8 @@ test('a 미래에셋 record gives its printed 예수금잔액, and 외화예수�
 
 test('a Toss line gives its 잔액 in won, pooled by section; a blank 잔액 gives nothing', () => {
   assert.deepEqual(call({ fn: 'toss', row: { section: '원화 거래내역', cash_balance: 1000, cash_printed: true } }), ['KRW', 'KRW', 1000])
-  assert.deepEqual(call({ fn: 'toss', row: { section: '달러 거래내역', cash_balance: 2000, cash_printed: true } }), ['USD', 'KRW', 2000])
+  // A won figure: never pooled as USD, which in cash.tsv means real dollars.
+  assert.deepEqual(call({ fn: 'toss', row: { section: '달러 거래내역', cash_balance: 2000, cash_printed: true } }), ['KRW_dollar_section', 'KRW', 2000])
   assert.equal(call({ fn: 'toss', row: { section: '원화 거래내역', cash_balance: 0, cash_printed: false } }), null)
 })
 
@@ -77,28 +81,47 @@ test('a 삼성 line gives its 현금잔액 when one is printed', () => {
   assert.equal(call({ fn: 'samsung', row: { cash_balance: 0, cash_printed: false } }), null)
 })
 
-test('end_of_day_cash keeps the last balance per account, pool and date, and carries it to the coverage end', () => {
-  const point = (Date: string, Account: string, Pool: string, Balance: number, Page: number) => ({ Date, Account, Pool, Currency: Pool, Balance, Source: 's.pdf', Page })
+const point = (Date: string, Account: string, Pool: string, Balance: number, Page: number, Source = 's.pdf') => ({ Date, Account, Pool, Currency: 'KRW', Balance, Source, Page })
+
+test('end_of_day_cash keeps the last balance per account, pool and date', () => {
   const out = call({
     fn: 'eod',
     points: [
       point('2024-01-02', 'A', 'KRW', 10, 1),
       point('2024-01-02', 'A', 'KRW', 7, 1),
-      point('2024-01-02', 'A', 'USD', 1, 1),
+      point('2024-01-02', 'A', 'KRW_dollar_section', 1, 1),
       point('2024-01-05', 'A', 'KRW', 3, 2),
       point('2024-01-03', 'B', 'KRW', 9, 1),
     ],
-    asOf: { A: '2024-01-31', B: '2024-01-03' },
   })
   assert.deepEqual(
     out.map((p: any) => [p.Account, p.Pool, p.Date, p.Balance]),
     [
       ['A', 'KRW', '2024-01-02', 7],
       ['A', 'KRW', '2024-01-05', 3],
-      ['A', 'KRW', '2024-01-31', 3],
-      ['A', 'USD', '2024-01-02', 1],
-      ['A', 'USD', '2024-01-31', 1],
+      ['A', 'KRW_dollar_section', '2024-01-02', 1],
       ['B', 'KRW', '2024-01-03', 9],
+    ]
+  )
+})
+
+test('cash_coverage gives each statement read its declared period, or its own first and last cash dates without one', () => {
+  const out = call({
+    fn: 'coverage',
+    declared: {
+      'A|a-2022.pdf': ['2022-01-01', '2022-12-31'],
+      // A quiet statement: no cash line, still a period the balance stood through.
+      'A|a-2023.pdf': ['2023-01-01', '2023-12-31'],
+      'B|b.pdf': [null, null],
+    },
+    points: [point('2022-03-01', 'A', 'KRW', 1, 1, 'a-2022.pdf'), point('2024-02-01', 'B', 'KRW', 1, 1, 'b.pdf'), point('2024-05-01', 'B', 'KRW', 1, 2, 'b.pdf')],
+  })
+  assert.deepEqual(
+    out.map((r: any) => [r.Account, r.Source, r['Period Start'], r['Period End']]),
+    [
+      ['A', 'a-2022.pdf', '2022-01-01', '2022-12-31'],
+      ['A', 'a-2023.pdf', '2023-01-01', '2023-12-31'],
+      ['B', 'b.pdf', '2024-02-01', '2024-05-01'],
     ]
   )
 })
@@ -116,6 +139,11 @@ test('the ingest files cash.tsv in brokerage_cash, with the institution, wrapper
     ['2024-01-03', 'Example Broker(IRP)', 'KRW', 'KRW', '5', 'b.pdf', '2'],
   ]
   writeFileSync(path.join(kr, 'cash.tsv'), [CASH_COLUMNS.join('\t'), ...rows.map((r) => r.join('\t'))].join('\n') + '\n', 'utf8')
+  writeFileSync(
+    path.join(kr, 'cash-coverage.tsv'),
+    ['Account\tSource\tPeriod Start\tPeriod End', 'Example Broker(종합)\ta.pdf\t2024-01-01\t2024-12-31'].join('\n') + '\n',
+    'utf8'
+  )
   const db = new Database(runIngest(dir, { env: { STOCK_KR_STATEMENTS_DIR: kr }, allowFailure: true }), { readonly: true })
   assert.deepEqual(
     db.prepare('select institution, account, pool, currency, as_of_date, balance, source, account_wrapper, asset_class from brokerage_cash order by id').all(),
@@ -125,6 +153,9 @@ test('the ingest files cash.tsv in brokerage_cash, with the institution, wrapper
       { institution: 'Example Broker', account: 'Example Broker(IRP)', pool: 'KRW', currency: 'KRW', as_of_date: '2024-01-03', balance: 5, source: 'b.pdf', account_wrapper: 'irp', asset_class: 'security' },
     ]
   )
+  assert.deepEqual(db.prepare('select institution, account, source, period_start, period_end from brokerage_cash_coverage').all(), [
+    { institution: 'Example Broker', account: 'Example Broker(종합)', source: 'a.pdf', period_start: '2024-01-01', period_end: '2024-12-31' },
+  ])
 })
 
 test('no cash.tsv is an empty brokerage_cash table', () => {
@@ -132,4 +163,5 @@ test('no cash.tsv is an empty brokerage_cash table', () => {
   writeSheetPayloads(dir)
   const db = new Database(runIngest(dir, { allowFailure: true }), { readonly: true })
   assert.equal((db.prepare('select count(*) as n from brokerage_cash').get() as { n: number }).n, 0)
+  assert.equal((db.prepare('select count(*) as n from brokerage_cash_coverage').get() as { n: number }).n, 0)
 })

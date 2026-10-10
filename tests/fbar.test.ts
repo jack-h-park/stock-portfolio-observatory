@@ -155,6 +155,8 @@ test('bankAccountName names an entry the way the bank extractor names its accoun
   assert.equal(bankAccountName({ institution: 'tossbank', last4: '1111', kind: 'savings' }), 'tossbank 1111')
   assert.equal(bankAccountName({ institution: 'mirae', kind: 'cma' }), '미래에셋 CMA')
   assert.equal(bankAccountName({ institution: 'mg', kind: 'deposit' }), 'mg deposit')
+  // Only the families whose files carry a last4 (Toss Bank) are named by it.
+  assert.equal(bankAccountName({ institution: 'mg', last4: '2222', kind: 'deposit' }), 'mg deposit')
 })
 
 test('retiredBankAccounts lists entries marked retired, with the retirement date when one is given', () => {
@@ -169,7 +171,7 @@ test('retiredBankAccounts lists entries marked retired, with the retirement date
     [...retired.entries()],
     [
       ['tossbank|Example savings', '2024-06-30'],
-      ['mg|mg 2222', null],
+      ['mg|mg deposit', null],
     ]
   )
 })
@@ -251,6 +253,13 @@ function scenarioDb({ withFx = true, extra }: { withFx?: boolean; extra?: (db: D
 
 const BROKERAGE_CASH_TABLE = `create table brokerage_cash (id integer primary key, institution text not null, account text not null, pool text not null, currency text not null,
   as_of_date text not null, balance real not null, source text not null, account_wrapper text not null default 'taxable', asset_class text not null default 'security')`
+
+/** Statement periods per account, as the extractor writes them to cash-coverage.tsv. */
+function cashCoverage(db: Database.Database, rows: [string, string, string, string][]) {
+  db.exec('create table brokerage_cash_coverage (id integer primary key, institution text not null, account text not null, source text not null, period_start text not null, period_end text not null)')
+  const insert = db.prepare("insert into brokerage_cash_coverage (institution, account, source, period_start, period_end) values (?, ?, 'x', ?, ?)")
+  for (const row of rows) insert.run(...row)
+}
 
 function brokerageCash(db: Database.Database, rows: [string, string, string, string, string, number, string?][]) {
   db.exec(BROKERAGE_CASH_TABLE)
@@ -454,4 +463,95 @@ test('a retired cash account ends its series on its retirement date', async () =
   } finally {
     config.stockAccountMapPath = saved
   }
+})
+
+test('a pool in won is added unconverted whatever its name; only a USD pool is converted', async () => {
+  config.stockDbPath = scenarioDb({
+    extra: (db) =>
+      brokerageCash(db, [
+        // Toss prints its dollar section in won.
+        ['Example Rewards', 'Example Rewards(stock comp)', 'KRW_dollar_section', 'KRW', '2023-12-31', 7_000],
+        ['Example Rewards', 'Example Rewards(stock comp)', 'KRW_dollar_section', 'KRW', '2024-12-31', 7_000],
+        ['Example Other', 'Example Other(stock comp)', 'USD', 'KRW', '2023-12-31', 3_000],
+        ['Example Other', 'Example Other(stock comp)', 'USD', 'KRW', '2024-12-31', 3_000],
+      ]),
+  })
+  const { getForeignAccountMaxima } = await import('../lib/adapters/portfolio-db')
+  const byId = new Map(getForeignAccountMaxima(2024).rows.map((row) => [row.id, row]))
+  assert.equal(byId.get('Example Rewards|Example Rewards(stock comp)')!.maxKrw, 7_000)
+  assert.equal(byId.get('Example Other|Example Other(stock comp)')!.maxKrw, 3_000)
+})
+
+// An account whose lots predate every statement, so its securities alone cover each year.
+function oldLot(db: Database.Database, account: string) {
+  db.prepare(
+    "insert into tax_lots_all (market, currency, brokerage, account, ticker, acquired_date, open_quantity, native_cost_basis, cost_basis_krw) values ('KR', 'KRW', 'Example KR Broker', ?, '000001', '2021-01-04', 1, 10000, 10000)"
+  ).run(account)
+}
+
+test('a year between two statements is partial, not month-end, and its cash is not carried across the gap', async () => {
+  config.stockDbPath = scenarioDb({
+    extra: (db) => {
+      oldLot(db, 'Example KR gap')
+      brokerageCash(db, [
+        ['Example KR Broker', 'Example KR gap', 'KRW', 'KRW', '2022-03-01', 100_000],
+        ['Example KR Broker', 'Example KR gap', 'KRW', 'KRW', '2024-02-01', 200_000],
+      ])
+      cashCoverage(db, [
+        ['Example KR Broker', 'Example KR gap', '2022-01-01', '2022-12-31'],
+        ['Example KR Broker', 'Example KR gap', '2024-01-01', '2024-12-31'],
+      ])
+    },
+  })
+  const { getForeignAccountMaxima } = await import('../lib/adapters/portfolio-db')
+  const rowFor = (year: number) => getForeignAccountMaxima(year).rows.find((row) => row.id === 'Example KR Broker|Example KR gap')!
+  assert.equal(rowFor(2022).coverage, 'month_end')
+  assert.equal(rowFor(2024).coverage, 'month_end')
+  const gap = rowFor(2023)
+  assert.equal(gap.coverage, 'partial')
+  // Only the prior year-end, inside the 2022 statement, has cash: 10,000 at cost plus 100,000.
+  assert.deepEqual([gap.maxKrw, gap.maxDate], [110_000, '2023-01-01'])
+})
+
+test('cash stops at the last statement coverage end, and a cash-only account has no row once it stops', async () => {
+  config.stockDbPath = scenarioDb({
+    extra: (db) => {
+      oldLot(db, 'Example KR stale')
+      brokerageCash(db, [
+        ['Example KR Broker', 'Example KR stale', 'KRW', 'KRW', '2024-02-01', 5_000_000],
+        ['Example Rewards', 'Example Rewards(stock comp)', 'KRW', 'KRW', '2023-03-01', 9_000],
+      ])
+      cashCoverage(db, [
+        ['Example KR Broker', 'Example KR stale', '2024-01-01', '2024-06-30'],
+        ['Example Rewards', 'Example Rewards(stock comp)', '2023-01-01', '2023-12-31'],
+      ])
+    },
+  })
+  const { getForeignAccountMaxima } = await import('../lib/adapters/portfolio-db')
+  const stale = (year: number) => getForeignAccountMaxima(year).rows.find((row) => row.id === 'Example KR Broker|Example KR stale')!
+  // 1 share at 20,000 plus the cash on the last month-end a statement covers.
+  assert.deepEqual([stale(2024).maxKrw, stale(2024).maxDate, stale(2024).coverage], [5_020_000, '2024-06-30', 'partial'])
+  // The next year: securities only (1 share at 15,000), no cash carried in.
+  assert.deepEqual([stale(2025).maxKrw, stale(2025).cashIncluded], [15_000, false])
+
+  const rewards = (year: number) => getForeignAccountMaxima(year).rows.some((row) => row.id === 'Example Rewards|Example Rewards(stock comp)')
+  assert.equal(rewards(2023), true)
+  assert.equal(rewards(2024), false)
+})
+
+test('an account with both brokerage and crypto lots keeps its brokerage row and gets a crypto row', async () => {
+  config.stockDbPath = scenarioDb({
+    extra: (db) => {
+      db.prepare(
+        "insert into tax_lots_all (market, currency, brokerage, account, ticker, acquired_date, open_quantity, native_cost_basis, cost_basis_krw) values ('CRYPTO', 'KRW', 'Example KR Broker', 'Example KR general', 'BTC', '2023-05-01', 0.1, 3000000, 3000000)"
+      ).run()
+      db.prepare("insert into historical_prices (market, ticker, symbol, currency, price_date, close, source) values ('CRYPTO', 'BTC', 'BTC', 'USD', '2023-12-29', 40000, 'x')").run()
+    },
+  })
+  const { getForeignAccountMaxima } = await import('../lib/adapters/portfolio-db')
+  const r = getForeignAccountMaxima(2024)
+  const brokerage = r.rows.find((row) => row.id === 'Example KR Broker|Example KR general')!
+  assert.deepEqual([brokerage.kind, brokerage.maxKrw], ['brokerage', 300_000])
+  const crypto = r.cryptoRows.find((row) => row.id === 'Example KR Broker|Example KR general')!
+  assert.deepEqual([crypto.kind, crypto.maxKrw], ['crypto', 0.1 * 40_000 * 1_400])
 })

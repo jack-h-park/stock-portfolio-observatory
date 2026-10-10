@@ -1217,7 +1217,8 @@ function closedOn(points: BalancePoint[], retiredOn: string): BalancePoint[] {
  *   held times the historical price, converted at that date's USD/KRW rate when
  *   the quote is in dollars (the reconstruction the month-end backfill uses),
  *   at cost where no price reaches a position, plus the uninvested cash the
- *   statements print (brokerage_cash) carried forward to each month-end;
+ *   statements print (brokerage_cash) carried forward to each month-end, but
+ *   never past or between the statement periods (brokerage_cash_coverage);
  *   `cashIncluded` says whether any reached the year;
  * - crypto exchange accounts outside the US firms, valued the same way from
  *   their lots, as reference rows kept out of the aggregate;
@@ -1310,9 +1311,11 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
         .filter((lot) => !isUsBrokerage(lot.brokerage, lot.account))
         .map((lot) => {
           const institution = lot.brokerage?.trim() || institutionOf(lot.account)
-          const id = `${institution}|${lot.account}`
+          // Keyed by kind too: an account holding both stocks and crypto gets a
+          // brokerage row and a crypto row, not one row that flips between them.
+          const id = `${kind}|${institution}|${lot.account}`
           identities.set(id, { institution, account: lot.account, kind })
-          // The valuer groups by account, so each lot's account becomes its row id.
+          // The valuer groups by account, so each lot's account becomes its identity.
           return { ...lot, account: id }
         })
     type OpenLot = { market: string; brokerage: string | null; account: string; ticker: string; acquired_date: string; open_quantity: number; cost_basis_krw: number }
@@ -1393,8 +1396,9 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
       }
     }
 
-    // Uninvested cash: each pool's printed balance, carried forward. Stock
-    // wrappers only, like the lots: a pension's cash is in its certificate totals.
+    // Uninvested cash: each pool's printed balance, carried forward, but only
+    // inside the periods the account's statements cover. Stock wrappers only,
+    // like the lots: a pension's cash is in its certificate totals.
     const cashPools = new Map<string, Map<string, { currency: string; points: { date: string; balance: number }[] }>>()
     if (hasTable('brokerage_cash')) {
       const filter = columnsOf('brokerage_cash').has('asset_class') ? ` where ${STOCK_ROW_SQL}` : ''
@@ -1403,7 +1407,7 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
         .all() as { institution: string; account: string; pool: string; currency: string; date: string; balance: number }[]
       for (const row of rows) {
         if (isUsBrokerage(row.institution, row.account)) continue
-        const id = `${row.institution}|${row.account}`
+        const id = `brokerage|${row.institution}|${row.account}`
         if (!identities.has(id)) identities.set(id, { institution: row.institution, account: row.account, kind: 'brokerage' })
         const pools = cashPools.get(id) ?? new Map()
         const pool = pools.get(row.pool) ?? { currency: row.currency, points: [] }
@@ -1415,11 +1419,43 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
         cashPools.set(id, pools)
       }
     }
+    // Each account's statement periods, merged where they meet or overlap. An
+    // older database without the table falls back to the account's first and
+    // last cash row.
+    const periods = new Map<string, { start: string; end: string }[]>()
+    if (hasTable('brokerage_cash_coverage')) {
+      const rows = conn
+        .prepare('select institution, account, period_start as start, period_end as end from brokerage_cash_coverage order by period_start, id')
+        .all() as { institution: string; account: string; start: string; end: string }[]
+      for (const row of rows) {
+        const id = `brokerage|${row.institution}|${row.account}`
+        if (cashPools.has(id)) periods.set(id, [...(periods.get(id) ?? []), { start: row.start, end: row.end }])
+      }
+    }
+    for (const [id, pools] of cashPools) {
+      if (periods.has(id)) continue
+      const all = [...pools.values()].flatMap((pool) => pool.points.map((p) => p.date)).sort()
+      periods.set(id, [{ start: all[0], end: all.at(-1)! }])
+    }
+    const dayAfter = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10)
+    for (const [id, list] of periods) {
+      const merged: { start: string; end: string }[] = []
+      for (const period of [...list].sort((a, b) => a.start.localeCompare(b.start))) {
+        const last = merged.at(-1)
+        if (last && period.start <= dayAfter(last.end)) last.end = period.end > last.end ? period.end : last.end
+        else merged.push({ ...period })
+      }
+      periods.set(id, merged)
+    }
+    const coveredOn = (id: string, date: string) => (periods.get(id) ?? []).some((p) => p.start <= date && date <= p.end)
     const cashAt = (id: string, date: string): number | null => {
+      if (!coveredOn(id, date)) return null
       let total: number | null = null
       for (const { currency, points } of cashPools.get(id)?.values() ?? []) {
         const point = points.filter((p) => p.date <= date).at(-1)
         if (!point) continue
+        // A pool's currency, not its name, decides conversion: Toss's dollar
+        // section is printed in won and is added as it stands.
         const krwPer = currency === 'KRW' ? 1 : currency === 'USD' ? valuer.fxRate(date) : null
         // A pool no rate converts adds nothing; the row is understated already.
         if (krwPer == null) continue
@@ -1427,13 +1463,9 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
       }
       return total
     }
-    // The cash history covers the year when it reaches back to 1 January and on
-    // to 31 December (the extractor dates a pool's last row at the statement's
-    // coverage end, so a quiet December still reaches it).
-    const cashCovers = (id: string) => {
-      const all = [...(cashPools.get(id)?.values() ?? [])].flatMap((pool) => pool.points.map((p) => p.date))
-      return all.some((d) => d <= start) && all.some((d) => d >= end)
-    }
+    // The cash history covers the year only when one unbroken statement period
+    // runs from 1 January to 31 December.
+    const cashCovers = (id: string) => (periods.get(id) ?? []).some((p) => p.start <= start && p.end >= end)
 
     for (const [id, { institution, account, kind }] of identities) {
       const points: BalancePoint[] = []
@@ -1445,9 +1477,13 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
         if (cash != null) cashIncluded = true
         points.push({ date, valueKrw: (held ?? 0) + (cash ?? 0) })
       }
+      // An account with no lots needs cash inside the year, not only a balance
+      // carried in from the year before.
+      if (!securities.has(id) && !points.some((point) => point.date >= start)) continue
       const found = maxBalance(points, year, 'month_end')
       add(institution, account, kind, found && cashIncluded && !cashCovers(id) ? { ...found, coverage: 'partial' } : found, { cashIncluded })
     }
+
     // Pensions: certificate and snapshot totals.
     if (hasTable('pension_points')) {
       const rows = conn.prepare('select account, date, value_krw as valueKrw from pension_points order by date, id').all() as {

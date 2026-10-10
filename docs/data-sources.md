@@ -380,7 +380,8 @@ block with dates, labels and status only, never amounts.
 `"retired": true` or `"retiredOn": "YYYY-MM-DD"` once the account is closed
 (`data/accounts.local.example.json` shows both). The entry is matched to its
 `cash_balances` rows the way the bank extractor names them: the institution plus
-the entry's `alias`, or `<institution> <last4>` when it has no alias. A retired
+the entry's `alias`; without an alias, `<institution> <last4>` for a family whose
+files carry a last4 (Toss Bank), and `<institution> <kind>` otherwise. A retired
 account leaves the "보조 자산" reminder rows. It stays in `cash_balances`, in
 the deposit history and in the FBAR table for the years it existed: `retiredOn`
 ends its FBAR series on that date, with nothing held from the next day, so its
@@ -403,23 +404,31 @@ are excluded.
 each month-end plus the account's uninvested cash on that date, carried forward
 from the last balance the statements print. `extract-kr-statements.py` writes
 `data/kr-statements/cash.tsv` (`Date, Account, Pool, Currency, Balance, Source,
-Page`), the last balance per account, pool and day, plus each pool's last balance
-repeated on the statement's coverage end (the date in `as-of.json`); the ingest
-files it in `brokerage_cash` with the account's wrapper and asset class. The
+Page`), the last balance per account, pool and day, and
+`data/kr-statements/cash-coverage.tsv` (`Account, Source, Period Start, Period
+End`), the period each statement read declares on page 1 (or its own first to
+last cash line when it declares none). The ingest files them in `brokerage_cash`,
+with the account's wrapper and asset class, and `brokerage_cash_coverage`. A
+balance is carried forward only inside those periods: a missing statement is a
+gap with no cash, and nothing is carried past the newest statement. The
 sources:
 
 | Statement | What it prints | Pools |
 | --- | --- | --- |
 | 미래에셋 거래내역증명서 (종합, ISA) | 예수금잔액 on every cash line, 외화예수금 with its 통화코드; a securities line leaves both blank | `KRW`, and one per foreign currency (in that currency) |
-| Toss 거래내역서 | 잔액 on every line, separately in the 원화 and 달러 sections, both in won | `KRW`, `USD` (won figures) |
+| Toss 거래내역서 | 잔액 on every line, separately in the 원화 and 달러 sections, both in won | `KRW`, `KRW_dollar_section` (currency `KRW`) |
 | 삼성증권 거래내역확인서 (주식보상) | 현금잔액 on every line | `KRW` |
 
 Only stock-wrapper accounts count: a pension's cash is already in its
 certificate totals, and the gold account is valued in grams. The Toss Open API
 snapshot carries today's cash only and is not used, so Toss cash stops at the
-newest statement. A brokerage row whose cash history does not reach from
-1 January to 31 December is `partial`; a row with no cash history at all carries
-`cashIncluded: false`, and the page notes "Cash not included". The 미래에셋 ISA
+newest statement. A pool's currency decides conversion: `USD` pools are real
+dollars, converted at the month-end USD/KRW rate, and won pools are added as
+they stand. A brokerage row with cash in the year is `partial` unless one
+unbroken statement period runs from 1 January to 31 December; a row with no
+cash in the year carries `cashIncluded: false`, and the page notes "Cash not
+included". An account with no lots gets a row only for a year with cash inside
+it. The 미래에셋 ISA
 certificates are issued with CMA자동매매 제외, so cash swept into RP is not in
 their 예수금잔액.
 

@@ -17,13 +17,17 @@ export type BankAccountEntry = {
 /** Names the extractor gives when the map has none and `<institution> <kind>` would not read as the account's name. Keep in step with DEFAULT_ALIASES there. */
 const DEFAULT_ALIASES: Record<string, string> = { 'mirae|cma': '미래에셋 CMA' }
 
+/** Institutions whose bank files carry the account's last4 in their name (FAMILIES key_pattern there). Keep in step. */
+const LAST4_INSTITUTIONS = new Set(['tossbank'])
+
 /** The `cash_balances.account` the bank extractor files this entry's balances under. */
 export function bankAccountName(entry: BankAccountEntry): string {
   const institution = String(entry.institution ?? '')
   const alias = String(entry.alias ?? '').trim()
   if (alias) return alias
+  // Only a family whose file names carry a last4 is keyed and named by it.
   const last4 = String(entry.last4 ?? '').trim()
-  if (last4) return `${institution} ${last4}`
+  if (last4 && LAST4_INSTITUTIONS.has(institution)) return `${institution} ${last4}`
   const kind = String(entry.kind ?? '')
   return DEFAULT_ALIASES[`${institution}|${kind}`] ?? `${institution} ${kind}`
 }

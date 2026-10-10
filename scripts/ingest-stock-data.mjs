@@ -901,6 +901,18 @@ create table brokerage_cash (
   asset_class text not null
 );
 
+-- The period each statement behind brokerage_cash covers
+-- (data/kr-statements/cash-coverage.tsv). A balance stands only inside these:
+-- a missing statement is a gap, not a stretch the last balance stood through.
+create table brokerage_cash_coverage (
+  id integer primary key,
+  institution text not null,
+  account text not null,
+  source text not null,
+  period_start text not null,
+  period_end text not null
+);
+
 create table fx_account_balances (
   id integer primary key,
   institution text not null,
@@ -4908,6 +4920,13 @@ const brokerageCashRows = (readTsvAt(krStatementsDir, 'cash.tsv')?.rows ?? [])
     }
   })
   .filter((r) => r.account && r.pool && r.currency && r.as_of_date && r.balance != null)
+const brokerageCashCoverageRows = (readTsvAt(krStatementsDir, 'cash-coverage.tsv')?.rows ?? [])
+  .map((r) => {
+    const account = text(r.Account)
+    return { institution: account.split('(')[0], account, source: text(r.Source), period_start: text(r['Period Start']), period_end: text(r['Period End']) }
+  })
+  .filter((r) => r.account && r.period_start && r.period_end)
+insertMany(db, 'brokerage_cash_coverage', brokerageCashCoverageRows, ['institution', 'account', 'source', 'period_start', 'period_end'])
 insertMany(db, 'brokerage_cash', brokerageCashRows, ['institution', 'account', 'pool', 'currency', 'as_of_date', 'balance', 'source', 'account_wrapper', 'asset_class'])
 insertMany(db, 'fx_account_balances', fxLedger.balances ?? [], [
   'institution',
