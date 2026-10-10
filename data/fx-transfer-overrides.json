@@ -7,9 +7,9 @@
       "direction": "OUT",
       "usdAmount": 1000,
       "counterparty": "Mirae Asset Securities",
-      "matchStatus": "destination_account_missing",
+      "matchStatus": "counterparty_observed",
       "confidence": "high",
-      "provenance": "User confirmed destination institution; Mirae account 9346 statement is not yet available."
+      "provenance": "Sent to a Mirae Asset Securities virtual account. It most likely routes to Mirae account …9346, the counterparty the Mirae 종합 account statement prints for every 외화계좌대체 row (2022-07 to 2026-04, including 2025-06-09 +1,000.61 and 2025-10-29 -50,077.24). That account was closed in 2026 and its statement is not pursued (decided 2026-10-10). An owned-account transfer, so no FX gain is realized either way."
     },
     {
       "institution": "Hana Bank",
@@ -17,9 +17,9 @@
       "direction": "OUT",
       "usdAmount": 26604.01,
       "counterparty": "Mirae Asset Securities",
-      "matchStatus": "destination_account_missing",
+      "matchStatus": "counterparty_observed",
       "confidence": "high",
-      "provenance": "User confirmed destination institution; Mirae account 9346 statement is not yet available."
+      "provenance": "Sent to a Mirae Asset Securities virtual account. It most likely routes to Mirae account …9346, the counterparty the Mirae 종합 account statement prints for every 외화계좌대체 row (2022-07 to 2026-04, including 2025-06-09 +1,000.61 and 2025-10-29 -50,077.24). That account was closed in 2026 and its statement is not pursued (decided 2026-10-10). An owned-account transfer, so no FX gain is realized either way."
     }
   ]
 }
