@@ -38,16 +38,22 @@ the same naming grammar as the other source files:
 | Bank of America checking | `boa-checking-<from>-<to>.csv` |
 | Robinhood bank | `robinhood-bank-<checking\|savings>-<from>-<to>.csv` |
 | MG Community Credit Cooperative deposit | `mg-deposit-<from>-<to>.xls` |
-| Toss Bank | `tossbank-<YYYYMMDD>.xlsx`, filed decrypted and not yet parsed |
+| Toss Bank | `tossbank-<last4>-<from>-<to>.xlsx`, filed decrypted; the last 4 digits and the period come from the workbook's own header block, one account per last4 |
+| Fidelity cash management account (CMA) | `fidelity-cma-<from>-<to>.csv`, filed only when the export is named `History_for_Account_<ID>[-<N>].csv` and `<ID>` is a CMA in the account map; any other Fidelity history stays a brokerage file |
 
 Three environment variables point at private, gitignored files and secrets.
 None of their contents belong in the repo:
 
 | Variable | Holds |
 | --- | --- |
-| `STOCK_ACCOUNT_MAP_PATH` | the account map: account numbers, institution aliases, wrappers and anchor balances (`data/accounts.local.json`) |
+| `STOCK_ACCOUNT_MAP_PATH` | the account map: account numbers, institution aliases, wrappers and anchor balances (`data/accounts.local.json`, relative to the repo). The filer reads it to tell a CMA from a brokerage history, and the extractor to name accounts; `push-sources.sh` copies it to the refresh host with the other config files, and a missing map is skipped without failing the push |
 | `STOCK_BANK_BALANCES_PATH` | the extracted deposit balances (`bank-balances.json`) that the refresh loads into `cash_balances` |
-| `STOCK_TOSSBANK_PASSWORD` | the password for Toss Bank's encrypted workbook; read on the laptop only, never on the refresh host |
+| `STOCK_TOSSBANK_PASSWORD` | the password for Toss Bank's encrypted workbook; read on the laptop only, never on the refresh host (files in `bank-statements/` are already decrypted) |
+
+A CMA is declared in the map as `{ "institution": "fidelity", "kind": "cma", "accountId": "<ID>", "currency": "USD", "alias": "..." }`;
+a Toss Bank account may be given a `last4`, `kind` and `alias` entry to override its default kind (`checking`) and
+alias (`tossbank <last4>`). A CMA's `Cash Balance` includes its core money-market position, so the extractor counts a core-fund
+reinvestment row as zero movement when it checks continuity.
 
 The result shows on `/net-worth` and as a Balances column on `/accounts`.
 

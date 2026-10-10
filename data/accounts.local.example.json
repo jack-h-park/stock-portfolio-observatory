@@ -4,6 +4,8 @@
   },
   "bankAccounts": [
     { "institution": "chase", "last4": "0000", "kind": "checking", "currency": "USD", "alias": "Chase checking" },
+    { "institution": "tossbank", "last4": "1111", "kind": "savings", "currency": "KRW", "alias": "Toss Bank savings" },
+    { "institution": "fidelity", "kind": "cma", "accountId": "Z00000001", "currency": "USD", "alias": "Fidelity CMA" },
     { "institution": "robinhood-bank", "kind": "checking", "currency": "USD", "alias": "Robinhood checking" },
     { "institution": "robinhood-bank", "kind": "savings", "currency": "USD", "alias": "Robinhood savings" }
   ],

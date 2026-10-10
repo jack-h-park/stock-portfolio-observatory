@@ -36,12 +36,16 @@
 # gain replay that would not reconcile. Nothing said "these two files differ";
 # the pipeline just disagreed with itself.
 #
-# Both config files travel this way, and for the same reason: a git history is
+# All three config files travel this way, and for the same reason: a git history is
 # forever. tax-policy.json carries a W-2 wage base and year-to-date realized
 # figures. manual-mappings.json reads as symbols and classification rules, but
 # each override names a real payment — date, won amount, and the statement it
 # was confirmed against — which is a portfolio in a form a public repo would
 # keep permanently. It was tracked in git until this repo was opened up.
+# accounts.local.json is the account map: wrappers, owners, bank-account aliases
+# and anchor balances. The refresh host's extractors need it to name and anchor
+# the deposits, and it may be absent on a machine that has no bank accounts
+# (the CONFIG loop below skips a missing file with a note).
 #
 # Copying the generated database back over the one being served would replace
 # live data with whatever this machine last happened to build. So the directory
@@ -114,6 +118,7 @@ SOURCES=(
 CONFIG=(
   tax-policy.json
   manual-mappings.json
+  accounts.local.json
 )
 
 [ -d "$LOCAL_DIR" ] || { echo "ERROR: no data directory at $LOCAL_DIR" >&2; exit 1; }
@@ -182,11 +187,12 @@ fi
 #                 before". rsync writes it only when it actually transfers, so
 #                 an unchanged file leaves no backup and no churn.
 # Permissions ride along in -a rather than a --chmod flag: macOS ships openrsync,
-# which advertises --chmod and rejects every value for it. Both config files
+# which advertises --chmod and rejects every value for it. The config files
 # carry real financial detail — a W-2 wage base and realized figures in one, the
-# dated payments behind each override in the other — so both are 0600 on both
-# machines. chmod them here and -a carries that across, which is the honest fix
-# anyway. A 0644 local copy of either was already too open before it ever left.
+# dated payments behind each override in another, account aliases and anchor
+# balances in the third — so all are 0600 on both machines. chmod them here and
+# -a carries that across, which is the honest fix anyway. A 0644 local copy of
+# any was already too open before it ever left.
 config=()
 for file in "${CONFIG[@]}"; do
   if [ -f "$REPO_DIR/data/$file" ]; then
