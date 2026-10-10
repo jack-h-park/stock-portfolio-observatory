@@ -89,7 +89,10 @@ const steps = [
   { name: 'fetch:crypto-prices', args: ['fetch:crypto-prices'] },
   { name: 'fetch:historical-prices', args: ['fetch:historical-prices'] },
   { name: 'ingest', args: ['ingest'] },
-  { name: 'backfill:history', args: ['backfill:history'] },
+  // `afterValidationErrors`: still runs when the ingest finished but failed an
+  // ERROR check. See `validationErrorsOnly` below for why this one does and the
+  // sheet publishes do not.
+  { name: 'backfill:history', args: ['backfill:history'], afterValidationErrors: true },
   // Last, and after the database is as fresh as this run gets it: these rewrite
   // the two generated sheet tabs from `holdings`, so anything upstream (a late
   // certificate, a corrected price) should already be in the database before
@@ -165,6 +168,10 @@ function runStep(step) {
         status: code === 0 ? 'success' : 'failed',
         exitCode: code,
         signal,
+        // The ingest prints this line only after the database is written and
+        // closed, so a non-zero exit WITH it is a validation verdict on a
+        // complete database, and one without it is a crash.
+        validationErrorsOnly: code !== 0 && signal == null && /^Validation: \d+\/\d+ checks passing$/m.test(stdout),
         stdoutTail: tail(stdout.trim()),
         stderrTail: tail(stderr.trim()),
       })
@@ -189,10 +196,44 @@ const run = {
 
 writeHistory(run)
 
+// An ingest that failed an ERROR check has still replaced the database: it
+// writes everything, closes it, and only then sets its exit code. The site, the
+// summary and /health already serve that database the moment it exits, so
+// skipping what comes after does not keep the flagged data from anyone. What it
+// does is leave the artifacts derived from the database behind it:
+//
+//   - backfill:history only recomputes the month-end rows from the database's own
+//     lots and prices, deletes what it replaces, and touches nothing outside the
+//     machine. Skipping it froze the history at the last clean run for as long as
+//     the error stood (in 2026-10, every run for days, over transaction CSVs nobody
+//     had been asked for) while
+//     today's row moved on. The next clean run rewrites it all regardless. Run it.
+//   - the sheet publishes are read outside this app, by people and agents with no
+//     validation report beside them. A stale sheet says "as of the last clean
+//     run"; a sheet rewritten from a database an ERROR check rejected says
+//     nothing at all about that. Keep them gated.
+//
+// The run is still 'failed' and still exits non-zero: the ERROR is the alarm,
+// and nothing here quiets it.
+let validationFailed = false
+
 for (const step of steps) {
+  if (validationFailed && !step.afterValidationErrors) {
+    // Not in the `== step ==` shape: the refresh cron reads the last such header
+    // as the step a failed run stopped at.
+    console.log(`\n-- ${step.name} skipped: the ingest failed a validation check`)
+    continue
+  }
   console.log(`\n== ${step.name} ==`)
   const result = await runStep(step)
   run.steps.push(result)
+  if (result.status !== 'success' && step.name === 'ingest' && result.validationErrorsOnly) {
+    console.log('(ingest wrote the database but failed an ERROR check — running the steps derived only from it)')
+    validationFailed = true
+    run.status = 'running'
+    writeHistory(run)
+    continue
+  }
   if (result.status !== 'success' && step.optional) {
     console.log(`(optional step ${step.name} failed — continuing; downstream freshness checks report the age of its data)`)
     run.status = 'running'
