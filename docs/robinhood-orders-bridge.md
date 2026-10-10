@@ -1,6 +1,9 @@
 # Robinhood Orders Bridge Design
 
-Status: proposed, not implemented.
+Status: implemented in the ingest (`scripts/ingest-stock-data.mjs`, "Robinhood
+orders, but ONLY after the newest CSV"). The capture in step 1 belongs to the
+session that writes the snapshot; `data/robinhood-snapshot.example.json` shows
+the shape. The verification list below has not been run yet.
 
 Robinhood trades come from the transaction CSVs, which someone downloads by
 hand. Robinhood positions come from the MCP snapshot, which is current to the
@@ -208,6 +211,30 @@ Run these once and record the results here:
 4. **Supersession on a real download.** Ingest once before and once after the
    next CSV. Bridged executions on days the CSV covers must drop to zero, and
    `realized_lots` must not change except by fee rounding.
+
+## Choices made in the implementation
+
+Where the design left a choice open, the implementation took the simplest one:
+
+- **`orders.items` is the flat list of orders** across every page, as returned.
+  A list in place of the object is also read, with no `complete` flag, so it
+  counts as cut short.
+- **An order seen twice is counted once**, by `id`. A newest-first list paged
+  while orders are being placed can repeat one across two pages.
+- **A symbol missing from an order is taken from any order or position that
+  carries the same `instrument_id`.** An order that still has none is not
+  bridged and is named in the check.
+- **A cutoff-day fill that matches a CSV row on date, ticker, side and quantity
+  but not on amount is not bridged, and the check fails naming it.** It is
+  almost certainly the same trade with its fee netted differently, and bridging
+  it would sell the shares twice. Leaving it out is the safer error: a sale that
+  really is missing still fails `robinhood_replay_missing_disposal`.
+- **A snapshot with no `orders` fails `robinhood_orders_bridge_csv` as a
+  warning**, so a snapshot written the old way says so.
+- **The bridge runs after the seam pass**, so seams never see bridged rows; the
+  seam pass also skips them explicitly, so that order does not matter.
+- **A pull is flagged when its `createdAtGte` is after an account's cutoff**,
+  since the fills between the two are unseen.
 
 ## Tests
 

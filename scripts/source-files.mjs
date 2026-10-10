@@ -77,6 +77,15 @@ const CRYPTO_PERIOD = [RANGE, YEAR].join('|')
 // Renaming files must not rename accounts.
 const ROBINHOOD_STRATEGIES = { agentic: 'Agentic', longterm: 'Long-term', midterm: 'Mid-term' }
 
+// The same mapping for a name that did not come from a filename: the MCP
+// snapshot's account nickname ("Mid-term", "Long Term"). Anything that is not a
+// known strategy comes back as given, so an account the CSV specs do not know
+// keeps its own name and simply matches no CSV.
+export function robinhoodStrategyLabel(name) {
+  const raw = String(name ?? '').trim()
+  return ROBINHOOD_STRATEGIES[raw.toLowerCase().replace(/[^a-z]/g, '')] ?? raw
+}
+
 // `since` is the earliest date the account could plausibly have produced, taken
 // from its first transaction. It is the lower half of the date check below; the
 // upper half is today. See `implausiblePeriod`.

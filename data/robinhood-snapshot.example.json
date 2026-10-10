@@ -12,7 +12,15 @@
     "",
     "If rate limits cut the pull short, record what was missed in `lotsUnavailable` and",
     "leave the symbol out of `lots`. A short answer that reads as a complete one is the",
-    "one outcome to avoid; `robinhood_snapshot_lots_mapped` names the symbols that lack lots."
+    "one outcome to avoid; `robinhood_snapshot_lots_mapped` names the symbols that lack lots.",
+    "",
+    "`orders` holds get_equity_orders verbatim, ONE PULL PER ACCOUNT: no `symbol` filter",
+    "(it can drop a fill with no error) and no `state` filter (a partly filled, then",
+    "cancelled order still moved shares). Follow `next` until it is empty and put every",
+    "page's orders in `items`. `createdAtGte` is the earliest newest-CSV date across the",
+    "accounts minus 7 days. Set `complete: true` only once pagination finished. The",
+    "ingest bridges only executions after each account's newest CSV row; see",
+    "docs/robinhood-orders-bridge.md and `robinhood_orders_bridge_csv`."
   ],
   "fetchedAt": "2026-07-31T04:12:07.881Z",
   "source": "robinhood_mcp",
@@ -58,7 +66,31 @@
           ]
         }
       ],
-      "lotsUnavailable": []
+      "lotsUnavailable": [],
+      "orders": {
+        "createdAtGte": "2026-07-16",
+        "complete": true,
+        "items": [
+          {
+            "id": "5c0e7a11-0000-4000-8000-000000000005",
+            "symbol": "AMZN",
+            "instrument_id": "9a3b5c7d-0000-4000-8000-000000000006",
+            "side": "buy",
+            "state": "filled",
+            "placed_agent": "recurring",
+            "created_at": "2026-07-23T13:30:00.000Z",
+            "executions": [
+              {
+                "id": "e1f2a3b4-0000-4000-8000-000000000007",
+                "timestamp": "2026-07-23T13:30:01.120Z",
+                "quantity": "0.425000",
+                "price": "235.29",
+                "fees": "0.00"
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }
