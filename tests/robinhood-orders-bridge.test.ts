@@ -281,12 +281,28 @@ test('a newer CSV covering the window removes every bridged row', () => {
   assert.match(out.check('robinhood_orders_bridge_csv')?.detail ?? '', /CSV through 2026-10-09, 0 execution\(s\) bridged/)
 })
 
-test('a fill at 00:30 UTC is dated the previous Eastern day', () => {
+// The CSV dates a fill by the trading session it belongs to, and Robinhood's
+// overnight session opens at 20:00 ET as the NEXT trading day's — checked
+// against 29 real extended-hours fills (docs/robinhood-orders-bridge.md,
+// verification item 2). Neither the Eastern calendar date nor the UTC date is
+// that: the first puts an overnight fill a day early, the second a winter
+// after-hours fill a day late.
+test('an overnight-session fill is dated the next trading day, as the CSV dates it', () => {
+  // Wednesday 2026-10-07 20:30 EDT.
   const out = ingest(
     { [MIDTERM_CSV]: BASE_ROWS },
-    [{ nickname: 'Mid-term', acme: 0, orders: [sell('o-1', '2026-10-10T00:30:00Z', 10, 55)] }]
+    [{ nickname: 'Mid-term', acme: 0, orders: [sell('o-1', '2026-10-08T00:30:00Z', 10, 55)] }]
   )
-  assert.equal(out.bridged[0]?.date, '2026-10-09')
+  assert.equal(out.bridged[0]?.date, '2026-10-08')
+})
+
+test('a winter after-hours fill keeps its Eastern day although UTC has moved on', () => {
+  // Thursday 2027-01-14 19:30 EST, already 2027-01-15 in UTC.
+  const out = ingest(
+    { [MIDTERM_CSV]: BASE_ROWS },
+    [{ nickname: 'Mid-term', acme: 0, orders: [sell('o-1', '2027-01-15T00:30:00Z', 10, 55)] }]
+  )
+  assert.equal(out.bridged[0]?.date, '2027-01-14')
 })
 
 test('an order without a symbol is resolved through its instrument, and a repeated page counts once', () => {
