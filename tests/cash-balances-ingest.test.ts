@@ -112,6 +112,28 @@ test('bank balances and the Hana USD balances land in cash_balances; findings be
   assert.equal(checks.cash_anchor_present.status, 'fail')
 })
 
+test('estimated accounts land in cash_estimates, never in cash_balances', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'cash-src-'))
+  const file = path.join(dir, 'bank-balances.json')
+  writeFileSync(file, JSON.stringify({
+    accounts: [],
+    estimatedAccounts: [
+      { institution: 'tossbank', account: 'Parking', currency: 'KRW', anchored: false,
+        balances: [{ date: '2026-01-02', balance: 300 }, { date: '2026-03-02', balance: 0 }] },
+      { institution: 'x', account: 'Bad', currency: 'USD', balances: [] },
+    ],
+    findings: [],
+  }))
+  const db = ingest({ STOCK_BANK_BALANCES_PATH: file })
+  assert.equal((db.prepare('select count(*) as n from cash_balances').get() as any).n, 0)
+  assert.deepEqual(db.prepare('select institution, account, as_of_date, balance, anchored from cash_estimates order by as_of_date').all(), [
+    { institution: 'tossbank', account: 'Parking', as_of_date: '2026-01-02', balance: 300, anchored: 0 },
+    { institution: 'tossbank', account: 'Parking', as_of_date: '2026-03-02', balance: 0, anchored: 0 },
+  ])
+  const check = db.prepare("select status, detail from validation_checks where name = 'cash_balances_readable'").get() as any
+  assert.match(check.detail, /estimatedAccounts\[1\]/)
+})
+
 test('an unusable anchor also fails cash_anchor_present, but a parse failure does not', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'cash-src-'))
   const file = path.join(dir, 'bank-balances.json')

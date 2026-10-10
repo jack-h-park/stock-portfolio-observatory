@@ -1027,6 +1027,18 @@ function cashBalanceRows(conn: Database.Database): CashBalanceRow[] {
     : []
 }
 
+// Estimated balances of accounts no statement covers (cash_estimates), as cash
+// rows. Their institution is prefixed so an estimate never shares a key with a
+// statement account in depositsSeries.
+function cashEstimateRows(conn: Database.Database): CashBalanceRow[] {
+  const has = conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'cash_estimates'").get()
+  return has
+    ? (conn
+        .prepare("select 'estimate:' || institution as institution, account, currency, as_of_date as date, balance from cash_estimates order by as_of_date, id")
+        .all() as CashBalanceRow[])
+    : []
+}
+
 // Deposits in KRW on each of the given dates: the cash class of the total-assets series.
 export function getDepositsSeries(dates: string[]): ReturnType<typeof depositsSeries> {
   const conn = db()
@@ -1097,7 +1109,12 @@ export function getTotalAssetsSeries(dates: string[], precomputed?: NetWorth): T
       stocks[date] = !row || (row.kr == null && row.us == null) ? null : Number(row.kr ?? 0) + Number(row.us ?? 0)
       crypto[date] = row?.crypto == null ? null : Number(row.crypto)
     }
-    const cash = Object.fromEntries(depositsSeries(past, cashBalanceRows(conn), usdKrwRateAt(conn)).series.map((point) => [point.date, point.krw]))
+    // Cash includes the estimates, so money parked in a 파킹통장 or a closed CMA
+    // does not read as a fall in total assets. Today's point is the card's own
+    // figure, which leaves them out; every estimate is zero by then.
+    const cash = Object.fromEntries(
+      depositsSeries(past, [...cashBalanceRows(conn), ...cashEstimateRows(conn)], usdKrwRateAt(conn)).series.map((point) => [point.date, point.krw])
+    )
     const pensionPoints = hasTable('pension_points')
       ? (conn.prepare('select account, date, value_krw as valueKrw from pension_points order by date, id').all() as { account: string; date: string; valueKrw: number }[])
       : []

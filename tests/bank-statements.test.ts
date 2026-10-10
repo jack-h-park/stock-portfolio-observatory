@@ -311,3 +311,68 @@ test('a 토스뱅크 workbook with no header row is a finding that says so, and 
   assert.match(doc.findings[0], /tossbank-0000-a-b\.xlsx: could not be parsed \(ValueError: no header row with 거래 일시/)
   assert.doesNotMatch(doc.findings[0], /StopIteration/)
 })
+
+test('parse_mg_rows keeps the 거래내용/메모 cell as the description', () => {
+  const r = py(`
+rows = [
+ ["", "거래일자", "거래시간", "", "거래구분", "거래내용/메모", "", "출금액", "", "", "입금액", "잔액"],
+ ["", "2026.09.01", "10:00:00", "", "스마트뱅킹", "인터넷신규", "", "100", "", "", "0", "900"],
+]
+print(json.dumps([t["description"] for t in m.parse_mg_rows(rows)]))`)
+  assert.deepEqual(r, ['인터넷신규'])
+})
+
+test('held_outside counts money while it is away and comes back, never spending, never before income arrives', () => {
+  const r = py(`
+print(json.dumps({
+  "trip": m.held_outside([("2026-01-05", 300.0), ("2026-02-10", -100.0), ("2026-03-01", -205.0)]),
+  "spend": m.held_outside([("2026-01-05", 50.0), ("2026-02-05", 50.0)]),
+  "income": m.held_outside([("2026-01-05", -500.0)]),
+}))`)
+  // The 5 of interest on the way back is clipped, not counted as money held before.
+  assert.deepEqual(r.trip, [['2026-01-05', 300], ['2026-02-10', 200], ['2026-03-01', 0]])
+  assert.deepEqual(r.spend, [['2026-01-05', 0], ['2026-02-05', 0]])
+  assert.deepEqual(r.income, [['2026-01-05', 0]])
+})
+
+test('estimate_closed_accounts follows a 파킹통장 and a MG 예적금, and pairs a transfer between two statements', () => {
+  const r = py(`
+toss = [
+ {"date": "2026-01-02", "seq": 0, "amount": -300.0, "counterparty": "파킹통장", "counterpartyInstitution": "토스뱅크"},
+ {"date": "2026-01-03", "seq": 1, "amount": -100.0, "counterparty": "본인", "counterpartyInstitution": "MG새마을금고"},
+ {"date": "2026-03-02", "seq": 2, "amount": 302.0, "counterparty": "파킹통장", "counterpartyInstitution": "토스뱅크"},
+ {"date": "2026-03-05", "seq": 3, "amount": -40.0, "counterparty": "카드", "counterpartyInstitution": ""},
+]
+mg = [
+ {"date": "2026-01-03", "seq": 0, "amount": 100.0, "description": "본인"},
+ {"date": "2026-01-03", "seq": 1, "amount": -100.0, "description": "인터넷신규"},
+ {"date": "2026-04-03", "seq": 2, "amount": 103.0, "description": "예적금만기 자동이체"},
+]
+m.MIN_ESTIMATE_KRW = 1
+out = m.estimate_closed_accounts([("tossbank", "tossbank-0001", toss), ("mg", "mg-deposit", mg)], [], {}, [])
+print(json.dumps({a["account"]: a["balances"] for a in out}))`)
+  assert.deepEqual(r, {
+    '새마을금고 예적금': [{ date: '2026-01-03', balance: 100 }, { date: '2026-04-03', balance: 0 }],
+    '토스뱅크 파킹통장': [{ date: '2026-01-02', balance: 300 }, { date: '2026-03-02', balance: 0 }],
+  })
+})
+
+test('an anchor raises the days up to it to the balance walked back from it', () => {
+  const r = py(`
+toss = [
+ {"date": "2026-01-02", "seq": 0, "amount": -100.0, "counterparty": "본인", "counterpartyInstitution": "미래에셋증권"},
+ {"date": "2026-02-02", "seq": 1, "amount": -200.0, "counterparty": "본인", "counterpartyInstitution": "미래에셋증권"},
+ {"date": "2026-05-02", "seq": 2, "amount": 50.0, "counterparty": "본인", "counterpartyInstitution": "미래에셋증권"},
+]
+m.MIN_ESTIMATE_KRW = 1
+anchors = {"anchors": [{"alias": "미래에셋 기타 계좌", "date": "2026-03-31", "balance": 250.0}]}
+out = m.estimate_closed_accounts([("tossbank", "tossbank-0001", toss)], [], anchors, [])
+print(json.dumps(out[0]["balances"]))`)
+  // Without the anchor only the 50 that came back would count. The walk: 250 on
+  // 03-31, 250 after 02-02, 50 after 01-02; after the anchor, the conservative 0.
+  assert.deepEqual(r, [
+    { date: '2026-01-02', balance: 50 },
+    { date: '2026-02-02', balance: 250 },
+    { date: '2026-05-02', balance: 0 },
+  ])
+})

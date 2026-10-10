@@ -14,7 +14,7 @@ export const netWorth = defineCopy({
     trendStarts: (parts: string[]) => (parts.length ? `Each class starts on its first data: ${parts.join(' · ')}` : 'No asset class has data yet.'),
     classSince: (label: string, date: string) => `${label} from ${date}`,
     trendNote:
-      'Pensions move only on certificate and snapshot dates, and hold the last value between them. Gold is grams held times the KRX price on or before each date, at cost where no price is stored. Before a class starts it adds nothing. The last point is today.',
+      'Cash includes estimated balances of accounts with no statement on file (a parking account, a matured term deposit, a closed CMA), traced from the transfers the statements show. Pensions move only on certificate and snapshot dates, and hold the last value between them. Gold is grams held times the KRX price on or before each date, at cost where no price is stored. Before a class starts it adds nothing. The last point is today.',
     chartAxisKrw: 'KRW million',
     chartAxisUsd: 'USD million',
     balances: 'Deposit balances',
@@ -64,7 +64,7 @@ export const netWorth = defineCopy({
     trendStarts: (parts: string[]) => (parts.length ? `자산군별 데이터 시작일: ${parts.join(' · ')}` : '아직 데이터가 있는 자산군이 없습니다.'),
     classSince: (label: string, date: string) => `${label} ${date}부터`,
     trendNote:
-      '연금은 증명서와 snapshot 날짜에만 바뀌고, 그 사이에는 마지막 값을 유지합니다. 금은 보유 그램 × 해당 날짜 이전 최신 KRX 시세이며, 시세가 없으면 취득원가입니다. 데이터가 시작되기 전의 자산군은 더하지 않습니다. 마지막 점은 오늘입니다.',
+      '현금에는 거래내역이 없는 계좌(파킹통장, 만기된 예적금, 해지된 CMA)의 추정 잔액이 포함되며, 다른 계좌 거래내역에 나온 이체로 계산합니다. 연금은 증명서와 snapshot 날짜에만 바뀌고, 그 사이에는 마지막 값을 유지합니다. 금은 보유 그램 × 해당 날짜 이전 최신 KRX 시세이며, 시세가 없으면 취득원가입니다. 데이터가 시작되기 전의 자산군은 더하지 않습니다. 마지막 점은 오늘입니다.',
     chartAxisKrw: '백만 원',
     chartAxisUsd: '백만 달러',
     balances: '예금 잔고',

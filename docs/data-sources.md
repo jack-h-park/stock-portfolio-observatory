@@ -59,6 +59,31 @@ reinvestment row as zero movement when it checks continuity.
 
 The result shows on `/net-worth` and as a Balances column on `/accounts`.
 
+#### Accounts no statement covers
+
+Money moved into a 토스뱅크 파킹통장 or 예적금, a 새마을금고 예적금, or a 미래에셋
+account other than the CMA, 종합 and ISA on file has no statement of its own, so
+it would drop out of the deposit total until it comes back. The extractor follows
+it from the statements it does hold and writes `estimatedAccounts` beside
+`accounts` in `bank-balances.json`:
+
+- A transfer between two statements on file is paired (equal and opposite amounts,
+  within three days; a 미래에셋 계좌대체 on the same day, against the 종합/ISA
+  certificates in `kr-statements/`) and counts for nothing.
+- Every other transfer is grouped by where it went: the 토스뱅크 `파킹통장`, a 토스뱅크
+  `예금`/`적금`, the 새마을금고 `인터넷신규` and `예적금만기` rows (read from the
+  `거래내용/메모` column), a 미래에셋 account not on file, or otherwise the counterparty.
+- A group counts as cash only for money that later comes back. Money that never
+  returns is spending; money that arrives with nothing sent out first (salary,
+  a sale, an inheritance) counts only from the day it arrived.
+- An `anchors` entry in the account map whose `alias` names a group (for example
+  `미래에셋 기타 계좌`) sets its known balance on a date; the days up to it take the
+  balance walked back from it.
+
+The refresh loads these into `cash_estimates`. Only the total-assets trend reads
+that table: the FBAR maxima, the deposit freshness checks and today's Total assets
+card read `cash_balances` alone.
+
 ### 미래에셋 account identity
 
 A 미래에셋 account is identified by its **full 계좌번호**, matched against the
