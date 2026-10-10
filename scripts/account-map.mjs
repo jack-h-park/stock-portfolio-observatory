@@ -13,7 +13,7 @@ import fs from 'node:fs'
 export const STOCK_WRAPPERS = Object.freeze(['taxable', 'isa'])
 
 export function loadAccountMap(file) {
-  if (!file || !fs.existsSync(file)) return { accounts: {}, bankAccounts: [], anchors: [], pensionAccounts: [] }
+  if (!file || !fs.existsSync(file)) return { accounts: {}, bankAccounts: [], anchors: [], pensionAccounts: [], brokerageAccounts: [] }
   let raw
   try {
     raw = JSON.parse(fs.readFileSync(file, 'utf8'))
@@ -26,6 +26,7 @@ export function loadAccountMap(file) {
     bankAccounts: raw.bankAccounts ?? [],
     anchors: raw.anchors ?? [],
     pensionAccounts: raw.pensionAccounts ?? [],
+    brokerageAccounts: raw.brokerageAccounts ?? [],
   }
 }
 

@@ -5,7 +5,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { krPriceTickers } from '../scripts/kr-price-tickers.mjs'
 
-const EMPTY_MAP = { accounts: {}, bankAccounts: [], anchors: [], pensionAccounts: [] }
+const EMPTY_MAP = { accounts: {}, bankAccounts: [], anchors: [], pensionAccounts: [], brokerageAccounts: [] }
 
 test('pension ETF tickers are priced; the gold code and fund rows are not', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'kr-price-tickers-'))

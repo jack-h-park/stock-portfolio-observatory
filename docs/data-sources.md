@@ -389,6 +389,15 @@ last balance is not carried into later years. `"retired": true` without a date
 only silences the reminder. A `retiredOn` that is not a YYYY-MM-DD date is
 ignored, so the account keeps showing until the entry is fixed.
 
+**Closed brokerage accounts.** A `brokerageAccounts` entry may carry the same
+`"retiredOn": "YYYY-MM-DD"`. It is matched to the transaction `account` label its
+rows carry: `미래에셋증권(종합)` for `"kind": "general"`, `미래에셋증권(ISA)` for
+`"kind": "isa"`, or the entry's own `"account"` when it names one. `retiredOn` ends
+the account's FBAR series on that date, with nothing held from the next day,
+whatever balance the last statement line left; the closing year counts as covered
+when the statements reach the closing date, and a later year has no row. The
+account's transactions, lots and realized gains are unchanged.
+
 **`data/treasury-reporting-rates.json`.** The year-end KRW per USD rate that the
 FBAR instructions direct, used by the foreign-account maximum-balance table on
 `/net-worth`. It is tracked in the repository (public figures, not personal data):
@@ -415,7 +424,7 @@ sources:
 
 | Statement | What it prints | Pools |
 | --- | --- | --- |
-| 미래에셋 거래내역증명서 (종합, ISA) | 예수금잔액 on every cash line, 외화예수금 with its 통화코드; a securities line leaves both blank | `KRW`, and one per foreign currency (in that currency) |
+| 미래에셋 거래내역증명서 (종합, ISA) | 예수금잔액 on every cash line, 외화예수금 with its 통화코드; a securities line leaves both blank, and so does a line that empties the pool (a blank beside a 입출금액 or 외화입출금액 is read as zero) | `KRW`, and one per foreign currency (in that currency) |
 | Toss 거래내역서 | 잔액 on every line, separately in the 원화 and 달러 sections, both in won | `KRW`, `KRW_dollar_section` (currency `KRW`) |
 | 삼성증권 거래내역확인서 (주식보상) | 현금잔액 on every line | `KRW` |
 
