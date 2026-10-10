@@ -267,6 +267,18 @@ def merge_hana_screenshot_rows(rows, screenshot_rows):
             target_day = date_type.fromisoformat(row["date"])
             original = min(matches, key=lambda candidate: abs((date_type.fromisoformat(candidate["date"]) - target_day).days))
             pending.remove(original)
+            # The screenshot prints HH:MM, the bank XLS HH:MM:SS, and the
+            # published-rate observations are keyed on the second. Keep the
+            # bank's time when it is the same minute on the same day, or the
+            # observation lookup misses and the reference falls back to the
+            # day's first published rate.
+            same_minute = (
+                original["date"] == row["date"]
+                and row.get("time")
+                and (original.get("time") or "").startswith(f"{row['time']}:")
+            )
+            if same_minute:
+                row["time"] = original["time"]
             row["source"] = f"{original['source']} + {row['source']}"
             row["source_path"] = f"{original['source_path']} + {row['source_path']}"
             row["page"] = original.get("page")
