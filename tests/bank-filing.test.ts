@@ -39,9 +39,24 @@ const BOA = [
   '06/30/2025,"EXAMPLE CARD","-20.00","130.00"',
 ].join('\n')
 
-const RH_CHECKING = ['Date,Description,Amount', '2026-10-05,"Inter-Entity Transfer to Brokerage",-10.00', '2026-09-01,"Example Deposit",30.00'].join('\n')
-const RH_SAVINGS = ['Date,Description,Amount', '2026-09-30,"Interest Payment",1.00', '2026-09-01,"Internal Transfer from Personal Checking",20.00'].join('\n')
+// Interest payments and transfers to brokerage show up in both kinds, so both fixtures carry them.
+const RH_CHECKING = [
+  'Date,Description,Amount',
+  '2026-10-05,"Inter-Entity Transfer to Brokerage",-10.00',
+  '2026-10-02,"Payment to Robinhood Credit Card",-25.00',
+  '2026-09-30,"Interest Payment",0.50',
+  '2026-09-01,"Example Deposit",30.00',
+].join('\n')
+const RH_CHECKING_FID = ['Date,Description,Amount', '2026-09-15,"FID BKG SVC LLC MONEYLINE",-40.00', '2026-09-30,"Interest Payment",0.50'].join('\n')
+const RH_SAVINGS = [
+  'Date,Description,Amount',
+  '2026-09-30,"Interest Payment",1.00',
+  '2026-09-20,"Inter-Entity Transfer to Brokerage",-5.00',
+  '2026-09-01,"Internal Transfer from Personal Checking",20.00',
+].join('\n')
 const RH_UNKNOWN = ['Date,Description,Amount', '2026-09-30,"Something",1.00'].join('\n')
+const RH_INTEREST_ONLY = ['Date,Description,Amount', '2026-08-31,"Interest Payment",1.00', '2026-09-30,"Interest Payment",1.10'].join('\n')
+const RH_BOTH = ['Date,Description,Amount', '2026-09-02,"Payment to Robinhood Credit Card",-25.00', '2026-09-01,"Internal Transfer from Personal Checking",20.00'].join('\n')
 
 test('a Chase checking activity export files into bank-statements by its row dates', () => {
   assert.match(fileDownloads({ 'Chase0000_Activity_20261009.csv': CHASE_CHECKING }), /→ bank-statements\/chase-checking-20260915-20261001\.csv/)
@@ -55,6 +70,12 @@ test('Robinhood bank exports are told apart by what their rows say, and refused 
   assert.match(fileDownloads({ 'a.csv': RH_CHECKING }), /→ bank-statements\/robinhood-bank-checking-20260901-20261005\.csv/)
   assert.match(fileDownloads({ 'b.csv': RH_SAVINGS }), /→ bank-statements\/robinhood-bank-savings-20260901-20260930\.csv/)
   assert.match(fileDownloads({ 'c.csv': RH_UNKNOWN }), /recognised but not filed[\s\S]*c\.csv[\s\S]*checking or savings/)
+})
+
+test('Robinhood bank markers shared by both kinds (interest, transfers to brokerage) do not decide the kind', () => {
+  assert.match(fileDownloads({ 'd.csv': RH_CHECKING_FID }), /→ bank-statements\/robinhood-bank-checking-20260915-20260930\.csv/)
+  assert.match(fileDownloads({ 'e.csv': RH_INTEREST_ONLY }), /recognised but not filed[\s\S]*e\.csv[\s\S]*checking or savings/)
+  assert.match(fileDownloads({ 'f.csv': RH_BOTH }), /recognised but not filed[\s\S]*f\.csv[\s\S]*checking or savings/)
 })
 
 test('a 새마을금고 거래내역조회 .xls files by its 조회기간', () => {

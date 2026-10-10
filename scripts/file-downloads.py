@@ -1241,15 +1241,18 @@ def detect_boa(doc):
                 [f"declared period {iso(start)} … {iso(stop)}"])
 
 
-ROBINHOOD_BANK_CHECKING = ("to robinhood credit card", "to brokerage", "fid bkg svc")
-ROBINHOOD_BANK_SAVINGS = ("from personal checking", "interest payment")
+# Only rows that occur in one kind of account. Interest payments and transfers
+# to brokerage occur in both, so they are not markers: listing them made every
+# real export match both sets and be refused.
+ROBINHOOD_BANK_CHECKING = ("to robinhood credit card", "fid bkg svc")
+ROBINHOOD_BANK_SAVINGS = ("from personal checking",)
 
 
 def detect_robinhood_bank(doc):
     """Robinhood checking / savings CSV → bank-statements/robinhood-bank-<kind>-<first>-<last>.csv
 
     The export has no account column and no balance, so the kind is read off the
-    rows. When the rows do not say, it is refused rather than guessed.
+    rows. When no row says, or rows say both, it is refused rather than guessed.
     """
     if doc.suffix != ".csv" or not doc.lines or doc.lines[0].strip() != "Date,Description,Amount":
         return None
