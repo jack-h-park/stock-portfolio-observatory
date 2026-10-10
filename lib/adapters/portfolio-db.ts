@@ -5,9 +5,9 @@ import Database from 'better-sqlite3'
 import { config } from '@/config'
 import type { TaxPlanningLot } from '@/lib/tax-planning'
 import { getTaxPolicyState, usTaxableWrappers, wrapperTreatment, type TaxPolicy, type WrapperTreatment } from '@/lib/tax-policy'
-import { depositsSeries, monthEndCash, summarizeNetWorth, type AsOfNote, type CashBalanceRow, type NetWorth } from '@/lib/net-worth'
+import { ASSET_CLASSES, depositsSeries, summarizeNetWorth, totalAssetsSeries, type AsOfNote, type CashBalanceRow, type NetWorth, type TotalAssetsSeries } from '@/lib/net-worth'
 import type { PensionContributionYear } from '@/lib/pension'
-import { groupAccountRanges, type AccountDataRange, type RangeKind, type RangeRow } from '@/lib/account-ranges'
+import { groupAccountRanges, type AccountDataRange, type AssetType, type RangeKind, type RangeRow } from '@/lib/account-ranges'
 
 /**
  * The default (Stocks) view: taxable and ISA securities only. Every holdings total goes through this.
@@ -996,8 +996,8 @@ function withCumulativeRealized(conn: Database.Database, snapshots: PortfolioSna
 }
 
 // USD/KRW on a date: the latest historical rate on or before it, else the
-// current spot rate. Shared by the net-worth history and the deposits series so
-// both convert a dated balance the same way.
+// current spot rate. Shared by the deposits series and the total-assets series
+// so both convert a dated balance the same way.
 function usdKrwRateAt(conn: Database.Database): (date: string) => number | null {
   const hasTable = (name: string) =>
     Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(name))
@@ -1012,19 +1012,114 @@ function usdKrwRateAt(conn: Database.Database): (date: string) => number | null 
   return (date: string) => rates.filter((r) => r.price_date <= date).at(-1)?.rate ?? usd?.rate ?? null
 }
 
-// Deposits in KRW on each snapshot date, for the overview trend in the
-// all-assets view. Rows are read in (date, id) order so a repeated date keeps
-// its last row, the same as the latest-balance read in getNetWorth.
+// Every cash_balances row in (date, id) order, so a repeated date keeps its last
+// row, the same as the latest-balance read in getNetWorth.
+function cashBalanceRows(conn: Database.Database): CashBalanceRow[] {
+  const hasCash = conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'cash_balances'").get()
+  return hasCash
+    ? (conn.prepare('select institution, account, currency, as_of_date as date, balance from cash_balances order by as_of_date, id').all() as CashBalanceRow[])
+    : []
+}
+
+// Deposits in KRW on each of the given dates: the cash class of the total-assets series.
 export function getDepositsSeries(dates: string[]): ReturnType<typeof depositsSeries> {
   const conn = db()
   try {
-    const hasCash = conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'cash_balances'").get()
-    const rows = hasCash
-      ? (conn
-          .prepare('select institution, account, currency, as_of_date as date, balance from cash_balances order by as_of_date, id')
-          .all() as CashBalanceRow[])
+    return depositsSeries(dates, cashBalanceRows(conn), usdKrwRateAt(conn))
+  } finally {
+    conn.close()
+  }
+}
+
+/** Today in the ingest's time zone, the same calendar the snapshot dates use (scripts/portfolio-snapshot.mjs). */
+function portfolioToday() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: process.env.STOCK_TIME_ZONE || 'America/Los_Angeles',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+}
+
+/** Snapshot dates within the last `days`, oldest first: the dates the total-assets chart plots. */
+export function getSnapshotDates(days = 3650): string[] {
+  const conn = db()
+  try {
+    const table = conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'portfolio_snapshots'").get()
+    if (!table) return []
+    return (
+      conn
+        .prepare("select snapshot_date from portfolio_snapshots where snapshot_date >= date('now', ?) order by snapshot_date")
+        .all(`-${Math.max(1, Math.floor(days))} days`) as { snapshot_date: string }[]
+    ).map((row) => row.snapshot_date)
+  } finally {
+    conn.close()
+  }
+}
+
+/**
+ * Total assets by class on each date, for the stacked trend: stocks (KR + US)
+ * and crypto from portfolio_snapshots, cash from cash_balances, pensions from
+ * the certificate and snapshot totals in pension_points, gold from its BUY rows
+ * and gold_prices. Then today is appended from getNetWorth(), replacing any
+ * date on or after it, so the last point is the Total assets card exactly.
+ */
+export function getTotalAssetsSeries(dates: string[]): TotalAssetsSeries {
+  const netWorth = getNetWorth()
+  const today = portfolioToday()
+  const conn = db()
+  try {
+    const hasTable = (name: string) =>
+      Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(name))
+    const columnsOf = (name: string) =>
+      new Set((conn.prepare(`pragma table_info(${name})`).all() as { name: string }[]).map((column) => column.name))
+    const past = [...new Set(dates)].filter((date) => date < today).sort()
+
+    const snapshots = new Map(
+      (hasTable('portfolio_snapshots')
+        ? (conn
+            .prepare('select snapshot_date as date, kr_market_value as kr, us_market_value_base as us, crypto_market_value_base as crypto from portfolio_snapshots')
+            .all() as { date: string; kr: number | null; us: number | null; crypto: number | null }[])
+        : []
+      ).map((row) => [row.date, row])
+    )
+    const stocks: Record<string, number | null> = {}
+    const crypto: Record<string, number | null> = {}
+    for (const date of past) {
+      const row = snapshots.get(date)
+      stocks[date] = !row || (row.kr == null && row.us == null) ? null : Number(row.kr ?? 0) + Number(row.us ?? 0)
+      crypto[date] = row?.crypto == null ? null : Number(row.crypto)
+    }
+    const cash = Object.fromEntries(depositsSeries(past, cashBalanceRows(conn), usdKrwRateAt(conn)).series.map((point) => [point.date, point.krw]))
+    const pensionPoints = hasTable('pension_points')
+      ? (conn.prepare('select account, date, value_krw as valueKrw from pension_points order by date, id').all() as { account: string; date: string; valueKrw: number }[])
       : []
-    return depositsSeries(dates, rows, usdKrwRateAt(conn))
+    // Gold BUY rows carry grams as quantity and the purchase amount in KRW. No
+    // gold sale is on file; the holding itself (getNetWorth) handles one.
+    const goldBuys =
+      hasTable('transactions_all') && columnsOf('transactions_all').has('asset_class')
+        ? (
+            conn
+              .prepare(
+                `select substr(date, 1, 10) as date, abs(coalesce(quantity, 0)) as grams, abs(coalesce(amount_krw, settlement_krw, 0)) as costKrw
+                   from transactions_all where asset_class = 'gold' and type = 'BUY' order by date, id`
+              )
+              .all() as { date: string; grams: number; costKrw: number }[]
+          ).filter((buy) => buy.grams > 0)
+        : []
+    const goldPrices = hasTable('gold_prices') ? (conn.prepare('select date, price from gold_prices order by date').all() as { date: string; price: number }[]) : []
+
+    const history = totalAssetsSeries({ dates: past, stocks, crypto, cash, pensionPoints, gold: { buys: goldBuys, prices: goldPrices } })
+    // Today, from the card's own figures. A class that is zero today and never
+    // had data stays null, so it does not "start" on the last point.
+    const latest = { date: today, total: netWorth.totalKrw } as TotalAssetsSeries['points'][number]
+    for (const key of ASSET_CLASSES) {
+      const value = netWorth.byClass[key]
+      latest[key] = value !== 0 || history.startsOn[key] ? value : null
+    }
+    const startsOn = { ...history.startsOn }
+    for (const key of ASSET_CLASSES) if (!startsOn[key] && latest[key] != null) startsOn[key] = today
+    return { points: [...history.points, latest], startsOn }
   } finally {
     conn.close()
   }
@@ -1069,7 +1164,7 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
     const asOfNotes = hasTable('holdings_all')
       ? (conn
           .prepare(
-            `select distinct account as label, as_of_date as asOf
+            `select distinct case when ${PENSION_ROW_SQL} then 'pensions' else 'gold' end as assetClass, account as label, as_of_date as asOf
                from holdings_all
               where (${PENSION_ROW_SQL} or ${GOLD_ROW_SQL})
                 and (valuation_source in ('snapshot', 'cost') or base_market_value is null)
@@ -1078,7 +1173,7 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
           )
           .all() as AsOfNote[])
       : []
-    const summary = summarizeNetWorth({
+    return summarizeNetWorth({
       stocksKrw: (overview.totals.kr_base_market_value ?? 0) + (overview.totals.us_base_market_value ?? 0),
       cryptoKrw: overview.totals.crypto_base_market_value ?? 0,
       usdKrw: usd?.rate ?? null,
@@ -1087,20 +1182,6 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
       goldKrw: Number(others.gold),
       asOfNotes,
     })
-    const series = hasTable('cash_balances')
-      ? (conn.prepare('select institution, account, currency, as_of_date as date, balance from cash_balances order by as_of_date, id').all() as any[])
-      : []
-    const rateAt = usdKrwRateAt(conn)
-    // Ordered by date, so the Map keeps the last snapshot of each month.
-    const stocksByMonth = new Map<string, number>(
-      hasTable('portfolio_snapshots')
-        ? (conn
-            .prepare('select substr(snapshot_date,1,7) as month, global_base_market_value as v from portfolio_snapshots order by snapshot_date')
-            .all() as any[]).map((r) => [r.month, r.v])
-        : []
-    )
-    const history = monthEndCash(series, rateAt).map((row) => ({ ...row, stocks: stocksByMonth.get(row.month) ?? null }))
-    return { ...summary, history }
   } finally {
     conn.close()
   }
@@ -1170,7 +1251,7 @@ export function getPensionAccounts(): PensionAccount[] {
             order by year`
         )
       : null
-    // A pension fund is `PENSION:<token>:<n>`, cash `PENSION:<token>:cash:<n>`, and an ETF its KR ticker.
+    // A pension fund is `PENSION:<token>:<slug>`, cash `PENSION:<token>:cash:<slug>` (scripts/pension-ids.mjs), and an ETF its KR ticker.
     const kindOf = (ticker: string): PensionHolding['kind'] =>
       /^PENSION:[^:]+:cash:/.test(ticker) ? 'CASH' : ticker.startsWith('PENSION:') ? 'FUND' : 'ETF'
     return accounts.map(({ account, wrapper }) => {
@@ -2791,13 +2872,21 @@ export function getAccountDataRanges(): AccountDataRange[] {
     ]
     const rows: RangeRow[] = []
     for (const span of spans) {
+      const table = allAssetsTable(conn, span.table)
+      const columns = new Set((conn.prepare(`pragma table_info(${table})`).all() as { name: string }[]).map((column) => column.name))
+      // A database older than the wrapper and asset-class columns holds stock rows only.
+      const assetType = [
+        columns.has('account_wrapper') ? `when ${PENSION_ROW_SQL} then 'pension'` : '',
+        columns.has('asset_class') ? `when ${GOLD_ROW_SQL} then 'gold'` : '',
+      ].join(' ')
+      const assetTypeSql = assetType.trim() ? `case ${assetType} else 'stock' end` : `'stock'`
       const found = conn
         .prepare(
-          `select market, coalesce(brokerage, 'Unknown') as brokerage, account, max(${span.type}) as account_type,
+          `select market, coalesce(brokerage, 'Unknown') as brokerage, account, max(${span.type}) as account_type, ${assetTypeSql} as asset_type,
                   min(${span.start}) as start, max(${span.end}) as end, count(*) as count
-             from ${allAssetsTable(conn, span.table)} group by market, brokerage, account`
+             from ${table} group by market, brokerage, account, asset_type`
         )
-        .all() as { market: string; brokerage: string; account: string; account_type: string | null; start: string | null; end: string | null; count: number }[]
+        .all() as { market: string; brokerage: string; account: string; account_type: string | null; asset_type: AssetType; start: string | null; end: string | null; count: number }[]
       for (const row of found) {
         rows.push({
           kind: span.kind,
@@ -2808,6 +2897,7 @@ export function getAccountDataRanges(): AccountDataRange[] {
           start: isoDate(row.start),
           end: isoDate(row.end),
           count: row.count,
+          assetType: row.asset_type,
         })
       }
     }
@@ -3492,8 +3582,8 @@ export function getWrapperReview(policy: TaxPolicy = getTaxPolicyState().policy)
     const dividends = conn.prepare(
       'select coalesce(sum(amount_krw), 0) as total from dividends_all where account = ? and account_wrapper = ?'
     )
-    // A pension fund is stored under `PENSION:<token>:<n>` and an ETF under its KR
-    // ticker; cash is `PENSION:<token>:cash:<n>` and is not a PFIC.
+    // A pension fund is stored under `PENSION:<token>:<slug>` and an ETF under its KR
+    // ticker; cash is `PENSION:<token>:cash:<slug>` and is not a PFIC.
     const pfics = conn.prepare(
       `select count(distinct ticker) as total from holdings_all
         where account = ? and account_wrapper = ?

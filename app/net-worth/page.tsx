@@ -2,30 +2,43 @@ import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, MetricField } from '@/components/ui'
 import { CardRow } from '@/components/layout'
-import { getMeta, getNetWorth } from '@/lib/adapters/portfolio-db'
-import { createMoneyFormatter, formatKrw, formatUsd } from '@/lib/currency'
+import { StackedAssetChart } from '@/components/charts'
+import { getMeta, getNetWorth, getSnapshotDates, getTotalAssetsSeries } from '@/lib/adapters/portfolio-db'
+import { convertMoney, createMoneyFormatter, formatKrw, formatUsd } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { fmtDate, fmtDateTime } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { routeMetadata, routeSection } from '@/lib/page-names'
-import type { NetWorth } from '@/lib/net-worth'
+import { ASSET_CLASSES, type NetWorth, type TotalAssetsPoint } from '@/lib/net-worth'
 import { getPageCopy } from '@/lib/ui-copy'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/net-worth')
 
 type CashRow = NetWorth['cash'][number]
-type HistoryRow = NetWorth['history'][number]
+type HistoryRow = TotalAssetsPoint & { month: string }
 
 export default async function NetWorthPage() {
   const language = await getLanguage()
   const copy = getPageCopy('netWorth', language)
   // Every KRW figure in the display currency, as the Overview shows it. The
   // Balance column stays in each account's own currency.
-  const money = createMoneyFormatter(await getCurrencyPreferences())
+  const currencyPreferences = await getCurrencyPreferences()
+  const money = createMoneyFormatter(currencyPreferences)
+  const toDisplayMillions = (krw: number) =>
+    convertMoney(krw, 'KRW', currencyPreferences.displayCurrency, currencyPreferences.usdKrwRate).value / 1_000_000
   const meta = getMeta()
   const netWorth = getNetWorth()
-  const classes = ['stocks', 'crypto', 'cash', 'pensions', 'gold'] as const
+  const classes = ASSET_CLASSES
+  // Every snapshot date, plus today. The month-end table keeps the last point of
+  // each month: the month's last snapshot, and today for the current month.
+  const totalAssets = getTotalAssetsSeries(getSnapshotDates(100 * 365))
+  const monthEnds = new Map<string, HistoryRow>()
+  for (const point of totalAssets.points) monthEnds.set(point.date.slice(0, 7), { ...point, month: point.date.slice(0, 7) })
+  const history = [...monthEnds.values()]
+  const notesFor = (key: (typeof ASSET_CLASSES)[number]) =>
+    netWorth.asOfNotes.filter((note) => note.assetClass === key).map((note) => copy.asOfNote(note.label, fmtDate(note.asOf))).join(' · ')
+  const amount = (value: number | null) => <span className="tabular-nums">{value == null ? copy.none : money(value)}</span>
   const kindLabel = (kind: string) => (kind in copy.kinds ? copy.kinds[kind as keyof typeof copy.kinds] : kind)
 
   return (
@@ -44,16 +57,42 @@ export default async function NetWorthPage() {
         <Card title={copy.byClass} className="md:col-span-2">
           <div className="grid grid-cols-2 gap-4 p-4 md:grid-cols-5">
             {classes.map((name) => (
-              <MetricField key={name} label={copy.classes[name]} value={money(netWorth.byClass[name])} valueClassName="text-title tabular-nums" />
+              <MetricField
+                key={name}
+                label={copy.classes[name]}
+                value={money(netWorth.byClass[name])}
+                hint={notesFor(name) || undefined}
+                valueClassName="text-title tabular-nums"
+              />
             ))}
           </div>
           {netWorth.asOfNotes.length ? (
-            <p className="border-t border-line-subtle px-4 py-3 text-label leading-relaxed text-ink-3">
-              {copy.asOfNotes(netWorth.asOfNotes.map((note) => copy.asOfNote(note.label, fmtDate(note.asOf))).join(' · '))}
-            </p>
+            <p className="border-t border-line-subtle px-4 py-3 text-label leading-relaxed text-ink-3">{copy.asOfNotesHint}</p>
           ) : null}
         </Card>
       </CardRow>
+
+      <Card title={copy.trend} className="mb-5">
+        <StackedAssetChart
+          points={totalAssets.points.map((point) => ({
+            date: point.date,
+            stocks: point.stocks == null ? null : toDisplayMillions(point.stocks),
+            crypto: point.crypto == null ? null : toDisplayMillions(point.crypto),
+            cash: point.cash == null ? null : toDisplayMillions(point.cash),
+            pensions: point.pensions == null ? null : toDisplayMillions(point.pensions),
+            gold: point.gold == null ? null : toDisplayMillions(point.gold),
+            total: toDisplayMillions(point.total),
+          }))}
+          startsOn={totalAssets.startsOn}
+          currency={currencyPreferences.displayCurrency}
+          labels={{ ...copy.classes, total: copy.historyColumns.total }}
+          axisLabel={currencyPreferences.displayCurrency === 'USD' ? copy.chartAxisUsd : copy.chartAxisKrw}
+        />
+        <div className="mt-1 text-label text-ink-3">
+          {copy.trendStarts(classes.filter((key) => totalAssets.startsOn[key]).map((key) => copy.classSince(copy.classes[key], fmtDate(totalAssets.startsOn[key]!))))}
+        </div>
+        <div className="mt-2 text-label leading-relaxed text-ink-3">{copy.trendNote}</div>
+      </Card>
 
       <Card title={copy.balances}>
         {netWorth.unpricedCash.length ? (
@@ -104,7 +143,7 @@ export default async function NetWorthPage() {
         />
       </Card>
 
-      {netWorth.history.length ? (
+      {history.length ? (
         <Card title={copy.history}>
           <div className="flex flex-col gap-1 border-b border-line-subtle bg-surface px-4 py-3 text-label leading-relaxed text-ink-3">
             <p>{copy.historyNote}</p>
@@ -112,18 +151,23 @@ export default async function NetWorthPage() {
           </div>
           <DataTable
             caption={copy.history}
-            rows={netWorth.history}
+            rows={history}
             getRowKey={(row: HistoryRow) => row.month}
             emptyMessage={copy.empty}
             columns={[
               { key: 'month', label: copy.historyColumns.month, render: (row: HistoryRow) => <span className="tabular-nums">{row.month}</span> },
+              ...classes.map((key) => ({
+                key,
+                label: copy.historyColumns[key],
+                align: 'right' as const,
+                render: (row: HistoryRow) => amount(row[key]),
+              })),
               {
-                key: 'stocks',
-                label: copy.historyColumns.stocks,
-                align: 'right',
-                render: (row: HistoryRow) => <span className="tabular-nums">{row.stocks == null ? copy.none : money(row.stocks)}</span>,
+                key: 'total',
+                label: copy.historyColumns.total,
+                align: 'right' as const,
+                render: (row: HistoryRow) => <span className="font-medium tabular-nums text-ink">{money(row.total)}</span>,
               },
-              { key: 'cash', label: copy.historyColumns.cash, align: 'right', render: (row: HistoryRow) => <span className="tabular-nums">{money(row.cash)}</span> },
             ]}
           />
         </Card>

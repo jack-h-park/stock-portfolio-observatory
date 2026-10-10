@@ -109,3 +109,17 @@ test('cash balance spans are their own kind and do not merge with securities row
   assert.equal(account.ranges.balances?.count, 40)
   assert.equal(account.market, 'CASH')
 })
+
+test('each account carries an asset type: the most specific of its rows, and cash for the CASH market', () => {
+  const accounts = groupAccountRanges([
+    row({ kind: 'holdings', market: 'KR', brokerage: 'Example', account: 'Example IRP', assetType: 'pension' }),
+    row({ kind: 'transactions', market: 'KR', brokerage: 'Example', account: 'Example IRP', assetType: 'stock' }),
+    row({ kind: 'holdings', market: 'KR', brokerage: 'Example', account: 'Example Gold', assetType: 'gold' }),
+    row({ kind: 'holdings', market: 'KR', brokerage: 'Example', account: 'Example General' }),
+    row({ kind: 'balances', market: 'CASH', brokerage: 'Example Bank', account: 'Example Savings' }),
+  ])
+  assert.deepEqual(
+    Object.fromEntries(accounts.map((account) => [account.name, account.assetType])),
+    { 'Example IRP': 'pension', 'Example Gold': 'gold', 'Example General': 'stock', 'Example Savings': 'cash' }
+  )
+})

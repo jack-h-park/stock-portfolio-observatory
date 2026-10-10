@@ -139,8 +139,11 @@ each product `{ name, quantity, costKrw, valueKrw }`. `cashKrw` is set only for 
   products stands in for one, as of its `asOf`, with its `cashKrw` as a cash row.
   Each product becomes a `holdings_all` row with the entry's `account` and
   `wrapper`, `as_of_date` = the snapshot date, and cost = `cost_krw`. An ETF keeps
-  its ticker; a fund row gets a stable id `PENSION:<token>:<n>` and a cash row
-  `PENSION:<token>:cash:<n>`, where `<n>` is its row number in the snapshot. A priced ETF is marked at quantity × the KR price
+  its ticker; a fund row gets a stable id `PENSION:<token>:<slug>` and a cash row
+  `PENSION:<token>:cash:<slug>`, where `<slug>` is the first 10 hex characters of
+  sha1 over the NFC-normalised, whitespace-collapsed name
+  (`scripts/pension-ids.mjs`), so reordering a snapshot keeps every id. Two rows of
+  one snapshot with the same name get `-2`, `-3`. A priced ETF is marked at quantity × the KR price
   (`valuation_source = 'price'`); everything else, including an ETF with no price
   or no ticker, is valued at `value_krw` (`'snapshot'`). None of these rows is in
   the `holdings` view or in any stock figure.
@@ -156,6 +159,11 @@ each product `{ name, quantity, costKrw, valueKrw }`. `cashKrw` is set only for 
   (`valuation_source = 'price'`, as of the price date); with no price it is held at
   cost (`'cost'`, as of the last purchase). The purchases are not replayed into tax
   lots.
+- **Totals over time.** `pension_points` holds one total per pension account and
+  date: each snapshot's summed value and each certificate's `totalKrw` (the
+  certificate wins a shared date). `gold_prices` holds the price file's `history`
+  plus its `latest`, one per date. The total-assets trend reads both, never the
+  JSON files.
 - **One source per account.** A sheet row for an account that has a pension
   snapshot or a gold holding is dropped, so `holdings_all` never holds the same
   position twice.
@@ -184,7 +192,11 @@ dated by `result.localTradedAt` in Asia/Seoul) and
 at least 10). It writes
 `{ source, code: "M04020000", unit: "KRW/g", fetchedAt, latest: { date, price }, history: [{ date, price }] }`.
 A response for another code or unit is refused. If either call fails the previous
-file is kept and the step exits non-zero; the refresh carries on.
+file is kept and the step exits non-zero; the refresh carries on. The history
+accumulates: each run merges the fetched closes into the stored ones, one per
+date. While the stored history does not reach the earliest gold purchase (read
+from the last ingest's `transactions_all`), or 400 days back when that is nearer
+or no purchase is known, it pages backwards (`page=2,3,…`) until it does.
 - `pension_snapshot_matches_year_end`: each certificate's `totalKrw` against the
   snapshot with the same date (a certificate with products is one), within
   max(0.5%, ₩10,000). Fund NAVs are not fetched, so a later snapshot cannot be

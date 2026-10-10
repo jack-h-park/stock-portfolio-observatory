@@ -2,11 +2,10 @@ import Link from 'next/link'
 import { FreshnessInline } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, Label, MetricField, MetricHeroCard, TextLink, marketTone } from '@/components/ui'
-import { PortfolioMultiTrendChart, PortfolioTrendChart, TrendBarChart } from '@/components/charts'
+import { PortfolioMultiTrendChart, PortfolioTrendChart, StackedAssetChart, TrendBarChart } from '@/components/charts'
 import {
   dbAvailable,
   getAccountAllocation,
-  getDepositsSeries,
   getDividendByYear,
   getMeta,
   getNetWorth,
@@ -14,10 +13,22 @@ import {
   getOverview,
   getPortfolioSnapshots,
   getTopHoldings,
+  getTotalAssetsSeries,
   getTransactionTypes,
 } from '@/lib/adapters/portfolio-db'
-import type { PortfolioSnapshot } from '@/lib/adapters/portfolio-db'
+import {
+  HEALTHY_TREND_COST_COVERAGE,
+  MIN_TREND_COST_COVERAGE,
+  TREND_COVERAGE_FIELDS,
+  TREND_METRICS,
+  TREND_SCOPES,
+  combinedTrendPoints,
+  resolveTrendScope,
+  singleTrendPoints,
+  type TrendMetricKey,
+} from '@/lib/overview-trend'
 import { config } from '@/config'
+import { ASSET_CLASSES } from '@/lib/net-worth'
 import { dividendChartAmount, fmtDate, fmtDateTime, fmtNumber } from '@/lib/format'
 import { convertMoney, createMoneyFormatter } from '@/lib/currency'
 import { getAssetView } from '@/lib/asset-view-server'
@@ -59,81 +70,6 @@ const positionAxisLabel = (market: string, name: string, ticker: string) => {
   if (market === 'KR') return shortAxisLabel(name || ticker)
   return shortAxisLabel(ticker || name)
 }
-const TREND_METRICS = [
-  { key: 'market_value', label: 'Market value', color: 'var(--brand-blue)' },
-  { key: 'cost_basis', label: 'Cost basis', color: 'var(--brand-purple)' },
-  { key: 'unrealized_gl', label: 'Unrealized G/L', color: 'var(--accent-success)' },
-  { key: 'realized_gl', label: 'Realized G/L', color: 'var(--brand-pink)' },
-  { key: 'return_pct', label: 'Return %', color: 'var(--accent-warning)' },
-] as const
-
-const TREND_SCOPES = [
-  { key: 'global', label: 'Global' },
-  { key: 'KR', label: 'Korea' },
-  { key: 'US', label: 'United States' },
-  { key: 'CRYPTO', label: 'Crypto' },
-] as const
-// Offered only in the all-assets view; the stocks view keeps TREND_SCOPES as is.
-const ALL_ASSET_TREND_SCOPES = [...TREND_SCOPES, { key: 'deposits', label: 'Deposits' }] as const
-
-const TREND_FIELDS = {
-  global: {
-    market_value: 'global_base_market_value',
-    cost_basis: 'global_base_cost',
-    unrealized_gl: 'global_base_unrealized_gl',
-    realized_gl: 'global_realized_gl',
-    return_pct: 'global_base_return_pct',
-  },
-  KR: {
-    market_value: 'kr_market_value',
-    cost_basis: 'kr_cost_basis',
-    unrealized_gl: 'kr_unrealized_gl',
-    realized_gl: 'kr_realized_gl',
-    return_pct: 'kr_return_pct',
-  },
-  US: {
-    market_value: 'us_market_value_base',
-    cost_basis: 'us_cost_basis_base',
-    unrealized_gl: 'us_unrealized_gl_base',
-    realized_gl: 'us_realized_gl_base',
-    return_pct: 'us_return_pct',
-  },
-  CRYPTO: {
-    market_value: 'crypto_market_value_base',
-    cost_basis: 'crypto_cost_basis_base',
-    unrealized_gl: 'crypto_unrealized_gl_base',
-    realized_gl: 'crypto_realized_gl_base',
-    return_pct: 'crypto_return_pct',
-  },
-  // Deposits have no gain: market value and cost basis are the balance, and the
-  // gain, realized and return series read 0 wherever a balance exists.
-  deposits: {
-    market_value: 'deposits_krw',
-    cost_basis: 'deposits_krw',
-    unrealized_gl: 'deposits_zero',
-    realized_gl: 'deposits_zero',
-    return_pct: 'deposits_zero',
-  },
-} as const
-
-const TREND_COVERAGE_FIELDS = {
-  global: 'market_value_coverage',
-  KR: 'kr_market_value_coverage',
-  US: 'us_market_value_coverage',
-  CRYPTO: 'crypto_market_value_coverage',
-  deposits: 'deposits_coverage',
-} as const
-
-const MIN_TREND_COST_COVERAGE = 0.9
-// Metrics that need no market price, so a thinly priced snapshot still plots them.
-const PRICE_FREE_TREND_METRICS: readonly TrendMetricKey[] = ['cost_basis', 'realized_gl']
-const HEALTHY_TREND_COST_COVERAGE = 0.95
-
-type TrendMetricKey = (typeof TREND_METRICS)[number]['key']
-// A snapshot row as the trend reads it. The deposits fields exist only in the
-// all-assets view, where the page adds them from getDepositsSeries.
-type TrendRow = PortfolioSnapshot & { deposits_krw?: number | null; deposits_zero?: number | null; deposits_coverage?: number | null }
-type TrendFieldKey = keyof TrendRow
 type TrendViewKey = 'single' | 'combined'
 
 
@@ -170,8 +106,7 @@ export default async function OverviewPage({
   const meta = getMeta()
   const params = await searchParams
   const selectedRange = TREND_RANGES.find((range) => range.key === params.trend) ?? DEFAULT_TREND_RANGE
-  const trendScopes = assetView === 'all' ? ALL_ASSET_TREND_SCOPES : TREND_SCOPES
-  const selectedScope = trendScopes.find((scope) => scope.key === params.scope)?.key ?? 'global'
+  const selectedScope = resolveTrendScope(params.scope)
   const legacyMetricMap: Record<string, TrendMetricKey> = {
     global_base_market_value: 'market_value',
     global_base_cost: 'cost_basis',
@@ -181,7 +116,6 @@ export default async function OverviewPage({
   const selectedMetricKey = legacyMetricMap[params.metric ?? ''] ?? params.metric
   const selectedMetric = TREND_METRICS.find((metric) => metric.key === selectedMetricKey) ?? TREND_METRICS[0]
   const selectedMetricLabel = copy.metricLabels[selectedMetric.key]
-  const selectedField = TREND_FIELDS[selectedScope][selectedMetric.key]
   const selectedCoverageField = TREND_COVERAGE_FIELDS[selectedScope]
   const selectedScopeLabel = copy.scopeLabels[selectedScope]
   const selectedView: TrendViewKey = params.view === 'single' ? 'single' : 'combined'
@@ -190,23 +124,8 @@ export default async function OverviewPage({
   const netWorthSummary = getNetWorth(overview)
   const netWorth = assetView === 'all' ? netWorthSummary : null
   const portfolioSnapshots = getPortfolioSnapshots(trendRangeDays(selectedRange.days))
-  // All-assets view only: deposits join the global market value and cost basis,
-  // never the gain, realized or return series, and get a scope of their own. In
-  // the stocks view the rows are the snapshots themselves, untouched.
-  const deposits = assetView === 'all' ? getDepositsSeries(portfolioSnapshots.map((snapshot) => snapshot.snapshot_date)) : null
-  const trendRows: TrendRow[] = deposits
-    ? portfolioSnapshots.map((snapshot, index) => {
-        const krw = deposits.series[index].krw
-        return {
-          ...snapshot,
-          global_base_market_value: snapshot.global_base_market_value == null || krw == null ? snapshot.global_base_market_value : snapshot.global_base_market_value + krw,
-          global_base_cost: krw == null ? snapshot.global_base_cost : snapshot.global_base_cost + krw,
-          deposits_krw: krw,
-          deposits_zero: krw == null ? null : 0,
-          deposits_coverage: krw == null ? null : 1,
-        }
-      })
-    : portfolioSnapshots
+  // All-assets view only: every class stacked on the same snapshot dates, plus today.
+  const totalAssets = assetView === 'all' ? getTotalAssetsSeries(portfolioSnapshots.map((snapshot) => snapshot.snapshot_date)) : null
   const top = getTopHoldings(10)
   const accounts = getAccountAllocation()
   const dividendYears = getDividendByYear()
@@ -293,26 +212,8 @@ export default async function OverviewPage({
       barStyle: 'linear-gradient(90deg, var(--accent-warning), var(--brand-purple))',
     },
   ]
-  const trendData = trendRows
-    .map((snapshot) => ({
-      date: snapshot.snapshot_date,
-      value: snapshot[selectedField as TrendFieldKey] == null || (
-        !PRICE_FREE_TREND_METRICS.includes(selectedMetric.key) && Number(snapshot[selectedCoverageField]) < MIN_TREND_COST_COVERAGE
-      )
-        ? null
-        : selectedMetric.key === 'return_pct'
-          ? Number(snapshot[selectedField as TrendFieldKey])
-          : displayBaseMillions(Number(snapshot[selectedField as TrendFieldKey])),
-      coverage: snapshot[selectedCoverageField],
-    }))
-  const combinedTrendData = trendRows
-    .map((snapshot) => ({
-      date: snapshot.snapshot_date,
-      market_value: snapshot[TREND_FIELDS[selectedScope].market_value as TrendFieldKey] == null || Number(snapshot[selectedCoverageField]) < MIN_TREND_COST_COVERAGE ? null : displayBaseMillions(Number(snapshot[TREND_FIELDS[selectedScope].market_value as TrendFieldKey])),
-      cost_basis: snapshot[TREND_FIELDS[selectedScope].cost_basis as TrendFieldKey] == null ? null : displayBaseMillions(Number(snapshot[TREND_FIELDS[selectedScope].cost_basis as TrendFieldKey])),
-      unrealized_gl: snapshot[TREND_FIELDS[selectedScope].unrealized_gl as TrendFieldKey] == null || Number(snapshot[selectedCoverageField]) < MIN_TREND_COST_COVERAGE ? null : displayBaseMillions(Number(snapshot[TREND_FIELDS[selectedScope].unrealized_gl as TrendFieldKey])),
-      realized_gl: snapshot[TREND_FIELDS[selectedScope].realized_gl as TrendFieldKey] == null ? null : displayBaseMillions(Number(snapshot[TREND_FIELDS[selectedScope].realized_gl as TrendFieldKey])),
-    }))
+  const trendData = singleTrendPoints(portfolioSnapshots, selectedScope, selectedMetric.key, displayBaseMillions)
+  const combinedTrendData = combinedTrendPoints(portfolioSnapshots, selectedScope, displayBaseMillions)
   const valuedTrendData = trendData.filter((point): point is typeof point & { value: number } => typeof point.value === 'number')
   const firstTrendPoint = valuedTrendData[0]
   const latestTrendPoint = valuedTrendData[valuedTrendData.length - 1]
@@ -320,16 +221,10 @@ export default async function OverviewPage({
   const latestTrendValue = latestTrendPoint?.value ?? 0
   const trendChange = latestTrendValue - firstTrendValue
   const trendChangePct = firstTrendValue !== 0 ? (trendChange / Math.abs(firstTrendValue)) * 100 : null
-  const latestSnapshot = trendRows[trendRows.length - 1]
+  const latestSnapshot = portfolioSnapshots[portfolioSnapshots.length - 1]
   const latestTrendCoverage = latestSnapshot?.[selectedCoverageField] ?? null
   const latestPositionCoverage = selectedScope === 'global' ? latestSnapshot?.position_coverage ?? null : null
-  // In the deposits scope a date before the first balance is not a gap: there was
-  // nothing to value yet, and "gap" here means low price coverage. Count from
-  // the date deposits start.
-  const missingTrendPoints =
-    selectedScope === 'deposits' && deposits?.since
-      ? trendData.filter((point) => point.date >= deposits.since! && typeof point.value !== 'number').length
-      : trendData.length - valuedTrendData.length
+  const missingTrendPoints = trendData.length - valuedTrendData.length
   const trendValueLabel = (value: number) => selectedMetric.key === 'return_pct' ? `${fmtNumber(value, 1)}%` : money(value * 1_000_000, currencyPreferences.displayCurrency)
   const trendChangeLabel = selectedMetric.key === 'return_pct'
     ? `${trendChange >= 0 ? '+' : ''}${fmtNumber(trendChange, 1)}%p`
@@ -412,7 +307,15 @@ export default async function OverviewPage({
           <ul className="mt-3 grid gap-1.5">
             {(['stocks', 'crypto', 'cash', 'pensions', 'gold'] as const).map((key) => (
               <li key={key} className="flex items-baseline justify-between gap-3 text-body">
-                <span className="text-ink-3">{copy.assetClasses[key]}</span>
+                <span className="text-ink-3">
+                  {copy.assetClasses[key]}
+                  {/* A class read from a dated snapshot, held at cost or (cash) from an older balance carries its date here. */}
+                  {netWorth.asOfNotes.some((note) => note.assetClass === key) ? (
+                    <span className="ml-2 text-label">
+                      {netWorth.asOfNotes.filter((note) => note.assetClass === key).map((note) => copy.asOfNote(note.label, fmtDate(note.asOf))).join(' · ')}
+                    </span>
+                  ) : null}
+                </span>
                 <span className="tabular-nums text-ink">
                   {money(netWorth.byClass[key], 'KRW')}
                   <span className="ml-2 text-ink-3">{fmtNumber(netWorth.totalKrw > 0 ? (netWorth.byClass[key] / netWorth.totalKrw) * 100 : 0, 1)}%</span>
@@ -421,9 +324,7 @@ export default async function OverviewPage({
             ))}
           </ul>
           {netWorth.asOfNotes.length > 0 ? (
-            <div className="mt-3 rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
-              {copy.asOfNotes(netWorth.asOfNotes.map((note) => copy.asOfNote(note.label, fmtDate(note.asOf))).join(' · '))}
-            </div>
+            <div className="mt-3 rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{copy.asOfNotesHint}</div>
           ) : null}
           {netWorth.unpricedCash.length > 0 ? (
             <div className="mt-3 rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{copy.unpricedCash(netWorth.unpricedCash.length)}</div>
@@ -627,7 +528,7 @@ export default async function OverviewPage({
             className={`rounded-sm border px-2 py-1 text-label ${selectedView === 'combined' ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
           >{copy.combined}</Link>
           <span className="mx-1 h-4 w-px bg-line-subtle" />
-          {trendScopes.map((scope) => (
+          {TREND_SCOPES.map((scope) => (
             <Link
               key={scope.key}
               href={`/?trend=${selectedRange.key}&scope=${scope.key}&metric=${selectedMetric.key}&view=${selectedView}`}
@@ -678,11 +579,53 @@ export default async function OverviewPage({
         <div className="mt-1 text-label text-ink-3">
           {trendData.length ? copy.trendRangeSummary(trendData[0].date, trendData[trendData.length - 1].date, valuedTrendData.length, trendData.length, missingTrendPoints) : copy.snapshotsOnce}
         </div>
-        {deposits?.since ? <div className="mt-1 text-label text-ink-3">{copy.depositsSince(deposits.since)} {copy.depositsInGlobal}</div> : null}
         <div className="mt-2 text-label leading-relaxed text-ink-3">
           {copy.trendExplanation}
         </div>
       </Card>
+
+      {totalAssets ? (
+        <Card
+          title={copy.totalAssetsTrend}
+          className="mb-5"
+          action={
+            <div className="flex flex-wrap items-center justify-end gap-1">
+              {TREND_RANGES.map((range) => (
+                <Link
+                  key={range.key}
+                  href={`/?trend=${range.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}`}
+                  scroll={false}
+                  className={`rounded-sm border px-2 py-1 text-label font-medium ${selectedRange.key === range.key ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
+                >
+                  {range.label}
+                </Link>
+              ))}
+            </div>
+          }
+        >
+          <StackedAssetChart
+            points={totalAssets.points.map((point) => ({
+              date: point.date,
+              stocks: point.stocks == null ? null : displayBaseMillions(point.stocks),
+              crypto: point.crypto == null ? null : displayBaseMillions(point.crypto),
+              cash: point.cash == null ? null : displayBaseMillions(point.cash),
+              pensions: point.pensions == null ? null : displayBaseMillions(point.pensions),
+              gold: point.gold == null ? null : displayBaseMillions(point.gold),
+              total: displayBaseMillions(point.total),
+            }))}
+            startsOn={totalAssets.startsOn}
+            currency={currencyPreferences.displayCurrency}
+            labels={{ ...copy.assetClasses, total: copy.totalAssets }}
+            axisLabel={displayAxisLabel}
+          />
+          <div className="mt-1 text-label text-ink-3">
+            {copy.totalAssetsStarts(
+              ASSET_CLASSES.filter((key) => totalAssets.startsOn[key]).map((key) => copy.classSince(copy.assetClasses[key], fmtDate(totalAssets.startsOn[key]!)))
+            )}
+          </div>
+          <div className="mt-2 text-label leading-relaxed text-ink-3">{copy.totalAssetsTrendNote}</div>
+        </Card>
+      ) : null}
 
       <CardRow>
         <Card title={copy.topHoldingsByCost}>

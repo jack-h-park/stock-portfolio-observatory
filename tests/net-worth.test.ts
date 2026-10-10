@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { depositsSeries, monthEndCash, summarizeNetWorth } from '../lib/net-worth'
+import { depositsSeries, summarizeNetWorth } from '../lib/net-worth'
 
 const cash = (over: object) => ({ institution: 'x', account: 'A', kind: 'checking', currency: 'KRW' as const, asOfDate: '2026-10-01', balance: 1000, derived: false, ...over })
 
@@ -18,34 +18,11 @@ test('a USD deposit with no rate is unpriced, not zero and not one-to-one', () =
   assert.deepEqual(r.unpricedCash, ['B'])
 })
 
-test('month-end cash takes each account’s last balance on or before the month end', () => {
-  const r = monthEndCash(
-    [
-      { institution: 'x', account: 'A', currency: 'KRW', date: '2026-08-10', balance: 100 },
-      { institution: 'x', account: 'A', currency: 'KRW', date: '2026-09-05', balance: 300 },
-      { institution: 'x', account: 'B', currency: 'USD', date: '2026-09-20', balance: 1 },
-    ],
-    () => 1000
-  )
-  assert.deepEqual(r, [{ month: '2026-08', cash: 100 }, { month: '2026-09', cash: 1300 }])
-})
-
 test('a currency other than KRW or USD is unpriced, never treated as dollars', () => {
   const r = summarizeNetWorth({ stocksKrw: 0, cryptoKrw: 0, usdKrw: 1300, cash: [cash({ account: 'E', currency: 'EUR' as any, balance: 5 })] })
   assert.equal(r.cash[0].krw, null)
   assert.equal(r.byClass.cash, 0)
   assert.deepEqual(r.unpricedCash, ['E'])
-})
-
-test('month-end cash keys accounts by institution and account', () => {
-  const r = monthEndCash(
-    [
-      { institution: 'one', account: 'Main', currency: 'KRW', date: '2026-09-05', balance: 100 },
-      { institution: 'two', account: 'Main', currency: 'KRW', date: '2026-09-06', balance: 50 },
-    ],
-    () => 1
-  )
-  assert.deepEqual(r, [{ month: '2026-09', cash: 150 }])
 })
 
 const row = (account: string, currency: 'KRW' | 'USD', date: string, balance: number, institution = 'Example Bank') => ({ institution, account, currency, date, balance })
@@ -126,13 +103,17 @@ test('pensions and gold join the total under their own classes, with their as-of
     cash: [cash({})],
     pensionsKrw: 7_000,
     goldKrw: 3_000,
-    asOfNotes: [{ label: 'Example IRP', asOf: '2026-10-08' }],
+    asOfNotes: [{ assetClass: 'pensions', label: 'Example IRP', asOf: '2026-10-08' }],
   })
   assert.equal(r.byClass.stocks, 10_000)
   assert.equal(r.byClass.pensions, 7_000)
   assert.equal(r.byClass.gold, 3_000)
   assert.equal(r.totalKrw, 10_000 + 500 + 1000 + 7_000 + 3_000)
-  assert.deepEqual(r.asOfNotes, [{ label: 'Example IRP', asOf: '2026-10-08' }])
+  // Cash is dated too: by the account whose latest balance is the oldest.
+  assert.deepEqual(r.asOfNotes, [
+    { assetClass: 'pensions', label: 'Example IRP', asOf: '2026-10-08' },
+    { assetClass: 'cash', label: 'A', asOf: '2026-10-01' },
+  ])
 })
 
 test('without pension or gold input both classes are zero and there are no as-of notes', () => {
@@ -141,4 +122,14 @@ test('without pension or gold input both classes are zero and there are no as-of
   assert.equal(r.byClass.gold, 0)
   assert.equal(r.totalKrw, 10_000)
   assert.deepEqual(r.asOfNotes, [])
+})
+
+test('the cash as-of note names the priced account whose latest balance is the oldest', () => {
+  const r = summarizeNetWorth({
+    stocksKrw: 0,
+    cryptoKrw: 0,
+    usdKrw: null,
+    cash: [cash({ account: 'New', asOfDate: '2026-09-30' }), cash({ account: 'Old', asOfDate: '2026-06-30' }), cash({ account: 'Unpriced', currency: 'USD', asOfDate: '2026-01-31' })],
+  })
+  assert.deepEqual(r.asOfNotes, [{ assetClass: 'cash', label: 'Old', asOf: '2026-06-30' }])
 })

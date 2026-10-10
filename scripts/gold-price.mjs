@@ -6,7 +6,14 @@ export const GOLD_CODE = 'M04020000'
 export const GOLD_SOURCE = 'Naver Finance KRX gold (M04020000)'
 export const GOLD_LATEST_URL = `https://m.stock.naver.com/front-api/marketIndex/productDetail?category=metals&reutersCode=${GOLD_CODE}`
 // pageSize below 10 is rejected by the endpoint.
-export const GOLD_HISTORY_URL = `https://m.stock.naver.com/front-api/marketIndex/prices?category=metals&reutersCode=${GOLD_CODE}&page=1&pageSize=60`
+export const GOLD_HISTORY_PAGE_SIZE = 60
+/** One page of daily closes, newest first: page 1 is the latest `pageSize` trading days, page 2 the ones before. */
+export function goldHistoryUrl(page = 1, pageSize = GOLD_HISTORY_PAGE_SIZE) {
+  return `https://m.stock.naver.com/front-api/marketIndex/prices?category=metals&reutersCode=${GOLD_CODE}&page=${page}&pageSize=${Math.max(10, pageSize)}`
+}
+export const GOLD_HISTORY_URL = goldHistoryUrl(1)
+/** How far back a backfill reaches when no purchase is older. */
+export const GOLD_BACKFILL_DAYS = 400
 
 /** "177,480" -> 177480. Anything that is not a positive number ("-", "", "0") is null. */
 export function parsePrice(value) {
@@ -59,4 +66,39 @@ export function parseGoldHistory(json) {
 
 export function buildGoldPriceDocument({ latest, history, fetchedAt }) {
   return { source: GOLD_SOURCE, code: GOLD_CODE, unit: 'KRW/g', fetchedAt, latest, history }
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * The stored history and a fetch merged: one price per date, the fetched price
+ * winning a date both have, oldest first. A malformed stored row is dropped. The
+ * file accumulates this way, so the trend can value grams bought long before
+ * the latest page.
+ */
+export function mergeGoldHistory(existing, fetched) {
+  const byDate = new Map()
+  for (const row of [...(Array.isArray(existing) ? existing : []), ...(Array.isArray(fetched) ? fetched : [])]) {
+    const price = Number(row?.price)
+    if (ISO_DATE.test(String(row?.date ?? '')) && Number.isFinite(price) && price > 0) byDate.set(row.date, price)
+  }
+  return [...byDate].sort(([a], [b]) => a.localeCompare(b)).map(([date, price]) => ({ date, price }))
+}
+
+function minusDays(date, days) {
+  const time = Date.parse(`${date}T00:00:00Z`) - days * 86_400_000
+  return new Date(time).toISOString().slice(0, 10)
+}
+
+/**
+ * Whether to page backwards, and to which date. The target is the earliest gold
+ * purchase, but never more than GOLD_BACKFILL_DAYS before today (with no known
+ * purchase, that floor). Nothing to do when the stored history already reaches
+ * the target.
+ */
+export function goldBackfillPlan({ history, earliestPurchase, today }) {
+  const floor = minusDays(today, GOLD_BACKFILL_DAYS)
+  const target = earliestPurchase && earliestPurchase > floor ? earliestPurchase : floor
+  const oldest = (Array.isArray(history) ? history : []).map((row) => row?.date).filter((d) => ISO_DATE.test(String(d ?? ''))).sort()[0]
+  return oldest && oldest <= target ? null : { target }
 }

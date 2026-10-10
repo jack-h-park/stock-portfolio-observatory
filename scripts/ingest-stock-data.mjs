@@ -7,6 +7,7 @@ import { loadLocalEnv } from './env.mjs'
 import { portfolioDate, valuePortfolio } from './portfolio-snapshot.mjs'
 import { resolveCryptoFiles, resolveUsHoldingFiles, resolveUsTransactionFiles, robinhoodStrategyLabel } from './source-files.mjs'
 import { DECIDABLE_WRAPPERS, resolveWrapperTreatment } from './wrapper-treatment.mjs'
+import { pensionProductId } from './pension-ids.mjs'
 
 loadLocalEnv()
 
@@ -1099,6 +1100,27 @@ create table pension_flows (
   kind text not null,
   amount_krw real not null,
   source text
+);
+
+-- A pension account's total on a date: each year-end certificate's total and
+-- each holdings snapshot's summed value, one row per account and date (the
+-- certificate wins a shared date). The total-assets trend steps through these.
+create table pension_points (
+  id integer primary key,
+  account text not null,
+  account_wrapper text not null,
+  date text not null,
+  value_krw real not null,
+  source text not null
+);
+
+-- The KRX gold price history (KRW per gram) from data/gold-prices.json, one row
+-- per date, so the total-assets trend values past grams without the file.
+create table gold_prices (
+  id integer primary key,
+  date text not null unique,
+  price real not null,
+  source text not null
 );
 
 create table validation_checks (
@@ -4992,16 +5014,20 @@ for (const entry of accountMap.pensionAccounts ?? []) {
   pensionSnapshotByAccount.set(account, { date: chosen.date, source: chosen.source })
   const wrapper = text(entry.wrapper) || wrapperFor({ account }, accountMap)
   const owner = text(entry.owner) || ownerFor({ account }, accountMap)
-  chosen.rows.forEach((product, i) => {
+  const usedIds = new Map()
+  chosen.rows.forEach((product) => {
     const isEtf = product.type === 'ETF'
-    // Cash carries its kind in the id so nothing downstream counts it as a fund
-    // (the US review's likely-PFIC count, the /pension ETF/FUND/CASH split).
-    const ticker =
-      isEtf && product.ticker
-        ? normalizeTicker(product.ticker)
-        : product.type === 'CASH'
-          ? `PENSION:${token}:cash:${i + 1}`
-          : `PENSION:${token}:${i + 1}`
+    // A fund or cash row is keyed by a slug of its name (scripts/pension-ids.mjs),
+    // so reordering the snapshot keeps every id. Cash carries its kind in the id
+    // so nothing downstream counts it as a fund (the US review's likely-PFIC
+    // count, the /pension ETF/FUND/CASH split). Two rows of one snapshot with the
+    // same name get `-2`, `-3`, in row order.
+    let ticker = isEtf && product.ticker ? normalizeTicker(product.ticker) : pensionProductId(token, product.name, product.type === 'CASH')
+    if (!(isEtf && product.ticker)) {
+      const seen = (usedIds.get(ticker) ?? 0) + 1
+      usedIds.set(ticker, seen)
+      if (seen > 1) ticker = `${ticker}-${seen}`
+    }
     const price = isEtf && product.ticker ? krPricesByTicker.get(ticker)?.price ?? null : null
     const quantity = product.quantity ?? 0
     // An ETF is marked at the KR price when it has one. Otherwise it keeps its
@@ -5059,6 +5085,29 @@ for (const entry of accountMap.pensionAccounts ?? []) {
     })
   })
 }
+// Pension totals over time, for the total-assets trend: every snapshot's summed
+// value and every year-end certificate's total, one point per account and date.
+// The certificate is the statement of record, so it wins a date it shares.
+const pensionPointRows = []
+for (const entry of accountMap.pensionAccounts ?? []) {
+  const token = text(entry?.token)
+  const account = text(entry?.account)
+  if (!token || !account) continue
+  const wrapper = text(entry.wrapper) || wrapperFor({ account }, accountMap)
+  const byDate = new Map()
+  for (const snap of pensionSnapshotsByToken.get(token) ?? []) {
+    byDate.set(snap.date, { value: snap.rows.reduce((sum, r) => sum + (r.value ?? 0), 0), source: `snapshot:${snap.source}` })
+  }
+  for (const cert of pensionEvidence.certificates) {
+    if (text(cert.token) !== token || typeof cert.totalKrw !== 'number' || !text(cert.asOf)) continue
+    byDate.set(text(cert.asOf), { value: cert.totalKrw, source: `certificate:${text(cert.kind) || 'certificate'}:${text(cert.source)}` })
+  }
+  for (const [date, point] of [...byDate].sort(([a], [b]) => a.localeCompare(b))) {
+    pensionPointRows.push({ account, account_wrapper: wrapper, date, value_krw: point.value, source: point.source })
+  }
+}
+insertMany(db, 'pension_points', pensionPointRows, ['account', 'account_wrapper', 'date', 'value_krw', 'source'])
+
 // ---------------------------------------------------------------------------
 // Physical gold: one holding per gold account, built from its purchases.
 //
@@ -5081,12 +5130,25 @@ const goldPrice = (() => {
     const date = text(doc?.latest?.date)
     if (doc?.code && doc.code !== GOLD_CODE) throw new Error(`code ${doc.code} is not ${GOLD_CODE}`)
     if (!Number.isFinite(price) || price <= 0 || !date) throw new Error('no latest price')
-    return { price, date, source: text(doc.source) }
+    // The history plus the latest close, one price per date, for gold_prices.
+    const history = new Map()
+    for (const row of [...(Array.isArray(doc.history) ? doc.history : []), { date, price }]) {
+      const rowPrice = Number(row?.price)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(text(row?.date)) && Number.isFinite(rowPrice) && rowPrice > 0) history.set(text(row.date), rowPrice)
+    }
+    return { price, date, source: text(doc.source), history }
   } catch (error) {
     goldPriceProblem = `${goldPricesPath}: ${error instanceof Error ? error.message : String(error)}`
     return null
   }
 })()
+
+insertMany(
+  db,
+  'gold_prices',
+  [...(goldPrice?.history ?? new Map())].sort(([a], [b]) => a.localeCompare(b)).map(([date, price]) => ({ date, price, source: goldPrice.source || 'gold-prices.json' })),
+  ['date', 'price', 'source']
+)
 
 const goldHoldingRows = []
 const goldTradesByAccount = new Map()
