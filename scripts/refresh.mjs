@@ -80,6 +80,9 @@ const steps = [
   // holding also needs its price history fetched on the same run.
   { name: 'extract:kr-statements', args: ['extract:kr-statements'] },
   { name: 'extract:fx-ledger', args: ['extract:fx-ledger'] },
+  // Bank deposit balances for the All-assets view. Optional: a broken bank parser
+  // must not stop the stock refresh, and the cash_balances freshness shows its age.
+  { name: 'extract:bank-statements', args: ['extract:bank-statements'], optional: true },
   { name: 'extract:us-pdf-evidence', args: ['extract:us-pdf-evidence'] },
   { name: 'fetch:us-prices', args: ['fetch:us-prices'] },
   // Extract before pricing: the crypto price step reads the activity snapshot to
