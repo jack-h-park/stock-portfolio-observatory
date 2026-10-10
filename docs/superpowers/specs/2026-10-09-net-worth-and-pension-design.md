@@ -140,15 +140,15 @@ account types rather than a new parser.
 
 ### The view switch
 
-A global "Stocks / All assets" switch in the header, beside the currency
-switch, remembered in a cookie.
+A global "Stocks / All assets" switch, remembered in a cookie. It lives in the
+sidebar (see Amendments).
 
 - **Stocks (default).** Byte-for-byte today's figures: taxable and ISA securities
   only. Pensions, deposits and gold are in no total.
 - **All assets.**
-  - The overview headline becomes total assets, with an allocation bar by asset
-    class (stocks, pensions, deposits and CMA, gold, crypto).
-  - Holdings lists pension positions with an "account type" column.
+  - The overview gains total-assets figures and a stacked total-assets trend
+    (see Amendments). The headline stays the stock total.
+  - Holdings is unchanged; pension positions are listed on `/pension` only.
 
 ### `/net-worth` (new, under Core Workflows)
 
@@ -278,9 +278,9 @@ Each phase ships as its own PR and leaves the app usable.
 - Account numbers, institution aliases and anchor balances live in gitignored
   local files.
 - New output files sit beside the database, outside the repository.
-- The briefing summary gains one additive `netWorth` block: totals by asset
-  class and the as-of date of the oldest input. No per-account rows. The
-  briefing and the trading review keep reading the stock figures they read today.
+- Nothing supplementary reaches the briefing summary except freshness metadata
+  for the weekly reminder (dates, labels, status; never amounts). The briefing
+  and the trading review keep reading the stock figures they read today.
 
 ## Open items
 
@@ -294,3 +294,47 @@ Each phase ships as its own PR and leaves the app usable.
 - **Which account is the CMA** has to be confirmed before its detector is written.
 - **The KRX gold price source** has to be chosen in phase 3. It should be a public
   daily close, cached like the other price snapshots.
+
+## Amendments (2026-10-10)
+
+### Principle
+
+Deposits, pensions and gold are supplementary data. They exist to show total
+assets and nothing else.
+
+- **R1.** Stock surfaces are unaffected by supplementary data.
+- **R2.** Supplementary data appears only in total-assets contexts, and total
+  assets has one definition (`totalAssetsSeries` in `lib/net-worth.ts`).
+- **R3.** It always shows its as-of date.
+- **R4.** Upkeep stays low: long cadences, no analytics.
+- **R5.** Nothing supplementary leaves the app. Sheets, the briefing and the
+  trading review stay stock-only. The summary may carry freshness metadata for
+  the reminder, never amounts.
+
+### Decisions
+
+- **No `netWorth` block in the briefing summary.** The Privacy promise of one
+  additive block is withdrawn. The summary gains a `supplementaryCoverage` block
+  (freshness only) for the weekly reminder.
+- **The Overview headline stays the stock total** in both views. The promise of
+  a total-assets headline with an allocation bar is withdrawn.
+- **No pension positions in Holdings.** That promise is withdrawn; positions are
+  on `/pension`.
+- **Pensions and gold are in the total-assets trend.** A separate stacked chart
+  on the Overview (All-assets view) and on `/net-worth` shows stocks, crypto,
+  cash, pensions and gold. The existing stock trend chart is stock-only in both
+  views. Before a class's data starts it contributes nothing on that date, and
+  the chart notes where each class starts. Pensions step on certificate and
+  snapshot dates.
+- **The FBAR / Form 8938 table is built**, on `/net-worth`, from data already in
+  the database plus a tracked Treasury reporting-rate file
+  (`data/treasury-reporting-rates.json`). Accounts whose year has gaps are flagged
+  as possibly understated; US institutions are excluded.
+- **Supplementary warnings go to the weekly reminder only.** Validation checks
+  carry a scope (`stock` or `supplementary`). The badge, the printed
+  `Validation:` line and the daily refresh alert read the `stock` scope; the
+  supplementary checks print on a separate `Supplementary:` line and surface in
+  the reminder's supplementary section.
+- **The switch lives in the sidebar**, not the header. An "All assets" section
+  holds `/net-worth` and `/pension`, and is hidden when the database has no
+  supplementary data.

@@ -13,12 +13,15 @@
  * Point it at a sample-data server, never at real holdings.
  */
 const ROUTES = [
-  '/', '/net-worth', '/daily-briefing', '/holdings', '/review', '/rebalance', '/income',
+  '/', '/net-worth', '/pension', '/daily-briefing', '/holdings', '/review', '/rebalance', '/income',
   '/tax-planning', '/tax-settings', '/lots', '/cost-basis', '/dividends',
   '/transactions', '/fx', '/crypto-premium', '/accounts', '/health', '/data-ops',
   '/reconciliation', '/data-map', '/positions/KR/005930',
 ]
 const MIN_TARGET = 24
+// The overview is audited twice: once in the default stock view, once in the
+// all-assets view, which adds the stacked total-assets chart.
+const PASSES = [...ROUTES.map((route) => ({ route, view: null })), { route: '/', view: 'all' }]
 
 function arg(flag, fallback) {
   const i = process.argv.indexOf(flag)
@@ -33,10 +36,14 @@ const browser = await chromium.launch()
 const context = await browser.newContext({ viewport: { width: 375, height: 812 }, reducedMotion: 'reduce' })
 const page = await context.newPage()
 let problems = 0
+const { hostname } = new URL(baseUrl)
 
-for (const route of ROUTES) {
+for (const { route: path, view } of PASSES) {
+  const route = view ? `${path} (${view} assets)` : path
   try {
-    await page.goto(`${baseUrl}${route}`, { waitUntil: 'networkidle', timeout: 45_000 })
+    await context.clearCookies({ name: 'stock-observatory-asset-view' })
+    if (view) await context.addCookies([{ name: 'stock-observatory-asset-view', value: view, domain: hostname, path: '/' }])
+    await page.goto(`${baseUrl}${path}`, { waitUntil: 'networkidle', timeout: 45_000 })
     await page.waitForTimeout(500)
     const found = await page.evaluate((min) => {
       const de = document.documentElement
@@ -66,5 +73,5 @@ for (const route of ROUTES) {
 }
 
 await browser.close()
-console.log(`\n${problems} of ${ROUTES.length} routes with findings at 375px`)
+console.log(`\n${problems} of ${PASSES.length} routes with findings at 375px`)
 process.exit(problems === 0 ? 0 : 1)

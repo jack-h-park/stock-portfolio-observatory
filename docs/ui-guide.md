@@ -65,6 +65,31 @@ Do not write the grid class by hand. Fifty-one copies of five arrangements
 existed before `CardRow`, which is how a fifty-second comes to differ by one
 utility.
 
+## All assets
+
+Deposits, CMA balances, pensions and gold are supplementary data (see
+`docs/superpowers/specs/2026-10-09-net-worth-and-pension-design.md`, Amendments).
+Three rules decide where they may appear:
+
+- **Stock surfaces never include them.** Holdings, the stock trend chart, the
+  badge and the validation line are stock-only in both views.
+- **The switch is in the sidebar.** Stocks is the default. In All assets the
+  Overview adds a "Total assets trend" card, and the sidebar's "All assets"
+  section links `/net-worth` and `/pension`. That section is hidden when the
+  database has no supplementary data.
+- **Every amount carries its as-of date.** The Total assets card shows the date
+  per class, with cash using the oldest latest balance across accounts.
+
+**The stacked chart.** `StackedAssetChart` draws one stacked area per class
+(stocks, crypto, cash, pensions, gold) from `totalAssetsSeries`, the single
+definition of total assets by date. The last point is today's `getNetWorth()`
+figures, so it equals the Total assets card. A class contributes nothing before
+its data starts; it is never drawn as zero mid-series and never interpolated, and
+a note under the chart lists where each class starts. Pensions move only on
+certificate and snapshot dates, so the note says so. `/net-worth` shows the same
+chart above the balances, with a month-end table (Month, Stocks, Crypto, Cash,
+Pensions, Gold, Total).
+
 ## Type and colour
 
 Sizes are named by role in `tailwind.config.ts` — `micro` 10, `label` 11,
@@ -117,7 +142,8 @@ pnpm ui:snap --base http://127.0.0.1:3143 --out /tmp/after
 pnpm ui:compare /tmp/before /tmp/after
 ```
 
-Nineteen routes × two languages × two widths = 80 images, diffed by content
+Every route × two languages × two widths, plus one extra Overview pass per
+language and width in the all-assets view (`--all` files), diffed by content
 hash. A refactor that should change nothing must report **0 changed**; that is
 the whole claim of most of the phases in this refactor.
 
@@ -145,6 +171,9 @@ pnpm ui:mobile --base http://127.0.0.1:3143    # sideways scroll, touch targets 
 
 Both need a running sample server, so neither is in CI. Run them when you touch
 layout.
+
+Both audits cover `/net-worth` and `/pension`, and run one extra pass over `/` with
+the `stock-observatory-asset-view=all` cookie so the stacked chart is checked.
 
 Do not audit accessibility by reading the source. The hand survey that started
 P4 was wrong in both directions — it flagged seven selects that were wrapped in

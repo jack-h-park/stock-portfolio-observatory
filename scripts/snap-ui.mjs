@@ -31,6 +31,7 @@ import { setTimeout as sleep } from 'node:timers/promises'
 const ROUTES = [
   '/',
   '/net-worth',
+  '/pension',
   '/daily-briefing',
   '/holdings',
   '/review',
@@ -57,6 +58,15 @@ const ROUTES = [
   // nothing — which is exactly what happened to position detail.
   '/positions/KR/005930',
   '/tax-planning/plans/none',
+]
+
+// The stock view is the default and covers every route. One extra pass puts the
+// overview in the all-assets view, which is where the stacked total-assets chart
+// lives; its files carry an `--all` suffix so a compare keeps the two apart.
+const ASSET_VIEW_COOKIE = 'stock-observatory-asset-view'
+const PASSES = [
+  { view: null, routes: ROUTES },
+  { view: 'all', routes: ['/'] },
 ]
 
 const LANGUAGES = ['en', 'ko']
@@ -120,9 +130,9 @@ async function waitForStableRender(page, { interval = 150, stableReads = 3, time
   }
 }
 
-function slug(route, language, viewport) {
+function slug(route, language, viewport, view = null) {
   const name = route === '/' ? 'overview' : route.slice(1).replace(/\//g, '_')
-  return `${name}--${language}--${viewport}.png`
+  return `${name}--${language}--${viewport}${view ? `--${view}` : ''}.png`
 }
 
 function hash(file) {
@@ -176,6 +186,7 @@ let failed = 0
 
 for (const viewport of VIEWPORTS) {
   for (const language of LANGUAGES) {
+   for (const pass of PASSES) {
     const context = await browser.newContext({
       viewport: { width: viewport.width, height: viewport.height },
       deviceScaleFactor: 1,
@@ -188,11 +199,12 @@ timezoneId: 'Asia/Seoul',
     await context.addCookies([
       { name: LANGUAGE_COOKIE, value: language, domain: hostname, path: '/' },
       { name: CURRENCY_COOKIE, value: currency, domain: hostname, path: '/' },
+      ...(pass.view ? [{ name: ASSET_VIEW_COOKIE, value: pass.view, domain: hostname, path: '/' }] : []),
     ])
     const page = await context.newPage()
 
-    for (const route of ROUTES) {
-      const file = path.join(outDir, slug(route, language, viewport.name))
+    for (const route of pass.routes) {
+      const file = path.join(outDir, slug(route, language, viewport.name, pass.view))
       try {
         await page.goto(`${baseUrl}${route}`, { waitUntil: 'networkidle', timeout: 45_000 })
         // Recharts animates its geometry on mount with JS (react-smooth), which
@@ -226,6 +238,7 @@ timezoneId: 'Asia/Seoul',
       }
     }
     await context.close()
+   }
   }
 }
 
