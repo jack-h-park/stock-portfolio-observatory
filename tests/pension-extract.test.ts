@@ -87,13 +87,13 @@ function miraeRecord(r: MiraeRecord): Table {
   return [a, b, c]
 }
 
-function miraeCertificate(accountType: string, window: string, records: MiraeRecord[]): Page[] {
+function miraeCertificate(accountType: string, window: string, records: MiraeRecord[], number = '000-00'): Page[] {
   return [
     { text: `거래내역 증 명 서\nN O. 2026-001-00000099\n제공내역(provided information)\n${window}\n미래에셋증권 대표이사 예시대표`, tables: [] },
     {
-      text: `계좌정보 페이지: 01/01\n계좌번호 000-00 계좌유형 ${accountType} 고객명 예시고객`,
+      text: `계좌정보 페이지: 01/01\n계좌번호 ${number} 계좌유형 ${accountType} 고객명 예시고객`,
       tables: [
-        [['계좌번호', '000-00', '계좌유형', accountType, '고객명', '예시고객', '거래일자', '20200101 ~ 20261010', null, null, null]],
+        [['계좌번호', number, '계좌유형', accountType, '고객명', '예시고객', '거래일자', '20200101 ~ 20261010', null, null, null]],
         [...MIRAE_HEADER, ...records.flatMap(miraeRecord)],
       ],
     },
@@ -185,6 +185,8 @@ function runKrExtract(samsungTotal = '500,120') {
       STOCK_DATA_DIR: dataDir,
       STOCK_KR_STATEMENTS_DIR: outDir,
       STOCK_TOSS_SNAPSHOT_PATH: path.join(dataDir, 'no-toss.json'),
+      // No account map: the 미래에셋 labels come from 계좌유형 (mirae-account-identity.test.ts covers the map).
+      STOCK_ACCOUNT_MAP_PATH: path.join(dataDir, 'no-map.json'),
       STOCK_PDF_PASSWORD: '',
       STOCK_KR_AS_OF: '',
     },
@@ -439,8 +441,9 @@ print(json.dumps([ss.split_type_and_name(c) for c in json.loads(sys.argv[1])], e
 // them. `거래구분 전체` keeps them. `CMARP/MMW포함 N` is an RP/MMW flag that both
 // kinds print, so it decides nothing.
 type CmaFilter = 'excluded' | 'included' | 'unknown'
+const CMA_NUMBER = '000-000000088' // invented
 function cmaCertificate(filter: CmaFilter, records: MiraeRecord[]): Page[] {
-  const pages = miraeCertificate('종합_CMA', '2026/01/01 ~ 2026/10/10', records)
+  const pages = miraeCertificate('종합_CMA', '2026/01/01 ~ 2026/10/10', records, CMA_NUMBER)
   const line = {
     excluded: '거래구분 CMA자동매매 제외 상품구분 전체 종목구분 전체 CMARP/MMW포함 N',
     included: '거래구분 전체 상품구분 전체 종목구분 전체 CMARP/MMW포함 N',
@@ -504,7 +507,7 @@ test('발행어음 rows are a sign the sweeps are included even without 거래�
 })
 
 test('a CMA with its sweeps: the balance is 예수금 plus 발행어음 principal, moved only by transfers and interest', () => {
-  const map = { bankAccounts: [{ institution: 'mirae', kind: 'cma', currency: 'KRW', alias: '예시 CMA' }] }
+  const map = { bankAccounts: [{ institution: 'mirae', kind: 'cma', accountNumber: CMA_NUMBER, currency: 'KRW', alias: '예시 CMA' }] }
   const doc = runBank({ 'mirae-cma-20260101-20261010.pdf': cmaCertificate('included', CMA_RECORDS) }, map)
   assert.deepEqual(doc.findings, [])
   assert.equal(doc.accounts.length, 1)

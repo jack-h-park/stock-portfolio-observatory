@@ -427,6 +427,54 @@ def _alias(account_map, institution, kind, last4=None):
                                          DEFAULT_ALIASES.get((institution, kind), f"{institution} {kind}"))
 
 
+def _mirae_cma_groups(paths, account_map, map_present, findings, notes):
+    """{label: [paths]}: 미래에셋 CMA certificates, by the account-map entry for each one's full 계좌번호.
+
+    Never by the last four digits (the CMA shares them with the 종합 brokerage
+    account) and never by the filename alone; see scripts/mirae_accounts.py. A
+    certificate whose number the map lacks is skipped with a finding, and two
+    entries that would share one label are refused rather than merged.
+
+    With no account map at all (CI, sample mode) every certificate goes under the
+    one default name, as before, and a note says so: {None: paths}.
+    """
+    if not map_present:
+        notes.append(f"{len(paths)} 미래에셋 CMA certificate(s) named {DEFAULT_ALIASES[('mirae', 'cma')]} by type: "
+                     "there is no account map, so two CMA accounts would merge")
+        return {None: list(paths)}
+    kr = _kr_statements_module()
+    ma = kr.mirae_accounts
+    collisions, colliding = ma.label_collisions({"bankAccounts": account_map.get("bankAccounts", [])})
+    findings.extend(f"미래에셋 CMA: {detail}" for detail in collisions)
+    groups = {}
+    for path in paths:
+        pdf = kr.open_pdf(str(path))
+        if pdf is None:
+            findings.append(f"{path.name}: could not be opened (set STOCK_PDF_PASSWORD); skipped")
+            continue
+        with pdf:
+            numbers = sorted(set(ma.account_numbers((page.extract_text() or "") for page in pdf.pages)))
+        if len(numbers) != 1:
+            shown = ", ".join(ma.mask(n) for n in numbers) or "none"
+            findings.append(f"{path.name}: prints {len(numbers)} full 계좌번호 ({shown}), so which account it is "
+                            "cannot be told; skipped")
+            continue
+        entry, problem = ma.find(account_map, numbers[0])
+        if problem:
+            findings.append(f"{path.name}: {problem}; skipped")
+        elif entry is None:
+            findings.append(f"{path.name}: 계좌번호 {ma.mask(numbers[0])} is not in the account map; skipped — "
+                            f"{ma.remedy('cma', numbers[0])}")
+        elif entry["kind"] != "cma":
+            findings.append(f"{path.name}: 계좌번호 {ma.mask(numbers[0])} is the {entry['kind']} account in the "
+                            "account map, not a CMA; skipped — file it under kr-statements")
+        elif entry["number"] in colliding:
+            findings.append(f"{path.name}: skipped — its account shares the label {entry['label']} with another")
+        else:
+            groups.setdefault(entry["label"], []).append(path)
+    return groups
+
+
 def _derive(alias, txns, account_map, findings):
     anchor = next((a for a in account_map.get("anchors", []) if a.get("alias") == alias), None)
     if anchor is None:
@@ -442,13 +490,18 @@ def _derive(alias, txns, account_map, findings):
 
 
 def main():
-    account_map = json.loads(MAP_PATH.read_text(encoding="utf-8")) if MAP_PATH.exists() else {}
+    map_present = MAP_PATH.exists()
+    account_map = json.loads(MAP_PATH.read_text(encoding="utf-8")) if map_present else {}
     findings, notes, accounts = [], [], []
     for prefix, institution, kind, currency, parse, key_pattern in FAMILIES:
         files = sorted(SOURCE_DIR.glob(f"{prefix}*")) if SOURCE_DIR.exists() else []
         if not files:
             continue
-        by_account = {}
+        by_account, labels = {}, {}
+        if (institution, kind) == ("mirae", "cma"):
+            by_account = _mirae_cma_groups(files, account_map, map_present, findings, notes)
+            labels = {key: key for key in by_account if key is not None}
+            files = []
         for path in files:
             key = None
             if key_pattern:
@@ -476,7 +529,7 @@ def main():
             txns = merge_txns([rows for _, _, rows in parsed])
             rule = _alias_rule(account_map, institution, kind, key)
             account_kind = (rule or {}).get("kind") or kind
-            alias = _alias(account_map, institution, kind, key)
+            alias = labels.get(key) or _alias(account_map, institution, kind, key)
             if not txns:
                 continue
             derived = all(t["balance"] is None for t in txns)

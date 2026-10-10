@@ -51,10 +51,14 @@ import pdfplumber
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import samsung_statements  # noqa: E402  (needs the path above)
 import toss_statements  # noqa: E402  (needs the path above)
+import mirae_accounts  # noqa: E402  (needs the path above)
 
 DATA_DIR = Path(os.environ.get("STOCK_DATA_DIR", Path.cwd() / "private-data"))
 OUT_DIR = Path(os.environ.get("STOCK_KR_STATEMENTS_DIR", Path.cwd() / "data/kr-statements"))
 PDF_PASSWORD = os.environ.get("STOCK_PDF_PASSWORD", "")
+# The gitignored account map: which 미래에셋 account each full 계좌번호 is, and
+# its label (scripts/mirae_accounts.py). Absent in CI and sample mode.
+ACCOUNT_MAP_PATH = Path(os.environ.get("STOCK_ACCOUNT_MAP_PATH", Path.cwd() / "data" / "accounts.local.json"))
 TOSS_SNAPSHOT_PATH = Path(os.environ.get("STOCK_TOSS_SNAPSHOT_PATH", Path.cwd() / "data/toss-snapshot.json"))
 TOSS_ACCOUNT = os.environ.get("STOCK_TOSS_ACCOUNT_LABEL", "토스증권")
 
@@ -340,13 +344,13 @@ def statement_coverage(path, report):
 # Finding kinds that mean a row was DROPPED rather than kept with a note. The
 # distinction is the whole point of the report file: an unresolved ISIN still
 # produces a transaction, an unmapped 거래종류 produces nothing at all.
-DROPPING_KINDS = {"unmapped-type", "samsung-unmapped-type", "mirae-unmapped-type"}
+DROPPING_KINDS = {"unmapped-type", "samsung-unmapped-type", "mirae-unmapped-type", "mirae-unmapped-account"}
 
 # Finding kinds that mean the extract is WRONG rather than incomplete: rows that
 # belong to a different account were filed under this one. The ingest fails the
 # refresh on these instead of listing them beside the notes, because a warning
 # that says "counted twice" was scrolled past for two months.
-BLOCKING_KINDS = {"account-mismatch"}
+BLOCKING_KINDS = {"account-mismatch", "mirae-account-label-collision", "mirae-account-map-unreadable"}
 
 # Types classified on the evidence that they carry no shares. The classification
 # is only as good as that, so the day one arrives with a quantity on it, the
@@ -417,7 +421,7 @@ class StatementsToRead(list):
         return any(start <= day <= end for start, end, _ in windows)
 
 
-def statements_to_read(pdfs, report):
+def statements_to_read(pdfs, report, distinct_accounts=None):
     """The statements to extract, and how overlapping ones share their days.
 
     A 거래내역증명서 is requested for a period, so downloads overlap. Both files
@@ -454,6 +458,11 @@ def statements_to_read(pdfs, report):
     Comparing the files would find each one contains the other and drop one,
     silently losing half of 2023 and two thirds of 2024 (4,871 transactions). So
     `-NofM` is stripped to get the document, and documents are what get compared.
+
+    `distinct_accounts(a, b)`, given two printed numbers, says they are two
+    accounts the account map declares. A second 종합 account files under the same
+    `mirae-general-transactions-` series as the first, and that is not a misfiled
+    statement, so it is not reported.
     """
     documents = {}
     for path in pdfs:
@@ -486,7 +495,8 @@ def statements_to_read(pdfs, report):
     mismatched = set()
     for key, (start, end), other, (o_start, o_end) in pairs:
         if not same_account(key, other):
-            if (o_start <= end and start <= o_end) and (key, other) not in mismatched:
+            declared = distinct_accounts is not None and distinct_accounts(accounts[key], accounts[other])
+            if not declared and (o_start <= end and start <= o_end) and (key, other) not in mismatched:
                 mismatched.add((key, other))
                 report(
                     "account-mismatch",
@@ -551,6 +561,45 @@ def account_label(pdf):
                             return "미래에셋증권(IRP)"
                         return f"미래에셋증권({kind})"
     return "미래에셋증권"
+
+
+def mirae_account(pdf, name, account_map, colliding):
+    """(label, finding): the account a 미래에셋 statement's rows go under.
+
+    The label of the account-map entry for the FULL 계좌번호 the statement
+    prints, never one read off 계좌유형 (scripts/mirae_accounts.py). A
+    statement the map cannot place is skipped: (None, (kind, detail)).
+
+    With no account map at all — CI, sample mode — the label is read off 계좌유형
+    as it always was, and the finding says so: (label, ("mirae-no-account-map", …)).
+    """
+    if account_map is None:
+        label = account_label(pdf)
+        return label, ("mirae-no-account-map",
+                       f"{name}: labelled {label} by its printed 계좌유형 — there is no account map, "
+                       "so two accounts of one type would merge")
+    numbers = sorted(set(mirae_accounts.account_numbers(page.extract_text() or "" for page in pdf.pages)))
+    unmapped = "mirae-unmapped-account"
+    if not numbers:
+        return None, (unmapped, f"{name}: prints no full 계좌번호, so which account it is cannot be "
+                                "told; skipped")
+    if len(numbers) > 1:
+        shown = ", ".join(mirae_accounts.mask(n) for n in numbers)
+        return None, (unmapped, f"{name}: prints {len(numbers)} different 계좌번호 ({shown}); skipped")
+    entry, problem = mirae_accounts.find(account_map, numbers[0])
+    if problem:
+        return None, (unmapped, f"{name}: {problem}; skipped")
+    if entry is None:
+        return None, (unmapped, f"{name}: 계좌번호 {mirae_accounts.mask(numbers[0])} is not in the account "
+                                f"map; skipped rather than labelled by its 계좌유형 — "
+                                f"{mirae_accounts.remedy(None, numbers[0])}")
+    if entry["kind"] == "cma":
+        return None, (unmapped, f"{name}: 계좌번호 {mirae_accounts.mask(entry['number'])} is the cma account "
+                                "in the account map, a bank account; skipped — file it under bank-statements")
+    if entry["number"] in colliding:
+        return None, ("mirae-account-label-collision",
+                      f"{name}: skipped — its account shares the label {entry['label']} with another")
+    return entry["label"], None
 
 
 def records(pdf, source_name):
@@ -1419,7 +1468,22 @@ def main():
     def report(kind, detail):
         parser_problems.setdefault(kind, []).append(detail)
 
-    pdfs = statements_to_read(sorted(statements_dir.glob(f"{MIRAE_PREFIX}*.pdf")), report)
+    # Which account a 미래에셋 statement is comes from its full 계좌번호 and the
+    # account map; see mirae_account. A map that cannot be read leaves every
+    # statement unplaceable, so none is read.
+    account_map, map_problem = mirae_accounts.load_map(ACCOUNT_MAP_PATH)
+    if map_problem:
+        report("mirae-account-map-unreadable", f"{map_problem}; no 미래에셋 statement was read")
+        account_map = {}
+    collisions, colliding = mirae_accounts.label_collisions(account_map)
+    for detail in collisions:
+        report("mirae-account-label-collision", detail)
+    mapped_numbers = {e["number"] for e in mirae_accounts.entries(account_map)}
+
+    def distinct_accounts(a, b):
+        return mirae_accounts.digits(a) in mapped_numbers and mirae_accounts.digits(b) in mapped_numbers
+
+    pdfs = statements_to_read(sorted(statements_dir.glob(f"{MIRAE_PREFIX}*.pdf")), report, distinct_accounts)
     if not pdfs:
         print(f"ERROR: no 미래에셋 statements in {statements_dir}", file=sys.stderr)
         return 1
@@ -1441,7 +1505,12 @@ def main():
             skipped_locked.append(name)
             continue
         with pdf:
-            account = account_label(pdf)
+            account, finding = mirae_account(pdf, name, account_map, colliding)
+            if finding:
+                report(*finding)
+            if account is None:
+                print(f"[kr-statement] {name}: skipped — {finding[1]}", file=sys.stderr)
+                continue
             declared[(account, name)] = pdfs.period(pdf_path)
             count = 0
             ceded = 0

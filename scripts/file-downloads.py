@@ -65,6 +65,9 @@ from datetime import date, timedelta
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import mirae_accounts  # noqa: E402  (beside this file, so the path goes first)
 
 
 def load_local_env():
@@ -296,6 +299,7 @@ class Document:
         self.path = path
         self.suffix = path.suffix.lower()
         self._pdf_pages = {}
+        self._all_pages = None
         self._pdf_meta = None
         self._pdf_error = None
         self._lines = None
@@ -364,6 +368,24 @@ class Document:
                 self._pdf_error += " (STOCK_PDF_PASSWORD is not set — the 미래에셋 종합 and 삼성 certificates are encrypted)"
         self._pdf_pages[index] = text
         return text
+
+    def page_texts(self):
+        """NFC text of every page, read in one pass (page_text reopens the file per page)."""
+        if self.suffix != ".pdf":
+            return []
+        if self._all_pages is None:
+            texts = []
+            try:
+                with self._open_pdf() as pdf:
+                    self._pdf_meta = pdf.metadata or {}
+                    for index, page in enumerate(pdf.pages):
+                        if index not in self._pdf_pages:
+                            self._pdf_pages[index] = nfc(page.extract_text() or "")
+                        texts.append(self._pdf_pages[index])
+            except Exception as exc:  # the same failure page_text reports
+                self._pdf_error = self._pdf_error or f"{type(exc).__name__}: {exc}"
+            self._all_pages = texts
+        return self._all_pages
 
     @property
     def pdf_meta(self):
@@ -476,28 +498,79 @@ class Refusal:
 # same file, because that means a marker is not as specific as it looks.
 # ---------------------------------------------------------------------------
 
-# 미래에셋 계좌번호 → the account type its certificates belong to, from the
-# account map's `brokerageAccounts` (the numbers are private and this repository
-# is public). Read off the certificates on disk rather than inferred from the
-# number's shape: a 잔고증명서 does not print 계좌유형, and guessing which account
-# a balance belongs to would put ISA holdings under the 종합 account. An unknown
-# account number is refused.
-MIRAE_MAP_REMEDY = (
-    'add {"institution": "mirae", "accountNumber": "<계좌번호>", "kind": "isa" or "general"} '
-    "to brokerageAccounts in the account map (data/accounts.local.json)"
-)
+# 미래에셋 account identity: the FULL 계좌번호 the document prints, looked up in
+# the account map (the numbers are private and this repository is public). See
+# scripts/mirae_accounts.py for the rule. Never the last four digits: the CMA
+# shares them with the 종합 account, and a CMA certificate sat filed under the
+# 종합 account for months. Never the printed 계좌유형 alone: a second 종합 account
+# prints the same 계좌유형 as the first. 계좌유형 is only a consistency check,
+# and a 잔고증명서 does not print it at all. An unknown number is refused.
+MIRAE_MAP_REMEDY = mirae_accounts.remedy(None, "")
+MIRAE_MAP_KEYS = ("brokerageAccounts", "bankAccounts", "pensionAccounts")
 
 
-def mirae_account_kind(number):
-    """(kind, problem): which 미래에셋 account `number` is, per the account map."""
-    entries, problem = account_map_list("brokerageAccounts")
+def doc_page_texts(doc):
+    """Every page's text: Document reads them in one pass; a stand-in reads until a blank page."""
+    if hasattr(doc, "page_texts"):
+        return doc.page_texts()
+    texts = []
+    while len(texts) < 1000:
+        text = doc.page_text(len(texts))
+        if not text:
+            break
+        texts.append(text)
+    return texts
+
+
+def mirae_account(what, numbers, printed_type=None):
+    """(entry, refusal): the account-map entry for the one full 계좌번호 in `numbers`.
+
+    `numbers` is every occurrence on every page. They must agree, the map must
+    list the number, and a printed 계좌유형, if it names a kind, must be the
+    map's kind.
+    """
+    printed_kind = mirae_accounts.type_kind(printed_type) if printed_type else None
+    distinct = sorted(set(numbers))
+    if not distinct:
+        return None, Refusal(
+            what,
+            "it prints no full 계좌번호, and the account number is the only thing that "
+            "says which 미래에셋 account it belongs to",
+            MIRAE_MAP_REMEDY,
+        )
+    if len(distinct) > 1:
+        shown = ", ".join(mirae_accounts.mask(n) for n in distinct)
+        return None, Refusal(
+            what,
+            f"its pages print {len(distinct)} different 계좌번호 ({shown}); one document is one account",
+            "move the file aside and re-issue it",
+        )
+    number = distinct[0]
+    account_map = {}
+    for key in MIRAE_MAP_KEYS:
+        entries, problem = account_map_list(key)
+        if problem:
+            return None, Refusal(what, problem, "fix the JSON, or move the file aside")
+        account_map[key] = entries
+    entry, problem = mirae_accounts.find(account_map, number)
     if problem:
-        return None, problem
-    for entry in entries:
-        if (entry.get("institution") == "mirae" and entry.get("kind") in ("isa", "general")
-                and digits(entry.get("accountNumber")) == digits(number)):
-            return entry["kind"], None
-    return None, None
+        return None, Refusal(what, problem, "fix the JSON, or move the file aside")
+    if entry is None:
+        typed = f" (it prints 계좌유형 {printed_type.strip()})" if printed_kind else ""
+        return None, Refusal(
+            what,
+            f"계좌번호 {mirae_accounts.mask(number)} is not in the account map{typed}, and only the "
+            "full number decides which 미래에셋 account a document belongs to; the file stays in the inbox",
+            mirae_accounts.remedy(printed_kind, number),
+        )
+    if printed_kind and printed_kind != entry["kind"]:
+        return None, Refusal(
+            what,
+            f"page 2 prints 계좌유형 {printed_type.strip()} ({printed_kind}), but the account map lists "
+            f"{mirae_accounts.mask(number)} as {entry['kind']}; one of them is wrong",
+            f"check the entry in {entry['section']}, or move the file aside",
+        )
+    return entry, None
 
 
 def mirae_period_window(text):
@@ -516,9 +589,9 @@ def detect_mirae_transactions(doc):
     or bank-statements/mirae-cma-<from>-<to>.pdf for the CMA.
 
     The title is letter-spaced on the cover (`거래내역 증 명 서`), so it is
-    matched despaced. 계좌유형 is not on the cover — it is in the table header
-    that repeats on every data page — so page 2 supplies whether this is the ISA,
-    the 종합, the IRP (`퇴직연금_개인IRP`) or the 금현물 account.
+    matched despaced. Which account it is comes from the 계좌번호 printed in the
+    table header that repeats on every data page, looked up in the account map
+    (see mirae_account). The 계좌유형 beside it is checked against the map's kind.
 
     The IRP and 금현물 certificates are named for the window they declare, from
     and to, never as an as-of: a 1 January start in the current year would
@@ -538,40 +611,22 @@ def detect_mirae_transactions(doc):
         )
     start, end = window
 
-    body = despace(doc.page_text(1))
-    kind = None
-    match = re.search(r"계좌유형(.*?)고객명", body)
-    if match:
-        # Only the 계좌유형 field is read: the certificate's boilerplate mentions
-        # 금현물 and 퇴직연금 on every account's pages.
-        account_type = match.group(1)
-        if re.search(r"IRP|퇴직연금", account_type, re.I):
-            kind = "irp"
-        elif "금현물" in account_type:
-            kind = "gold"
-        elif "ISA" in account_type:
-            kind = "isa"
-        elif "CMA" in account_type.upper():
-            # `종합_CMA` is the 발행어음형 CMA, a deposit account. It shares its
-            # last four digits with the 종합 brokerage account (which prints
-            # `종합`), so this must be decided before the 종합 branch below.
-            kind = "cma"
-        elif "종합" in account_type:
-            kind = "general"
-    if kind is None:
-        account = re.search(r"계좌번호(\d[\d-]+)", body)
-        kind, problem = mirae_account_kind(account.group(1)) if account else (None, None)
-        if problem:
-            return Refusal("미래에셋 거래내역증명서", problem, "fix the JSON, or move the file aside")
-    if kind is None:
-        return Refusal(
-            "미래에셋 거래내역증명서",
-            "page 2 names neither 계좌유형 ISA/종합 nor a 계좌번호 the account map "
-            "declares, so which account it belongs to is unknown",
-            MIRAE_MAP_REMEDY,
-        )
+    # Only the 계좌유형 field is read: the certificate's boilerplate mentions
+    # 금현물 and 퇴직연금 on every account's pages.
+    match = re.search(r"계좌유형(.*?)고객명", despace(doc.page_text(1)))
+    printed_type = match.group(1) if match else None
+    pages = doc_page_texts(doc)
+    entry, refusal = mirae_account("미래에셋 거래내역증명서", mirae_accounts.account_numbers(pages), printed_type)
+    if refusal:
+        return refusal
+    kind = entry["kind"]
 
-    evidence = [f"제공내역 {iso(start)} ~ {iso(end)}", f"계좌유형 {kind}"]
+    evidence = [
+        f"제공내역 {iso(start)} ~ {iso(end)}",
+        f"계좌번호 {mirae_accounts.mask(entry['number'])} is {kind} in the account map",
+    ]
+    if printed_type and mirae_accounts.type_kind(printed_type):
+        evidence.append(f"계좌유형 {printed_type} agrees")
     if kind == "cma":
         # A bank statement: the bank extractor reads it, and the KR statement
         # extractor (which globs kr-statements/mirae-*) never sees it.
@@ -606,6 +661,8 @@ def detect_mirae_balance(doc):
     A balance certificate is a position AT A MOMENT, so its period is the
     기준일자 it prints — not the 발급일시, which is only when someone asked for it
     and can be most of a year later (2025-09-11 balances issued 2026-07-16).
+    It prints no 계좌유형, so the account map entry for its 계좌번호 is all
+    there is to say which account it is.
     """
     cover = despace(doc.page_text(0))
     if "잔고증명서" not in cover:
@@ -625,16 +682,18 @@ def detect_mirae_balance(doc):
             "date it is a balance AS OF",
         )
 
-    account = re.search(r"계좌번호계좌명부기명실명확인번호(\d[\d-]+)", cover)
-    kind, problem = mirae_account_kind(account.group(1)) if account else (None, None)
-    if problem:
-        return Refusal("미래에셋 잔고증명서", problem, "fix the JSON, or move the file aside")
-    if kind is None:
+    pages = doc_page_texts(doc)
+    numbers = mirae_accounts.balance_cover_numbers(doc.page_text(0)) + mirae_accounts.account_numbers(pages)
+    entry, refusal = mirae_account("미래에셋 잔고증명서", numbers)
+    if refusal:
+        return refusal
+    kind = entry["kind"]
+    if kind not in mirae_accounts.BROKERAGE_KINDS:
         return Refusal(
             "미래에셋 잔고증명서",
-            "the 계좌번호 is not one the account map declares, and a 잔고증명서 does "
-            "not print 계좌유형 — which account it belongs to is unknown",
-            MIRAE_MAP_REMEDY,
+            f"계좌번호 {mirae_accounts.mask(entry['number'])} is the {kind} account, and this filer "
+            f"has no destination for a {kind} 잔고증명서",
+            "move the file aside",
         )
 
     issue = re.search(r"발급번호:(\d{4})-(\d{3})-(\d{8})", cover)
@@ -649,7 +708,8 @@ def detect_mirae_balance(doc):
     return Plan(
         DIR_KR,
         f"mirae-{kind}-balance-{compact(as_of)}-{serial}.pdf",
-        [f"기준일자 {iso(as_of)}", f"발급번호 …{serial}", f"계좌 {kind}"],
+        [f"기준일자 {iso(as_of)}", f"발급번호 …{serial}",
+         f"계좌번호 {mirae_accounts.mask(entry['number'])} is {kind} in the account map"],
     )
 
 
