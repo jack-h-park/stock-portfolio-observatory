@@ -621,15 +621,28 @@ def mirae_cash_points(row_a, row_b):
     why the balance is read before the type is looked at. A securities leg
     leaves both blank, and a blank is no reading rather than a zero: the cash
     leg beside it prints the balance.
+
+    A line that moved cash is different: its blank balance is a zero. The
+    certificate prints nothing rather than `0` when a line empties a pool, so a
+    blank 예수금잔액 beside a 입출금액 (row B col 6), or a blank 외화예수금 beside a
+    외화입출금액 (row B col 8), is the pool reaching zero. The 종합 account's
+    last `외화출금` sent out every dollar and printed no balance; reading that
+    blank as "no reading" carried the dollars forward for two months after they
+    had left. The same goes for a won line that runs the account into 미수.
     """
     points = []
     krw = nfc(row_a[7]).strip()
     if krw:
         points.append(("KRW", "KRW", number(krw)))
+    elif number(row_b[6]):
+        points.append(("KRW", "KRW", 0.0))
     foreign = nfc(row_a[9]).strip()
     code = nfc(row_b[10]).strip()
-    if foreign and code and code != "KRW":
-        points.append((code, code, number(foreign)))
+    if code and code != "KRW":
+        if foreign:
+            points.append((code, code, number(foreign)))
+        elif number(row_b[8]):
+            points.append((code, code, 0.0))
     return points
 
 

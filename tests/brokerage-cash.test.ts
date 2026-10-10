@@ -69,6 +69,21 @@ test('a 미래에셋 record gives its printed 예수금잔액, and 외화예수�
   assert.deepEqual(call({ fn: 'mirae', a: row({ 0: '2024/03/06', 1: '이체출금', 7: '0' }), b: row({}) }), [['KRW', 'KRW', 0]])
 })
 
+test('a 미래에셋 line that moved cash and prints no balance emptied the pool', () => {
+  // A 외화출금 that sends every dollar out leaves 외화예수금 blank: the pool is at zero.
+  assert.deepEqual(
+    call({ fn: 'mirae', a: row({ 0: '2024/05/07', 1: '외화출금', 8: '700.5' }), b: row({ 8: '700.5', 10: 'USD' }) }),
+    [['USD', 'USD', 0]]
+  )
+  // A won line that runs the account into 미수 prints no 예수금잔액 either.
+  assert.deepEqual(
+    call({ fn: 'mirae', a: row({ 0: '2024/07/10', 1: '외화예탁금세금출금', 6: '240', 10: '240', 11: '240' }), b: row({ 5: '240', 6: '240' }) }),
+    [['KRW', 'KRW', 0]]
+  )
+  // Without a 통화코드 a foreign amount names no pool, so it gives nothing.
+  assert.deepEqual(call({ fn: 'mirae', a: row({ 0: '2024/05/07', 1: '외화출금' }), b: row({ 8: '700.5' }) }), [])
+})
+
 test('a Toss line gives its 잔액 in won, pooled by section; a blank 잔액 gives nothing', () => {
   assert.deepEqual(call({ fn: 'toss', row: { section: '원화 거래내역', cash_balance: 1000, cash_printed: true } }), ['KRW', 'KRW', 1000])
   // A won figure: never pooled as USD, which in cash.tsv means real dollars.

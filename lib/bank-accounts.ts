@@ -50,3 +50,46 @@ export function retiredBankAccounts(entries: readonly BankAccountEntry[] | null 
   }
   return retired
 }
+
+export type BrokerageAccountEntry = {
+  institution?: unknown
+  kind?: unknown
+  account?: unknown
+  retired?: unknown
+  retiredOn?: unknown
+}
+
+/**
+ * The transaction `account` label each `brokerageAccounts` kind is extracted
+ * under (scripts/extract-kr-statements.py, `account_label`). An entry may name
+ * its label with `account` instead. Keep in step with the extractor.
+ */
+const BROKERAGE_LABELS: Record<string, string> = {
+  'mirae|general': '미래에셋증권(종합)',
+  'mirae|isa': '미래에셋증권(ISA)',
+}
+
+/** The transaction `account` label a `brokerageAccounts` entry's rows carry, or null when it has none. */
+export function brokerageAccountLabel(entry: BrokerageAccountEntry): string | null {
+  const named = typeof entry.account === 'string' ? entry.account.trim() : ''
+  if (named) return named
+  return BROKERAGE_LABELS[`${String(entry.institution ?? '')}|${String(entry.kind ?? '')}`] ?? null
+}
+
+/**
+ * Closed brokerage accounts, keyed by their transaction `account` label, with
+ * the same rules as retiredBankAccounts: the value is the closing date, or null
+ * for `"retired": true` with no date, and a malformed `retiredOn` is ignored.
+ */
+export function retiredBrokerageAccounts(entries: readonly BrokerageAccountEntry[] | null | undefined): Map<string, string | null> {
+  const retired = new Map<string, string | null>()
+  for (const entry of entries ?? []) {
+    if (!entry) continue
+    const label = brokerageAccountLabel(entry)
+    if (!label) continue
+    const retiredOn = typeof entry.retiredOn === 'string' && ISO_DATE.test(entry.retiredOn) ? entry.retiredOn : null
+    if (!retiredOn && entry.retired !== true) continue
+    retired.set(label, retiredOn)
+  }
+  return retired
+}
