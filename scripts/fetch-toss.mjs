@@ -17,6 +17,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { loadLocalEnv } from './env.mjs'
+import { summarizeFills } from './toss-orders.mjs'
 
 loadLocalEnv()
 
@@ -118,12 +119,13 @@ for (const account of list) {
     console.error(`WARNING: ${unresolved.length} symbol(s) returned no security record: ${unresolved.join(', ')}`)
   }
 
-  const filled = orders.filter((o) => o.status === 'FILLED')
-  const dates = filled.map((o) => o.execution?.filledAt ?? o.orderedAt).filter(Boolean).sort()
+  const fills = summarizeFills(orders)
   console.error(
     `[toss] account ${String(account.accountNo ?? seq).slice(0, 4)}…: ` +
     `${holdings?.items?.length ?? 0} holding(s), ${orders.length} closed order(s) ` +
-    `(${filled.length} filled${dates.length ? `, ${dates[0].slice(0, 10)} → ${dates[dates.length - 1].slice(0, 10)}` : ''}) ` +
+    `(${fills.filled} filled` +
+    `${fills.partial ? `, ${fills.partial} on an order that did not end FILLED` : ''}` +
+    `${fills.first ? `, ${fills.first} → ${fills.last}` : ''}) ` +
     `over ${pages} page(s), ${securities.length} security record(s)`
   )
   snapshot.accounts.push({ accountNo: account.accountNo, accountSeq: seq, accountType: account.accountType, holdings, orders, securities })
