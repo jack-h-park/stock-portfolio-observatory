@@ -229,13 +229,32 @@ def period_from_rows(row_dates, downloaded):
     on it, and warns when the earlier export holds a row the later one does not.
     The cost is that a year-to-date re-download now sits beside the file it
     repeats instead of replacing it.
+
+    THERE IS NO NAME FOR AN EXPORT WITH NO ROWS. This used to fall back to the
+    download date, which is an as-of — the one shape that supersedes — so an
+    empty download would have replaced whatever year-to-date sat beside it.
+    Callers refuse an empty export before asking (see `refuse_empty_export`),
+    and this raises rather than guess if one ever does not.
     """
     if not row_dates:
-        return compact(downloaded)
+        raise ValueError("period_from_rows needs at least one row; refuse the empty export instead")
     low, high = min(row_dates), max(row_dates)
     if high.year < downloaded.year:
         return str(low.year) if low.year == high.year else f"{low.year}-{high.year}"
     return f"{compact(low)}-{compact(high)}"
+
+
+def refuse_empty_export(what, taken, stamp):
+    """The refusal for a transactions export with no dated rows.
+
+    `stamp` is how `taken` is known — `exported` for Merrill's own header,
+    `downloaded` for Chase and Fidelity — so the line says which date it is.
+    """
+    return Refusal(
+        what,
+        f"{stamp} {iso(taken)} but has no dated rows, so there is nothing in it to file",
+        "delete it, or re-export a window that holds activity",
+    )
 
 
 def parse_ymd(text, sep=r"[-/.]"):
@@ -910,10 +929,10 @@ def detect_chase(doc):
             found = re.match(r'^"(\d{1,2}/\d{1,2}/\d{4})"', line)
             if found:
                 rows.append(parse_mdy(found.group(1)))
+        if not rows:
+            return refuse_empty_export("Chase transactions export", taken, "downloaded")
         period = period_from_rows(rows, taken)
-        evidence = [stamp]
-        if rows:
-            evidence.append(f"rows {iso(min(rows))} … {iso(max(rows))}")
+        evidence = [stamp, f"rows {iso(min(rows))} … {iso(max(rows))}"]
         return Plan(DIR_US_TRANSACTIONS, f"chase-transactions-{period}.csv", evidence)
 
     return None
@@ -945,10 +964,10 @@ def detect_fidelity(doc):
         found = re.match(r"^(\d{1,2}/\d{1,2}/\d{4}),", line)
         if found:
             rows.append(parse_mdy(found.group(1)))
+    if not rows:
+        return refuse_empty_export("Fidelity transactions export", downloaded, "downloaded")
     period = period_from_rows(rows, downloaded)
-    evidence = [f"Date downloaded {iso(downloaded)}"]
-    if rows:
-        evidence.append(f"rows {iso(min(rows))} … {iso(max(rows))}")
+    evidence = [f"Date downloaded {iso(downloaded)}", f"rows {iso(min(rows))} … {iso(max(rows))}"]
     return Plan(DIR_US_TRANSACTIONS, f"fidelity-transactions-{period}.csv", evidence)
 
 
@@ -1115,15 +1134,7 @@ def detect_merrill(doc):
             if found:
                 rows.append(parse_mdy(found.group(1)))
         if not rows:
-            # period_from_rows would fall back to the export date — an as-of
-            # newer than the full history, which `pick: 'latest'` would read in
-            # its place. An empty export is nothing to file.
-            return Refusal(
-                "Merrill transactions export",
-                f"exported {iso(exported)} but has no dated rows, so there is "
-                "nothing in it to file",
-                "delete it, or re-export a window that holds activity",
-            )
+            return refuse_empty_export("Merrill transactions export", exported, "exported")
         period = period_from_rows(rows, exported)
         evidence.append(f"rows {iso(min(rows))} … {iso(max(rows))}")
         return Plan(DIR_US_TRANSACTIONS, f"merrill-transactions-{period}.csv", evidence)

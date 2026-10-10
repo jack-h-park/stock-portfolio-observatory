@@ -290,3 +290,38 @@ test('a Merrill account with no window export is not reported as missing one', (
   const { missing } = resolveUsTransactionFiles(dataDir)
   assert.ok(!missing.some((m: string) => m.includes('merrill')))
 })
+
+// An export with no rows says nothing about what it covers. `period_from_rows`
+// used to fall back to the download date for it, which names an AS-OF — and an
+// as-of newer than the one on disk wins `pick: 'latest'`, so an empty download
+// would have replaced the whole year-to-date it was taken beside. Merrill
+// refuses this already; Chase and Fidelity are the same shape.
+const CHASE_TRANSACTIONS_HEADER =
+  'Trade Date,Post Date,Settlement Date,Account Name,Account Number,Account Type,Type,Description,' +
+  'Cusip,Ticker,Security Type,Local Currency,Price USD,Price Local,Quantity,G/L Short USD,' +
+  'G/L Short Local,G/L Long USDs,G/L Long Local,Amount USD,Amount Local,Income USD,Income Local,' +
+  'Balance,Commissions USD,Commissions Local,Tran Code,Tran Code Description,Broker,Check Number,Tax Withheld'
+
+test('a Chase transactions export with no rows is refused, not filed as an as-of', () => {
+  const { stdout } = fileDownloads({ 'Chase_Activity.csv': CHASE_TRANSACTIONS_HEADER + '\n' })
+  assert.doesNotMatch(stdout, /→ us-transactions\/chase-transactions/)
+  assert.match(stdout, /no dated rows/)
+})
+
+test('a Chase transactions export with rows is still filed by them', () => {
+  const row = ['8/5/2026', '8/5/2026', '8/5/2026', 'Self-Directed', '...0000', 'Brokerage', 'Buy', 'JEPQ SHARES',
+    '46641Q332', 'JEPQ', 'Stock', 'USD', '50.00', '50.00', '4', '', '', '', '', '-200.00', '-200.00', '', '',
+    '0', '', '', '0', 'Buy', '', '0', '0'].map((c) => `"${c}"`).join(',')
+  const { stdout } = fileDownloads({ 'Chase_Activity.csv': `${CHASE_TRANSACTIONS_HEADER}\n${row}\n` })
+  assert.match(stdout, /→ us-transactions\/chase-transactions-20260805-20260805\.csv/)
+})
+
+test('a Fidelity transactions export with no rows is refused, not filed as an as-of', () => {
+  const { stdout } = fileDownloads({
+    'Accounts_History.csv':
+      '﻿\r\n\r\nRun Date,Action,Symbol,Description,Type,Price ($),Quantity,Commission ($),Fees ($),Accrued Interest ($),Amount ($),Cash Balance ($),Settlement Date\r\n\r\n' +
+      'Date downloaded 10/09/2026 05:22 pm\r\n',
+  })
+  assert.doesNotMatch(stdout, /→ us-transactions\/fidelity-transactions/)
+  assert.match(stdout, /no dated rows/)
+})
