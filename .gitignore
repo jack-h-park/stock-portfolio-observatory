@@ -41,6 +41,8 @@ private-data/
 data/manual-mappings.json
 data/fx-rates.json
 data/kr-prices.json
+data/gold-prices.json
+data/pension-evidence.json
 data/us-prices.json
 data/us-pdf-evidence.json
 data/crypto-activity.json

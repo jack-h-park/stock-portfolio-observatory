@@ -1,0 +1,11 @@
+{
+  "isSuccess": true,
+  "detailCode": "",
+  "message": "",
+  "result": [
+    { "localTradedAt": "2026-03-05T00:00:00+09:00", "closePrice": "177,480", "fluctuationsType": { "code": "5", "text": "하락", "name": "FALLING" }, "fluctuations": "-1,000", "fluctuationsRatio": "-0.56", "openPrice": "0", "highPrice": "0", "lowPrice": "0" },
+    { "localTradedAt": "2026-03-04T00:00:00+09:00", "closePrice": "178,480", "fluctuationsType": { "code": "2", "text": "상승", "name": "RISING" }, "fluctuations": "2,480", "fluctuationsRatio": "1.41", "openPrice": "0", "highPrice": "0", "lowPrice": "0" },
+    { "localTradedAt": "2026-03-03T00:00:00+09:00", "closePrice": "176,000", "fluctuationsType": { "code": "3", "text": "보합", "name": "UNCHANGED" }, "fluctuations": "0", "fluctuationsRatio": "0.00", "openPrice": "0", "highPrice": "0", "lowPrice": "0" },
+    { "localTradedAt": "2026-03-02T00:00:00+09:00", "closePrice": "-", "fluctuationsType": { "code": "3", "text": "보합", "name": "UNCHANGED" }, "fluctuations": "0", "fluctuationsRatio": "0.00", "openPrice": "0", "highPrice": "0", "lowPrice": "0" }
+  ]
+}

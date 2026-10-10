@@ -1,6 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { loadAccountMap } from './account-map.mjs'
 import { loadLocalEnv } from './env.mjs'
+import { krPriceTickers } from './kr-price-tickers.mjs'
 
 loadLocalEnv()
 
@@ -8,6 +10,10 @@ const dataDir = process.env.STOCK_DATA_DIR || path.join(process.cwd(), 'private-
 const payloadDir = path.join(dataDir, '.codex_sheet_payloads')
 const holdingsPath = path.join(payloadDir, 'summary.noapost.tsv')
 const outPath = process.env.STOCK_KR_PRICES_PATH || path.join(process.cwd(), 'data/kr-prices.json')
+// Pension snapshot ETFs are priced too; the account map only decides which
+// payload rows are not securities (the gold account).
+const pensionDir = process.env.STOCK_PENSION_DIR || path.join(dataDir, 'pension')
+const accountMap = loadAccountMap(process.env.STOCK_ACCOUNT_MAP_PATH || path.join(process.cwd(), 'data/accounts.local.json'))
 
 function text(value) {
   return value == null ? '' : String(value).trim()
@@ -74,8 +80,7 @@ async function fetchPrice(ticker) {
   })[0]
 }
 
-const rows = readTsv(holdingsPath).filter((r) => text(r.Account).toLowerCase() !== 'total')
-const tickers = [...new Set(rows.map((r) => text(r.Ticker).replace(/^'/, '')).filter(Boolean))].sort()
+const tickers = krPriceTickers({ holdingsRows: readTsv(holdingsPath), pensionDir, accountMap })
 const prices = []
 const missing = []
 

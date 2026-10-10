@@ -1,7 +1,8 @@
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
 import { Badge, Button, Card, EmptyState, InfoTooltip, Label, Signed, TextLink, marketTone } from '@/components/ui'
-import { getOperationalHealth, getOverview, getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
+import { getOperationalHealth, getOverview, getTaxPlanningLots, getWrapperReview } from '@/lib/adapters/portfolio-db'
+import { WrapperReviewCard } from '@/components/WrapperReviewCard'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { fmtKrw, fmtMoney, fmtNumber, fmtPct } from '@/lib/format'
@@ -93,7 +94,8 @@ export default async function TaxPlanningPage({
   const horizonYears = Math.min(Math.max(Number(params.horizon ?? taxPolicy.policy.planningHorizonYears ?? 5) || 5, 1), 10)
   const selectedMasterStrategy = masterStrategy(params.master)
   const executionMonths = [12, 18, 24, 36, 48].includes(Number(params.pace)) ? Number(params.pace) : 24
-  const lots = getTaxPlanningLots(5000)
+  const lots = getTaxPlanningLots(5000, taxPolicy.policy)
+  const wrapperReview = getWrapperReview(taxPolicy.policy)
   const plan = buildTaxPlan({ lots, policy: taxPolicy.policy, scenario: activeScenario, objective, targetCashKrw })
   const multiYearPlan = buildMultiYearTaxPlan({
     lots,
@@ -155,6 +157,8 @@ export default async function TaxPlanningPage({
           </div>
         }
       />
+
+      <WrapperReviewCard rows={wrapperReview} copy={copy.wrapperReview} />
 
       <section className="mb-5 rounded-md border border-line bg-card shadow-card">
         <div className="flex flex-col gap-1 border-b border-line-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">

@@ -18,7 +18,7 @@ import {
 } from '@/lib/adapters/portfolio-db'
 import type { PortfolioSnapshot } from '@/lib/adapters/portfolio-db'
 import { config } from '@/config'
-import { dividendChartAmount, fmtDateTime, fmtNumber } from '@/lib/format'
+import { dividendChartAmount, fmtDate, fmtDateTime, fmtNumber } from '@/lib/format'
 import { convertMoney, createMoneyFormatter } from '@/lib/currency'
 import { getAssetView } from '@/lib/asset-view-server'
 import { getCurrencyPreferences } from '@/lib/currency-server'
@@ -351,7 +351,7 @@ export default async function OverviewPage({
           info={copy.portfolioValueInfo}
           eyebrow={copy.allMarkets}
           value={money(globalValue, 'KRW')}
-          hint={assetView === 'stocks' && netWorthSummary.cash.length > 0 ? (
+          hint={assetView === 'stocks' && (netWorthSummary.cash.length > 0 || netWorthSummary.byClass.pensions > 0 || netWorthSummary.byClass.gold > 0) ? (
             <>
               {copy.valueHint}
               <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 text-caption">
@@ -410,7 +410,7 @@ export default async function OverviewPage({
         <Card title={copy.totalAssets} className="mb-5">
           <div className="text-metric font-medium tabular-nums text-ink">{money(netWorth.totalKrw, 'KRW')}</div>
           <ul className="mt-3 grid gap-1.5">
-            {(['stocks', 'crypto', 'cash', 'pension', 'gold'] as const).map((key) => (
+            {(['stocks', 'crypto', 'cash', 'pensions', 'gold'] as const).map((key) => (
               <li key={key} className="flex items-baseline justify-between gap-3 text-body">
                 <span className="text-ink-3">{copy.assetClasses[key]}</span>
                 <span className="tabular-nums text-ink">
@@ -420,6 +420,11 @@ export default async function OverviewPage({
               </li>
             ))}
           </ul>
+          {netWorth.asOfNotes.length > 0 ? (
+            <div className="mt-3 rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
+              {copy.asOfNotes(netWorth.asOfNotes.map((note) => copy.asOfNote(note.label, fmtDate(note.asOf))).join(' · '))}
+            </div>
+          ) : null}
           {netWorth.unpricedCash.length > 0 ? (
             <div className="mt-3 rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{copy.unpricedCash(netWorth.unpricedCash.length)}</div>
           ) : null}

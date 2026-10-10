@@ -38,7 +38,7 @@ function ingest(csvBody: string) {
     trades: db
       .prepare(
         'select date, ticker, type, quantity, placed_agent from transactions ' +
-          'where brokerage = ? and market = ? order by rowid'
+          'where brokerage = ? and market = ? order by id'
       )
       .all('Robinhood', 'US') as Record<string, unknown>[],
     realized: db

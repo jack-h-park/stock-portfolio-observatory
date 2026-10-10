@@ -4,7 +4,9 @@ import { createHash } from 'node:crypto'
 import Database from 'better-sqlite3'
 import { config } from '@/config'
 import type { TaxPlanningLot } from '@/lib/tax-planning'
-import { depositsSeries, monthEndCash, summarizeNetWorth, type CashBalanceRow, type NetWorth } from '@/lib/net-worth'
+import { getTaxPolicyState, usTaxableWrappers, wrapperTreatment, type TaxPolicy, type WrapperTreatment } from '@/lib/tax-policy'
+import { depositsSeries, monthEndCash, summarizeNetWorth, type AsOfNote, type CashBalanceRow, type NetWorth } from '@/lib/net-worth'
+import type { PensionContributionYear } from '@/lib/pension'
 import { groupAccountRanges, type AccountDataRange, type RangeKind, type RangeRow } from '@/lib/account-ranges'
 
 /**
@@ -16,6 +18,20 @@ export const STOCK_WRAPPER_SQL = "account_wrapper in ('taxable','isa')"
 /** The same filter with the column qualified, for a query that aliases holdings or joins another table that has the column. */
 function stockWrapperFor(alias: string) {
   return `${alias}.${STOCK_WRAPPER_SQL}`
+}
+
+/** Keep in step with STOCK_ROW_PREDICATE in scripts/ingest-stock-data.mjs. */
+export const STOCK_ROW_SQL = "account_wrapper in ('taxable', 'isa') and asset_class = 'security'"
+
+/** Pension holdings in holdings_all: the two Korean pension wrappers. */
+const PENSION_ROW_SQL = "account_wrapper in ('irp', 'pension_savings')"
+/** Physical gold in holdings_all, whatever its wrapper. */
+const GOLD_ROW_SQL = "asset_class = 'gold'"
+
+/** The unfiltered table behind a stock-only view, or the plain table in a database older than the views. */
+function allAssetsTable(conn: Database.Database, name: 'holdings' | 'tax_lots' | 'transactions' | 'dividends' | 'realized_lots') {
+  const found = conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(`${name}_all`)
+  return found ? `${name}_all` : name
 }
 
 export type Holding = {
@@ -932,8 +948,10 @@ const REALIZED_MARKET_FIELDS = {
 // skipped: counting both would realize the same sale twice.
 function withCumulativeRealized(conn: Database.Database, snapshots: PortfolioSnapshot[]): PortfolioSnapshot[] {
   const empty = { global_realized_gl: null, kr_realized_gl: null, us_realized_gl_base: null, crypto_realized_gl_base: null }
+  // realized_lots is a stock-only view in a current database and a table in an
+  // older one; either is what this chart should read.
   const table = conn
-    .prepare("select 1 from sqlite_master where type = 'table' and name = 'realized_lots'")
+    .prepare("select 1 from sqlite_master where type in ('table', 'view') and name = 'realized_lots'")
     .get()
   const columns = table
     ? new Set((conn.prepare('pragma table_info(realized_lots)').all() as { name: string }[]).map((column) => column.name))
@@ -1022,11 +1040,39 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
     const usd = conn
       .prepare("select rate from fx_rates where from_currency = 'USD' and to_currency = 'KRW' order by as_of_date desc limit 1")
       .get() as { rate: number } | undefined
+    // Pensions and gold live only in holdings_all, never in the stock view the
+    // overview totals read. A row with no market value counts at cost.
+    const others = hasTable('holdings_all')
+      ? (conn
+          .prepare(
+            `select
+               coalesce(sum(case when ${PENSION_ROW_SQL} then coalesce(base_market_value, base_cost, 0) end), 0) as pensions,
+               coalesce(sum(case when ${GOLD_ROW_SQL} then coalesce(base_market_value, base_cost, 0) end), 0) as gold
+               from holdings_all`
+          )
+          .get() as { pensions: number; gold: number })
+      : { pensions: 0, gold: 0 }
+    // Values from a dated snapshot or held at cost, one note per account and date.
+    const asOfNotes = hasTable('holdings_all')
+      ? (conn
+          .prepare(
+            `select distinct account as label, as_of_date as asOf
+               from holdings_all
+              where (${PENSION_ROW_SQL} or ${GOLD_ROW_SQL})
+                and (valuation_source in ('snapshot', 'cost') or base_market_value is null)
+                and as_of_date is not null
+              order by account, as_of_date`
+          )
+          .all() as AsOfNote[])
+      : []
     const summary = summarizeNetWorth({
       stocksKrw: (overview.totals.kr_base_market_value ?? 0) + (overview.totals.us_base_market_value ?? 0),
       cryptoKrw: overview.totals.crypto_base_market_value ?? 0,
       usdKrw: usd?.rate ?? null,
       cash: latest.map((row) => ({ ...row, derived: Boolean(row.derived) })),
+      pensionsKrw: Number(others.pensions),
+      goldKrw: Number(others.gold),
+      asOfNotes,
     })
     const series = hasTable('cash_balances')
       ? (conn.prepare('select institution, account, currency, as_of_date as date, balance from cash_balances order by as_of_date, id').all() as any[])
@@ -1042,6 +1088,101 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
     )
     const history = monthEndCash(series, rateAt).map((row) => ({ ...row, stocks: stocksByMonth.get(row.month) ?? null }))
     return { ...summary, history }
+  } finally {
+    conn.close()
+  }
+}
+
+export type PensionHolding = {
+  name: string
+  kind: 'ETF' | 'FUND' | 'CASH'
+  valueKrw: number
+  costKrw: number
+  valuationSource: string | null
+  /** The holding row's as-of date: the snapshot date for a snapshot-valued row. */
+  asOf: string | null
+}
+
+export type PensionAccount = {
+  account: string
+  wrapper: string
+  valueKrw: number
+  costKrw: number
+  returnPct: number | null
+  /** The newest as-of date among the account's holdings: the snapshot it was read from. */
+  snapshotDate: string | null
+  holdings: PensionHolding[]
+  contributionsByYear: PensionContributionYear[]
+}
+
+/**
+ * One entry per pension account (IRP and pension savings), from holdings_all and
+ * pension_flows. Cost is the holdings' cost basis, as the snapshot reports it.
+ * A year's employer contribution is null unless the account's evidence names an
+ * employer contribution in some year: unknown, not zero.
+ */
+export function getPensionAccounts(): PensionAccount[] {
+  const conn = db()
+  try {
+    const hasTable = (name: string) =>
+      Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(name))
+    const hasHoldings = hasTable('holdings_all')
+    const hasFlows = hasTable('pension_flows')
+    if (!hasHoldings && !hasFlows) return []
+    const accountSources = [
+      hasHoldings ? `select account, account_wrapper from holdings_all where ${PENSION_ROW_SQL}` : null,
+      hasFlows ? `select account, account_wrapper from pension_flows where ${PENSION_ROW_SQL}` : null,
+    ].filter(Boolean)
+    const accounts = conn
+      .prepare(`select account, account_wrapper as wrapper from (${accountSources.join(' union ')}) order by account_wrapper, account`)
+      .all() as { account: string; wrapper: string }[]
+    const holdingsStmt = hasHoldings
+      ? conn.prepare(
+          `select ticker, name, coalesce(base_market_value, base_cost, 0) as valueKrw, coalesce(base_cost, total_cost_krw, 0) as costKrw,
+                  valuation_source as valuationSource, as_of_date as asOf
+             from holdings_all
+            where account = ? and account_wrapper = ?
+            order by id`
+        )
+      : null
+    const flowsStmt = hasFlows
+      ? conn.prepare(
+          `select cast(substr(date, 1, 4) as integer) as year,
+                  coalesce(sum(case when kind = 'contribution' then amount_krw end), 0) as ownKrw,
+                  coalesce(sum(case when kind = 'employer_contribution' then amount_krw end), 0) as employerKrw,
+                  count(case when kind = 'employer_contribution' then 1 end) as employerRows
+             from pension_flows
+            where account = ? and account_wrapper = ? and kind in ('contribution', 'employer_contribution')
+            group by year
+            order by year`
+        )
+      : null
+    // A pension fund is `PENSION:<token>:<n>`, cash `PENSION:<token>:cash:<n>`, and an ETF its KR ticker.
+    const kindOf = (ticker: string): PensionHolding['kind'] =>
+      /^PENSION:[^:]+:cash:/.test(ticker) ? 'CASH' : ticker.startsWith('PENSION:') ? 'FUND' : 'ETF'
+    return accounts.map(({ account, wrapper }) => {
+      const holdings = ((holdingsStmt?.all(account, wrapper) ?? []) as (Omit<PensionHolding, 'kind'> & { ticker: string })[]).map(
+        ({ ticker, ...row }) => ({ ...row, kind: kindOf(ticker), valueKrw: Number(row.valueKrw), costKrw: Number(row.costKrw) })
+      )
+      const flows = (flowsStmt?.all(account, wrapper) ?? []) as { year: number; ownKrw: number; employerKrw: number; employerRows: number }[]
+      const hasEmployer = flows.some((row) => row.employerRows > 0)
+      const valueKrw = holdings.reduce((sum, row) => sum + row.valueKrw, 0)
+      const costKrw = holdings.reduce((sum, row) => sum + row.costKrw, 0)
+      return {
+        account,
+        wrapper,
+        valueKrw,
+        costKrw,
+        returnPct: costKrw > 0 ? ((valueKrw - costKrw) / costKrw) * 100 : null,
+        snapshotDate: holdings.map((row) => row.asOf).filter((d): d is string => Boolean(d)).sort().at(-1) ?? null,
+        holdings,
+        contributionsByYear: flows.map((row) => ({
+          year: Number(row.year),
+          ownKrw: Number(row.ownKrw),
+          employerKrw: hasEmployer ? Number(row.employerKrw) : null,
+        })),
+      }
+    })
   } finally {
     conn.close()
   }
@@ -2561,7 +2702,15 @@ export function getAccountCoverage(): AccountCoverageSummary {
 export function getAccountDataRanges(): AccountDataRange[] {
   const conn = db()
   try {
-    const spans: { kind: RangeKind; table: string; start: string; end: string; type: string }[] = [
+    // /accounts lists every account, pensions included, so it reads the tables
+    // behind the stock-only views.
+    const spans: {
+      kind: RangeKind
+      table: 'holdings' | 'tax_lots' | 'transactions' | 'dividends' | 'realized_lots'
+      start: string
+      end: string
+      type: string
+    }[] = [
       { kind: 'transactions', table: 'transactions', start: 'date', end: 'date', type: 'account_type' },
       { kind: 'dividends', table: 'dividends', start: 'date', end: 'date', type: 'account_type' },
       { kind: 'holdings', table: 'holdings', start: 'as_of_date', end: 'as_of_date', type: 'account_type' },
@@ -2574,7 +2723,7 @@ export function getAccountDataRanges(): AccountDataRange[] {
         .prepare(
           `select market, coalesce(brokerage, 'Unknown') as brokerage, account, max(${span.type}) as account_type,
                   min(${span.start}) as start, max(${span.end}) as end, count(*) as count
-             from ${span.table} group by market, brokerage, account`
+             from ${allAssetsTable(conn, span.table)} group by market, brokerage, account`
         )
         .all() as { market: string; brokerage: string; account: string; account_type: string | null; start: string | null; end: string | null; count: number }[]
       for (const row of found) {
@@ -3134,17 +3283,38 @@ export function getPositionDetail(market: string, ticker: string): PositionDetai
   }
 }
 
-export function getTaxPlanningLots(limit = 500): TaxPlanningLot[] {
+/**
+ * Open lots for the tax planner: every stock lot (the default view), plus the
+ * lots of any other wrapper whose US treatment is `taxable` in the policy. With
+ * the pension wrappers `undecided` this is exactly the stock view.
+ */
+export function getTaxPlanningLots(limit = 500, policy: TaxPolicy = getTaxPolicyState().policy): TaxPlanningLot[] {
   const conn = db()
   try {
+    const extraWrappers = usTaxableWrappers(policy).filter((wrapper) => wrapper !== 'taxable' && wrapper !== 'isa')
+    const lotsTable = allAssetsTable(conn, 'tax_lots')
+    const holdingsTable = allAssetsTable(conn, 'holdings')
+    // A database older than the *_all tables has only the stock rows, and no
+    // other wrapper to add.
+    const extra = extraWrappers.length && lotsTable === 'tax_lots_all'
+    const rowFilter = (alias: string) =>
+      extra
+        ? `((${alias}.account_wrapper in ('taxable', 'isa') or ${alias}.account_wrapper in (${extraWrappers.map(() => '?').join(', ')}))` +
+          ` and ${alias}.asset_class = 'security')`
+        : lotsTable === 'tax_lots_all'
+          ? `(${alias}.account_wrapper in ('taxable', 'isa') and ${alias}.asset_class = 'security')`
+          : alias === 'h'
+            ? `${alias}.${STOCK_WRAPPER_SQL}`
+            : '1 = 1'
+    const params = extra ? [...extraWrappers, ...extraWrappers, limit] : [limit]
     return conn
       .prepare(
         `with holding_prices as (
            select market, brokerage, account, ticker,
              max(current_price) as current_price,
              max(case when quantity > 0 then native_market_value / quantity else null end) as implied_price
-           from holdings
-           where ${STOCK_WRAPPER_SQL}
+           from ${holdingsTable} as h
+           where ${rowFilter('h')}
            group by market, brokerage, account, ticker
          ),
          enriched_lots as (
@@ -3170,14 +3340,16 @@ export function getTaxPlanningLots(limit = 500): TaxPlanningLot[] {
              ) as native_unrealized_gl,
              tax_lots.cost_basis_krw,
              tax_lots.holding_days,
-             tax_lots.tax_term
-           from tax_lots
+             tax_lots.tax_term,
+             tax_lots.account_wrapper
+           from ${lotsTable} as tax_lots
            left join holding_prices
              on holding_prices.market = tax_lots.market
             and coalesce(holding_prices.brokerage, '') = coalesce(tax_lots.brokerage, '')
             and holding_prices.account = tax_lots.account
             and holding_prices.ticker = tax_lots.ticker
            where tax_lots.open_quantity > 0
+             and ${rowFilter('tax_lots')}
          )
          select *
          from enriched_lots
@@ -3187,7 +3359,67 @@ export function getTaxPlanningLots(limit = 500): TaxPlanningLot[] {
            coalesce(native_market_value, native_cost_basis) desc
          limit ?`
       )
-      .all(limit) as TaxPlanningLot[]
+      .all(...params) as TaxPlanningLot[]
+  } finally {
+    conn.close()
+  }
+}
+
+export type WrapperReviewRow = {
+  account: string
+  wrapper: string
+  usTreatment: WrapperTreatment
+  realizedGainKrw: number
+  dividendsKrw: number
+  /** Korean funds and ETFs in the account: every `PENSION:` fund id plus every KR ETF ticker, never cash. */
+  likelyPficCount: number
+}
+
+/**
+ * One row per account under a wrapper other than `taxable` or `isa`, from the
+ * `*_all` tables: what a US preparer needs to settle its treatment. Realized
+ * gains and dividends are to date, in KRW. Empty on a database older than the
+ * `*_all` tables, which holds no such account.
+ */
+export function getWrapperReview(policy: TaxPolicy = getTaxPolicyState().policy): WrapperReviewRow[] {
+  const conn = db()
+  try {
+    if (allAssetsTable(conn, 'holdings') !== 'holdings_all') return []
+    const nonStock = "account_wrapper not in ('taxable', 'isa') and asset_class = 'security'"
+    const accounts = conn
+      .prepare(
+        `select account, account_wrapper as wrapper from (
+           select account, account_wrapper from holdings_all where ${nonStock}
+           union select account, account_wrapper from transactions_all where ${nonStock}
+           union select account, account_wrapper from tax_lots_all where ${nonStock}
+           union select account, account_wrapper from dividends_all where ${nonStock}
+           union select account, account_wrapper from realized_lots_all where ${nonStock}
+         )
+         order by account_wrapper, account`
+      )
+      .all() as { account: string; wrapper: string }[]
+    const realized = conn.prepare(
+      'select coalesce(sum(realized_gl_krw), 0) as total from realized_lots_all where account = ? and account_wrapper = ? and superseded_by is null'
+    )
+    const dividends = conn.prepare(
+      'select coalesce(sum(amount_krw), 0) as total from dividends_all where account = ? and account_wrapper = ?'
+    )
+    // A pension fund is stored under `PENSION:<token>:<n>` and an ETF under its KR
+    // ticker; cash is `PENSION:<token>:cash:<n>` and is not a PFIC.
+    const pfics = conn.prepare(
+      `select count(distinct ticker) as total from holdings_all
+        where account = ? and account_wrapper = ?
+          and ticker not like 'PENSION:%:cash:%'
+          and (ticker like 'PENSION:%' or market = 'KR')`
+    )
+    return accounts.map(({ account, wrapper }) => ({
+      account,
+      wrapper,
+      usTreatment: wrapperTreatment(policy, 'US', wrapper),
+      realizedGainKrw: Number((realized.get(account, wrapper) as { total: number }).total),
+      dividendsKrw: Number((dividends.get(account, wrapper) as { total: number }).total),
+      likelyPficCount: Number((pfics.get(account, wrapper) as { total: number }).total),
+    }))
   } finally {
     conn.close()
   }

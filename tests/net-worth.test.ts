@@ -117,3 +117,28 @@ test('deposits series: a USD account with no rate on a date is left out, and the
   ])
   assert.equal(r.since, '2026-02-01')
 })
+
+test('pensions and gold join the total under their own classes, with their as-of notes', () => {
+  const r = summarizeNetWorth({
+    stocksKrw: 10_000,
+    cryptoKrw: 500,
+    usdKrw: 1300,
+    cash: [cash({})],
+    pensionsKrw: 7_000,
+    goldKrw: 3_000,
+    asOfNotes: [{ label: 'Example IRP', asOf: '2026-10-08' }],
+  })
+  assert.equal(r.byClass.stocks, 10_000)
+  assert.equal(r.byClass.pensions, 7_000)
+  assert.equal(r.byClass.gold, 3_000)
+  assert.equal(r.totalKrw, 10_000 + 500 + 1000 + 7_000 + 3_000)
+  assert.deepEqual(r.asOfNotes, [{ label: 'Example IRP', asOf: '2026-10-08' }])
+})
+
+test('without pension or gold input both classes are zero and there are no as-of notes', () => {
+  const r = summarizeNetWorth({ stocksKrw: 10_000, cryptoKrw: 0, usdKrw: null, cash: [] })
+  assert.equal(r.byClass.pensions, 0)
+  assert.equal(r.byClass.gold, 0)
+  assert.equal(r.totalKrw, 10_000)
+  assert.deepEqual(r.asOfNotes, [])
+})

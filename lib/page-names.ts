@@ -27,6 +27,7 @@ export const ROUTE_HREFS = [
   '/tax-planning',
   '/tax-settings',
   '/lots',
+  '/pension',
   '/cost-basis',
   '/dividends',
   '/transactions',

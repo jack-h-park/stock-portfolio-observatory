@@ -94,6 +94,17 @@
       }
     }
   ],
+  "wrapperTreatment": {
+    "KR": { "isa": "exempt_within_limit", "irp": "deferred", "pension_savings": "deferred" },
+    "US": { "isa": "taxable", "irp": "undecided", "pension_savings": "undecided" }
+  },
+  "pensionTaxCredit": {
+    "source": "Korean Income Tax Act art. 59-3, as amended for tax years 2023 onward",
+    "byYear": [
+      { "fromYear": 2023, "pensionSavingsLimitKrw": 6000000, "combinedLimitKrw": 9000000 },
+      { "fromYear": 2015, "pensionSavingsLimitKrw": 4000000, "combinedLimitKrw": 7000000 }
+    ]
+  },
   "manualAdjustments": [
     {
       "id": "example-adjustment",

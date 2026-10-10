@@ -21,7 +21,7 @@ export default async function NetWorthPage() {
   const copy = getPageCopy('netWorth', language)
   const meta = getMeta()
   const netWorth = getNetWorth()
-  const classes = ['stocks', 'crypto', 'cash', 'pension', 'gold'] as const
+  const classes = ['stocks', 'crypto', 'cash', 'pensions', 'gold'] as const
   const kindLabel = (kind: string) => (kind in copy.kinds ? copy.kinds[kind as keyof typeof copy.kinds] : kind)
 
   return (
@@ -43,6 +43,11 @@ export default async function NetWorthPage() {
               <MetricField key={name} label={copy.classes[name]} value={formatKrw(netWorth.byClass[name])} valueClassName="text-title tabular-nums" />
             ))}
           </div>
+          {netWorth.asOfNotes.length ? (
+            <p className="border-t border-line-subtle px-4 py-3 text-label leading-relaxed text-ink-3">
+              {copy.asOfNotes(netWorth.asOfNotes.map((note) => copy.asOfNote(note.label, fmtDate(note.asOf))).join(' · '))}
+            </p>
+          ) : null}
         </Card>
       </CardRow>
 

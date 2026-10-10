@@ -4,7 +4,7 @@ import path from 'node:path'
 /**
  * Run the ingest against a scratch directory and NOTHING else.
  *
- * The ingest reads sixteen paths, every one of them env-configurable and every
+ * The ingest reads eighteen paths, every one of them env-configurable and every
  * one of them defaulting into the repo's own `data/`. The end-to-end tests used
  * to override five. The other eleven kept reading whatever the developer
  * happened to have on disk — gitignored files that exist on a working machine
@@ -58,6 +58,9 @@ const INGEST_PATHS: Record<string, string> = {
   STOCK_TAX_POLICY_PATH: 'tax-policy.json',
   STOCK_ACCOUNT_MAP_PATH: 'accounts.local.json',
   STOCK_BANK_BALANCES_PATH: 'bank-balances.json',
+  STOCK_PENSION_DIR: 'pension',
+  STOCK_PENSION_EVIDENCE_PATH: 'pension-evidence.json',
+  STOCK_GOLD_PRICES_PATH: 'gold-prices.json',
 }
 
 /**

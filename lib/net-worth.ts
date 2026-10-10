@@ -4,9 +4,12 @@
  * as unpriced and left out of the total — never counted as zero, never at 1:1.
  */
 export type CashAccountBalance = { institution: string; account: string; kind: string; currency: 'KRW' | 'USD'; asOfDate: string; balance: number; derived: boolean }
+/** A value taken from a dated snapshot or held at cost, not from today's price: shown with its date. */
+export type AsOfNote = { label: string; asOf: string }
 export type NetWorth = {
   totalKrw: number
-  byClass: { stocks: number; crypto: number; cash: number; pension: number; gold: number }
+  byClass: { stocks: number; crypto: number; cash: number; pensions: number; gold: number }
+  asOfNotes: AsOfNote[]
   cash: (CashAccountBalance & { krw: number | null })[]
   unpricedCash: string[]
   history: { month: string; stocks: number | null; cash: number }[]
@@ -16,13 +19,22 @@ export type NetWorth = {
 const toKrw = (currency: string, amount: number, usdKrw: number | null) =>
   currency === 'KRW' ? amount : currency === 'USD' && usdKrw && usdKrw > 0 ? amount * usdKrw : null
 
-export function summarizeNetWorth(input: { stocksKrw: number; cryptoKrw: number; cash: CashAccountBalance[]; usdKrw: number | null }): Omit<NetWorth, 'history'> {
+export function summarizeNetWorth(input: {
+  stocksKrw: number
+  cryptoKrw: number
+  cash: CashAccountBalance[]
+  usdKrw: number | null
+  pensionsKrw?: number
+  goldKrw?: number
+  asOfNotes?: AsOfNote[]
+}): Omit<NetWorth, 'history'> {
   const cash = input.cash.map((row) => ({ ...row, krw: toKrw(row.currency, row.balance, input.usdKrw) }))
   const cashKrw = cash.reduce((sum, row) => sum + (row.krw ?? 0), 0)
-  const byClass = { stocks: input.stocksKrw, crypto: input.cryptoKrw, cash: cashKrw, pension: 0, gold: 0 }
+  const byClass = { stocks: input.stocksKrw, crypto: input.cryptoKrw, cash: cashKrw, pensions: input.pensionsKrw ?? 0, gold: input.goldKrw ?? 0 }
   return {
-    totalKrw: byClass.stocks + byClass.crypto + byClass.cash + byClass.pension + byClass.gold,
+    totalKrw: byClass.stocks + byClass.crypto + byClass.cash + byClass.pensions + byClass.gold,
     byClass,
+    asOfNotes: input.asOfNotes ?? [],
     cash,
     unpricedCash: cash.filter((row) => row.krw == null).map((row) => row.account),
   }
