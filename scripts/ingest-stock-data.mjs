@@ -35,21 +35,77 @@ const taxPolicyPath = process.env.STOCK_TAX_POLICY_PATH || path.join(process.cwd
 const accountMapPath = process.env.STOCK_ACCOUNT_MAP_PATH || path.join(process.cwd(), 'data/accounts.local.json')
 const accountMap = loadAccountMap(accountMapPath)
 const bankBalancesPath = process.env.STOCK_BANK_BALANCES_PATH || path.join(process.cwd(), 'data/bank-balances.json')
-// A bad deposit file must never abort the required stock ingest: it is read
-// defensively and the problem is reported by the cash_balances_readable check.
-let bankBalancesError = null
+// A bad deposit file must never abort the required stock ingest. Everything
+// read from it goes through normalizeBankBalances, which keeps only well-formed
+// elements and lists what it dropped; the cash_balances_readable check reports
+// the list, and nothing downstream guards its own input.
+function normalizeBankBalances(raw) {
+  const problems = []
+  const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
+  const strings = (v, label) => {
+    if (v === undefined) return []
+    if (!Array.isArray(v)) {
+      problems.push(`${label} is not an array`)
+      return []
+    }
+    return v.filter((x, i) => {
+      if (typeof x === 'string') return true
+      problems.push(`${label}[${i}] is not a string`)
+      return false
+    })
+  }
+  if (!isObject(raw)) {
+    problems.push('top level is not an object')
+    return { doc: { accounts: [], findings: [] }, problems }
+  }
+  let rawAccounts = raw.accounts
+  if (!Array.isArray(rawAccounts)) {
+    problems.push('accounts is not an array')
+    rawAccounts = []
+  }
+  const accounts = []
+  rawAccounts.forEach((a, i) => {
+    const label = `accounts[${i}]`
+    if (!isObject(a) || ['institution', 'account', 'kind', 'currency'].some((k) => typeof a[k] !== 'string')) {
+      problems.push(`${label} is not an object with string institution, account, kind and currency`)
+      return
+    }
+    let rawBalances = a.balances
+    if (!Array.isArray(rawBalances)) {
+      problems.push(`${label}.balances is not an array`)
+      rawBalances = []
+    }
+    const balances = rawBalances.filter((b, j) => {
+      const ok = isObject(b) && typeof b.date === 'string' && typeof b.balance === 'number' && Number.isFinite(b.balance)
+      if (!ok) problems.push(`${label}.balances[${j}] lacks a string date and a finite balance`)
+      return ok
+    })
+    accounts.push({
+      institution: a.institution,
+      account: a.account,
+      kind: a.kind,
+      currency: a.currency,
+      owner: typeof a.owner === 'string' && a.owner ? a.owner : 'self',
+      derived: Boolean(a.derived),
+      sources: strings(a.sources, `${label}.sources`),
+      balances: balances.map((b) => ({ date: b.date, balance: b.balance })),
+      continuityBreaks: strings(a.continuityBreaks, `${label}.continuityBreaks`),
+    })
+  })
+  const findings = raw.findings === null ? [] : strings(raw.findings, 'findings')
+  if (raw.findings === null) problems.push('findings is null')
+  return { doc: { accounts, findings }, problems }
+}
+let bankBalancesProblems = []
 const bankBalances = (() => {
-  const empty = { accounts: [], findings: [] }
-  if (!fs.existsSync(bankBalancesPath)) return empty
+  if (!fs.existsSync(bankBalancesPath)) return { accounts: [], findings: [] }
   try {
-    const doc = JSON.parse(fs.readFileSync(bankBalancesPath, 'utf8'))
-    if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('top level is not an object')
-    if (!Array.isArray(doc.accounts)) throw new Error('accounts is not an array')
-    if (doc.findings !== undefined && !Array.isArray(doc.findings)) throw new Error('findings is not an array')
-    return { ...doc, findings: doc.findings ?? [] }
+    const { doc, problems } = normalizeBankBalances(JSON.parse(fs.readFileSync(bankBalancesPath, 'utf8')))
+    bankBalancesProblems = problems
+    return doc
   } catch (error) {
-    bankBalancesError = error instanceof Error ? error.message : String(error)
-    return empty
+    bankBalancesProblems = [error instanceof Error ? error.message : String(error)]
+    return { accounts: [], findings: [] }
   }
 })()
 const fxLedgerPath =
@@ -554,16 +610,16 @@ const fxLedger = loadFxLedger()
 // reads it, until a later phase moves that page over. Built here, ahead of the
 // source_files registration that counts it.
 const cashRows = [
-  ...(bankBalances.accounts ?? []).filter((account) => Array.isArray(account?.balances)).flatMap((account) =>
+  ...bankBalances.accounts.flatMap((account) =>
     account.balances.map((b) => ({
       institution: account.institution,
       account: account.account,
-      owner: account.owner || 'self',
+      owner: account.owner,
       kind: account.kind,
       currency: account.currency,
       as_of_date: b.date,
       balance: b.balance,
-      source: (account.sources ?? []).join(', ') || path.basename(bankBalancesPath),
+      source: account.sources.join(', ') || path.basename(bankBalancesPath),
       derived: account.derived ? 1 : 0,
     }))
   ),
@@ -4442,13 +4498,13 @@ const observedPreference = fxObservedPreference
   : null
 check(
   'cash_balances_readable',
-  bankBalancesError === null,
-  bankBalancesError !== null
-    ? `${bankBalancesPath} could not be used: ${bankBalancesError}`
+  bankBalancesProblems.length === 0,
+  bankBalancesProblems.length > 0
+    ? `${bankBalancesPath}: ${bankBalancesProblems.length} problem(s): ${bankBalancesProblems.slice(0, 3).join('; ')}`
     : fs.existsSync(bankBalancesPath) ? 'bank balances file read' : 'no bank balances file',
   'warning'
 )
-const continuityBreaks = (bankBalances.accounts ?? []).filter((a) => Array.isArray(a?.balances) && Array.isArray(a.continuityBreaks)).flatMap((a) => a.continuityBreaks.map((b) => `${a.account} ${b}`))
+const continuityBreaks = bankBalances.accounts.flatMap((a) => a.continuityBreaks.map((b) => `${a.account} ${b}`))
 check(
   'cash_balance_continuity',
   continuityBreaks.length === 0,
@@ -4457,7 +4513,7 @@ check(
 )
 // The two anchor messages scripts/extract-bank-statements.py emits; a parse
 // failure is a different finding and is not judged here.
-const anchorFindings = (bankBalances.findings ?? []).filter((f) => f.includes('no anchor balance') || f.includes('anchor is unusable'))
+const anchorFindings = bankBalances.findings.filter((f) => f.includes('no anchor balance') || f.includes('anchor is unusable'))
 check(
   'cash_anchor_present',
   anchorFindings.length === 0,

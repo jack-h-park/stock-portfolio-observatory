@@ -175,3 +175,32 @@ test('the FX ledger balances are copied into cash_balances as USD deposits', () 
   const row = db.prepare("select institution, account, owner, kind, currency, as_of_date, balance, derived from cash_balances").get() as any
   assert.deepEqual(row, { institution: 'Sample Bank', account: 'Sample FX Account', owner: 'self', kind: 'deposit', currency: 'USD', as_of_date: '2026-02-03', balance: 1234.5, derived: 0 })
 })
+
+const GOOD_ACCOUNT = { institution: 'chase', account: 'Chase checking', kind: 'checking', currency: 'USD', owner: 'self', derived: false,
+  sources: ['a.csv'], balances: [{ date: '2026-10-01', balance: 10 }], continuityBreaks: [] }
+
+function ingestBank(doc: unknown) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'cash-norm-'))
+  const file = path.join(dir, 'bank-balances.json')
+  writeFileSync(file, JSON.stringify(doc))
+  const db = ingest({ STOCK_BANK_BALANCES_PATH: file })
+  const check = db.prepare("select status, severity, detail from validation_checks where name = 'cash_balances_readable'").get() as any
+  const rows = db.prepare('select account, as_of_date, balance, source from cash_balances').all() as any[]
+  return { check, rows }
+}
+
+for (const [label, doc, rows] of [
+  ['findings: [null]', { accounts: [GOOD_ACCOUNT], findings: [null] }, 1],
+  ['balances: [null]', { accounts: [{ ...GOOD_ACCOUNT, balances: [null, { date: '2026-10-01', balance: 10 }] }], findings: [] }, 1],
+  ['sources: "x"', { accounts: [{ ...GOOD_ACCOUNT, sources: 'x' }], findings: [] }, 1],
+  ['findings: null', { accounts: [GOOD_ACCOUNT], findings: null }, 1],
+] as const) {
+  test(`element-level damage (${label}) is dropped, the rest lands, and the check warns`, () => {
+    const { check, rows: got } = ingestBank(doc)
+    assert.equal(got.length, rows)
+    assert.equal(got[0].balance, 10)
+    assert.equal(check.status, 'fail')
+    assert.equal(check.severity, 'warning')
+    assert.match(check.detail, /bank-balances\.json/)
+  })
+}
