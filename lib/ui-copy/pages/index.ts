@@ -18,6 +18,7 @@ import { cryptoPremium } from '@/lib/ui-copy/pages/cryptoPremium'
 import { positionDetail } from '@/lib/ui-copy/pages/positionDetail'
 import { dailyBriefing } from '@/lib/ui-copy/pages/dailyBriefing'
 import { health } from '@/lib/ui-copy/pages/health'
+import { accounts } from '@/lib/ui-copy/pages/accounts'
 
 export const PAGE_COPY = {
   taxSettings,
@@ -40,4 +41,5 @@ export const PAGE_COPY = {
   positionDetail,
   dailyBriefing,
   health,
+  accounts,
 }

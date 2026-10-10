@@ -31,6 +31,7 @@ export const ROUTE_HREFS = [
   '/transactions',
   '/fx',
   '/crypto-premium',
+  '/accounts',
   '/health',
   '/data-ops',
   '/reconciliation',

@@ -45,6 +45,7 @@ export const sidebar = defineCopy({
         label: 'Operations & Data',
         collapsible: true,
         items: [
+          { href: '/accounts', label: 'Accounts & Coverage' },
           { href: '/health', label: 'System Health' },
           { href: '/data-ops', label: 'Action Center' },
           { href: '/reconciliation', label: 'Reconciliation' },
@@ -97,6 +98,7 @@ export const sidebar = defineCopy({
         label: '운영 · 데이터',
         collapsible: true,
         items: [
+          { href: '/accounts', label: '계좌 · 데이터 범위' },
           { href: '/health', label: '시스템 상태' },
           { href: '/data-ops', label: '조치 센터' },
           { href: '/reconciliation', label: '정합성 확인' },

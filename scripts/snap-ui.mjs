@@ -46,6 +46,7 @@ const ROUTES = [
   // a route nothing checks.
   '/fx',
   '/crypto-premium',
+  '/accounts',
   '/health',
   '/data-ops',
   '/reconciliation',
