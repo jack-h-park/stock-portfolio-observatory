@@ -285,3 +285,33 @@ test('a retired cash account leaves the reminder; the others stay', async () => 
     config.stockAccountMapPath = saved
   }
 })
+
+test('a closed 새마을금고 term deposit, named by its map alias and closed by retiredOn, is not in the reminder', async () => {
+  const { config } = await import('@/config')
+  const { getSupplementaryCoverage } = await import('../lib/adapters/portfolio-db')
+  // As scripts/extract-bank-statements.py writes it: the principal, then zero on the 해지일.
+  const conn = new Database(dbPath)
+  const insert = conn.prepare("insert into cash_balances (institution, account, owner, kind, currency, as_of_date, balance, source, derived) values ('mg', ?, 'self', 'deposit', 'KRW', ?, ?, 'mg-term-0000-x-y.xls', 1)")
+  insert.run('Example term ••0000', daysAgo(500), 1)
+  insert.run('Example term ••0000', daysAgo(400), 0)
+  conn.close()
+  const termMap = path.join(dir, 'term.json')
+  writeFileSync(
+    termMap,
+    JSON.stringify({
+      bankAccounts: [
+        { institution: 'mg', kind: 'deposit', currency: 'KRW', accountNumber: '0000-0000-0000-0', alias: 'Example term ••0000', openedOn: daysAgo(500), retiredOn: daysAgo(400) },
+      ],
+    })
+  )
+  const saved = config.stockAccountMapPath
+  try {
+    config.stockAccountMapPath = termMap
+    assert.ok(!getSupplementaryCoverage().rows.some((row) => row.label === 'mg Example term ••0000'))
+    // Without the map entry it would be nagged about, which is what retiredOn prevents.
+    config.stockAccountMapPath = path.join(dir, 'absent.json')
+    assert.ok(getSupplementaryCoverage().rows.some((row) => row.label === 'mg Example term ••0000'))
+  } finally {
+    config.stockAccountMapPath = saved
+  }
+})

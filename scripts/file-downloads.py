@@ -1509,32 +1509,143 @@ def detect_robinhood_bank(doc):
                 [f"rows {iso(min(days))} … {iso(max(days))}", f"kind {kind} from the row descriptions"])
 
 
-def detect_mg_deposit(doc):
-    """새마을금고 거래내역조회 (.xls) → bank-statements/mg-deposit-<from>-<to>.xls
+MG_TERM_TITLE = "해지계좌"
+# A 새마을금고 계좌번호 as printed: NNNN-NNNN-NNNN-N. The 지점코드 (NNNN-NNN) and the
+# helpline (NNNN-NNNN) do not have this shape.
+MG_NUMBER_RE = re.compile(r"(?<![\d-])\d{4}-\d{4}-\d{4}-\d(?![\d-])")
+
+
+def mg_xls_texts(doc):
+    """The two UTF-16 decodings of a legacy .xls, or None if it is not one.
 
     An .xls is not read cell by cell here (that needs soffice); its strings are
-    stored as UTF-16, so the title and the period line are found in the bytes.
+    stored as UTF-16, so what the filer needs is found in the bytes. A string can
+    start on either byte alignment, so both are decoded.
     """
     if doc.suffix != ".xls":
         return None
     raw = doc.path.read_bytes()
     if not raw.startswith(bytes.fromhex("d0cf11e0a1b11ae1")):
         return None
-    if not all(n.encode("utf-16-le") in raw for n in ("거래내역조회", "통장(상품)명")):
+    return [raw[offset:].decode("utf-16-le", errors="ignore") for offset in (0, 1)]
+
+
+def mg_printed_numbers(texts):
+    """Every distinct full 계좌번호 the workbook prints, digits only."""
+    return sorted({digits(m.group(0)) for text in texts for m in MG_NUMBER_RE.finditer(text)})
+
+
+def mg_map_entries():
+    """(entries, problem): the account map's 새마을금고 bankAccounts that carry a full number."""
+    entries, problem = account_map_list("bankAccounts")
+    return [e for e in entries if e.get("institution") == "mg" and digits(e.get("accountNumber"))], problem
+
+
+def mg_remedy(number):
+    return ('add {"institution": "mg", "kind": "deposit", "currency": "KRW", '
+            f'"accountNumber": "<the full 계좌번호 ending {digits(number)[-4:]}>", "alias": "<name>"}} '
+            "to bankAccounts in the account map (data/accounts.local.json)")
+
+
+def detect_mg_deposit(doc):
+    """새마을금고 거래내역조회 (.xls) → bank-statements/mg-deposit-<from>-<to>.xls
+
+    With an account map, the printed 계좌번호 must be one of its 새마을금고
+    bankAccounts: an account is identified by its full number (see
+    scripts/mirae_accounts.py), and the map lists more than one mg account once
+    closed term deposits are in it. With no map it files by its 조회기간 alone,
+    as before.
+    """
+    texts = mg_xls_texts(doc)
+    if texts is None:
         return None
-    # Decode at both byte alignments: the UTF-16 run can start on an odd offset.
+    joined = "\n".join(texts)
+    if not all(n in joined for n in ("거래내역조회", "통장(상품)명")):
+        return None
+    # A closed term deposit's 해지계좌 거래내역조회 prints the same two strings;
+    # detect_mg_term owns it.
+    if MG_TERM_TITLE in joined:
+        return None
+    what = "새마을금고 거래내역조회"
     pattern = r"조회기간\s*:\s*(\d{4})\.(\d{2})\.(\d{2})\s*~\s*(\d{4})\.(\d{2})\.(\d{2})"
-    period = None
-    for offset in (0, 1):
-        period = re.search(pattern, raw[offset:].decode("utf-16-le", errors="ignore"))
-        if period:
-            break
+    period = next((found for found in (re.search(pattern, text) for text in texts) if found), None)
     if not period:
-        return Refusal("새마을금고 거래내역조회", "it has no 조회기간 line to take a period from")
+        return Refusal(what, "it has no 조회기간 line to take a period from")
     g = [int(x) for x in period.groups()]
     start, stop = date(g[0], g[1], g[2]), date(g[3], g[4], g[5])
-    return Plan(DIR_BANK, f"mg-deposit-{compact(start)}-{compact(stop)}.xls",
-                [f"조회기간 {iso(start)} … {iso(stop)}"])
+    evidence = [f"조회기간 {iso(start)} … {iso(stop)}"]
+    if ACCOUNT_MAP_PATH.exists():
+        entries, problem = mg_map_entries()
+        if problem:
+            return Refusal(what, problem, "fix the JSON, or move the file aside")
+        printed = mg_printed_numbers(texts)
+        mapped = {digits(e["accountNumber"]): e for e in entries}
+        found = [n for n in printed if n in mapped]
+        if len(found) > 1:
+            shown = ", ".join(mirae_accounts.mask(n) for n in found)
+            return Refusal(what, f"it prints more than one mapped 계좌번호 ({shown}), so which account it is cannot be told")
+        if not found:
+            if not printed:
+                return Refusal(what, "it prints no 계좌번호, so which 새마을금고 account it is cannot be told")
+            return Refusal(what, f"계좌번호 {mirae_accounts.mask(printed[0])} is not in the account map, and only "
+                                 "the map can say which account it is", mg_remedy(printed[0]))
+        entry = mapped[found[0]]
+        evidence.append(f"계좌번호 {mirae_accounts.mask(found[0])} is {entry.get('alias') or 'mg deposit'} in the account map")
+    return Plan(DIR_BANK, f"mg-deposit-{compact(start)}-{compact(stop)}.xls", evidence)
+
+
+# A date that stands as a string of its own: not one of the two inside
+# `조회기간  A ~ B`, which a space or `~` precedes or ` ~` follows.
+MG_STANDALONE_DATE_RE = re.compile(r"(?<![\d.~ ])(\d{4})\.(\d{2})\.(\d{2})(?![\d.])(?!\s*~)")
+
+
+def detect_mg_term(doc):
+    """새마을금고 해지계좌 거래내역조회 (.xls) → bank-statements/mg-term-<last4>-<개설일>-<해지일>.xls
+
+    One closed term deposit (정기예탁금) per file. The 계좌번호 is read in full and
+    must be a 새마을금고 bankAccounts entry in the account map; the name carries its
+    last four digits (check digit included), never more.
+
+    The bytes give the strings but not the cell each sat in. The 개설일 and the
+    해지일 are the earliest and the latest standalone date the file prints: every
+    transaction falls between them, and the 조회기간's two dates share one string
+    and are not standalone. An `openedOn` / `retiredOn` on the map entry is
+    checked against them, and a contradiction is refused.
+    """
+    texts = mg_xls_texts(doc)
+    if texts is None:
+        return None
+    joined = "\n".join(texts)
+    if not all(n in joined for n in (f"{MG_TERM_TITLE} 거래내역조회", "통장(상품)명", "계좌번호")):
+        return None
+    what = "새마을금고 해지계좌 거래내역조회"
+    printed = mg_printed_numbers(texts)
+    if len(printed) != 1:
+        shown = ", ".join(mirae_accounts.mask(n) for n in printed) or "none"
+        return Refusal(what, f"it prints {len(printed)} full 계좌번호 ({shown}), so which deposit it is cannot be told")
+    number = printed[0]
+    if not ACCOUNT_MAP_PATH.exists():
+        return Refusal(what, f"the account map {ACCOUNT_MAP_PATH} does not exist, so the deposit cannot be identified",
+                       "create the account map (see data/accounts.local.example.json), or set STOCK_ACCOUNT_MAP_PATH to it")
+    entries, problem = mg_map_entries()
+    if problem:
+        return Refusal(what, problem, "fix the JSON, or move the file aside")
+    entry = next((e for e in entries if digits(e["accountNumber"]) == number), None)
+    if entry is None:
+        return Refusal(what, f"계좌번호 {mirae_accounts.mask(number)} is not in the account map, and only the map "
+                             "can say which deposit it is", mg_remedy(number))
+    days = sorted({date(int(y), int(m), int(d)) for text in texts for y, m, d in MG_STANDALONE_DATE_RE.findall(text)})
+    if len(days) < 2:
+        return Refusal(what, "it does not print both an 개설일 and a 해지일")
+    opened, closed = days[0], days[-1]
+    for key, label, value in (("openedOn", "개설일", opened), ("retiredOn", "해지일", closed)):
+        pinned = str(entry.get(key) or "")
+        if pinned and pinned != iso(value):
+            return Refusal(what, f"{label} {iso(value)} contradicts the account map's {key} {pinned} for "
+                                 f"{mirae_accounts.mask(number)}", "check the file is this deposit's, or correct the map")
+    return Plan(DIR_BANK, f"mg-term-{number[-4:]}-{compact(opened)}-{compact(closed)}.xls",
+                [f"개설일 {iso(opened)}, 해지일 {iso(closed)}",
+                 f"계좌번호 {mirae_accounts.mask(number)} is {entry.get('alias') or 'a mg deposit'} in the account map"])
 
 
 def read_tossbank_identity(raw, password):
@@ -1915,6 +2026,7 @@ DETECTORS = [
     ("Bank of America statement CSV", detect_boa),
     ("Robinhood checking / savings CSV", detect_robinhood_bank),
     ("새마을금고 거래내역조회 (.xls)", detect_mg_deposit),
+    ("새마을금고 해지계좌 거래내역조회 (.xls)", detect_mg_term),
     ("토스뱅크 거래내역 (.xlsx, encrypted)", detect_tossbank),
     ("삼성증권 연금저축 거래내역확인서", detect_samsung_pension_ledger),
     ("pension holdings snapshot CSV", detect_pension_holdings),
