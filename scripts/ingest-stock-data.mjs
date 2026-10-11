@@ -1018,6 +1018,10 @@ create table tax_lots_all (
   -- lots at today's rate, which is what the holdings pages show; the two differ
   -- by the exchange-rate move since purchase. Null where no rate reaches back.
   acquisition_cost_krw real,
+  -- The dollar cost the IRS measures against: a USD lot's own cost, and a won
+  -- lot's won cost at the USD/KRW rate on its acquisition date. Null where no
+  -- rate reaches back.
+  acquisition_cost_usd real,
   unit_cost real,
   holding_days integer,
   tax_term text,
@@ -1041,8 +1045,10 @@ create table realized_lots_all (
   sold_date text,
   quantity_sold real,
   cost_basis_krw real,
-  -- As on tax_lots_all: the won cost at the acquisition-date rate.
+  -- As on tax_lots_all: the won cost at the acquisition-date rate, and the
+  -- dollar cost the IRS measures against.
   acquisition_cost_krw real,
+  acquisition_cost_usd real,
   proceeds_krw real,
   realized_gl_krw real,
   holding_days integer,
@@ -4841,8 +4847,20 @@ function acquisitionCostKrw(row) {
   const rate = historicalUsdKrwOn(text(row.acquired_date).slice(0, 10))
   return cost == null || !rate ? null : cost * rate
 }
-for (const row of taxLotRows) row.acquisition_cost_krw = acquisitionCostKrw(row)
-for (const row of realizedRows) row.acquisition_cost_krw = acquisitionCostKrw(row)
+// The IRS mirror image: a won lot's dollar cost is its won cost at the
+// acquisition-date rate, so its US gain carries the exchange-rate move the
+// same way a USD lot's Korea gain does.
+function acquisitionCostUsd(row) {
+  if (row.currency === 'USD') return number(row.native_cost_basis)
+  if (row.currency !== 'KRW') return null
+  const costKrw = row.acquisition_cost_krw ?? row.cost_basis_krw
+  const rate = historicalUsdKrwOn(text(row.acquired_date).slice(0, 10))
+  return costKrw == null || !rate ? null : Number(costKrw) / rate
+}
+for (const row of [...taxLotRows, ...realizedRows]) {
+  row.acquisition_cost_krw = acquisitionCostKrw(row)
+  row.acquisition_cost_usd = acquisitionCostUsd(row)
+}
 
 insertMany(db, 'tax_lots', taxLotRows, [
   'market',
@@ -4864,6 +4882,7 @@ insertMany(db, 'tax_lots', taxLotRows, [
   'native_unrealized_gl',
   'cost_basis_krw',
   'acquisition_cost_krw',
+  'acquisition_cost_usd',
   'unit_cost',
   'holding_days',
   'tax_term',
@@ -4883,6 +4902,7 @@ insertMany(db, 'realized_lots', realizedRows, [
   'quantity_sold',
   'cost_basis_krw',
   'acquisition_cost_krw',
+  'acquisition_cost_usd',
   'proceeds_krw',
   'realized_gl_krw',
   'holding_days',
