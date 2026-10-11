@@ -515,6 +515,11 @@ def _mg_deposit_groups(paths, account_map, findings):
     return groups
 
 
+def _is_opening(txn):
+    """A 월급통장 outflow into a new 예적금: its 거래내용 carries `인터넷신규`."""
+    return "인터넷신규" in str(txn.get("description", "")) and txn["amount"] < 0
+
+
 def mg_term_accounts(paths, account_map, salary, findings, notes):
     """Closed term deposits as deposit accounts: the principal from 개설일, zero from 해지일.
 
@@ -522,12 +527,14 @@ def mg_term_accounts(paths, account_map, salary, findings, notes):
     within MG_PRINCIPAL_TOLERANCE of 총수령액 − 이자 × (1 − MG_INTEREST_TAX).
     Several deposits can open on one day, so outflows are handed out closest
     match first and each goes to one deposit only. With no such outflow the
-    estimate itself is used, and a note names the account and the figure.
+    estimate itself is used, and a note names the account and the figure; if
+    the deposit's payout is in the 월급통장 all the same, a finding says the
+    principal needs checking.
 
     The balances are not printed anywhere, so the account is `derived` and has no
-    continuity check. The matched opening and the `예적금만기` payout on the
-    해지일 are marked `term` in `salary`, which keeps them out of the
-    새마을금고 예적금 estimate: the deposit is counted here, once.
+    continuity check. The opening and the `예적금만기` payout on the 해지일 are
+    marked `term` in `salary`, together and never one alone, which keeps them
+    out of the 새마을금고 예적금 estimate: the deposit is counted here, once.
     """
     entries = _mg_numbered_entries(account_map)
     terms, seen = [], set()
@@ -555,7 +562,7 @@ def mg_term_accounts(paths, account_map, salary, findings, notes):
     pairs = []
     for index, (_path, term, _entry) in enumerate(terms):
         for txn in salary:
-            if txn["date"] != term["opened"] or txn.get("description") != "인터넷신규" or txn["amount"] >= 0:
+            if txn["date"] != term["opened"] or not _is_opening(txn):
                 continue
             gap = abs(-txn["amount"] - term["estimate"])
             if gap <= MG_PRINCIPAL_TOLERANCE * term["estimate"]:
@@ -571,18 +578,33 @@ def mg_term_accounts(paths, account_map, salary, findings, notes):
     for index, (path, term, entry) in enumerate(terms):
         shown = mirae_accounts.mask(term["number"])
         txn = matched.get(index)
+        payout = next((t for t in salary if t["date"] == term["closed"] and not t.get("term")
+                       and str(t.get("description", "")).startswith("예적금만기") and abs(t["amount"] - term["payout"]) < 1), None)
+        opening = txn
         if txn is not None:
             principal = -txn["amount"]
-            txn["term"] = True
         else:
             principal = round(term["estimate"])
             notes.append(f"{path.name}: no 인터넷신규 outflow on {term['opened']} in the 월급통장 matches term deposit "
                          f"{shown}; its principal is estimated as 총수령액 − 이자 × (1 − {MG_INTEREST_TAX}) "
                          f"= {principal:,.0f}")
-        payout = next((t for t in salary if t["date"] == term["closed"] and not t.get("term")
-                       and str(t.get("description", "")).startswith("예적금만기") and abs(t["amount"] - term["payout"]) < 1), None)
-        if payout is not None:
-            payout["term"] = True
+            if payout is not None:
+                # The payout proves the deposit, but its opening was not found: the
+                # day's 인터넷신규 closest to the estimate stands in for it, so the
+                # estimate drops the deposit's two legs together. With none that day
+                # the payout stays in the estimate too, rather than leave it one-sided.
+                findings.append(f"{path.name}: term deposit {shown} was paid out on {term['closed']}, but no 인터넷신규 "
+                                f"outflow on {term['opened']} comes within {MG_PRINCIPAL_TOLERANCE:.0%} of its estimated "
+                                "principal; check the principal")
+                spare = [t for t in salary if t["date"] == term["opened"] and _is_opening(t) and id(t) not in used]
+                opening = min(spare, key=lambda t: abs(-t["amount"] - term["estimate"]), default=None)
+        # A deposit's legs leave the 새마을금고 예적금 estimate only as a pair, so it is
+        # counted once: here, and not again there.
+        if opening is not None:
+            used.add(id(opening))
+            opening["term"] = True
+            if payout is not None:
+                payout["term"] = True
         accounts.append({
             "institution": "mg", "account": entry.get("alias") or f"mg {term['number'][-4:]}", "kind": "deposit",
             "currency": "KRW", "owner": "self", "derived": True,
@@ -758,7 +780,7 @@ def _bucket(flow):
             return "mirae-other"
         return f"counterparty:{memo}|{bank}"
     if flow["statement"] == "mg":
-        if memo == "인터넷신규" or memo.startswith("예적금만기"):
+        if "인터넷신규" in memo or memo.startswith("예적금만기"):
             return "mg-savings"
         return f"counterparty:{memo}|새마을금고 내역"
     if "대체" in memo:  # 미래에셋: a 계좌대체 to or from an account other than the ones on file

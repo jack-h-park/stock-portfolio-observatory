@@ -1597,6 +1597,8 @@ def detect_mg_deposit(doc):
 # A date that stands as a string of its own: not one of the two inside
 # `조회기간  A ~ B`, which a space or `~` precedes or ` ~` follows.
 MG_STANDALONE_DATE_RE = re.compile(r"(?<![\d.~ ])(\d{4})\.(\d{2})\.(\d{2})(?![\d.])(?!\s*~)")
+# The 조회기간 end, when the export prints one (`조회기간  A ~ B`).
+MG_TERM_WINDOW_RE = re.compile(r"조회기간\s*:?\s*\d{4}\.\d{2}\.\d{2}\s*~\s*(\d{4})\.(\d{2})\.(\d{2})")
 
 
 def detect_mg_term(doc):
@@ -1606,11 +1608,14 @@ def detect_mg_term(doc):
     must be a 새마을금고 bankAccounts entry in the account map; the name carries its
     last four digits (check digit included), never more.
 
-    The bytes give the strings but not the cell each sat in. The 개설일 and the
-    해지일 are the earliest and the latest standalone date the file prints: every
-    transaction falls between them, and the 조회기간's two dates share one string
-    and are not standalone. An `openedOn` / `retiredOn` on the map entry is
-    checked against them, and a contradiction is refused.
+    The bytes give the strings but not the cell each sat in, so the dates rest
+    on one assumption: the 개설일 and the 해지일 are the earliest and the latest
+    standalone date the file prints. That holds because every transaction row
+    falls between the two, and the 조회기간's two dates share one string
+    (`조회기간  A ~ B`) and are not standalone. Two checks catch it failing: a
+    해지일 later than the 조회기간 end (some other date, such as an inquiry
+    date, printed after the closing) is refused, and an `openedOn` / `retiredOn`
+    on the map entry must agree with what was read.
     """
     texts = mg_xls_texts(doc)
     if texts is None:
@@ -1638,6 +1643,12 @@ def detect_mg_term(doc):
     if len(days) < 2:
         return Refusal(what, "it does not print both an 개설일 and a 해지일")
     opened, closed = days[0], days[-1]
+    window = next((found for found in (MG_TERM_WINDOW_RE.search(text) for text in texts) if found), None)
+    if window:
+        query_end = date(*(int(x) for x in window.groups()))
+        if closed > query_end:
+            return Refusal(what, f"its 해지일 {iso(closed)} is after the 조회기간 end {iso(query_end)}, so the latest "
+                                 "date it prints is not the closing day; the dates cannot be read")
     for key, label, value in (("openedOn", "개설일", opened), ("retiredOn", "해지일", closed)):
         pinned = str(entry.get(key) or "")
         if pinned and pinned != iso(value):

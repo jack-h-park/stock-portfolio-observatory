@@ -474,7 +474,7 @@ test('a closed term deposit, whose balances are derived, is never read as daily 
       const insert = db.prepare(
         "insert into cash_balances (institution, account, kind, currency, as_of_date, balance, source, derived) values ('mg', ?, 'deposit', 'KRW', ?, ?, 'mg-term-x.xls', 1)"
       )
-      insert.run('Example term deposit', '2023-06-01', 10_000_000)
+      insert.run('Example term deposit', '2023-06-01', 3_000_000)
       insert.run('Example term deposit', '2025-03-02', 0)
     },
   })
@@ -488,8 +488,8 @@ test('a closed term deposit, whose balances are derived, is never read as daily 
   try {
     const { getForeignAccountMaxima } = await import('../lib/adapters/portfolio-db')
     const row = (year: number) => getForeignAccountMaxima(year).rows.find((r) => r.id === 'mg|Example term deposit')
-    assert.deepEqual([row(2024)!.maxKrw, row(2024)!.coverage, row(2024)!.understated], [10_000_000, 'derived', true])
-    assert.deepEqual([row(2025)!.maxKrw, row(2025)!.coverage, row(2025)!.understated], [10_000_000, 'derived', true])
+    assert.deepEqual([row(2024)!.maxKrw, row(2024)!.coverage, row(2024)!.understated], [3_000_000, 'derived', true])
+    assert.deepEqual([row(2025)!.maxKrw, row(2025)!.coverage, row(2025)!.understated], [3_000_000, 'derived', true])
     // The opening year starts after 1 January: partial, as any such history is.
     assert.equal(row(2023)!.coverage, 'partial')
     assert.equal(row(2026), undefined)

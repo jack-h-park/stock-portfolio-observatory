@@ -96,9 +96,26 @@ These balances are not printed by any bank, so the account is `derived`: it has 
 continuity check, and the FBAR table reads a year it spans as `derived`
 (understated) rather than daily, because the interest credited on the last day is
 not in it. They are in `cash_balances`, so the total-assets trend and FBAR count
-them; `retiredOn` keeps them out of the reminder. The matched `인터넷신규` outflow
-and the `예적금만기` payout on the 해지일 no longer count toward the estimated
-새마을금고 예적금 below, so a deposit on file is counted once.
+them; `retiredOn` keeps them out of the reminder.
+
+The rule is not specific to term deposits: **any foreign cash account whose
+`cash_balances` rows carry `derived = 1` now reads as FBAR basis `derived`
+(understated), not daily**, for every year its series would otherwise have
+covered day by day.
+
+A deposit on file is counted once. Its opening `인터넷신규` outflow (matched on
+the 거래내용 containing `인터넷신규`, not on the bare word) and its `예적금만기`
+payout on the 해지일 leave the estimated 새마을금고 예적금 below, and only as a
+pair. When the payout is in the 월급통장 but no opening came within 1%, a finding
+names the account by its last four digits, and the same-day `인터넷신규` outflow
+closest to the estimated principal leaves the estimate with the payout. With no
+`인터넷신규` on the 개설일 at all, both stay in the estimate.
+
+The filer reads the 개설일 and 해지일 out of the file's bytes, not its cells: they
+are the earliest and the latest standalone date it prints, since every
+transaction falls between them and the 조회기간's dates share one string. A
+해지일 later than the 조회기간 end is refused, as is one the map's `retiredOn`
+contradicts.
 
 #### Accounts no statement covers
 
