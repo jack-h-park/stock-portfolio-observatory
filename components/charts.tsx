@@ -324,6 +324,7 @@ export function StackedAssetChart({
   labels,
   height = 260,
   axisLabel,
+  markers = [],
 }: {
   points: StackedAssetPoint[]
   startsOn: Partial<Record<AssetClass, string>>
@@ -331,6 +332,8 @@ export function StackedAssetChart({
   labels: Record<AssetClass | 'total', string>
   height?: number
   axisLabel?: string
+  /** Numbered event markers (lib/asset-events chartMarkers), one per plotted date. */
+  markers?: { date: string; label: string }[]
 }) {
   const prefix = currency === 'USD' ? '$' : '₩'
   const formatValue = (value: number) => `${prefix}${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}M`
@@ -338,7 +341,7 @@ export function StackedAssetChart({
   const starts = STACK_ORDER.filter((key) => startsOn[key] && startsOn[key] !== firstDate)
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <AreaChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
+      <AreaChart data={points} margin={{ top: markers.length ? 18 : 8, right: 8, bottom: 0, left: -18 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
         <XAxis dataKey="date" tick={AXIS} tickLine={false} axisLine={{ stroke: 'var(--border-default)' }} />
         <YAxis
@@ -372,6 +375,15 @@ export function StackedAssetChart({
         <Legend wrapperStyle={{ fontSize: 11 }} />
         {starts.map((key) => (
           <ReferenceLine key={key} x={startsOn[key]} stroke={ASSET_COLORS[key]} strokeDasharray="3 3" />
+        ))}
+        {markers.map((marker) => (
+          <ReferenceLine
+            key={`event-${marker.date}`}
+            x={marker.date}
+            stroke="var(--text-tertiary)"
+            strokeDasharray="2 4"
+            label={{ value: marker.label, position: 'top', fontSize: 10, fill: 'var(--text-secondary)' }}
+          />
         ))}
         {STACK_ORDER.map((key) => (
           <Area

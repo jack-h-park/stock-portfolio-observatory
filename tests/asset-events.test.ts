@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildInvestmentEpisodes, mergeAssetEvents, type ClosedLot, type InvestmentEpisode, type OpenLot } from '../lib/asset-events'
+import { buildInvestmentEpisodes, chartMarkers, mergeAssetEvents, snapEventDates, type ClosedLot, type InvestmentEpisode, type OpenLot } from '../lib/asset-events'
 
 const lot = (id: number, acquiredDate: string, costKrw: number) => ({ id, market: 'KR', ticker: 'AAA', name: 'Invented', acquiredDate, costKrw })
 const closed = (id: number, acquiredDate: string, costKrw: number, soldDate: string, realizedKrw: number): ClosedLot => ({ ...lot(id, acquiredDate, costKrw), soldDate, realizedKrw })
@@ -54,4 +54,18 @@ test('mergeAssetEvents keeps events at or above ±10M, losses included, in date 
     [ep('2025-01-01', -12_000_000), ep('2023-01-01', 4_000_000)]
   )
   assert.deepEqual(events.map((e) => e.start), ['2024-06-01', '2025-01-01'])
+})
+
+test('event markers snap to the first plotted date on or after them, and past the end to the last point', () => {
+  const inflow = (start: string) => ({ kind: 'inflow', start, end: start, label: 'x', category: null, amountKrw: 1, arrivals: 1 }) as const
+  assert.deepEqual(
+    snapEventDates([inflow('2024-06-01'), inflow('2024-06-30'), inflow('2026-12-01')], ['2024-05-31', '2024-06-30', '2024-07-31']).map((m) => [m.n, m.date]),
+    [[1, '2024-06-30'], [2, '2024-06-30'], [3, '2024-07-31']]
+  )
+})
+
+test('chart markers drop events before the first plotted date and share one line per date', () => {
+  const inflow = (start: string) => ({ kind: 'inflow', start, end: start, label: 'x', category: null, amountKrw: 1, arrivals: 1 }) as const
+  const markers = snapEventDates([inflow('2024-01-01'), inflow('2024-06-01'), inflow('2024-06-30')], ['2024-05-31', '2024-06-30'])
+  assert.deepEqual(chartMarkers(markers, '2024-05-31'), [{ date: '2024-06-30', label: '2,3' }])
 })

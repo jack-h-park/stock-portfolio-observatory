@@ -103,3 +103,29 @@ export function mergeAssetEvents(inflows: InflowEvent[], episodes: InvestmentEpi
     (a, b) => a.start.localeCompare(b.start) || (a.kind === b.kind ? 0 : a.kind === 'inflow' ? -1 : 1)
   )
 }
+
+export type EventMarker = { n: number; date: string; event: AssetEvent }
+
+/**
+ * Numbers the events from 1 in list order and places each on the chart's x axis,
+ * which is the list of plotted dates: the first date on or after the event's
+ * start, or the last date for an event after every point.
+ */
+export function snapEventDates(events: AssetEvent[], pointDates: string[]): EventMarker[] {
+  const dates = [...pointDates].sort()
+  return events.map((event, i) => ({ n: i + 1, date: dates.find((d) => d >= event.start) ?? dates.at(-1) ?? event.start, event }))
+}
+
+/**
+ * The markers a chart draws: one line per plotted date, labelled with the
+ * numbers of the events on it. An event that starts before the first plotted
+ * date (a range that does not reach back to it) gets no marker; it stays in the list.
+ */
+export function chartMarkers(markers: EventMarker[], firstDate: string | undefined): { date: string; label: string }[] {
+  const byDate = new Map<string, number[]>()
+  for (const m of markers) {
+    if (!firstDate || m.event.start < firstDate) continue
+    byDate.set(m.date, [...(byDate.get(m.date) ?? []), m.n])
+  }
+  return [...byDate.entries()].map(([date, ns]) => ({ date, label: ns.join(',') }))
+}
