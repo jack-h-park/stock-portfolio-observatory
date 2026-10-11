@@ -177,6 +177,13 @@ const assetEventLabels = (() => {
 })()
 const assetEventLabelFor = (inflow) =>
   assetEventLabels.find((l) => l.group === inflow.group && (!l.from || inflow.firstDate >= l.from) && (!l.to || inflow.firstDate <= l.to)) ?? null
+// A label that names no inflow is a typo or an outdated group key; say so,
+// or the inflow it meant stays unlabeled (or a salary meant to be hidden shows).
+for (const label of assetEventLabels) {
+  if (!bankBalances.externalInflows.some((inflow) => assetEventLabelFor(inflow) === label)) {
+    bankBalances.notes.push(`asset event label "${label.group}" matches no inflow`)
+  }
+}
 const fxLedgerPath =
   process.env.STOCK_FX_LEDGER_PATH || path.join(outDir, 'fx-ledger.json')
 

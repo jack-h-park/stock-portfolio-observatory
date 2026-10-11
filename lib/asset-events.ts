@@ -129,3 +129,16 @@ export function chartMarkers(markers: EventMarker[], firstDate: string | undefin
   }
   return [...byDate.entries()].map(([date, ns]) => ({ date, label: ns.join(',') }))
 }
+
+/**
+ * The tax planner's aggregate tax for selling every open lot now, shared out by
+ * each lot's share of the positive gain. The aggregate applies the deduction,
+ * loss netting and the cross-border credit; a lot's own flat-rate figure does
+ * not. A lot at a loss carries none, and an unvalued lot (gain null) gets null.
+ */
+export function allocateTax(lots: { id: number; gainKrw: number | null }[], totalTaxKrw: number): Map<number, number | null> {
+  const positive = lots.reduce((sum, lot) => sum + Math.max(lot.gainKrw ?? 0, 0), 0)
+  return new Map(
+    lots.map((lot) => [lot.id, lot.gainKrw == null ? null : positive > 0 ? (totalTaxKrw * Math.max(lot.gainKrw, 0)) / positive : 0])
+  )
+}

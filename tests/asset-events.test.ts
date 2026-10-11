@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildInvestmentEpisodes, chartMarkers, mergeAssetEvents, snapEventDates, type ClosedLot, type InvestmentEpisode, type OpenLot } from '../lib/asset-events'
+import { allocateTax, buildInvestmentEpisodes, chartMarkers, mergeAssetEvents, snapEventDates, type ClosedLot, type InvestmentEpisode, type OpenLot } from '../lib/asset-events'
 
 const lot = (id: number, acquiredDate: string, costKrw: number) => ({ id, market: 'KR', ticker: 'AAA', name: 'Invented', acquiredDate, costKrw })
 const closed = (id: number, acquiredDate: string, costKrw: number, soldDate: string, realizedKrw: number): ClosedLot => ({ ...lot(id, acquiredDate, costKrw), soldDate, realizedKrw })
@@ -68,4 +68,9 @@ test('chart markers drop events before the first plotted date and share one line
   const inflow = (start: string) => ({ kind: 'inflow', start, end: start, label: 'x', category: null, amountKrw: 1, arrivals: 1 }) as const
   const markers = snapEventDates([inflow('2024-01-01'), inflow('2024-06-01'), inflow('2024-06-30')], ['2024-05-31', '2024-06-30'])
   assert.deepEqual(chartMarkers(markers, '2024-05-31'), [{ date: '2024-06-30', label: '2,3' }])
+})
+
+test('allocateTax shares the aggregate tax out by each lot’s share of the positive gain; a loss lot carries none', () => {
+  const shares = allocateTax([{ id: 1, gainKrw: 30 }, { id: 2, gainKrw: 10 }, { id: 3, gainKrw: -20 }, { id: 4, gainKrw: null }], 8)
+  assert.deepEqual([shares.get(1), shares.get(2), shares.get(3), shares.get(4)], [6, 2, 0, null])
 })

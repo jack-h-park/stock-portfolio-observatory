@@ -4,8 +4,8 @@ import path from 'node:path'
 import { createHash } from 'node:crypto'
 import Database from 'better-sqlite3'
 import { config } from '@/config'
-import { buildTaxPlan, type TaxPlanningLot } from '@/lib/tax-planning'
-import { buildInvestmentEpisodes, mergeAssetEvents, type AssetEvent, type ClosedLot, type DividendRow, type InflowEvent, type OpenLot } from '@/lib/asset-events'
+import { buildTaxPlan, summarizeTaxCandidates, type TaxPlanningLot } from '@/lib/tax-planning'
+import { allocateTax, buildInvestmentEpisodes, mergeAssetEvents, type AssetEvent, type ClosedLot, type DividendRow, type InflowEvent, type OpenLot } from '@/lib/asset-events'
 import { getTaxPolicyState, usTaxableWrappers, wrapperTreatment, type TaxPolicy, type WrapperTreatment } from '@/lib/tax-policy'
 import { ASSET_CLASSES, depositsSeries, summarizeNetWorth, totalAssetsSeries, type AsOfNote, type CashBalanceRow, type NetWorth, type TotalAssetsSeries } from '@/lib/net-worth'
 import type { PensionContributionYear } from '@/lib/pension'
@@ -4108,7 +4108,11 @@ function lotValueKrw(lot: TaxPlanningLot): number | null {
 export function getAssetEvents(): AssetEvent[] {
   const policy = getTaxPolicyState().policy
   const openLots = getTaxPlanningLots(100_000, policy, { allWrappers: true })
-  const taxById = new Map(buildTaxPlan({ lots: getTaxPlanningLots(100_000, policy), policy }).candidates.map((c) => [c.id, c.estimatedTaxKrw]))
+  // The aggregate for selling every taxable open lot now, shared out by gain:
+  // a lot's own flat-rate figure leaves out the deduction, netting and credits.
+  const candidates = buildTaxPlan({ lots: getTaxPlanningLots(100_000, policy), policy }).candidates
+  const aggregate = summarizeTaxCandidates({ candidates, policy, scenario: policy.activeScenario })
+  const taxById = allocateTax(candidates, aggregate.combinedTaxAfterCreditsKrw)
   const open: OpenLot[] = openLots.map((lot) => ({
     id: lot.id,
     market: lot.market,
@@ -4128,10 +4132,18 @@ export function getAssetEvents(): AssetEvent[] {
       hasTable(realizedTable)
         ? (conn
             .prepare(
-              `select id, market, ticker, name, substr(acquired_date, 1, 10) as acquiredDate, substr(sold_date, 1, 10) as soldDate,
-                      coalesce(cost_basis_krw, 0) as costKrw, coalesce(realized_gl_krw, 0) as realizedKrw
+              // A year a 1099-B covers: its replay rows are superseded but still
+              // say when the shares were held, so they give the cost timeline and
+              // no gain; the filed rows give the gain and no cost, placed on their
+              // acquired date or, for an aggregated "Various" lot, the sale date.
+              `select id, market, ticker, name,
+                      substr(coalesce(nullif(acquired_date, ''), sold_date), 1, 10) as acquiredDate,
+                      substr(sold_date, 1, 10) as soldDate,
+                      case when basis = '1099b' then 0 else coalesce(cost_basis_krw, 0) end as costKrw,
+                      case when superseded_by is not null then 0 else coalesce(realized_gl_krw, 0) end as realizedKrw
                  from ${realizedTable}
-                where superseded_by is null and acquired_date is not null and sold_date is not null${securityOnly}`
+                where nullif(sold_date, '') is not null
+                  and (nullif(acquired_date, '') is not null or basis = '1099b')${securityOnly}`
             )
             .all() as ClosedLot[])
         : []
