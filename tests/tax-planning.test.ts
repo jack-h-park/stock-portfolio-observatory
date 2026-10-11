@@ -424,3 +424,36 @@ test('the US-measured short gain and loss are reported beside the KRW ones', () 
   assert.equal(aggregate.usMeasuredNetShortGainKrw, 2_000_000)
   assert.equal(aggregate.usMeasuredShortLossHarvestKrw, 0)
 })
+
+// The planner's KRW gain is Korea's measure: cost at the acquisition-date rate. The holdings-side
+// cost_basis_krw of a US lot is at today's rate, so it would drop the exchange-rate move.
+test('the KRW gain and the Korea tax use the acquisition-date won cost when the lot carries one', () => {
+  const currentPolicy = policy()
+  // $10,000 bought at 1,400, valued $12,000 at 1,000: USD +2,000, Korea's KRW −2,000,000.
+  const usLot = lot({
+    tax_term: 'short', holding_days: 100, native_cost_basis: 10_000, native_market_value: 12_000,
+    native_unrealized_gl: 2_000, cost_basis_krw: 10_000_000, acquisition_cost_krw: 14_000_000,
+  })
+  const plan = buildTaxPlan({ lots: [usLot], policy: currentPolicy, scenario: 'US_AND_KR', objective: 'raise-cash' })
+  assert.equal(plan.candidates[0].gainKrw, -2_000_000)
+  const aggregate = summarizeTaxCandidates({ candidates: plan.candidates, policy: currentPolicy, scenario: 'US_AND_KR', year: 2026 })
+  assert.equal(aggregate.krTaxKrw, 0)
+  assert.ok(aggregate.usTaxKrw > 0)
+
+  // Without the column (an older database) the holdings-side cost stands in, as before.
+  const legacy = buildTaxPlan({ lots: [{ ...usLot, acquisition_cost_krw: undefined }], policy: currentPolicy, scenario: 'US_AND_KR', objective: 'raise-cash' })
+  assert.equal(legacy.candidates[0].gainKrw, 2_000_000)
+})
+
+test('with the acquisition-date cost a USD-gain lot is mixed in a joint filing year', () => {
+  const planSet = buildMonthlySalePlanSet({
+    lots: [lot({
+      id: 1, acquired_date: '2026-07-01', tax_term: 'short', holding_days: 100, native_cost_basis: 10_000,
+      native_market_value: 12_000, native_unrealized_gl: 2_000, cost_basis_krw: 10_000_000, acquisition_cost_krw: 14_000_000,
+    })],
+    policy: policy(),
+    selectedStrategy: 'STAGED',
+    asOfDate: '2026-07-20',
+  })
+  assert.ok(planSet.selectedPlan.instructions.every((instruction) => instruction.year > 2027 || instruction.role === 'mixed'))
+})
