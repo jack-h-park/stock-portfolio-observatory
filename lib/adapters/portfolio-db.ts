@@ -4019,6 +4019,12 @@ export function getTaxPlanningLots(limit = 500, policy: TaxPolicy = getTaxPolicy
           ? `${alias}.${STOCK_WRAPPER_SQL}`
           : '1 = 1'
     const params = scoped ? [...wrappers, ...wrappers, limit] : [limit]
+    // A database written before the column existed reads as null, and the
+    // planner falls back to cost_basis_krw for it.
+    const lotColumns = new Set(
+      (conn.prepare(`pragma table_info(${lotsTable})`).all() as { name: string }[]).map((column) => column.name)
+    )
+    const acquisitionCost = lotColumns.has('acquisition_cost_krw') ? 'tax_lots.acquisition_cost_krw' : 'null'
     return conn
       .prepare(
         `with holding_prices as (
@@ -4054,6 +4060,7 @@ export function getTaxPlanningLots(limit = 500, policy: TaxPolicy = getTaxPolicy
                tax_lots.open_quantity * coalesce(holding_prices.current_price, holding_prices.implied_price) - tax_lots.native_cost_basis
              ) as native_unrealized_gl,
              tax_lots.cost_basis_krw,
+             ${acquisitionCost} as acquisition_cost_krw,
              tax_lots.holding_days,
              tax_lots.tax_term,
              tax_lots.account_wrapper

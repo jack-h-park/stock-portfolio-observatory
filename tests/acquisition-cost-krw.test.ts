@@ -1,0 +1,85 @@
+import assert from 'node:assert/strict'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import test from 'node:test'
+import Database from 'better-sqlite3'
+import { runIngest } from './ingest-harness'
+import { writeSheetPayloads } from './sheet-payloads'
+
+// Korea measures a foreign-currency lot's gain with the cost at the
+// ACQUISITION-date USD/KRW rate. cost_basis_krw on US lots is at today's rate
+// (open) or the sale-date rate (realized), which is what the holdings pages
+// show, so the ingest also records acquisition_cost_krw for the tax side.
+// Invented figures; the repository is public.
+
+const CSV_HEADER =
+  '"Activity Date","Process Date","Settle Date","Instrument","Description","Trans Code","Quantity","Price","Amount"'
+
+function ingest() {
+  const dir = mkdtempSync(path.join(tmpdir(), 'acquisition-cost-'))
+  writeSheetPayloads(dir)
+  mkdirSync(path.join(dir, 'us-transactions'), { recursive: true })
+  // Newest-first, as Robinhood writes it: bought 10 on 06-12, sold 4 on 08-11.
+  writeFileSync(
+    path.join(dir, 'us-transactions', 'robinhood-transactions-midterm-20260811.csv'),
+    [
+      CSV_HEADER,
+      '"8/11/2026","8/11/2026","8/12/2026","ACME","Acme Corp\nCUSIP: 000000000","Sell","4","$50.00","$200.00"',
+      '"6/12/2026","6/12/2026","6/13/2026","ACME","Acme Corp\nCUSIP: 000000000","Buy","10","$40.00","($400.00)"',
+    ].join('\n') + '\n',
+    'utf8'
+  )
+  const snapshotPath = path.join(dir, 'robinhood-snapshot.json')
+  writeFileSync(
+    snapshotPath,
+    JSON.stringify({
+      fetchedAt: '2026-10-10T02:00:00Z',
+      accounts: [{
+        accountNumber: '000000001',
+        nickname: 'Mid-term',
+        positions: [{ symbol: 'ACME', name: 'Acme Corp', quantity: '6', instrument_id: '11111111-1111-4111-8111-000000000001' }],
+        lots: [{ symbol: 'ACME', lots: [{ open_lot_id: 'acme-1', quantity: '6', cost_basis: '240.00', acquired_date: '2026-06-12' }] }],
+      }],
+    }),
+    'utf8'
+  )
+  const fxPath = path.join(dir, 'fx-rates.json')
+  writeFileSync(fxPath, JSON.stringify({ baseCurrency: 'KRW', rates: [{ from: 'USD', to: 'KRW', rate: 1000, asOfDate: '2026-10-09', source: 'test' }] }), 'utf8')
+  const historicalPath = path.join(dir, 'historical-fx-rates.json')
+  writeFileSync(
+    historicalPath,
+    JSON.stringify({ rates: [
+      { price_date: '2026-06-12', rate: 1500, source: 'test' },
+      { price_date: '2026-08-11', rate: 1300, source: 'test' },
+    ] }),
+    'utf8'
+  )
+  const dbPath = runIngest(dir, {
+    env: {
+      STOCK_ROBINHOOD_SNAPSHOT_PATH: snapshotPath,
+      STOCK_FX_RATES_PATH: fxPath,
+      STOCK_HISTORICAL_FX_RATES_PATH: historicalPath,
+    },
+    allowFailure: true,
+  })
+  const db = new Database(dbPath, { readonly: true })
+  const open = db
+    .prepare(`select cost_basis_krw, acquisition_cost_krw from tax_lots where ticker = 'ACME'`)
+    .all() as { cost_basis_krw: number; acquisition_cost_krw: number | null }[]
+  const realized = db
+    .prepare(`select cost_basis_krw, acquisition_cost_krw from realized_lots where ticker = 'ACME'`)
+    .all() as { cost_basis_krw: number; acquisition_cost_krw: number | null }[]
+  db.close()
+  return { open, realized }
+}
+
+test('a US lot records its won cost at the acquisition-date rate beside the today-rate one', () => {
+  const { open, realized } = ingest()
+  // $240 open: today's rate on the holdings side, the 06-12 rate for Korea.
+  assert.deepEqual(open, [{ cost_basis_krw: 240_000, acquisition_cost_krw: 360_000 }])
+  // $160 sold: cost_basis_krw is at the sale-date rate, Korea's cost at 06-12.
+  assert.equal(realized.length, 1)
+  assert.equal(realized[0].cost_basis_krw, 160 * 1300)
+  assert.equal(realized[0].acquisition_cost_krw, 160 * 1500)
+})

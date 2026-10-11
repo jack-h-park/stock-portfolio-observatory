@@ -325,6 +325,17 @@ review for US tax" with its realized gains, dividends and likely-PFIC count.
 applying from its `fromYear` until the next. The pre-2023 limits depended on
 income and age; the example records the common case only.
 
+**Two won costs on a US or crypto lot, on purpose.** `cost_basis_krw` converts
+the dollar cost at today's rate on an open lot and at the sale-date rate on a
+realized one, so the won gain is the dollar gain at one rate. That is what the
+holdings, lots and position pages show. `acquisition_cost_krw` converts the same
+cost at the USD/KRW rate on the acquisition date (`historical_fx_rates`), which
+is how Korea measures a foreign-currency gain, and the tax planner's KRW gain
+uses it. The two differ by the exchange-rate move since purchase. Lots from the
+Korean certificates carry the won amount actually paid, so both columns hold it.
+A lot acquired before the rate history starts has no acquisition cost, and the
+planner falls back to `cost_basis_krw` for it.
+
 **An RSU account can hold nothing, and that is why it was missed.** 삼성증권's
 주식보상 account is where RSUs vest, and its position can sit at zero — vested
 shares move on to another broker soon after. An account with no position looks

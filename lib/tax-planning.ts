@@ -28,6 +28,9 @@ export type TaxPlanningLot = {
   native_market_value: number | null
   native_unrealized_gl: number | null
   cost_basis_krw: number
+  // The won cost Korea taxes against (acquisition-date rate). cost_basis_krw is
+  // at today's rate for US and crypto lots; absent on an older database.
+  acquisition_cost_krw?: number | null
   holding_days: number | null
   tax_term: string | null
   /** The account's wrapper. Absent on a lot read before wrappers existed: a plain brokerage lot. */
@@ -630,7 +633,11 @@ export function buildTaxPlan({
     const fxRateToBase = lot.currency === 'KRW' ? 1 : explicitFxRate || basisFxRate
     const normalizedProceedsKrw = proceedsNative == null ? null : proceedsNative * fxRateToBase
     const gainNative = lot.native_unrealized_gl == null ? (proceedsNative == null ? null : proceedsNative - Number(lot.native_cost_basis ?? 0)) : Number(lot.native_unrealized_gl)
-    const gainKrw = normalizedProceedsKrw == null ? null : normalizedProceedsKrw - Number(lot.cost_basis_krw ?? 0)
+    // The planner's KRW gain is Korea's measure: proceeds at today's rate less the cost at the
+    // acquisition-date rate. cost_basis_krw would put both at today's rate and drop the exchange-rate
+    // move since purchase, which Korea taxes. The US side does not read it (usGainUsd).
+    const krCostKrw = Number(lot.acquisition_cost_krw ?? lot.cost_basis_krw ?? 0)
+    const gainKrw = normalizedProceedsKrw == null ? null : normalizedProceedsKrw - krCostKrw
     const holdingBucket = isLongTerm(lot) ? 'long' : 'short'
 
     // US gain in KRW at the current rate: a USD lot's gain is measured in USD (see usGainUsd).
@@ -1236,6 +1243,7 @@ function scheduledCandidate(
     native_market_value: original.native_market_value == null ? null : original.native_market_value * fraction,
     native_unrealized_gl: original.native_unrealized_gl == null ? null : original.native_unrealized_gl * fraction,
     cost_basis_krw: original.cost_basis_krw * fraction,
+    acquisition_cost_krw: original.acquisition_cost_krw == null ? original.acquisition_cost_krw : original.acquisition_cost_krw * fraction,
     proceedsNative: original.proceedsNative == null ? null : original.proceedsNative * fraction,
     proceedsKrw: instruction.proceedsKrw,
     gainNative: original.gainNative == null ? null : original.gainNative * fraction,
