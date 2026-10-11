@@ -10,10 +10,14 @@
  * - `month_end`: month-end values, so an intra-month peak is missed;
  * - `year_end`: certificate or snapshot totals only;
  * - `partial`: the history starts after 1 January or ends before 31 December,
- *   or (gold) part of the year is valued at cost.
+ *   or (gold) part of the year is valued at cost;
+ * - `derived`: a whole year of cash balances that no bank printed, such as a
+ *   closed term deposit's principal carried from its opening to its closing
+ *   (scripts/extract-bank-statements.py, mg_term_accounts). The interest
+ *   credited on its last day is not in them, so the maximum is understated.
  */
-export type FbarCoverage = 'daily' | 'month_end' | 'year_end' | 'partial'
-export type FbarResolution = Exclude<FbarCoverage, 'partial'>
+export type FbarCoverage = 'daily' | 'month_end' | 'year_end' | 'partial' | 'derived'
+export type FbarResolution = Exclude<FbarCoverage, 'partial' | 'derived'>
 export type BalancePoint = { date: string; valueKrw: number }
 export type FbarKind = 'cash' | 'brokerage' | 'pension' | 'gold' | 'crypto'
 

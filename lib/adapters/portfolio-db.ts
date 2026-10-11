@@ -1229,7 +1229,9 @@ function closedOn(points: BalancePoint[], retiredOn: string): BalancePoint[] {
  *
  * - cash outside the US banks (isUsCashInstitution), from daily balances
  *   carried forward; a USD account's maximum is read in dollars. A bankAccounts
- *   entry with `retiredOn` ends its account's series on that date;
+ *   entry with `retiredOn` ends its account's series on that date. A series
+ *   with derived rows (a closed term deposit's principal) is `derived`, never
+ *   `daily`: no bank printed it;
  * - stock accounts outside the US brokerages (isUsBrokerage), KR and US market
  *   alike, so a Korean broker's US stocks count: month-end values of the lots
  *   held times the historical price, converted at that date's USD/KRW rate when
@@ -1290,25 +1292,29 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
       // An unreadable map is the ingest's failure to report; here no account is retired.
     }
     const rateAt = usdKrwRateAt(conn)
-    const cashByAccount = new Map<string, { institution: string; account: string; currency: string; points: BalancePoint[] }>()
+    const cashByAccount = new Map<string, { institution: string; account: string; currency: string; derived: boolean; points: BalancePoint[] }>()
     if (hasTable('cash_balances')) {
+      const derivedColumn = columnsOf('cash_balances').has('derived') ? 'derived' : '0 as derived'
       const rows = conn
-        .prepare('select institution, account, currency, as_of_date as date, balance from cash_balances order by as_of_date, id')
-        .all() as { institution: string; account: string; currency: string; date: string; balance: number }[]
+        .prepare(`select institution, account, currency, as_of_date as date, balance, ${derivedColumn} from cash_balances order by as_of_date, id`)
+        .all() as { institution: string; account: string; currency: string; date: string; balance: number; derived: number }[]
       for (const row of rows) {
         if (isUsCashInstitution(row.institution)) continue
         const key = `${row.institution}|${row.account}`
-        const entry = cashByAccount.get(key) ?? { institution: row.institution, account: row.account, currency: row.currency, points: [] }
+        const entry = cashByAccount.get(key) ?? { institution: row.institution, account: row.account, currency: row.currency, derived: false, points: [] }
         entry.points.push({ date: row.date, valueKrw: Number(row.balance) })
+        if (row.derived) entry.derived = true
         cashByAccount.set(key, entry)
       }
     }
-    for (const [key, { institution, account, currency, points: history }] of cashByAccount) {
+    for (const [key, { institution, account, currency, derived, points: history }] of cashByAccount) {
       const retiredOn = retired.get(key) ?? null
       if (retiredOn && retiredOn < start) continue
       const points = retiredOn ? closedOn(history, retiredOn) : history
-      const found = maxBalance(points, year)
-      if (!found) continue
+      const reached = maxBalance(points, year)
+      if (!reached) continue
+      // Carried forward day by day, but not printed by any bank: understated.
+      const found = derived && reached.coverage === 'daily' ? { ...reached, coverage: 'derived' as const } : reached
       if (currency === 'USD') {
         // Dollars in, dollars out. Without a Treasury rate the won figure falls
         // back to the market rate on the date of the maximum, and with neither

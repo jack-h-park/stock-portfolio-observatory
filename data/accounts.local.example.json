@@ -11,6 +11,8 @@
     { "institution": "mirae", "kind": "cma", "accountNumber": "000-000000003", "currency": "KRW", "alias": "미래에셋 CMA" },
     { "institution": "hana", "kind": "fx", "currency": "USD", "accountNumber": "000-000000-00000", "alias": "Hana USD" },
     { "institution": "mg", "last4": "2222", "kind": "deposit", "currency": "KRW", "alias": "MG old deposit", "retiredOn": "2024-06-30" },
+    { "institution": "mg", "kind": "deposit", "currency": "KRW", "accountNumber": "0000-0000-0000-1", "alias": "새마을금고 자립예탁금" },
+    { "institution": "mg", "kind": "deposit", "currency": "KRW", "accountNumber": "0000-0000-1111-2", "alias": "새마을금고 정기예금 …1111-2", "openedOn": "2023-03-02", "retiredOn": "2024-03-02" },
     { "institution": "tossbank", "last4": "3333", "kind": "checking", "currency": "KRW", "alias": "Toss Bank old checking", "retired": true }
   ],
   "brokerageAccounts": [
