@@ -72,8 +72,10 @@ export function buildInvestmentEpisodes({
       return next >= 0 ? next : spans.length - 1
     }
     const first = (c[0] ?? o[0])!
+    // A 1099-B row carries the form's long description; a statement row the short name.
+    const name = [...c, ...o].map((row) => row.name).filter(Boolean).sort((a, b) => a.length - b.length)[0] ?? first.ticker
     const episodes = spans.map((span): InvestmentEpisode => ({
-      kind: 'investment', market: first.market, ticker: first.ticker, name: first.name,
+      kind: 'investment', market: first.market, ticker: first.ticker, name,
       start: span.start, end: span.end, peakCostKrw: span.peak,
       realizedKrw: 0, unrealizedKrw: 0, dividendsKrw: 0, gainKrw: 0, estimatedTaxKrw: null, unpricedLots: 0,
     }))

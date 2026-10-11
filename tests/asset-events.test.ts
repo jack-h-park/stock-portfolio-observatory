@@ -74,3 +74,12 @@ test('allocateTax shares the aggregate tax out by each lot’s share of the posi
   const shares = allocateTax([{ id: 1, gainKrw: 30 }, { id: 2, gainKrw: 10 }, { id: 3, gainKrw: -20 }, { id: 4, gainKrw: null }], 8)
   assert.deepEqual([shares.get(1), shares.get(2), shares.get(3), shares.get(4)], [6, 2, 0, null])
 })
+
+test('an episode is named by the shortest name its lots carry, not a filing’s long description', () => {
+  const [episode] = buildInvestmentEpisodes({
+    closed: [{ ...closed(1, '2024-01-10', 20_000_000, '2024-06-01', 12_000_000), name: 'INVENTED TRUST ULTRA FUND UNSOLICITED SECURITIES LLC MAKES A MARKET' }],
+    open: [{ ...open(2, '2024-01-10', 300_000, 500_000), name: 'Invented Ultra' }],
+    dividends: [],
+  })
+  assert.equal(episode.name, 'Invented Ultra')
+})
