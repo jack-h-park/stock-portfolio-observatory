@@ -225,6 +225,7 @@ export function policyFromFormData(formData: FormData): TaxPolicy {
   setAssumption(policy, 'US', 'ftcForeignSourceGainPct', numeric(formData.get('usFtcForeignSourceGainPct')) ?? 0)
 
   setAssumption(policy, 'KR', 'stockBasicDeductionKrw', numeric(formData.get('krStockBasicDeductionKrw')) ?? 2500000)
+  setAssumption(policy, 'KR', 'ytdRealizedTaxableGainKrw', numeric(formData.get('krYtdRealizedTaxableGainKrw')) ?? 0)
   setAssumption(policy, 'KR', 'foreignStockFlatRatePct', numeric(formData.get('krForeignStockFlatRatePct')) ?? 22)
   setAssumption(policy, 'KR', 'domesticMajorShareholder', bool(formData.get('krDomesticMajorShareholder')))
   setAssumption(policy, 'KR', 'domesticListedOffMarketSale', bool(formData.get('krDomesticListedOffMarketSale')))
