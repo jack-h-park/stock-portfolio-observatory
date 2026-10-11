@@ -349,7 +349,7 @@ mg = [
  {"date": "2026-04-03", "seq": 2, "amount": 103.0, "description": "예적금만기 자동이체"},
 ]
 m.MIN_ESTIMATE_KRW = 1
-out = m.estimate_closed_accounts([("tossbank", "tossbank-0001", toss), ("mg", "mg-deposit", mg)], [], {}, [])
+out, _ = m.estimate_closed_accounts([("tossbank", "tossbank-0001", toss), ("mg", "mg-deposit", mg)], [], {}, [])
 print(json.dumps({a["account"]: a["balances"] for a in out}))`)
   assert.deepEqual(r, {
     '새마을금고 예적금': [{ date: '2026-01-03', balance: 100 }, { date: '2026-04-03', balance: 0 }],
@@ -366,7 +366,7 @@ toss = [
 ]
 m.MIN_ESTIMATE_KRW = 1
 anchors = {"anchors": [{"alias": "미래에셋 기타 계좌", "date": "2026-03-31", "balance": 250.0}]}
-out = m.estimate_closed_accounts([("tossbank", "tossbank-0001", toss)], [], anchors, [])
+out, _ = m.estimate_closed_accounts([("tossbank", "tossbank-0001", toss)], [], anchors, [])
 print(json.dumps(out[0]["balances"]))`)
   // Without the anchor only the 50 that came back would count. The walk: 250 on
   // 03-31, 250 after 02-02, 50 after 01-02; after the anchor, the conservative 0.
@@ -374,5 +374,21 @@ print(json.dumps(out[0]["balances"]))`)
     { date: '2026-01-02', balance: 50 },
     { date: '2026-02-02', balance: 250 },
     { date: '2026-05-02', balance: 0 },
+  ])
+})
+
+test('arrivals are what comes in with nothing sent out first; a return of money sent out is not one', () => {
+  const r = py(`
+print(json.dumps(m.arrivals([("2026-01-05", 300.0), ("2026-02-10", -305.0), ("2026-03-01", -1000.0)])))`)
+  // 5 over the 300 sent out (interest), then 1000 with nothing outstanding.
+  assert.deepEqual(r, [['2026-02-10', 5], ['2026-03-01', 1000]])
+})
+
+test('arrivals from one group within 120 days are one inflow dated at the first', () => {
+  const r = py(`
+print(json.dumps(m.group_arrivals("counterparty:Buyer|Bank", [("2026-01-05", 100.0), ("2026-03-01", 200.0), ("2026-09-01", 50.0)])))`)
+  assert.deepEqual(r, [
+    { group: 'counterparty:Buyer|Bank', firstDate: '2026-01-05', lastDate: '2026-03-01', amountKrw: 300, arrivals: 2 },
+    { group: 'counterparty:Buyer|Bank', firstDate: '2026-09-01', lastDate: '2026-09-01', amountKrw: 50, arrivals: 1 },
   ])
 })

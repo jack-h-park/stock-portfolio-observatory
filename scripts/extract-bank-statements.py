@@ -629,6 +629,27 @@ def held_outside(points):
     return [(d, out[d]) for d in days]
 
 
+def arrivals(points):
+    """Money that arrived with nothing outstanding to return: the part held_outside clips at zero."""
+    running, out = 0.0, {}
+    for date, outflow in points:
+        if running + outflow < 0:
+            out[date] = out.get(date, 0.0) + round(-(running + outflow), 2)
+        running = max(0.0, running + outflow)
+    return sorted(out.items())
+
+
+def group_arrivals(group, items, window_days=120):
+    """Arrivals of one group, joined while each falls within window_days of the previous one."""
+    out = []
+    for date, amount in items:
+        if out and _days(out[-1]["lastDate"], date) <= window_days:
+            out[-1].update(lastDate=date, amountKrw=round(out[-1]["amountKrw"] + amount, 2), arrivals=out[-1]["arrivals"] + 1)
+        else:
+            out.append({"group": group, "firstDate": date, "lastDate": date, "amountKrw": round(amount, 2), "arrivals": 1})
+    return out
+
+
 def anchored(series, points, anchor):
     """Raise the days up to an anchor to the balance walked back from it.
 
@@ -693,7 +714,8 @@ def estimate_closed_accounts(statements, transfers, account_map, findings):
                        "mirae-other": "mirae"}.get(key, "counterparty")
         out.append({"institution": institution, "account": alias,
                     "currency": "KRW", "anchored": alias in anchors, "balances": balances})
-    return out
+    inflows = [i for key, points in sorted(buckets.items()) for i in group_arrivals(key, arrivals(points))]
+    return out, inflows
 
 
 def main():
@@ -758,10 +780,10 @@ def main():
             except Exception as error:  # an unread certificate only weakens the pairing
                 findings.append(f"{path.name}: transfers could not be read for the estimates ({type(error).__name__}: {error})")
         transfers += merge_txns([[{**t, "balance": None} for t in rows] for rows in parsed])
-    estimated = estimate_closed_accounts(krw_statements, transfers, account_map, findings)
+    estimated, inflows = estimate_closed_accounts(krw_statements, transfers, account_map, findings)
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     document = {"generatedAt": datetime.now(timezone.utc).isoformat(), "accounts": accounts,
-                "estimatedAccounts": estimated, "findings": findings, "notes": notes}
+                "estimatedAccounts": estimated, "externalInflows": inflows, "findings": findings, "notes": notes}
     OUT_PATH.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"bank balances: {len(accounts)} account(s), {len(estimated)} estimated, {len(findings)} finding(s), "
           f"{len(notes)} note(s) → {OUT_PATH}")
