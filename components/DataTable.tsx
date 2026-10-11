@@ -42,6 +42,7 @@ export function DataTable({
   getRowKey,
   sort,
   sortHref,
+  minWidth,
 }: {
   columns: DataTableColumn[]
   rows: any[]
@@ -54,11 +55,14 @@ export function DataTable({
    *  render as plain headers — a sort control that cannot change the URL would
    *  be a lie. */
   sortHref?: (sort: TableSort) => string
+  /** Width below which the table scrolls sideways. Defaults to the standard
+   *  48rem; lower it only for a table that lives in a half-width card. */
+  minWidth?: string
 }) {
   if (rows.length === 0) return <EmptyState>{emptyMessage ?? <CommonLabel label="noRows" />}</EmptyState>
 
   return (
-    <Table scroll minWidth="48rem" className="border-separate border-spacing-0">
+    <Table scroll minWidth={minWidth ?? '48rem'} className="border-separate border-spacing-0">
         {caption ? <caption className="sr-only">{caption}</caption> : null}
         <thead>
           <tr>

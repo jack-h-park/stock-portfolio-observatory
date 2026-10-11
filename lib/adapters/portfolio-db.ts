@@ -4,6 +4,7 @@ import path from 'node:path'
 import { createHash } from 'node:crypto'
 import Database from 'better-sqlite3'
 import { config } from '@/config'
+import { getRebalancePolicy } from '@/lib/rebalance-policy'
 import type { TaxPlanningLot } from '@/lib/tax-planning'
 import { getTaxPolicyState, usTaxableWrappers, wrapperTreatment, type TaxPolicy, type WrapperTreatment } from '@/lib/tax-policy'
 import { ASSET_CLASSES, depositsSeries, summarizeNetWorth, totalAssetsSeries, type AsOfNote, type CashBalanceRow, type NetWorth, type TotalAssetsSeries } from '@/lib/net-worth'
@@ -2652,10 +2653,7 @@ export function getCryptoPremium(): CryptoPremium {
 export function getRebalanceReview(): RebalanceReview {
   const conn = db()
   try {
-    const marketTargets = [
-      { market: 'KR', targetPct: 50 },
-      { market: 'US', targetPct: 50 },
-    ]
+    const { marketTargets } = getRebalancePolicy()
     const positionCapPct = 15
     const totals = conn
       .prepare(
@@ -2687,7 +2685,7 @@ export function getRebalanceReview(): RebalanceReview {
       positions.reduce((sum, row) => (row.market === market ? sum + positionValue(row) : sum), 0)
 
     // Market gaps are measured against the TARGETED markets only, not the whole
-    // portfolio. The 50/50 policy is a split between two equity books; a market
+    // portfolio. The KR/US policy is a split between two equity books; a market
     // with no target — crypto — is not a third slice of it. Dividing by the full
     // portfolio would push both KR and US below their targets purely because
     // crypto exists, reporting "Add" on both sides of a split that is already
