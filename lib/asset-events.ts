@@ -93,3 +93,13 @@ export function buildInvestmentEpisodes({
   }
   return out
 }
+
+export type InflowEvent = { kind: 'inflow'; start: string; end: string; label: string | null; category: string | null; amountKrw: number; arrivals: number }
+export type AssetEvent = InflowEvent | InvestmentEpisode
+
+/** Inflows of at least the threshold and episodes whose gain is at least ± the threshold, by start date, an inflow before an episode on the same day. */
+export function mergeAssetEvents(inflows: InflowEvent[], episodes: InvestmentEpisode[], thresholdKrw = EVENT_THRESHOLD_KRW): AssetEvent[] {
+  return [...inflows.filter((e) => e.amountKrw >= thresholdKrw), ...episodes.filter((e) => Math.abs(e.gainKrw) >= thresholdKrw)].sort(
+    (a, b) => a.start.localeCompare(b.start) || (a.kind === b.kind ? 0 : a.kind === 'inflow' ? -1 : 1)
+  )
+}

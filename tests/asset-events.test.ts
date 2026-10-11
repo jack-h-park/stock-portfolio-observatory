@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildInvestmentEpisodes, type ClosedLot, type OpenLot } from '../lib/asset-events'
+import { buildInvestmentEpisodes, mergeAssetEvents, type ClosedLot, type InvestmentEpisode, type OpenLot } from '../lib/asset-events'
 
 const lot = (id: number, acquiredDate: string, costKrw: number) => ({ id, market: 'KR', ticker: 'AAA', name: 'Invented', acquiredDate, costKrw })
 const closed = (id: number, acquiredDate: string, costKrw: number, soldDate: string, realizedKrw: number): ClosedLot => ({ ...lot(id, acquiredDate, costKrw), soldDate, realizedKrw })
@@ -44,4 +44,14 @@ test('dividends inside an episode add to its gain; an unpriced open lot is count
 
 test('a ticker that never reaches the floor makes no episode', () => {
   assert.deepEqual(buildInvestmentEpisodes({ closed: [closed(1, '2024-01-10', 500_000, '2024-02-01', 50_000)], open: [], dividends: [] }), [])
+})
+
+test('mergeAssetEvents keeps events at or above ±10M, losses included, in date order', () => {
+  const ep = (start: string, gainKrw: number) => ({ kind: 'investment', market: 'KR', ticker: 'A', name: 'A', start, end: null, peakCostKrw: 1, realizedKrw: gainKrw, unrealizedKrw: 0, dividendsKrw: 0, gainKrw, estimatedTaxKrw: null, unpricedLots: 0 }) as InvestmentEpisode
+  const events = mergeAssetEvents(
+    [{ kind: 'inflow', start: '2024-06-01', end: '2024-09-04', label: 'Home sale', category: 'asset_sale', amountKrw: 50_000_000, arrivals: 5 },
+     { kind: 'inflow', start: '2024-01-01', end: '2024-01-01', label: null, category: null, amountKrw: 9_999_999, arrivals: 1 }],
+    [ep('2025-01-01', -12_000_000), ep('2023-01-01', 4_000_000)]
+  )
+  assert.deepEqual(events.map((e) => e.start), ['2024-06-01', '2025-01-01'])
 })

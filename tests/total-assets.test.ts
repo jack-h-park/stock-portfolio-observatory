@@ -212,6 +212,29 @@ test('a snapshot dated today yields one point for today, and it is the Total ass
   assert.deepEqual(getTotalAssetsSeries(['2026-01-31', today], netWorth), series)
 })
 
+test('getAssetEvents counts a superseded realized row once and lists a labeled inflow', async () => {
+  const dbPath = ingest()
+  const db = new Database(dbPath)
+  const realized = db.prepare(
+    `insert into realized_lots_all (market, currency, base_currency, account, ticker, name, acquired_date, sold_date, cost_basis_krw, proceeds_krw, realized_gl_krw, superseded_by)
+     values ('KR', 'KRW', 'KRW', 'Example Broker', 'AAA', 'Invented Corp', '2024-01-10', '2024-05-01', 20000000, 35000000, 15000000, ?)`
+  )
+  realized.run(null)
+  realized.run('1')
+  db.prepare(
+    "insert into external_inflows (grp, first_date, last_date, amount_krw, arrivals, label, category) values ('counterparty:X|Y', '2024-06-01', '2024-06-01', 30000000, 1, 'Example', 'other')"
+  ).run()
+  db.close()
+  config.stockDbPath = dbPath
+  const { getAssetEvents } = await import('../lib/adapters/portfolio-db')
+  const events = getAssetEvents().filter((e) => e.kind === 'inflow' || e.ticker === 'AAA')
+  assert.equal(events.length, 2)
+  const episode = events.find((e) => e.kind === 'investment')!
+  assert.equal(episode.kind === 'investment' && episode.realizedKrw, 15_000_000)
+  const inflow = events.find((e) => e.kind === 'inflow')!
+  assert.equal(inflow.kind === 'inflow' && inflow.label, 'Example')
+})
+
 // --- overview stock trend ---------------------------------------------------
 
 test('the overview stock trend is stock-only again: no deposits scope, and global is the snapshot value', () => {
