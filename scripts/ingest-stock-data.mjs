@@ -67,7 +67,7 @@ function normalizeBankBalances(raw) {
   }
   if (!isObject(raw)) {
     problems.push('top level is not an object')
-    return { doc: { accounts: [], estimatedAccounts: [], findings: [], notes: [] }, problems }
+    return { doc: { accounts: [], estimatedAccounts: [], externalInflows: [], findings: [], notes: [] }, problems }
   }
   let rawAccounts = raw.accounts
   if (!Array.isArray(rawAccounts)) {
@@ -130,25 +130,53 @@ function normalizeBankBalances(raw) {
     })
     estimatedAccounts.push({ institution: a.institution, account: a.account, currency: a.currency, anchored: Boolean(a.anchored), balances })
   })
+  // Money that arrived from outside the statements with nothing sent out first
+  // (a sale, an inheritance), grouped by counterparty. Read by the asset events list.
+  const externalInflows = []
+  const rawInflows = raw.externalInflows === undefined ? [] : raw.externalInflows
+  if (!Array.isArray(rawInflows)) problems.push('externalInflows is not an array')
+  ;(Array.isArray(rawInflows) ? rawInflows : []).forEach((i, n) => {
+    const ok =
+      isObject(i) && ['group', 'firstDate', 'lastDate'].every((k) => typeof i[k] === 'string') && typeof i.amountKrw === 'number' && Number.isFinite(i.amountKrw)
+    if (!ok) {
+      problems.push(`externalInflows[${n}] lacks string group, firstDate and lastDate and a finite amountKrw`)
+      return
+    }
+    externalInflows.push({ group: i.group, firstDate: i.firstDate, lastDate: i.lastDate, amountKrw: i.amountKrw, arrivals: Number.isInteger(i.arrivals) ? i.arrivals : 1 })
+  })
   const findings = raw.findings === null ? [] : strings(raw.findings, 'findings')
   if (raw.findings === null) problems.push('findings is null')
   // Informational lines from the extractor (for example a 토스뱅크 balance that was
   // computed because the statement printed none). Shown, never counted as a fault.
   const notes = raw.notes === null ? [] : strings(raw.notes, 'notes')
-  return { doc: { accounts, estimatedAccounts, findings, notes }, problems }
+  return { doc: { accounts, estimatedAccounts, externalInflows, findings, notes }, problems }
 }
 let bankBalancesProblems = []
 const bankBalances = (() => {
-  if (!fs.existsSync(bankBalancesPath)) return { accounts: [], estimatedAccounts: [], findings: [], notes: [] }
+  if (!fs.existsSync(bankBalancesPath)) return { accounts: [], estimatedAccounts: [], externalInflows: [], findings: [], notes: [] }
   try {
     const { doc, problems } = normalizeBankBalances(JSON.parse(fs.readFileSync(bankBalancesPath, 'utf8')))
     bankBalancesProblems = problems
     return doc
   } catch (error) {
     bankBalancesProblems = [error instanceof Error ? error.message : String(error)]
-    return { accounts: [], estimatedAccounts: [], findings: [], notes: [] }
+    return { accounts: [], estimatedAccounts: [], externalInflows: [], findings: [], notes: [] }
   }
 })()
+const assetEventLabelsPath =
+  process.env.STOCK_ASSET_EVENT_LABELS_PATH || path.join(process.cwd(), 'data/asset-event-labels.local.json')
+// Names for money that arrived from outside. Gitignored: the groups carry real
+// counterparties. A missing or unreadable file leaves every inflow unlabeled.
+const assetEventLabels = (() => {
+  try {
+    const raw = JSON.parse(fs.readFileSync(assetEventLabelsPath, 'utf8'))
+    return Array.isArray(raw?.labels) ? raw.labels.filter((l) => l && typeof l.group === 'string' && typeof l.label === 'string') : []
+  } catch {
+    return []
+  }
+})()
+const assetEventLabelFor = (inflow) =>
+  assetEventLabels.find((l) => l.group === inflow.group && (!l.from || inflow.firstDate >= l.from) && (!l.to || inflow.firstDate <= l.to)) ?? null
 const fxLedgerPath =
   process.env.STOCK_FX_LEDGER_PATH || path.join(outDir, 'fx-ledger.json')
 
@@ -912,6 +940,18 @@ create table cash_estimates (
   as_of_date text not null,
   balance real not null,
   anchored integer not null default 0
+);
+
+create table external_inflows (
+  id integer primary key,
+  grp text not null,
+  first_date text not null,
+  last_date text not null,
+  amount_krw real not null,
+  arrivals integer not null,
+  label text,
+  category text,
+  hidden integer not null default 0
 );
 
 -- Uninvested cash in the Korean brokerage accounts, as the statements print it
@@ -4937,6 +4977,24 @@ insertMany(
     a.balances.map((b) => ({ institution: a.institution, account: a.account, currency: a.currency, as_of_date: b.date, balance: b.balance, anchored: a.anchored ? 1 : 0 }))
   ),
   ['institution', 'account', 'currency', 'as_of_date', 'balance', 'anchored']
+)
+insertMany(
+  db,
+  'external_inflows',
+  bankBalances.externalInflows.map((i) => {
+    const l = assetEventLabelFor(i)
+    return {
+      grp: i.group,
+      first_date: i.firstDate,
+      last_date: i.lastDate,
+      amount_krw: i.amountKrw,
+      arrivals: i.arrivals,
+      label: l?.label ?? null,
+      category: typeof l?.category === 'string' ? l.category : null,
+      hidden: l?.hidden ? 1 : 0,
+    }
+  }),
+  ['grp', 'first_date', 'last_date', 'amount_krw', 'arrivals', 'label', 'category', 'hidden']
 )
 // The wrapper and asset class are the account's, by the same rules as its
 // securities rows, so the reader can keep a pension's or the gold account's cash

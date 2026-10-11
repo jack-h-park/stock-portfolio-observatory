@@ -1,0 +1,6 @@
+{
+  "labels": [
+    { "group": "counterparty:Example Buyer|Example Bank", "from": "2024-06-01", "to": "2024-09-30", "label": "Home sale", "category": "asset_sale" },
+    { "group": "counterparty:Example Payroll|MG새마을금고", "label": "Annual bonus", "category": "income", "hidden": true }
+  ]
+}

@@ -21,5 +21,5 @@ test('tax-policy.json is not pushed: the host copy, written by /tax-settings, is
 })
 
 test('the files edited on the laptop still travel', () => {
-  assert.deepEqual(configList(), ['manual-mappings.json', 'accounts.local.json'])
+  assert.deepEqual(configList(), ['manual-mappings.json', 'accounts.local.json', 'asset-event-labels.local.json'])
 })
