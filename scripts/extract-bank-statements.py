@@ -566,7 +566,9 @@ def _bucket(flow):
             return None
         if bank == "미래에셋증권":
             return "mirae-other"
-        return f"counterparty:{memo}|{bank}"
+        # By name alone: money lent from one bank is often repaid into another,
+        # and the two legs are one round trip.
+        return f"counterparty:{memo}"
     if flow["statement"] == "mg":
         if memo == "인터넷신규" or memo.startswith("예적금만기"):
             return "mg-savings"
@@ -680,6 +682,9 @@ def estimate_closed_accounts(statements, transfers, account_map, findings):
 
     `statements` are (statement, source, txns) for the KRW statement accounts;
     `transfers` are 미래에셋 종합/ISA transfer rows, used only to pair legs.
+    Returns (estimated accounts, external inflows): the inflows are money that
+    arrived from a counterparty with nothing sent to it first, grouped by
+    group_arrivals.
     """
     flows = []
     for statement, source, txns in statements + [("mirae", "mirae-brokerage", transfers)]:
@@ -714,7 +719,12 @@ def estimate_closed_accounts(statements, transfers, account_map, findings):
                        "mirae-other": "mirae"}.get(key, "counterparty")
         out.append({"institution": institution, "account": alias,
                     "currency": "KRW", "anchored": alias in anchors, "balances": balances})
-    inflows = [i for key, points in sorted(buckets.items()) for i in group_arrivals(key, arrivals(points))]
+    # Outside money comes only from a counterparty. A 예적금, a 파킹통장 or a
+    # 미래에셋 account is the maintainer's own: what it returns beyond what the
+    # statements saw go in (one opened before the statements begin, interest) was
+    # already theirs.
+    inflows = [i for key, points in sorted(buckets.items()) if key.startswith("counterparty:")
+               for i in group_arrivals(key, arrivals(points))]
     return out, inflows
 
 

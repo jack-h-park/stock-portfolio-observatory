@@ -392,3 +392,17 @@ print(json.dumps(m.group_arrivals("counterparty:Buyer|Bank", [("2026-01-05", 100
     { group: 'counterparty:Buyer|Bank', firstDate: '2026-09-01', lastDate: '2026-09-01', amountKrw: 50, arrivals: 1 },
   ])
 })
+
+test('a loan repaid from another bank is a return, and a matured deposit is never outside money', () => {
+  const r = py(`
+toss = [
+ {"date": "2026-01-02", "seq": 0, "amount": -200.0, "counterparty": "Friend", "counterpartyInstitution": "Bank A"},
+ {"date": "2026-02-02", "seq": 1, "amount": 200.0, "counterparty": "Friend", "counterpartyInstitution": "Bank B"},
+]
+mg = [{"date": "2026-01-30", "seq": 0, "amount": 150.0, "description": "예적금만기 자동이체"}]
+m.MIN_ESTIMATE_KRW = 1
+out, inflows = m.estimate_closed_accounts([("tossbank", "tossbank-0001", toss), ("mg", "mg-deposit", mg)], [], {}, [])
+print(json.dumps({"inflows": inflows, "accounts": [a["account"] for a in out]}))`)
+  assert.deepEqual(r.inflows, [])
+  assert.deepEqual(r.accounts, ['Friend'])
+})
