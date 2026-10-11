@@ -84,6 +84,36 @@ The refresh loads these into `cash_estimates`. Only the total-assets trend reads
 that table: the FBAR maxima, the deposit freshness checks and today's Total assets
 card read `cash_balances` alone.
 
+#### Money that arrived from outside, and the asset events list
+
+The same grouping also yields `externalInflows`: money that arrived from a
+counterparty with nothing sent to it first, such as a sale, an inheritance or a
+surrendered policy. A 예적금, a 파킹통장 or a 미래에셋 account never yields one, because
+what it returns was already the maintainer's. A 토스뱅크 counterparty is grouped by
+name alone, so a loan repaid into a different bank is one round trip. Arrivals of
+one group within 120 days are one inflow, dated at the first.
+
+The refresh loads them into `external_inflows` and names them from a gitignored
+labels file. The file is `STOCK_ASSET_EVENT_LABELS_PATH`, default
+`data/asset-event-labels.local.json`; `data/asset-event-labels.example.json` shows
+its shape. Each label matches an inflow's `group` exactly, optionally bounded by
+`from`/`to` on its first date. It gives a `label`, a `category` (`asset_sale`,
+`inheritance`, `insurance`, `income` or `other`) and, for regular income such as
+salary or a bonus, `hidden: true`. `push-sources.sh` carries the file to the refresh
+host.
+
+The asset events list under the total-assets trend (Overview in the all-assets
+view, and `/net-worth`) merges two kinds of event:
+
+- **Inflows** that are not hidden, of 10M KRW or more.
+- **Holding periods** whose gain or loss is ±10M KRW or more. A holding period is
+  a run of one ticker, all accounts together, while its open cost basis stays at
+  or above 1M KRW. Selling down to a small observation lot ends it, and a later
+  rebuy starts a new one. The gain is realized gain, plus unrealized gain at
+  today's price, plus dividends. The estimated tax is the tax planner's per-lot
+  estimate for the open lots; a lot in a wrapper the estimate leaves out carries
+  none.
+
 ### 미래에셋 account identity
 
 A 미래에셋 account is identified by its **full 계좌번호**, matched against the
