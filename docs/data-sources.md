@@ -38,7 +38,8 @@ the same naming grammar as the other source files:
 | Chase checking | `chase-checking-<from>-<to>.csv` |
 | Bank of America checking | `boa-checking-<from>-<to>.csv` |
 | Robinhood bank | `robinhood-bank-<checking\|savings>-<from>-<to>.csv` |
-| MG Community Credit Cooperative deposit | `mg-deposit-<from>-<to>.xls` |
+| MG Community Credit Cooperative deposit | `mg-deposit-<from>-<to>.xls`: a 거래내역조회. With an account map, the 계좌번호 it prints must be a `{ "institution": "mg" }` entry under `bankAccounts` with that full `accountNumber`; the filer refuses an unmapped number (showing its last four digits) and the extractor names the account by the entry's `alias`. With no numbered mg entry in the map, every export is the one account, as before |
+| MG closed term deposit (정기예탁금) | `mg-term-<last4>-<개설일>-<해지일>.xls`: a 해지계좌 거래내역조회, one closed deposit per file; see [Closed 새마을금고 term deposits](#closed-새마을금고-term-deposits) |
 | Toss Bank | `tossbank-<last4>-<from>-<to>.xlsx`, filed decrypted; the last 4 digits and the period come from the workbook's own header block, one account per last4 |
 | Fidelity cash management account (CMA) | `fidelity-cma-<from>-<to>.csv`, filed only when the export is named `History_for_Account_<ID>[-<N>].csv` and `<ID>` is a CMA in the account map; any other Fidelity history stays a brokerage file |
 | 미래에셋 CMA (발행어음형) | `mirae-cma-<from>-<to>.pdf`: a 미래에셋 거래내역증명서 whose full 계좌번호 is a `{ "institution": "mirae", "kind": "cma" }` entry in the account map (page 2 prints 계좌유형 `종합_CMA`, which is checked against it; see [미래에셋 account identity](#미래에셋-account-identity)). The balance is 예수금잔액 plus the 발행어음 principal held, and needs a certificate whose page 2 prints `거래구분 전체` (or that carries 발행어음 rows); one issued with `거래구분 CMA자동매매 제외`, or showing neither, writes no balances and is reported under `cash_statements_parsed`. Named by that entry's `label` or `alias`; a certificate whose number the map lacks is skipped with a finding. With no map at all, every CMA certificate is `미래에셋 CMA`, and a note says so |
@@ -58,6 +59,46 @@ alias (`tossbank <last4>`). A CMA's `Cash Balance` includes its core money-marke
 reinvestment row as zero movement when it checks continuity.
 
 The result shows on `/net-worth` and as a Balances column on `/accounts`.
+
+#### Closed 새마을금고 term deposits
+
+A 새마을금고 term deposit (정기예탁금) closed before its statements were kept has
+one export of its own: the 해지계좌 거래내역조회. Its 요약정보 block prints the
+계좌번호, 개설일, 해지일 and 총수령액, but the 조회기간 reaches back only a year or
+two, so in practice the file shows the closing day alone (the 이자 row, then the
+해지 row) and never the opening deposit.
+
+Each deposit is a `bankAccounts` entry with its full number and its dates:
+
+```json
+{ "institution": "mg", "kind": "deposit", "currency": "KRW", "accountNumber": "<full 계좌번호>",
+  "alias": "새마을금고 정기예금 …<last digits>", "openedOn": "YYYY-MM-DD", "retiredOn": "YYYY-MM-DD" }
+```
+
+**The filer** reads the full 계좌번호 and refuses a number the map does not list,
+showing only its last four digits. It names the file
+`mg-term-<last 4 digits, check digit included>-<개설일>-<해지일>.xls`; the 개설일
+and 해지일 must agree with the entry's `openedOn` and `retiredOn` when it has them.
+The 월급통장 detector does not claim these files.
+
+**The extractor** writes one `deposit` account per file, named by the entry's
+`alias`: the principal on the 개설일, carried forward, and 0 on the 해지일, since
+the payout leaves the account that day. The principal comes from the 월급통장
+(`mg-deposit-*.xls`, read in the same run): the `인터넷신규` outflow on the
+개설일. Several deposits can open on one day, so the outflow taken is the one
+within 1% of 총수령액 − 이자 × (1 − 0.154), the closest first, and each outflow goes
+to one deposit only. With no such outflow (the 월급통장 export does not reach back
+to the 개설일, for one), that estimate is the principal and a note in
+`bank-balances.json` names the account by its last four digits and the figure.
+Each account says which in `principal` (`matched` or `estimated`).
+
+These balances are not printed by any bank, so the account is `derived`: it has no
+continuity check, and the FBAR table reads a year it spans as `derived`
+(understated) rather than daily, because the interest credited on the last day is
+not in it. They are in `cash_balances`, so the total-assets trend and FBAR count
+them; `retiredOn` keeps them out of the reminder. The matched `인터넷신규` outflow
+and the `예적금만기` payout on the 해지일 no longer count toward the estimated
+새마을금고 예적금 below, so a deposit on file is counted once.
 
 #### Accounts no statement covers
 
