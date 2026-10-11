@@ -12,6 +12,10 @@ import { positionHref } from '@/lib/position-url'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow, KpiBand } from '@/components/layout'
+import { Field } from '@/components/form'
+import { SubmitButton } from '@/components/SubmitButton'
+import { getRebalancePolicy } from '@/lib/rebalance-policy'
+import { saveRebalanceTargets } from './actions'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/rebalance')
@@ -31,12 +35,15 @@ function PositionLink({ row }: { row: ReviewPosition }) {
 }
 
 
-export default async function RebalancePage() {
+export default async function RebalancePage({ searchParams }: { searchParams: Promise<{ target?: string }> }) {
+  const params = await searchParams
   const language = await getLanguage()
   const money = createMoneyFormatter(await getCurrencyPreferences())
   const copy = getPageCopy('rebalance', language)
   const glossary = getGlossary(language)
   const rebalance = getRebalanceReview()
+  const targetPolicy = getRebalancePolicy()
+  const editor = copy.targetEditor
   const operational = getOperationalHealth()
   const freshnessIssues = operational.staleItems.length
   const largestGap = rebalance.marketGaps.reduce((max, row) => Math.max(max, Math.abs(row.gapPct)), 0)
@@ -110,9 +117,10 @@ export default async function RebalancePage() {
         </Card>
       </CardRow>
 
-      <CardRow columns={3}>
+      <CardRow columns="hero">
         <Card title={copy.marketTargetGaps}>
           <DataTable
+            minWidth="30rem"
             rows={rebalance.marketGaps}
             columns={[
               { key: 'market', label: copy.columns.market, render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
@@ -124,6 +132,26 @@ export default async function RebalancePage() {
           />
         </Card>
 
+        <Card title={editor.title}>
+          <form action={saveRebalanceTargets} className="space-y-4">
+            <Field label={editor.usLabel} name="usTargetPct" defaultValue={targetPolicy.usTargetPct} suffix="%" />
+            <div className="flex items-center justify-between gap-3 text-caption text-ink-2">
+              <span>{editor.krLabel}</span>
+              <Badge tone="neutral">{fmtNumber(100 - targetPolicy.usTargetPct)}%</Badge>
+            </div>
+            <p className="text-label leading-relaxed text-ink-3">
+              {targetPolicy.source === 'default' ? editor.defaultNote : editor.hint}
+            </p>
+            <div className="flex items-center gap-3">
+              <SubmitButton>{editor.save}</SubmitButton>
+              {params.target === 'saved' && <Badge tone="success">{editor.saved}</Badge>}
+              {params.target === 'invalid' && <Badge tone="warning">{editor.invalid}</Badge>}
+            </div>
+          </form>
+        </Card>
+      </CardRow>
+
+      <CardRow columns={3}>
         <Card title={copy.addContext}>
           {rebalance.addContext.length === 0 ? (
             <EmptyState ok>{copy.noMarketAddGap}</EmptyState>
