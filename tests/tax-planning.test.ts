@@ -483,3 +483,19 @@ test('a Korea-listed lot is measured for the US at its acquisition-date dollar c
   const legacy = buildTaxPlan({ lots: [{ ...krLot, acquisition_cost_usd: undefined }], policy: currentPolicy, scenario: 'US_ONLY', objective: 'raise-cash' })
   assert.equal(legacy.candidates[0].usTaxKrw, 1_000_000 * 0.37)
 })
+
+test('gains Korea already taxed this year use up the basic deduction before a planned sale', () => {
+  // A planned US sale with a ₩1,000,000 KRW gain, inside the ₩2,500,000 deduction on its own.
+  const plannedLot = lot({ native_market_value: 11_000, native_unrealized_gl: 1_000, cost_basis_krw: 10_000_000 })
+  const withoutYtd = policy()
+  const plan = buildTaxPlan({ lots: [plannedLot], policy: withoutYtd, scenario: 'KR_ONLY', objective: 'raise-cash' })
+  assert.equal(summarizeTaxCandidates({ candidates: plan.candidates, policy: withoutYtd, scenario: 'KR_ONLY', year: 2026 }).krTaxKrw, 0)
+
+  const withYtd = policy()
+  withYtd.jurisdictions.find((j) => j.code === 'KR')!.manualAssumptions.ytdRealizedTaxableGainKrw = 2_000_000
+  const aggregate = summarizeTaxCandidates({ candidates: plan.candidates, policy: withYtd, scenario: 'KR_ONLY', year: 2026 })
+  assert.equal(aggregate.krNetTaxableGainBeforeDeductionKrw, 3_000_000)
+  assert.equal(aggregate.krTaxKrw, 500_000 * 0.22)
+  // Another year starts its own pool.
+  assert.equal(summarizeTaxCandidates({ candidates: plan.candidates, policy: withYtd, scenario: 'KR_ONLY', year: 2027 }).krTaxKrw, 0)
+})

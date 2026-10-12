@@ -102,6 +102,8 @@ export const taxSettings = defineCopy({
     kr: {
       title: 'Korea assumptions',
       stockBasicDeduction: 'Stock basic deduction',
+      ytdRealizedTaxableGain: 'YTD realized taxable gain',
+      ytdHint: (taxYear: string, value: string, lots: number) => `Computed for ${taxYear}: ${value} KRW across ${lots} lot(s), cost at the acquisition-date rate`,
       foreignStockRate: 'Foreign stock rate',
       foreignTaxableResidenceThreshold: 'Foreign taxable residence threshold',
       residentThroughYear: 'Resident through year',
@@ -232,6 +234,8 @@ export const taxSettings = defineCopy({
     kr: {
       title: '한국 가정',
       stockBasicDeduction: '주식 기본공제',
+      ytdRealizedTaxableGain: '연초 이후 과세 대상 실현 손익',
+      ytdHint: (taxYear: string, value: string, lots: number) => `${taxYear} 계산값: ${value} KRW, ${lots}개 lot 기준 (원가는 취득일 환율)`,
       foreignStockRate: '해외주식 세율',
       foreignTaxableResidenceThreshold: '해외주식 과세 거주기간 기준',
       residentThroughYear: '거주자 적용 종료 연도',

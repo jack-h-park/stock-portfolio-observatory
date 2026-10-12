@@ -16,7 +16,7 @@ import { writeSheetPayloads } from './sheet-payloads'
 const CSV_HEADER =
   '"Activity Date","Process Date","Settle Date","Instrument","Description","Trans Code","Quantity","Price","Amount"'
 
-function ingest() {
+function ingest(krAssumptions: Record<string, unknown> = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), 'acquisition-cost-'))
   writeSheetPayloads(dir)
   mkdirSync(path.join(dir, 'us-transactions'), { recursive: true })
@@ -55,8 +55,18 @@ function ingest() {
     ] }),
     'utf8'
   )
+  const policyPath = path.join(dir, 'tax-policy.json')
+  writeFileSync(
+    policyPath,
+    JSON.stringify({ jurisdictions: [
+      { code: 'US', manualAssumptions: { taxInputYear: 2026 } },
+      { code: 'KR', manualAssumptions: krAssumptions },
+    ] }),
+    'utf8'
+  )
   const dbPath = runIngest(dir, {
     env: {
+      STOCK_TAX_POLICY_PATH: policyPath,
       STOCK_ROBINHOOD_SNAPSHOT_PATH: snapshotPath,
       STOCK_FX_RATES_PATH: fxPath,
       STOCK_HISTORICAL_FX_RATES_PATH: historicalPath,
@@ -70,8 +80,13 @@ function ingest() {
   const realized = db
     .prepare(`select cost_basis_krw, acquisition_cost_krw from realized_lots where ticker = 'ACME'`)
     .all() as { cost_basis_krw: number; acquisition_cost_krw: number | null }[]
+  const krYtd = JSON.parse(
+    (db.prepare(`select value from meta where key = 'kr_ytd_realized_computed'`).get() as { value: string }).value
+  ) as { taxYear: string; gainKrw: number; lots: number }
+  const krCheck = db.prepare(`select status, detail from validation_checks where name = 'kr_ytd_realized_assumption_reviewed'`).get() as
+    { status: string; detail: string }
   db.close()
-  return { open, realized }
+  return { open, realized, krYtd, krCheck }
 }
 
 test('a US lot records its won cost at the acquisition-date rate beside the today-rate one', () => {
@@ -82,4 +97,15 @@ test('a US lot records its won cost at the acquisition-date rate beside the toda
   assert.equal(realized.length, 1)
   assert.equal(realized[0].cost_basis_krw, 160 * 1300)
   assert.equal(realized[0].acquisition_cost_krw, 160 * 1500)
+})
+
+test('the year-to-date gain Korea taxes is computed at acquisition-date cost and checked against the policy', () => {
+  // Sold 4 for $200 on 08-11 at 1,300 (₩260,000); their $160 cost at the 06-12 rate 1,500 (₩240,000).
+  const unset = ingest()
+  assert.deepEqual(unset.krYtd, { taxYear: '2026', gainKrw: 20_000, lots: 1, unmeasuredLots: 0 })
+  assert.equal(unset.krCheck.status, 'fail')
+  assert.match(unset.krCheck.detail, /₩20,000 at acquisition-date cost; KR ytdRealizedTaxableGainKrw is ₩0/)
+
+  const entered = ingest({ ytdRealizedTaxableGainKrw: 20_000 })
+  assert.equal(entered.krCheck.status, 'pass', entered.krCheck.detail)
 })
