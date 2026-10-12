@@ -128,7 +128,8 @@ only because both source documents print a balance this app did not compute:
 disagree with either. Two further checks assert on the statements themselves:
 that each was issued over all assets and all transaction types
 (`crypto_statements_unfiltered`), and that their declared periods tile the
-timeline with no gap and no overlap (`crypto_statement_periods_contiguous`).
+timeline with no gap (`crypto_statement_periods_contiguous`); a day two statements share is
+read once, from the one whose period ends later.
 Filenames are not trusted for this — one statement's name said 2025 while its
 contents covered 2026.
 
