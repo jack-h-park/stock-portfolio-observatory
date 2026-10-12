@@ -28,6 +28,9 @@ from pathlib import Path
 
 import pdfplumber
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import crypto_overlap  # noqa: E402  (beside this file)
+
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
 TIME_RE = re.compile(r"^\d{2}:\d{2}:\d{2}$")
@@ -570,6 +573,24 @@ def main():
                     },
                 }
             )
+
+    # Statements may share days; a shared day is read from the document whose
+    # period ends later (scripts/crypto_overlap.py). Robinhood months never overlap.
+    bithumb_periods = [
+        {"name": d["filename"], "start": d["metrics"].get("periodStart", ""), "end": d["metrics"].get("periodEnd", "")}
+        for d in documents
+        if d["category"] == "bithumb_statement"
+    ]
+    bithumb_rows = [r for r in transactions if r["venue"] == "Bithumb"]
+    kept_bithumb, dropped = crypto_overlap.drop_overlapped_rows(bithumb_periods, bithumb_rows)
+    if dropped:
+        kept_ids = {id(r) for r in kept_bithumb}
+        transactions = [r for r in transactions if r["venue"] != "Bithumb" or id(r) in kept_ids]
+        for d in documents:
+            if d["filename"] in dropped:
+                d["metrics"]["overlap_rows_dropped"] = dropped[d["filename"]]
+        for name, count in dropped.items():
+            print(f"{name}: {count} row(s) fall on days a later-ending statement also covers; read once", file=sys.stderr)
 
     transactions.sort(key=lambda r: (r["date"], r["time"], r["source"]))
     snapshots.sort(key=lambda r: (r.get("asOfDate", ""), r["symbol"]))
