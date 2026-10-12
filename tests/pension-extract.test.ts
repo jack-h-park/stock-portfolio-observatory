@@ -520,10 +520,11 @@ test('a CMA with its sweeps: the balance is 예수금 plus 발행어음 principa
   assert.equal(account.derived, false)
   // Day 1: 100,000 cash + 900,000 principal. Day 2: +85 net interest, −350,000
   // out; the late 매수 moves cash into principal and leaves the total alone.
-  // Day 3: +170 net interest on the 만기 sell, +9 deposit interest.
+  // Day 3: +170 net interest on the 만기 sell, +9 deposit interest. Day 2's
+  // high, 1,000,085, is the balance after the interest and before the transfer out.
   assert.deepEqual(account.balances, [
     { date: '2026-01-02', balance: 1000000 },
-    { date: '2026-01-05', balance: 650085 },
+    { date: '2026-01-05', balance: 650085, dayMax: 1000085 },
     { date: '2026-02-02', balance: 650264 },
   ])
   assert.deepEqual(account.continuityBreaks, [])

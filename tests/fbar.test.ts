@@ -752,3 +752,43 @@ test('bankAccountGroup maps a multi-currency entry\'s per-currency series to the
   assert.equal(bankAccountGroup(entries, 'tossbank', 'Example FX (usd)'), 'Example FX (usd)')
   assert.equal(bankAccountGroup(entries, 'hana', 'Example (USD)'), 'Example (USD)')
 })
+
+test('maxBalance: an intraday peak competes on its own day only', () => {
+  const r = maxBalance(
+    [
+      { date: '2023-12-01', valueKrw: 100, peakKrw: 99_999 },
+      { date: '2024-03-03', valueKrw: 100, peakKrw: 5_100 },
+      { date: '2024-06-01', valueKrw: 200 },
+      { date: '2025-01-01', valueKrw: 200 },
+    ],
+    2024
+  )
+  assert.deepEqual(r, { maxKrw: 5_100, date: '2024-03-03', coverage: 'daily' })
+})
+
+test('a same-day deposit and withdrawal raises the FBAR maximum but not the deposits trend; a peak before closing counts', async () => {
+  config.stockDbPath = scenarioDb({
+    extra: (db) => {
+      db.exec('alter table cash_balances add column day_max_balance real')
+      const cash = db.prepare(
+        "insert into cash_balances (institution, account, kind, currency, as_of_date, balance, day_max_balance, source) values ('tossbank', ?, 'savings', ?, ?, ?, ?, 'x')"
+      )
+      cash.run('Example parking', 'KRW', '2023-12-20', 1_000, null)
+      cash.run('Example parking', 'KRW', '2024-05-02', 1_000, 9_000_000)
+      cash.run('Example parking', 'KRW', '2024-08-01', 2_000, null)
+      cash.run('Example parking', 'KRW', '2025-01-01', 2_000, null)
+      // Closed the same day it peaked: end-of-day zero, the peak only in day_max_balance.
+      cash.run('Example closed', 'KRW', '2023-12-20', 10_000, null)
+      cash.run('Example closed', 'KRW', '2024-09-09', 0, 4_000_000)
+    },
+  })
+  const { getForeignAccountMaxima, getDepositsSeries } = await import('../lib/adapters/portfolio-db')
+  const byId = new Map(getForeignAccountMaxima(2024).rows.map((row) => [row.id, row]))
+  assert.deepEqual([byId.get('tossbank|Example parking')!.maxKrw, byId.get('tossbank|Example parking')!.maxDate], [9_000_000, '2024-05-02'])
+  assert.deepEqual([byId.get('tossbank|Example closed')!.maxKrw, byId.get('tossbank|Example closed')!.maxDate], [4_000_000, '2024-09-09'])
+  // The trend reads end-of-day balances: the 2024-05-02 point is the 1,000 left at the close.
+  const [before, on] = getDepositsSeries(['2024-05-01', '2024-05-02']).series
+  assert.equal(on.krw, before.krw)
+  const [ahead, closed] = getDepositsSeries(['2024-09-08', '2024-09-09']).series
+  assert.equal(ahead.krw! - closed.krw!, 10_000)
+})

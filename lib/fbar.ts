@@ -18,7 +18,14 @@
  */
 export type FbarCoverage = 'daily' | 'month_end' | 'year_end' | 'partial' | 'derived'
 export type FbarResolution = Exclude<FbarCoverage, 'partial' | 'derived'>
-export type BalancePoint = { date: string; valueKrw: number }
+/**
+ * `valueKrw` is the balance at the end of `date`. `peakKrw`, when present, is
+ * the highest balance during that day (a statement that prints a balance after
+ * every transaction), which can be above the end-of-day balance when money came
+ * in and left the same day. Only that day uses it: the balance carried forward
+ * to later days is always `valueKrw`.
+ */
+export type BalancePoint = { date: string; valueKrw: number; peakKrw?: number | null }
 export type FbarKind = 'cash' | 'brokerage' | 'pension' | 'gold' | 'crypto'
 
 /**
@@ -29,7 +36,8 @@ export type FbarKind = 'cash' | 'brokerage' | 'pension' | 'gold' | 'crypto'
  * otherwise the coverage is `partial`, whatever the resolution. The carried-in
  * value is the last point before the year (of several on that date, the last
  * given). Within the year every point competes: the highest wins, and a tie
- * keeps the earliest date. Null when no point falls in or before the year.
+ * keeps the earliest date. A point competes with its intraday `peakKrw` where
+ * that is higher. Null when no point falls in or before the year.
  *
  * `valueKrw` is the account's own unit: a USD account passes dollars and reads
  * its maximum in dollars.
@@ -46,7 +54,11 @@ export function maxBalance(
   const sorted = [...points].sort((a, b) => a.date.localeCompare(b.date))
   const carried = sorted.filter((point) => point.date < start).at(-1)
   const inYear = sorted.filter((point) => point.date >= start && point.date <= end)
-  const candidates = [...(carried ? [{ date: start, valueKrw: carried.valueKrw }] : []), ...inYear]
+  const high = (point: BalancePoint) => Math.max(point.valueKrw, point.peakKrw ?? -Infinity)
+  const candidates = [
+    ...(carried ? [{ date: start, valueKrw: carried.valueKrw }] : []),
+    ...inYear.map((point) => ({ date: point.date, valueKrw: high(point) })),
+  ]
   if (!candidates.length) return null
   let best = candidates[0]
   for (const point of candidates) if (point.valueKrw > best.valueKrw) best = point

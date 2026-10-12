@@ -1373,27 +1373,44 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
  * a section changes, the sum of every section's latest balance. USD counts as it
  * stands and KRW at `krwPerUsd(date)`; a date whose won cannot be converted is
  * left out, and so is any other currency (cash_balances holds KRW and USD only).
+ *
+ * A date's `peakKrw` is the sum of each section's intraday peak where that
+ * section printed one on the date (its latest balance otherwise). The sections'
+ * peaks need not have happened at the same moment, so this is an upper bound on
+ * the account's true intraday high; the statements print each currency's rows
+ * separately with no shared clock that would let them be aligned exactly.
  */
 function sumInUsd(byCurrency: Map<string, BalancePoint[]>, krwPerUsd: (date: string) => number | null): BalancePoint[] {
   const changes = [...byCurrency].flatMap(([currency, points]) => points.map((point) => ({ currency, ...point })))
   changes.sort((a, b) => a.date.localeCompare(b.date))
   const latest = new Map<string, number>()
+  let peaks = new Map<string, number>()
   const out: BalancePoint[] = []
   for (let i = 0; i < changes.length; i += 1) {
-    latest.set(changes[i].currency, changes[i].valueKrw)
-    if (changes[i + 1]?.date === changes[i].date) continue
-    const date = changes[i].date
-    let usd = 0
-    let convertible = true
-    for (const [currency, value] of latest) {
-      if (currency === 'USD') usd += value
-      else if (currency === 'KRW') {
-        const krw = krwPerUsd(date)
-        if (krw) usd += value / krw
-        else convertible = convertible && value === 0
+    const change = changes[i]
+    latest.set(change.currency, change.valueKrw)
+    if (change.peakKrw != null) peaks.set(change.currency, Math.max(peaks.get(change.currency) ?? -Infinity, change.peakKrw))
+    if (changes[i + 1]?.date === change.date) continue
+    const date = change.date
+    const inUsd = (values: Map<string, number>) => {
+      let usd = 0
+      let convertible = true
+      for (const [currency, value] of values) {
+        if (currency === 'USD') usd += value
+        else if (currency === 'KRW') {
+          const krw = krwPerUsd(date)
+          if (krw) usd += value / krw
+          else convertible = convertible && value === 0
+        }
       }
+      return convertible ? usd : null
     }
-    if (convertible) out.push({ date, valueKrw: usd })
+    const usd = inUsd(latest)
+    if (usd != null) {
+      const peak = peaks.size ? inUsd(new Map([...latest].map(([currency, value]) => [currency, Math.max(value, peaks.get(currency) ?? value)]))) : null
+      out.push(peak != null && peak > usd ? { date, valueKrw: usd, peakKrw: peak } : { date, valueKrw: usd })
+    }
+    peaks = new Map()
   }
   return out
 }
@@ -1484,17 +1501,20 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
     const rateAt = usdKrwRateAt(conn)
     const cashByAccount = new Map<string, { institution: string; account: string; derived: boolean; byCurrency: Map<string, BalancePoint[]> }>()
     if (hasTable('cash_balances')) {
-      const derivedColumn = columnsOf('cash_balances').has('derived') ? 'derived' : '0 as derived'
+      const cashColumns = columnsOf('cash_balances')
+      const derivedColumn = cashColumns.has('derived') ? 'derived' : '0 as derived'
+      // day_max_balance: the day's highest printed balance, where the statement prints one per row.
+      const dayMaxColumn = cashColumns.has('day_max_balance') ? 'day_max_balance' : 'null as day_max_balance'
       const rows = conn
-        .prepare(`select institution, account, currency, as_of_date as date, balance, ${derivedColumn} from cash_balances order by as_of_date, id`)
-        .all() as { institution: string; account: string; currency: string; date: string; balance: number; derived: number }[]
+        .prepare(`select institution, account, currency, as_of_date as date, balance, ${dayMaxColumn}, ${derivedColumn} from cash_balances order by as_of_date, id`)
+        .all() as { institution: string; account: string; currency: string; date: string; balance: number; day_max_balance: number | null; derived: number }[]
       for (const row of rows) {
         if (isUsCashInstitution(row.institution)) continue
         const account = bankAccountGroup(bankEntries, row.institution, row.account)
         const key = `${row.institution}|${account}`
         const entry = cashByAccount.get(key) ?? { institution: row.institution, account, derived: false, byCurrency: new Map<string, BalancePoint[]>() }
         const points = entry.byCurrency.get(row.currency) ?? []
-        points.push({ date: row.date, valueKrw: Number(row.balance) })
+        points.push({ date: row.date, valueKrw: Number(row.balance), peakKrw: row.day_max_balance == null ? null : Number(row.day_max_balance) })
         entry.byCurrency.set(row.currency, points)
         if (row.derived) entry.derived = true
         cashByAccount.set(key, entry)

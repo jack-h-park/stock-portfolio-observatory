@@ -327,3 +327,23 @@ test('a label that matches no inflow is reported as a note, so a mistyped group 
   assert.match(check.detail, /counterparty:Buyer\|Some Bank/)
   assert.doesNotMatch(check.detail, /label "counterparty:Buyer" /)
 })
+
+test('a balance row\'s dayMax lands in day_max_balance; a row without one, or with a non-number, is null', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'cash-src-'))
+  const file = path.join(dir, 'bank-balances.json')
+  writeFileSync(file, JSON.stringify({
+    accounts: [
+      { institution: 'tossbank', account: 'Example parking', kind: 'savings', currency: 'KRW', owner: 'self', derived: false, sources: ['x.pdf'],
+        balances: [{ date: '2026-02-01', balance: 100 }, { date: '2026-02-03', balance: 100, dayMax: 5100 }, { date: '2026-02-04', balance: 150, dayMax: 'high' }],
+        continuityBreaks: [] },
+    ],
+    findings: [],
+  }))
+  const db = ingest({ STOCK_BANK_BALANCES_PATH: file })
+  const rows = db.prepare('select as_of_date, balance, day_max_balance from cash_balances order by as_of_date').all()
+  assert.deepEqual(rows, [
+    { as_of_date: '2026-02-01', balance: 100, day_max_balance: null },
+    { as_of_date: '2026-02-03', balance: 100, day_max_balance: 5100 },
+    { as_of_date: '2026-02-04', balance: 150, day_max_balance: null },
+  ])
+})
