@@ -2,8 +2,11 @@
 // Every name, number and amount is invented; the repository is public.
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
-import { amexPages, PY, ROOT, runExtract, STATEMENT_APR, STATEMENT_FEB, STATEMENT_MAR } from './amex-fixtures'
+import { amexPages, HOLDER, MAP, PY, ROOT, runExtract, STATEMENT_APR, STATEMENT_FEB, STATEMENT_MAR } from './amex-fixtures'
 
 const LOAD = `
 import importlib.util, json, sys
@@ -180,4 +183,76 @@ test('a statement that does not follow its predecessor is reported as a continui
     'amex-checking-0042-20250401-20250430.pdf': amexPages({ ...gap, end: ['04/30/2025', '$10,300.40'], rows: gap.rows.map((r) => r.replace('$2,476.12', '$10,299.00').replace('$2,477.52', '$10,300.40')) }),
   })
   assert.equal(doc.accounts[0].continuityBreaks.length > 0, true)
+})
+
+function detect(detector: string, pages: string[], map: object = MAP) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'amex-filer-'))
+  const mapPath = path.join(dir, 'map.json')
+  writeFileSync(mapPath, JSON.stringify(map))
+  const program = `
+import importlib.util, json, sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('filer', 'scripts/file-downloads.py')
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+pages = json.loads(sys.argv[1])
+class Doc:
+    path = Path('statement.pdf')
+    suffix = '.pdf'
+    def page_text(self, i):
+        return pages[i] if i < len(pages) else ''
+out = getattr(m, sys.argv[2])(Doc())
+if out is None:
+    print(json.dumps(None))
+elif isinstance(out, m.Plan):
+    print(json.dumps({'plan': out.subdir + '/' + out.name, 'evidence': out.evidence}))
+else:
+    print(json.dumps({'reason': out.reason, 'remedy': out.remedy}))
+`
+  return JSON.parse(execFileSync(PY, ['-c', program, JSON.stringify(pages), detector], { cwd: ROOT, env: { ...process.env, STOCK_ACCOUNT_MAP_PATH: mapPath }, encoding: 'utf8' }))
+}
+
+test('the filer names a statement by its last four digits and the window its summary declares', () => {
+  const out = detect('detect_amex_checking', amexPages(STATEMENT_MAR))
+  assert.equal(out.plan, 'bank-statements/amex-checking-0042-20250301-20250331.pdf')
+  assert.ok(out.evidence.some((e: string) => /2025-03-01/.test(e) && /2025-03-31/.test(e)))
+  assert.doesNotMatch(JSON.stringify(out), new RegExp(HOLDER))
+})
+
+test('a quiet statement is named by its declared window too, not as a year-to-date', () => {
+  const out = detect('detect_amex_checking', amexPages({ ...STATEMENT_FEB, begin: ['01/01/2025', '$1,000.00'], end: ['02/28/2025', '$1,000.00'] }))
+  assert.equal(out.plan, 'bank-statements/amex-checking-0042-20250101-20250228.pdf')
+})
+
+test('an unmapped last4 is still filed, and the evidence says which entry to add', () => {
+  const out = detect('detect_amex_checking', amexPages(STATEMENT_MAR), { bankAccounts: [] })
+  assert.equal(out.plan, 'bank-statements/amex-checking-0042-20250301-20250331.pdf')
+  assert.ok(out.evidence.some((e: string) => /bankAccounts/.test(e)))
+})
+
+test('a mapped entry that is not a checking account refuses the file', () => {
+  const map = { bankAccounts: [{ institution: 'amex', kind: 'savings', currency: 'USD', last4: '0042', alias: 'Example Amex savings' }] }
+  const out = detect('detect_amex_checking', amexPages(STATEMENT_MAR), map)
+  assert.equal(out.plan, undefined)
+  assert.match(out.reason, /savings/)
+})
+
+test('an Amex statement for a product that is not checking is refused, naming the printed product', () => {
+  const out = detect('detect_amex_checking', amexPages({ ...STATEMENT_MAR, name: 'High Yield Savings' }))
+  assert.equal(out.plan, undefined)
+  assert.match(out.reason, /High Yield Savings/)
+})
+
+test('a statement with no declared window or no last four digits is refused, not guessed', () => {
+  const noWindow = amexPages(STATEMENT_MAR).map((t) => t.replace(/Beginning Balance as of \S+ \$[\d,.]+/, 'Beginning Balance'))
+  assert.match(detect('detect_amex_checking', noWindow).reason, /period/)
+  const noLast4 = amexPages(STATEMENT_MAR).map((t) => t.replace('Account Ending: *0042', 'Account Ending:'))
+  assert.match(detect('detect_amex_checking', noLast4).reason, /last four/)
+})
+
+test('documents that are not an Amex checking statement are not claimed, and the 토스뱅크 and 빗썸 detectors leave it alone', () => {
+  assert.equal(detect('detect_amex_checking', ['Some other bank statement\nDate Description Amount Balance']), null)
+  const pages = amexPages(STATEMENT_MAR)
+  assert.equal(detect('detect_tossbank_pdf', pages), null)
+  assert.equal(detect('detect_bithumb_statement', pages), null)
+  assert.equal(detect('detect_toss_transactions', pages), null)
 })
