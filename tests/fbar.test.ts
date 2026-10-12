@@ -92,7 +92,7 @@ test('the Treasury rates file holds the year-end KRW rate for 2020 through 2025,
 })
 
 test('US institutions are not foreign; Korean ones are', () => {
-  for (const name of ['chase', 'boa', 'robinhood-bank', 'fidelity', 'Chase']) assert.equal(isUsCashInstitution(name), true, name)
+  for (const name of ['chase', 'boa', 'robinhood-bank', 'fidelity', 'amex', 'Chase']) assert.equal(isUsCashInstitution(name), true, name)
   for (const name of ['mg', 'tossbank', 'mirae', 'hana', 'Sample Bank']) assert.equal(isUsCashInstitution(name), false, name)
 })
 
@@ -791,4 +791,10 @@ test('a same-day deposit and withdrawal raises the FBAR maximum but not the depo
   assert.equal(on.krw, before.krw)
   const [ahead, closed] = getDepositsSeries(['2024-09-08', '2024-09-09']).series
   assert.equal(ahead.krw! - closed.krw!, 10_000)
+})
+
+test('an Amex checking account is named by its alias, or by amex <last4> without one, and is domestic', () => {
+  assert.equal(bankAccountName({ institution: 'amex', kind: 'checking', last4: '0042', alias: 'Example Amex checking' }), 'Example Amex checking')
+  assert.equal(bankAccountName({ institution: 'amex', kind: 'checking', last4: '0042' }), 'amex 0042')
+  assert.equal(isUsCashInstitution('amex'), true)
 })
