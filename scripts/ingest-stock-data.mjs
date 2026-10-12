@@ -6639,34 +6639,43 @@ check(
     : `${bithumbDocs.length} statement(s) issued over all assets and all transaction types`
 )
 
-// 4. Overlapping periods double-count every trade they share; a gap silently
-//    drops one. Both are invisible in the totals, so assert on the periods the
-//    documents declare rather than on their filenames.
+// 4. A gap silently drops trades, so it fails. Overlap does not: the extractor
+//    reads each shared day from the statement whose period ends later
+//    (scripts/crypto_overlap.py), so it cannot double-count. Both are invisible in
+//    the totals, so assert on the periods the documents declare rather than on
+//    their filenames.
 const periods = bithumbDocs
   .map((d) => ({ filename: d.filename, start: d.metrics?.periodStart ?? '', end: d.metrics?.periodEnd ?? '' }))
   .filter((p) => p.start && p.end)
-  .sort((a, b) => a.start.localeCompare(b.start))
+  .sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end))
 const periodBreaks = []
-for (let i = 1; i < periods.length; i += 1) {
-  const previous = periods[i - 1]
-  const current = periods[i]
-  if (current.start <= previous.end) {
-    periodBreaks.push(`${previous.filename} (…${previous.end}) overlaps ${current.filename} (${current.start}…)`)
-    continue
+let coveredEnd = ''
+let coveredBy = ''
+let overlaps = 0
+for (const current of periods) {
+  if (coveredEnd) {
+    if (current.start <= coveredEnd) {
+      overlaps += 1
+    } else {
+      const expected = new Date(`${coveredEnd}T00:00:00Z`)
+      expected.setUTCDate(expected.getUTCDate() + 1)
+      if (current.start !== expected.toISOString().slice(0, 10)) {
+        periodBreaks.push(`gap between ${coveredBy} (…${coveredEnd}) and ${current.filename} (${current.start}…)`)
+      }
+    }
   }
-  const expected = new Date(`${previous.end}T00:00:00Z`)
-  expected.setUTCDate(expected.getUTCDate() + 1)
-  const nextDay = expected.toISOString().slice(0, 10)
-  if (current.start !== nextDay) {
-    periodBreaks.push(`gap between ${previous.filename} (…${previous.end}) and ${current.filename} (${current.start}…)`)
+  if (current.end > coveredEnd) {
+    coveredEnd = current.end
+    coveredBy = current.filename
   }
 }
+const overlapNote = overlaps ? `; ${overlaps} overlap(s) read once from the later-ending statement` : ''
 check(
   'crypto_statement_periods_contiguous',
   periodBreaks.length === 0 && periods.length === bithumbDocs.length,
   periodBreaks.length
     ? periodBreaks.join('; ')
-    : `${periods.length} statement(s) cover ${periods[0]?.start ?? 'n/a'}..${periods[periods.length - 1]?.end ?? 'n/a'} without gap or overlap`
+    : `${periods.length} statement(s) cover ${periods[0]?.start ?? 'n/a'}..${periods[periods.length - 1]?.end ?? 'n/a'} without a gap${overlapNote}`
 )
 
 const missingCryptoPrices = cryptoHoldingRows.filter((r) => r.quantity > 0 && r.native_price == null)

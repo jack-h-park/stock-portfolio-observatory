@@ -706,6 +706,12 @@ Collapsing the window to its year would throw away the months, which is the one
 thing the name is for. The suffix carries only what the export itself declared —
 빗썸's 일부: the window is not final and the next download will extend it.
 
+빗썸 거래내역확인서 windows may overlap as well. The extractor reads a day two
+statements share once, from the one whose period ends later
+(`scripts/crypto_overlap.py`), so starting a download on the day the last one ended
+is safe, and so is any longer window. Only a gap fails
+`crypto_statement_periods_contiguous`.
+
 Korean 거래내역증명서 windows may overlap, and they need no re-download when they
 do. `statements_to_read` in `scripts/extract-kr-statements.py` compares the
 조회기간 each document prints, within one account (told apart by the printed
