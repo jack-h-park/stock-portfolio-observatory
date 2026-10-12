@@ -985,6 +985,8 @@ def detect_bithumb_statement(doc):
     flat = despace(text)
     if "거래내역확인서" not in flat:
         return None
+    if TOSSBANK_FX_TITLE in flat:
+        return None  # 토스뱅크 외화예금 거래내역확인서: detect_tossbank_pdf owns it
     window = re.search(r"(\d{4}-\d{2}-\d{2})~(\d{4}-\d{2}-\d{2})", flat)
     if not window:
         return Refusal(
@@ -1751,6 +1753,66 @@ def detect_tossbank(doc):
                 ["password-protected; filed decrypted", f"account ending {last4}", f"조회기간 {iso(start)} … {iso(stop)}"],
                 transform="tossbank-decrypt")
 
+TOSSBANK_FX_TITLE = "토스뱅크외화예금거래내역확인서"
+TOSSBANK_PDF_NUMBER_RE = re.compile(r"계좌번호(\d{4}-\d{4}-\d{4})(?![\d-])")
+
+
+def detect_tossbank_pdf(doc):
+    """토스뱅크 PDF statements → bank-statements/tossbank-<parking|fx>-<last4>-<from>-<to>.pdf
+
+    Two documents, told apart by their first page:
+
+    - the KRW 거래내역서 a 파킹통장 (토스뱅크 나눠모으기 통장) prints: `거래내역서`, a
+      `예금종류 토스뱅크 …` line, `계좌번호 NNNN-NNNN-NNNN` and `조회기간 YYYY년 MM월 DD일 ~ …`;
+    - the 외화예금 거래내역확인서: title `토스뱅크 외화예금 거래내역확인서` and
+      `조회기간 YYYY-MM-DD ~ YYYY-MM-DD`.
+
+    The full 계좌번호 must be a tossbank `bankAccounts` entry in the account map
+    (the map is the only place the numbers live); an unmapped one is refused,
+    showing its last four digits. The entry's `kind` must be `parking` for a
+    거래내역서 and `fx` for a 외화예금 거래내역확인서. The from/to are the 조회기간.
+    """
+    flat = despace(doc.page_text(0))
+    if TOSSBANK_FX_TITLE in flat:
+        kind, what = "fx", "토스뱅크 외화예금 거래내역확인서"
+        window = re.search(r"조회기간(\d{4}-\d{2}-\d{2})~(\d{4}-\d{2}-\d{2})", flat)
+        span = (parse_ymd(window.group(1)), parse_ymd(window.group(2))) if window else None
+    elif flat.startswith("거래내역서") and "예금종류토스뱅크" in flat:
+        kind, what = "parking", "토스뱅크 거래내역서"
+        window = re.search(r"조회기간(\d{4})년(\d{1,2})월(\d{1,2})일~(\d{4})년(\d{1,2})월(\d{1,2})일", flat)
+        g = [int(x) for x in window.groups()] if window else None
+        span = (date(g[0], g[1], g[2]), date(g[3], g[4], g[5])) if g else None
+    else:
+        return None
+    number = TOSSBANK_PDF_NUMBER_RE.search(flat)
+    if not number:
+        return Refusal(what, "it prints no full 계좌번호, so which 토스뱅크 account it is cannot be told")
+    number = digits(number.group(1))
+    if not span:
+        return Refusal(what, "it has no 조회기간 line to take a period from")
+    fields = {"institution": "tossbank", "kind": kind, "currency": "USD" if kind == "fx" else "KRW",
+              "accountNumber": f"<the full 계좌번호 ending {number[-4:]}>", "alias": "<name>"}
+    if kind == "fx":
+        fields["multiCurrency"] = True
+    remedy = f"add {json.dumps(fields, ensure_ascii=False)} to bankAccounts in the account map (data/accounts.local.json)"
+    if not ACCOUNT_MAP_PATH.exists():
+        return Refusal(what, f"the account map {ACCOUNT_MAP_PATH} does not exist, so the account cannot be identified", remedy)
+    entries, problem = account_map_list("bankAccounts")
+    if problem:
+        return Refusal(what, problem, "fix the JSON, or move the file aside")
+    entry = next((e for e in entries if e.get("institution") == "tossbank" and digits(e.get("accountNumber")) == number), None)
+    if entry is None:
+        return Refusal(what, f"계좌번호 {mirae_accounts.mask(number)} is not in the account map, and only the map can "
+                             "say which account it is", remedy)
+    if entry.get("kind") != kind:
+        return Refusal(what, f"계좌번호 {mirae_accounts.mask(number)} is the {entry.get('kind')} account in the account map, "
+                             f"and only a {kind} account is filed from this document",
+                       "file that account's 거래내역 as the .xlsx export instead" if kind == "parking" else None)
+    start, stop = span
+    return Plan(DIR_BANK, f"tossbank-{kind}-{number[-4:]}-{compact(start)}-{compact(stop)}.pdf",
+                [f"조회기간 {iso(start)} … {iso(stop)}",
+                 f"계좌번호 {mirae_accounts.mask(number)} is {entry.get('alias') or 'a 토스뱅크 ' + kind + ' account'} in the account map"])
+
 # ---------------------------------------------------------------------------
 # Pension accounts: the 삼성 연금저축 ledger, the hand-made holdings snapshot,
 # and the year-end certificates kept as evidence. The IRP and 금현물
@@ -2039,6 +2101,7 @@ DETECTORS = [
     ("새마을금고 거래내역조회 (.xls)", detect_mg_deposit),
     ("새마을금고 해지계좌 거래내역조회 (.xls)", detect_mg_term),
     ("토스뱅크 거래내역 (.xlsx, encrypted)", detect_tossbank),
+    ("토스뱅크 거래내역서 / 외화예금 거래내역확인서 (PDF)", detect_tossbank_pdf),
     ("삼성증권 연금저축 거래내역확인서", detect_samsung_pension_ledger),
     ("pension holdings snapshot CSV", detect_pension_holdings),
     ("미래에셋 퇴직연금 잔고현황", detect_irp_balance_status),

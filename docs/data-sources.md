@@ -41,6 +41,8 @@ the same naming grammar as the other source files:
 | MG Community Credit Cooperative deposit | `mg-deposit-<from>-<to>.xls`: a 거래내역조회. With an account map, the 계좌번호 it prints must be a `{ "institution": "mg" }` entry under `bankAccounts` with that full `accountNumber`; the filer refuses an unmapped number (showing its last four digits) and the extractor names the account by the entry's `alias`. With no numbered mg entry in the map, every export is the one account, as before |
 | MG closed term deposit (정기예탁금) | `mg-term-<last4>-<개설일>-<해지일>.xls`: a 해지계좌 거래내역조회, one closed deposit per file; see [Closed 새마을금고 term deposits](#closed-새마을금고-term-deposits) |
 | Toss Bank | `tossbank-<last4>-<from>-<to>.xlsx`, filed decrypted; the last 4 digits and the period come from the workbook's own header block, one account per last4 |
+| Toss Bank 파킹통장 (나눠모으기 통장) | `tossbank-parking-<last4>-<from>-<to>.pdf`: the KRW 거래내역서; see [토스뱅크 PDF statements](#토스뱅크-pdf-statements) |
+| Toss Bank 외화통장 | `tossbank-fx-<last4>-<from>-<to>.pdf`: the 외화예금 거래내역확인서, one section per currency; see [토스뱅크 PDF statements](#토스뱅크-pdf-statements) |
 | Fidelity cash management account (CMA) | `fidelity-cma-<from>-<to>.csv`, filed only when the export is named `History_for_Account_<ID>[-<N>].csv` and `<ID>` is a CMA in the account map; any other Fidelity history stays a brokerage file |
 | 미래에셋 CMA (발행어음형) | `mirae-cma-<from>-<to>.pdf`: a 미래에셋 거래내역증명서 whose full 계좌번호 is a `{ "institution": "mirae", "kind": "cma" }` entry in the account map (page 2 prints 계좌유형 `종합_CMA`, which is checked against it; see [미래에셋 account identity](#미래에셋-account-identity)). The balance is 예수금잔액 plus the 발행어음 principal held, and needs a certificate whose page 2 prints `거래구분 전체` (or that carries 발행어음 rows); one issued with `거래구분 CMA자동매매 제외`, or showing neither, writes no balances and is reported under `cash_statements_parsed`. Named by that entry's `label` or `alias`; a certificate whose number the map lacks is skipped with a finding. With no map at all, every CMA certificate is `미래에셋 CMA`, and a note says so |
 
@@ -59,6 +61,67 @@ alias (`tossbank <last4>`). A CMA's `Cash Balance` includes its core money-marke
 reinvestment row as zero movement when it checks continuity.
 
 The result shows on `/net-worth` and as a Balances column on `/accounts`.
+
+#### 토스뱅크 PDF statements
+
+A 토스뱅크 파킹통장 (토스뱅크 나눠모으기 통장) and the 외화통장 have no workbook export;
+토스뱅크 issues a PDF for each, and both print the balance after every row, newest
+first. Neither is encrypted.
+
+- **거래내역서** (파킹통장, KRW): `계좌번호 NNNN-NNNN-NNNN`, `조회기간 YYYY년 MM월 DD일 ~ …`,
+  then rows of `거래일자 구분 거래금액 거래 후 잔액 거래내용`, where 구분 is
+  입금, 출금, 이자입금, 개설 or 해지 and 거래내용 is 채우기, 꺼내기 or 자동 이자.
+- **외화예금 거래내역확인서** (외화통장): `조회기간 YYYY-MM-DD ~ YYYY-MM-DD`, then one
+  section per currency headed `<name>(<ISO code>)` (`미국 달러(USD)`, `일본 엔(JPY)`, …),
+  with the same row shape in decimals.
+
+Each account is a tossbank `bankAccounts` entry with its full number:
+
+```json
+{ "institution": "tossbank", "kind": "parking", "currency": "KRW", "last4": "<last 4>", "accountNumber": "<full 계좌번호>",
+  "alias": "토스뱅크 파킹통장 ****<last 4>", "openedOn": "YYYY-MM-DD", "retiredOn": "YYYY-MM-DD" }
+{ "institution": "tossbank", "kind": "fx", "currency": "USD", "multiCurrency": true, "last4": "<last 4>", "accountNumber": "<full 계좌번호>",
+  "alias": "토스뱅크 외화통장 ****<last 4>", "openedOn": "YYYY-MM-DD", "retiredOn": "YYYY-MM-DD" }
+```
+
+`retiredOn` is set once the account is closed.
+
+**The filer** reads the full 계좌번호 and refuses a number the map does not list,
+showing only its last four digits. A 거래내역서 must map to a `parking` entry and
+an 외화예금 거래내역확인서 to an `fx` entry; the from and to are the 조회기간. The 빗썸
+거래내역확인서 detector does not claim the 외화예금 one, and the workbook family
+(`tossbank-<last4>-…xlsx`) never reads these PDFs.
+
+**The extractor** matches each statement to its entry by the full number again.
+A day's balance is the printed 거래 후 잔액 of its last row. A 해지 row prints what
+it paid out as a positive amount while the balance goes to zero, so it counts as
+an outflow; an 개설 row's 거래내용 (the holder's name) is never kept.
+
+- A 파킹통장 is one `savings` account named by the entry's `alias`.
+- The 외화통장 is one `deposit` account per currency it held, named
+  `<alias> (<ISO code>)`, each in its own currency; USD sections reach the
+  total-assets trend through the USD/KRW rate as any USD account does. A section
+  the account never held (always zero) writes nothing. A currency other than KRW
+  and USD is not written either, because the pipeline has no rate for it; a note
+  in `bank-balances.json` names it.
+- `"multiCurrency": true` makes the per-currency series one account: the
+  "보조 자산" reminder and `retiredOn` treat them as the entry, and the FBAR table
+  shows one row whose maximum is the sum of the sections on each date, in
+  dollars. Without it each currency would count as an account of its own, and a
+  finding says so.
+- `retiredOn` ends the series: nothing printed after it is kept, and the balance
+  is zero from that day.
+
+A 파킹통장 on file is not estimated as well. Its 채우기/꺼내기 rows pair with the
+토스뱅크 통장's `파킹통장` transfers (equal and opposite, within three days) before
+any other pairing, so those transfers leave the 토스뱅크 파킹통장 estimate below.
+A 채우기/꺼내기 left unpaired stays in that estimate, where it cancels the other leg
+if one is on file. The `토스뱅크 파킹통장` anchor is not applied when a 파킹통장
+statement covers its date, and a note says it can be removed. The 외화통장's
+won-side rows (`미국 달러 모으기`, `USD 채우기`, `JPY 사기`, `외화예금 해지`) are
+currency conversions and never pair by amount; no estimate holds them, because
+money that leaves under one name and returns under another counts for nothing
+there.
 
 #### Closed 새마을금고 term deposits
 

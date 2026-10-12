@@ -243,6 +243,201 @@ def parse_tossbank(path, findings=None, notes=None):
     return out
 
 
+# --- 토스뱅크 PDF statements ------------------------------------------------------
+#
+# Two documents, both printing the balance after every row, newest first:
+#
+# - the KRW 거래내역서 a 파킹통장 (토스뱅크 나눠모으기 통장) prints: `계좌번호 NNNN-NNNN-NNNN`,
+#   `조회기간 YYYY년 MM월 DD일 ~ …`, then `date time 구분 거래금액 거래 후 잔액 거래내용`;
+# - the 외화예금 거래내역확인서: `조회기간 YYYY-MM-DD ~ YYYY-MM-DD`, then one section
+#   per currency, headed `<name>(<ISO code>)`, with the same row shape in decimals.
+#
+# Anything else on a page (the header block, the doubled-glyph page footer
+# `11 // 1122`, the 발급일자 line) fails the row pattern and is ignored.
+
+TOSSBANK_NUMBER_RE = re.compile(r"계좌번호\s*(\d{4}-\d{4}-\d{4})(?![\d-])")
+TOSSBANK_KRW_PERIOD_RE = re.compile(r"조회기간\s*(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일\s*~\s*(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일")
+TOSSBANK_FX_PERIOD_RE = re.compile(r"조회기간\s*(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})")
+TOSSBANK_KRW_ROW_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}) (\d{1,2}:\d{2}:\d{2}) (\S+) (-?[\d,]+) (-?[\d,]+)(?: (.*))?$")
+TOSSBANK_FX_ROW_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}) (\d{1,2}:\d{2}:\d{2}) (\S+) (-?[\d,]+\.\d+) (-?[\d,]+\.\d+)(?: (.*))?$")
+TOSSBANK_FX_SECTION_RE = re.compile(r"^\S[^()]*\(([A-Z]{3})\)$")
+# The 구분 values the two documents print. Another one is still read, by its
+# printed sign, and reported.
+TOSSBANK_ROW_KINDS = {"입금", "출금", "이자입금", "개설", "해지"}
+# The currencies the rest of the pipeline can value (cash_balances takes KRW and USD).
+CASH_CURRENCIES = ("KRW", "USD")
+
+
+def _tossbank_rows(printed, unknown):
+    """(date, time, 구분, 거래금액, 잔액, 거래내용) tuples, newest first → transactions, oldest first.
+
+    Reversing keeps the printed order for rows that share a second (an 개설 row
+    and the first deposit do), and the sort is stable. A 개설 row's 거래내용 is
+    the holder's name, so it is replaced by `개설`. A 해지 row prints what it paid
+    out as a positive 거래금액 while the balance goes to zero, so it counts as an
+    outflow.
+    """
+    parsed = []
+    for day, clock, kind, amount, balance, memo in reversed(printed):
+        if kind not in TOSSBANK_ROW_KINDS:
+            unknown[kind] = unknown.get(kind, 0) + 1
+        value = _num(amount) or 0.0
+        if kind == "해지":
+            value = -abs(value)
+        memo = "개설" if kind == "개설" else (memo or kind).strip()
+        parsed.append((day, _clock(clock), value, _num(balance), memo))
+    parsed.sort(key=lambda t: (t[0], t[1]))
+    return [{"date": d, "seq": i, "description": memo, "amount": a, "balance": b,
+             "counterparty": memo, "counterpartyInstitution": ""}
+            for i, (d, _t, a, b, memo) in enumerate(parsed)]
+
+
+def _tossbank_number(text):
+    found = TOSSBANK_NUMBER_RE.search(text)
+    return _digits(found.group(1)) if found else None
+
+
+def parse_tossbank_krw_lines(lines):
+    """A 파킹통장 거래내역서's text lines → {number, period, rows, unknown}."""
+    text = "\n".join(unicodedata.normalize("NFC", line) for line in lines)
+    period = TOSSBANK_KRW_PERIOD_RE.search(text)
+    unknown = {}
+    printed = [m.groups() for m in (TOSSBANK_KRW_ROW_RE.match(line.strip()) for line in text.split("\n")) if m]
+    g = period.groups() if period else None
+    return {
+        "number": _tossbank_number(text),
+        "period": [f"{g[0]}-{int(g[1]):02d}-{int(g[2]):02d}", f"{g[3]}-{int(g[4]):02d}-{int(g[5]):02d}"] if g else None,
+        "rows": _tossbank_rows(printed, unknown),
+        "unknown": unknown,
+    }
+
+
+def parse_tossbank_fx_lines(lines):
+    """An 외화예금 거래내역확인서's text lines → {number, period, sections: {currency: rows}, unknown}.
+
+    A row belongs to the section whose `<name>(<ISO code>)` heading came last; a
+    row before any heading has no currency and is reported in `unknown`.
+    """
+    text = "\n".join(unicodedata.normalize("NFC", line) for line in lines)
+    period = TOSSBANK_FX_PERIOD_RE.search(text)
+    printed, unknown, currency = {}, {}, None
+    for line in text.split("\n"):
+        line = line.strip()
+        heading = TOSSBANK_FX_SECTION_RE.match(line)
+        if heading:
+            currency = heading.group(1)
+            printed.setdefault(currency, [])
+            continue
+        row = TOSSBANK_FX_ROW_RE.match(line)
+        if not row:
+            continue
+        if currency is None:
+            unknown["(no currency heading)"] = unknown.get("(no currency heading)", 0) + 1
+            continue
+        printed[currency].append(row.groups())
+    return {
+        "number": _tossbank_number(text),
+        "period": list(period.groups()) if period else None,
+        "sections": {code: _tossbank_rows(rows, unknown) for code, rows in printed.items()},
+        "unknown": unknown,
+    }
+
+
+def _pdf_lines(path):
+    """Every page's text lines. The statements are not encrypted; the password is only a fallback."""
+    pdf = _kr_statements_module().open_pdf(str(path))
+    if pdf is None:
+        raise ValueError("could not be opened")
+    with pdf:
+        return [line for page in pdf.pages for line in (page.extract_text() or "").split("\n")]
+
+
+def close_series(balances, retired_on):
+    """End-of-day balances up to an account's `retiredOn`, then zero on that day.
+
+    The account was closed that day, so its money left it: nothing printed after
+    the date is kept, and nothing is carried forward past it.
+    """
+    try:
+        datetime.strptime(str(retired_on), "%Y-%m-%d")
+    except ValueError:
+        return balances
+    return [b for b in balances if b["date"] < retired_on] + [{"date": retired_on, "balance": 0.0}]
+
+
+def tossbank_pdf_accounts(account_map, findings, notes):
+    """(accounts, krw_statements) from the 토스뱅크 PDF families, each statement named by its full 계좌번호.
+
+    A statement is matched to the map's tossbank `bankAccounts` entry with that
+    full `accountNumber` (never the last four digits); one the map lacks is
+    skipped with a finding that shows the last four only. A 거래내역서 must map
+    to a `kind: "parking"` entry, a 외화예금 거래내역확인서 to `kind: "fx"`.
+
+    A 파킹통장 is one `savings` account named by the entry's `alias`. The 외화통장 is
+    one `deposit` account per currency it held, named `<alias> (<ISO code>)`, so
+    the entry must say `"multiCurrency": true` for the FBAR table to read the
+    sections as one account. A currency the pipeline cannot value (anything but
+    KRW and USD) is left out with a note, and one the account never held is not
+    written. `retiredOn` ends a series (close_series).
+    """
+    entries = [e for e in account_map.get("bankAccounts", [])
+               if isinstance(e, dict) and e.get("institution") == "tossbank" and _digits(e.get("accountNumber"))]
+    accounts, statements = [], []
+    for family, kind, parse in (("tossbank-parking-", "parking", parse_tossbank_krw_lines),
+                                ("tossbank-fx-", "fx", parse_tossbank_fx_lines)):
+        by_number = {}
+        for path in family_files(SOURCE_DIR, family):
+            try:
+                doc = parse(_pdf_lines(path))
+            except Exception as error:  # one bad file must not cost every account
+                findings.append(f"{path.name}: could not be parsed ({type(error).__name__}: {error})")
+                continue
+            number = doc["number"]
+            if not number:
+                findings.append(f"{path.name}: prints no 계좌번호, so which 토스뱅크 account it is cannot be told; skipped")
+                continue
+            entry = next((e for e in entries if _digits(e["accountNumber"]) == number), None)
+            if entry is None:
+                findings.append(f"{path.name}: 계좌번호 {mirae_accounts.mask(number)} is not in the account map; skipped — "
+                                f'add a {{"institution": "tossbank", "kind": "{kind}", "accountNumber": …}} entry to bankAccounts')
+                continue
+            if entry.get("kind") != kind:
+                findings.append(f"{path.name}: 계좌번호 {mirae_accounts.mask(number)} is a {entry.get('kind')} account in the "
+                                f"account map, not {kind}; skipped")
+                continue
+            for printed, count in sorted(doc["unknown"].items()):
+                findings.append(f"{path.name}: {count} row(s) with 구분 {printed}, read by their printed sign")
+            sections = {"KRW": doc["rows"]} if kind == "parking" else doc["sections"]
+            by_number.setdefault(number, (entry, []))[1].append((path.name, sections))
+        for number, (entry, docs) in sorted(by_number.items()):
+            alias = entry.get("alias") or f"tossbank {number[-4:]}"
+            if kind == "fx" and entry.get("multiCurrency") is not True:
+                findings.append(f"{alias}: its bankAccounts entry lacks \"multiCurrency\": true, so the FBAR table "
+                                "counts each currency as an account of its own")
+            for currency in sorted({code for _name, sections in docs for code in sections}):
+                files = sorted(((min((t["date"] for t in s[currency]), default=""), name, s[currency])
+                                for name, s in docs if s.get(currency)), key=lambda f: (f[0], f[1]))
+                txns = merge_txns([rows for _d, _n, rows in files])
+                balances = end_of_day(txns)
+                if not any(b["balance"] for b in balances):
+                    continue  # a currency the account never held
+                label = alias if kind == "parking" else f"{alias} ({currency})"
+                if currency not in CASH_CURRENCIES:
+                    notes.append(f"{label}: the {currency} section is not written, because the pipeline has no "
+                                 f"{currency} rate to value it")
+                    continue
+                if entry.get("retiredOn"):
+                    balances = close_series(balances, entry["retiredOn"])
+                accounts.append({
+                    "institution": "tossbank", "account": label, "kind": "savings" if kind == "parking" else "deposit",
+                    "currency": currency, "owner": "self", "derived": False, "sources": [name for _d, name, _r in files],
+                    "balances": balances, "continuityBreaks": continuity_breaks(txns),
+                })
+                if kind == "parking":
+                    statements.append(("tossbank", f"tossbank-parking-{number[-4:]}", txns))
+    return accounts, statements
+
+
 def merge_txns(groups):
     """Combine statements chronologically, counting each transaction once per download.
 
@@ -658,9 +853,31 @@ FAMILIES = [
     ("robinhood-bank-savings-", "robinhood-bank", "savings", "USD", lambda p, f, n: parse_robinhood_bank(p.read_text(encoding="utf-8-sig")), None),
     ("mg-deposit-", "mg", "deposit", "KRW", lambda p, f, n: parse_mg_rows(_xls_rows(p, f)), None),
     ("tossbank-", "tossbank", "checking", "KRW", lambda p, f, n: parse_tossbank(p, f, n), r"^tossbank-(\d{4})-"),
+    # The 토스뱅크 PDF statements (파킹통장 거래내역서, 외화예금 거래내역확인서) are read by
+    # tossbank_pdf_accounts, by their full 계좌번호; they are listed here so their
+    # files are globbed apart from the workbooks (FAMILY_GLOBS).
+    ("tossbank-parking-", "tossbank", "parking", "KRW", None, None),
+    ("tossbank-fx-", "tossbank", "fx", None, None, None),
     ("fidelity-cma-", "fidelity", "cma", "USD", lambda p, f, n: parse_fidelity_cma(p.read_text(encoding="utf-8-sig")), None),
     ("mirae-cma-", "mirae", "cma", "KRW", lambda p, f, n: parse_mirae_cma(p, f, n), None),
 ]
+
+# Which files a family reads. By default every file whose name starts with the
+# prefix; the 토스뱅크 workbooks take `tossbank-<last4>-…xlsx` only, since the
+# `tossbank-parking-` and `tossbank-fx-` PDFs share their prefix.
+FAMILY_GLOBS = {
+    "tossbank-": "tossbank-[0-9][0-9][0-9][0-9]-*.xlsx",
+    "tossbank-parking-": "tossbank-parking-*.pdf",
+    "tossbank-fx-": "tossbank-fx-*.pdf",
+}
+
+
+def family_files(directory, prefix):
+    """The files in `directory` that belong to the family with this prefix, sorted."""
+    if not directory.exists():
+        return []
+    return sorted(directory.glob(FAMILY_GLOBS.get(prefix, f"{prefix}*")))
+
 
 # The alias an account gets when the map has no entry for it, where
 # `<institution> <kind>` would not read as the account's name.
@@ -800,9 +1017,19 @@ def parse_mirae_transfers(path):
     return out
 
 
+def _is_parking_statement(flow):
+    """A row of a 파킹통장 거래내역서 on file (tossbank_pdf_accounts)."""
+    return str(flow.get("source", "")).startswith("tossbank-parking-")
+
+
 def _bucket(flow):
     """Where an unpaired transfer went, as a bucket key, or None for money that is not a balance (interest)."""
     memo, bank = flow["memo"], flow["counterpartyInstitution"]
+    if _is_parking_statement(flow):
+        # A 파킹통장 on file: its interest is not a transfer, and a 채우기/꺼내기
+        # left unpaired stays with the 파킹통장 estimate, where the other leg (if a
+        # statement on file shows one) cancels it rather than counting twice.
+        return None if "이자" in memo else "tossbank-parking"
     if flow["statement"] == "tossbank":
         if memo == "파킹통장":
             return "tossbank-parking"
@@ -835,7 +1062,9 @@ def pair_transfers(flows):
 
     A 토스뱅크 row that names a bank we hold statements for pairs with the nearest
     opposite row of equal size in that bank's statements within PAIR_DAYS days; a
-    미래에셋 CMA 계좌대체 pairs with a 종합/ISA 계좌대체 of the same day.
+    미래에셋 CMA 계좌대체 pairs with a 종합/ISA 계좌대체 of the same day. A 토스뱅크
+    `파킹통장` transfer pairs first, with a 채우기/꺼내기 row of a 파킹통장 statement on
+    file, so it is never taken by another 토스뱅크 row of the same size.
     """
     def pair(left, right, days):
         for a in [f for f in flows if not f["paired"] and left(f)]:
@@ -850,6 +1079,8 @@ def pair_transfers(flows):
             if best:
                 a["paired"] = best[1]["paired"] = True
 
+    pair(lambda f: f["statement"] == "tossbank" and not _is_parking_statement(f) and f["memo"] == "파킹통장",
+         lambda f: _is_parking_statement(f) and f["memo"] in ("채우기", "꺼내기"), PAIR_DAYS)
     for bank, code in STATEMENT_BANKS.items():
         pair(lambda f, bank=bank: f["statement"] == "tossbank" and f["counterpartyInstitution"] == bank,
              lambda f, code=code: f["statement"] == code, PAIR_DAYS)
@@ -925,7 +1156,7 @@ def anchored(series, points, anchor):
     return sorted(merged.items())
 
 
-def estimate_closed_accounts(statements, transfers, account_map, findings):
+def estimate_closed_accounts(statements, transfers, account_map, findings, notes=None):
     """Estimated balances of accounts held outside the statements, from the statements' own transfers.
 
     `statements` are (statement, source, txns) for the KRW statement accounts;
@@ -933,6 +1164,10 @@ def estimate_closed_accounts(statements, transfers, account_map, findings):
     Returns (estimated accounts, external inflows): the inflows are money that
     arrived from a counterparty with nothing sent to it first, grouped by
     group_arrivals.
+
+    The `토스뱅크 파킹통장` anchor is not applied when a 파킹통장 statement on file
+    covers its date: the statement prints that balance, and walking back from the
+    anchor would count it a second time. A note says so.
     """
     flows = []
     for statement, source, txns in statements + [("mirae", "mirae-brokerage", transfers)]:
@@ -950,6 +1185,19 @@ def estimate_closed_accounts(statements, transfers, account_map, findings):
         if key:
             buckets.setdefault(key, []).append((f["date"], -f["amount"]))
     anchors = {a.get("alias"): a for a in account_map.get("anchors", [])}
+    parking_spans = {}
+    for f in flows:
+        if _is_parking_statement(f):
+            first, last = parking_spans.get(f["source"], (f["date"], f["date"]))
+            parking_spans[f["source"]] = (min(first, f["date"]), max(last, f["date"]))
+    parking_alias = ESTIMATE_ALIASES["tossbank-parking"]
+    if parking_alias in anchors:
+        day = str(anchors[parking_alias].get("date"))
+        if any(first <= day <= last for first, last in parking_spans.values()):
+            anchors = {alias: a for alias, a in anchors.items() if alias != parking_alias}
+            if notes is not None:
+                notes.append(f"{parking_alias}: the anchor dated {day} is not applied, because a 파킹통장 statement on "
+                             "file covers that date; the anchor can be removed from the account map")
     out = []
     for key, points in sorted(buckets.items()):
         alias = ESTIMATE_ALIASES.get(key) or key.split(":", 1)[1].replace("|", " · ")
@@ -986,7 +1234,7 @@ def main():
     krw_statements = []
     mg_salary = []  # every 새마을금고 거래내역조회 row, for the term deposits' principal
     for prefix, institution, kind, currency, parse, key_pattern in FAMILIES:
-        files = sorted(SOURCE_DIR.glob(f"{prefix}*")) if SOURCE_DIR.exists() else []
+        files = family_files(SOURCE_DIR, prefix) if parse else []  # no parser: tossbank_pdf_accounts reads them
         if not files:
             continue
         by_account, labels = {}, {}
@@ -1039,6 +1287,9 @@ def main():
                 "derived": derived, "sources": [name for _, name, _ in parsed], "balances": balances,
                 "continuityBreaks": [] if derived else continuity_breaks(txns),
             })
+    tossbank_accounts, parking_statements = tossbank_pdf_accounts(account_map, findings, notes)
+    accounts.extend(tossbank_accounts)
+    krw_statements.extend(parking_statements)
     term_files = sorted(SOURCE_DIR.glob("mg-term-*")) if SOURCE_DIR.exists() else []
     if term_files:
         accounts.extend(mg_term_accounts(term_files, account_map, mg_salary, findings, notes))
@@ -1051,7 +1302,7 @@ def main():
             except Exception as error:  # an unread certificate only weakens the pairing
                 findings.append(f"{path.name}: transfers could not be read for the estimates ({type(error).__name__}: {error})")
         transfers += merge_txns([[{**t, "balance": None} for t in rows] for rows in parsed])
-    estimated, inflows = estimate_closed_accounts(krw_statements, transfers, account_map, findings)
+    estimated, inflows = estimate_closed_accounts(krw_statements, transfers, account_map, findings, notes)
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     document = {"generatedAt": datetime.now(timezone.utc).isoformat(), "accounts": accounts,
                 "estimatedAccounts": estimated, "externalInflows": inflows, "findings": findings, "notes": notes}

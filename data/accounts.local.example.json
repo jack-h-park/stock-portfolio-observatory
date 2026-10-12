@@ -13,7 +13,10 @@
     { "institution": "mg", "last4": "2222", "kind": "deposit", "currency": "KRW", "alias": "MG old deposit", "retiredOn": "2024-06-30" },
     { "institution": "mg", "kind": "deposit", "currency": "KRW", "accountNumber": "0000-0000-0000-1", "alias": "새마을금고 자립예탁금" },
     { "institution": "mg", "kind": "deposit", "currency": "KRW", "accountNumber": "0000-0000-1111-2", "alias": "새마을금고 정기예금 …1111-2", "openedOn": "2023-03-02", "retiredOn": "2024-03-02" },
-    { "institution": "tossbank", "last4": "3333", "kind": "checking", "currency": "KRW", "alias": "Toss Bank old checking", "retired": true }
+    { "institution": "tossbank", "last4": "3333", "kind": "checking", "currency": "KRW", "alias": "Toss Bank old checking", "retired": true },
+    { "institution": "tossbank", "last4": "4444", "kind": "parking", "currency": "KRW", "accountNumber": "0000-0000-4444", "alias": "토스뱅크 파킹통장 ****4444", "openedOn": "2024-12-01" },
+    { "institution": "tossbank", "last4": "5555", "kind": "parking", "currency": "KRW", "accountNumber": "0000-0000-5555", "alias": "토스뱅크 파킹통장 ****5555", "openedOn": "2024-03-01", "retiredOn": "2026-01-31" },
+    { "institution": "tossbank", "last4": "6666", "kind": "fx", "currency": "USD", "multiCurrency": true, "accountNumber": "0000-0000-6666", "alias": "토스뱅크 외화통장 ****6666", "openedOn": "2024-01-01", "retiredOn": "2026-04-30" }
   ],
   "brokerageAccounts": [
     { "institution": "mirae", "accountNumber": "000000000001", "kind": "isa" },
