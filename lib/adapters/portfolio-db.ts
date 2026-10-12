@@ -16,6 +16,17 @@ import treasuryRates from '@/data/treasury-reporting-rates.json'
 import { loadAccountMap } from '@/scripts/account-map.mjs'
 import { bankAccountGroup, retiredBankAccounts, retiredBrokerageAccounts, type BankAccountEntry } from '@/lib/bank-accounts'
 import { createLotValuer } from '@/scripts/lot-valuation.mjs'
+import {
+  GOLD_ETF_TICKERS,
+  addGoldBooks,
+  emptyGoldBook,
+  goldScopeFields,
+  physicalGoldBookAt,
+  type GoldBook,
+  type GoldPricePoint,
+  type GoldScopeFields,
+  type GoldTrade,
+} from '@/lib/gold-trend'
 
 /**
  * The default (Stocks) view: taxable and ISA securities only. Every holdings total goes through this.
@@ -912,6 +923,14 @@ export type PortfolioSnapshot = {
   kr_realized_gl: number | null
   us_realized_gl_base: number | null
   crypto_realized_gl_base: number | null
+  // The gold scope's fields (lib/gold-trend.ts). Not stored on the snapshot row:
+  // withGoldScope() derives them when the Overview asks for that scope.
+  gold_market_value?: number | null
+  gold_cost_basis?: number | null
+  gold_unrealized_gl?: number | null
+  gold_return_pct?: number | null
+  gold_market_value_coverage?: number | null
+  gold_realized_gl?: number | null
   krw_cost: number
   usd_cost: number
   dividends_krw: number
@@ -1001,6 +1020,142 @@ function withCumulativeRealized(conn: Database.Database, snapshots: PortfolioSna
     ) as Pick<PortfolioSnapshot, (typeof REALIZED_MARKET_FIELDS)[keyof typeof REALIZED_MARKET_FIELDS]>
     return { ...snapshot, ...realized, global_realized_gl: running.KR + running.US + running.CRYPTO }
   })
+}
+
+/**
+ * Adds the gold scope's fields to each snapshot: physical gold (금현물) plus the
+ * gold ETFs in GOLD_ETF_TICKERS. Derived on read, like the cumulative realized
+ * G/L, so past snapshots need no backfill and a late-learned lot reaches them.
+ *
+ * - Physical gold: rebuilt from its BUY/SELL rows and gold_prices on each date.
+ * - ETFs on a past date: tax lots valued at the historical close, the same
+ *   valuer the month-end backfill uses.
+ * - The last snapshot is the live row, so both parts read the holdings instead.
+ * - Realized: ETF sales from realized_lots, cumulative. No physical gold sale is
+ *   on file, so that part contributes nothing.
+ */
+export function withGoldScope(snapshots: PortfolioSnapshot[]): PortfolioSnapshot[] {
+  if (snapshots.length === 0) return snapshots
+  const conn = db()
+  try {
+    const hasTable = (name: string) =>
+      Boolean(conn.prepare("select 1 from sqlite_master where type in ('table', 'view') and name = ?").get(name))
+    const columnsOf = (name: string) =>
+      new Set((conn.prepare(`pragma table_info(${name})`).all() as { name: string }[]).map((column) => column.name))
+    const tickers = [...GOLD_ETF_TICKERS]
+    const marks = tickers.map(() => '?').join(', ')
+
+    const trades: GoldTrade[] =
+      hasTable('transactions_all') && columnsOf('transactions_all').has('asset_class')
+        ? (
+            conn
+              .prepare(
+                `select substr(date, 1, 10) as date, type, abs(coalesce(quantity, 0)) as grams,
+                        abs(coalesce(amount_krw, settlement_krw, 0)) as costKrw
+                   from transactions_all where asset_class = 'gold' and type in ('BUY', 'SELL') order by date, id`
+              )
+              .all() as GoldTrade[]
+          ).filter((trade) => trade.grams > 0)
+        : []
+    const prices: GoldPricePoint[] = hasTable('gold_prices')
+      ? (conn.prepare('select date, price from gold_prices order by date').all() as GoldPricePoint[])
+      : []
+
+    const openLots = hasTable('tax_lots')
+      ? (conn
+          .prepare(
+            `select market, account, ticker, acquired_date, open_quantity, cost_basis_krw from tax_lots where ticker in (${marks})`
+          )
+          .all(...tickers) as { market: string; account: string; ticker: string; acquired_date: string; open_quantity: number; cost_basis_krw: number }[])
+      : []
+    const realizedColumns = hasTable('realized_lots') ? columnsOf('realized_lots') : new Set<string>()
+    const notSuperseded = realizedColumns.has('superseded_by') ? "and coalesce(superseded_by, '') = ''" : ''
+    const realizedLots = realizedColumns.has('sold_date')
+      ? (conn
+          .prepare(
+            `select market, account, ticker, acquired_date, sold_date, quantity_sold, cost_basis_krw
+               from realized_lots where ticker in (${marks}) ${notSuperseded}`
+          )
+          .all(...tickers) as { market: string; account: string; ticker: string; acquired_date: string | null; sold_date: string | null; quantity_sold: number | null; cost_basis_krw: number | null }[])
+      : []
+    const sales = realizedColumns.has('sold_date') && realizedColumns.has('realized_gl_krw')
+      ? (conn
+          .prepare(
+            `select substr(sold_date, 1, 10) as sold_date, sum(realized_gl_krw) as amount
+               from realized_lots
+              where ticker in (${marks}) and sold_date is not null and sold_date != ''
+                and realized_gl_krw is not null ${notSuperseded}
+              group by substr(sold_date, 1, 10) order by sold_date`
+          )
+          .all(...tickers) as { sold_date: string; amount: number }[])
+      : []
+    const historicalPrices = hasTable('historical_prices')
+      ? (conn
+          .prepare(
+            `select market, ticker, ${columnsOf('historical_prices').has('currency') ? 'currency' : "case when market = 'KR' then 'KRW' end as currency"}, price_date, close
+               from historical_prices where ticker in (${marks}) order by market, ticker, price_date`
+          )
+          .all(...tickers) as { market: string; ticker: string; currency: string | null; price_date: string; close: number }[])
+      : []
+    const historicalFxRates = hasTable('historical_fx_rates')
+      ? (conn.prepare('select price_date, rate from historical_fx_rates order by price_date').all() as { price_date: string; rate: number }[])
+      : []
+    const valuer = createLotValuer({ openLots, realizedLots, historicalPrices, historicalFxRates })
+
+    // The live book: holdings of the ETFs (stock view) and the gold account(s).
+    const liveBook = (): GoldBook => {
+      const book = emptyGoldBook()
+      const add = (row: { cost: number | null; marketValue: number | null }) => {
+        const cost = Number(row.cost ?? 0)
+        book.cost += cost
+        book.positions += 1
+        if (row.marketValue != null && Number.isFinite(Number(row.marketValue))) {
+          book.pricedCost += cost
+          book.marketValue += Number(row.marketValue)
+        }
+      }
+      if (hasTable('holdings')) {
+        for (const row of conn
+          .prepare(`select base_cost as cost, base_market_value as marketValue from holdings where quantity != 0 and ticker in (${marks})`)
+          .all(...tickers) as { cost: number | null; marketValue: number | null }[]) add(row)
+      }
+      if (hasTable('holdings_all') && columnsOf('holdings_all').has('asset_class')) {
+        for (const row of conn
+          .prepare("select base_cost as cost, base_market_value as marketValue from holdings_all where quantity != 0 and asset_class = 'gold'")
+          .all() as { cost: number | null; marketValue: number | null }[]) add(row)
+      }
+      return book
+    }
+
+    let next = 0
+    let realized = 0
+    const lastIndex = snapshots.length - 1
+    return snapshots.map((snapshot, index): PortfolioSnapshot => {
+      while (next < sales.length && sales[next].sold_date <= snapshot.snapshot_date) {
+        realized += sales[next].amount
+        next += 1
+      }
+      const book =
+        index === lastIndex
+          ? liveBook()
+          : addGoldBooks(
+              physicalGoldBookAt(trades, prices, snapshot.snapshot_date),
+              valuer.valuedPositionsAt(snapshot.snapshot_date).reduce((sum: GoldBook, position: { cost: number; marketValue: number | null }) => {
+                const priced = position.marketValue != null
+                return addGoldBooks(sum, {
+                  cost: position.cost,
+                  pricedCost: priced ? position.cost : 0,
+                  marketValue: priced ? Number(position.marketValue) : 0,
+                  positions: 1,
+                })
+              }, emptyGoldBook())
+            )
+      const fields: GoldScopeFields = goldScopeFields(book, realized)
+      return { ...snapshot, ...fields }
+    })
+  } finally {
+    conn.close()
+  }
 }
 
 // USD/KRW on a date: the latest historical rate on or before it, else the

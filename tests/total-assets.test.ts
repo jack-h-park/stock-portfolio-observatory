@@ -258,7 +258,8 @@ test('a 1099-B year: the superseded replay rows give the holding period, the fil
 // --- overview stock trend ---------------------------------------------------
 
 test('the overview stock trend is stock-only again: no deposits scope, and global is the snapshot value', () => {
-  assert.deepEqual(TREND_SCOPES.map((scope) => scope.key), ['global', 'KR', 'US', 'CRYPTO'])
+  // GOLD is a cross-cut of the stock book plus physical gold (lib/gold-trend.ts), not a deposits-style class.
+  assert.deepEqual(TREND_SCOPES.map((scope) => scope.key), ['global', 'KR', 'US', 'CRYPTO', 'GOLD'])
   assert.equal(resolveTrendScope('deposits'), 'global')
   assert.equal(resolveTrendScope('US'), 'US')
   assert.equal(resolveTrendScope(undefined), 'global')
