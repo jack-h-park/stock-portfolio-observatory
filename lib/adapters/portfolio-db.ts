@@ -14,7 +14,7 @@ import { groupAccountRanges, type AccountDataRange, type AssetType, type RangeKi
 import { foreignAccountMaxima, isUsBrokerage, isUsCashInstitution, maxBalance, treasuryRateFor, type BalancePoint, type ForeignAccountInput, type ForeignAccountMaxima } from '@/lib/fbar'
 import treasuryRates from '@/data/treasury-reporting-rates.json'
 import { loadAccountMap } from '@/scripts/account-map.mjs'
-import { retiredBankAccounts, retiredBrokerageAccounts } from '@/lib/bank-accounts'
+import { bankAccountGroup, retiredBankAccounts, retiredBrokerageAccounts, type BankAccountEntry } from '@/lib/bank-accounts'
 import { createLotValuer } from '@/scripts/lot-valuation.mjs'
 
 /**
@@ -1214,6 +1214,36 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
 }
 
 /**
+ * Per-currency balance series of one account as one dollar series: on each date
+ * a section changes, the sum of every section's latest balance. USD counts as it
+ * stands and KRW at `krwPerUsd(date)`; a date whose won cannot be converted is
+ * left out, and so is any other currency (cash_balances holds KRW and USD only).
+ */
+function sumInUsd(byCurrency: Map<string, BalancePoint[]>, krwPerUsd: (date: string) => number | null): BalancePoint[] {
+  const changes = [...byCurrency].flatMap(([currency, points]) => points.map((point) => ({ currency, ...point })))
+  changes.sort((a, b) => a.date.localeCompare(b.date))
+  const latest = new Map<string, number>()
+  const out: BalancePoint[] = []
+  for (let i = 0; i < changes.length; i += 1) {
+    latest.set(changes[i].currency, changes[i].valueKrw)
+    if (changes[i + 1]?.date === changes[i].date) continue
+    const date = changes[i].date
+    let usd = 0
+    let convertible = true
+    for (const [currency, value] of latest) {
+      if (currency === 'USD') usd += value
+      else if (currency === 'KRW') {
+        const krw = krwPerUsd(date)
+        if (krw) usd += value / krw
+        else convertible = convertible && value === 0
+      }
+    }
+    if (convertible) out.push({ date, valueKrw: usd })
+  }
+  return out
+}
+
+/**
  * A closed account's balance history: the points up to `retiredOn`, then zero
  * from the next day through the end of that year, so the closing year is read
  * as complete and nothing is carried past the closure.
@@ -1282,18 +1312,22 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
 
     // Cash: one series per (institution, account), in the account's own currency.
     // A retired account (the map's `retiredOn`) holds nothing after that date:
-    // its series closes at zero, and a later year has no row for it.
+    // its series closes at zero, and a later year has no row for it. A
+    // multi-currency account (a `"multiCurrency": true` entry, filed as one series
+    // per currency) is one account: its sections are summed per date in dollars.
     let retired = new Map<string, string | null>()
     let retiredBrokerage = new Map<string, string | null>()
+    let bankEntries: BankAccountEntry[] = []
     try {
       const accountMap = loadAccountMap(config.stockAccountMapPath)
+      bankEntries = accountMap.bankAccounts
       retired = retiredBankAccounts(accountMap.bankAccounts)
       retiredBrokerage = retiredBrokerageAccounts(accountMap.brokerageAccounts)
     } catch {
       // An unreadable map is the ingest's failure to report; here no account is retired.
     }
     const rateAt = usdKrwRateAt(conn)
-    const cashByAccount = new Map<string, { institution: string; account: string; currency: string; derived: boolean; points: BalancePoint[] }>()
+    const cashByAccount = new Map<string, { institution: string; account: string; derived: boolean; byCurrency: Map<string, BalancePoint[]> }>()
     if (hasTable('cash_balances')) {
       const derivedColumn = columnsOf('cash_balances').has('derived') ? 'derived' : '0 as derived'
       const rows = conn
@@ -1301,14 +1335,21 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
         .all() as { institution: string; account: string; currency: string; date: string; balance: number; derived: number }[]
       for (const row of rows) {
         if (isUsCashInstitution(row.institution)) continue
-        const key = `${row.institution}|${row.account}`
-        const entry = cashByAccount.get(key) ?? { institution: row.institution, account: row.account, currency: row.currency, derived: false, points: [] }
-        entry.points.push({ date: row.date, valueKrw: Number(row.balance) })
+        const account = bankAccountGroup(bankEntries, row.institution, row.account)
+        const key = `${row.institution}|${account}`
+        const entry = cashByAccount.get(key) ?? { institution: row.institution, account, derived: false, byCurrency: new Map<string, BalancePoint[]>() }
+        const points = entry.byCurrency.get(row.currency) ?? []
+        points.push({ date: row.date, valueKrw: Number(row.balance) })
+        entry.byCurrency.set(row.currency, points)
         if (row.derived) entry.derived = true
         cashByAccount.set(key, entry)
       }
     }
-    for (const [key, { institution, account, currency, derived, points: history }] of cashByAccount) {
+    for (const [key, { institution, account, derived, byCurrency }] of cashByAccount) {
+      // One currency: the series as filed. Several: their sum in dollars, so the
+      // account is read like any USD account below.
+      const [currency, history] =
+        byCurrency.size === 1 ? [...byCurrency][0] : ['USD', sumInUsd(byCurrency, (date) => rate?.krwPerUsd ?? rateAt(date))]
       const retiredOn = retired.get(key) ?? null
       if (retiredOn && retiredOn < start) continue
       const points = retiredOn ? closedOn(history, retiredOn) : history
@@ -3410,8 +3451,9 @@ export function getSupplementaryCoverage(): SupplementaryCoverage {
         )
         .all() as { institution: string; account: string; isCma: number; latest: string | null; sources: string | null }[]
       for (const row of cash) {
-        // A closed account has nothing more to download.
-        if (retired.has(`${row.institution}|${row.account}`)) continue
+        // A closed account has nothing more to download. A multi-currency account's
+        // per-currency series are retired by its one entry.
+        if (retired.has(`${row.institution}|${bankAccountGroup(accountMap?.bankAccounts, row.institution, row.account)}`)) continue
         const label = `${row.institution} ${row.account}`
         // A quiet account has no balance row near its statement's end, so the
         // statement's own period end counts too; otherwise a fresh download of a

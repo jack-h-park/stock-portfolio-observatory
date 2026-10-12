@@ -12,6 +12,8 @@ export type BankAccountEntry = {
   alias?: unknown
   retired?: unknown
   retiredOn?: unknown
+  /** A multi-currency account (the 토스뱅크 외화통장): its balances are filed as one series per currency. */
+  multiCurrency?: unknown
 }
 
 /** Names the extractor gives when the map has none and `<institution> <kind>` would not read as the account's name. Keep in step with DEFAULT_ALIASES there. */
@@ -33,6 +35,23 @@ export function bankAccountName(entry: BankAccountEntry): string {
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * The account a `cash_balances` series belongs to, by the name the map entry
+ * gives it. A `"multiCurrency": true` entry has its balances filed as one series
+ * per currency, `<alias> (<ISO code>)` (scripts/extract-bank-statements.py,
+ * tossbank_pdf_accounts); each maps back to the entry's own name, so the account
+ * is retired, and counted for FBAR, once. Every other series is its own account.
+ */
+export function bankAccountGroup(entries: readonly BankAccountEntry[] | null | undefined, institution: string, account: string): string {
+  const section = /^(.*) \(([A-Z]{3})\)$/.exec(account)
+  if (!section) return account
+  for (const entry of entries ?? []) {
+    if (!entry || entry.multiCurrency !== true || String(entry.institution ?? '') !== institution) continue
+    if (bankAccountName(entry) === section[1]) return section[1]
+  }
+  return account
+}
 
 /**
  * Retired accounts, keyed `institution|account` as `cash_balances` names them.

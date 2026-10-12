@@ -6,7 +6,7 @@ import test from 'node:test'
 import Database from 'better-sqlite3'
 import { config } from '@/config'
 import { foreignAccountMaxima, isUsBrokerage, isUsCashInstitution, lastCompleteYear, maxBalance, treasuryRateFor } from '../lib/fbar'
-import { bankAccountName, brokerageAccountLabel, retiredBankAccounts, retiredBrokerageAccounts } from '../lib/bank-accounts'
+import { bankAccountGroup, bankAccountName, brokerageAccountLabel, retiredBankAccounts, retiredBrokerageAccounts } from '../lib/bank-accounts'
 import treasuryRates from '../data/treasury-reporting-rates.json'
 
 // No real account map: a test that needs one writes its own.
@@ -699,4 +699,56 @@ test('adjacent statement periods merge into a covered year', async () => {
   )
   const row = await cashRow(2024)
   assert.deepEqual([row.coverage, row.maxKrw, row.maxDate], ['month_end', 70_000, '2024-06-30'])
+})
+
+test('a multi-currency account files one series per currency and is one FBAR row, its sections summed per date', async () => {
+  // As scripts/extract-bank-statements.py writes a 토스뱅크 외화통장: `<alias> (<CCY>)`.
+  // The KRW section is not something a real 외화통장 holds; it is here so the sum
+  // has two currencies to add.
+  config.stockDbPath = scenarioDb({
+    extra: (db) => {
+      const insert = db.prepare("insert into cash_balances (institution, account, kind, currency, as_of_date, balance, source) values ('tossbank', ?, 'deposit', ?, ?, ?, 'tossbank-fx-x.pdf')")
+      insert.run('Example FX (USD)', 'USD', '2024-01-10', 100)
+      insert.run('Example FX (USD)', 'USD', '2024-03-01', 1_000)
+      insert.run('Example FX (USD)', 'USD', '2024-08-01', 1_500)
+      insert.run('Example FX (USD)', 'USD', '2025-04-20', 0)
+      // $1,000 at the 2024 Treasury rate, held 03-01 to 06-01: with the $1,000 beside it, $2,000 on 03-01.
+      insert.run('Example FX (KRW)', 'KRW', '2024-03-01', 1_473_270)
+      insert.run('Example FX (KRW)', 'KRW', '2024-06-01', 0)
+    },
+  })
+  const mapPath = path.join(mkdtempSync(path.join(tmpdir(), 'fbar-multi-')), 'accounts.local.json')
+  writeFileSync(
+    mapPath,
+    JSON.stringify({ bankAccounts: [{ institution: 'tossbank', kind: 'fx', currency: 'USD', multiCurrency: true, accountNumber: '0000-0000-0000', alias: 'Example FX', retiredOn: '2025-04-20' }] })
+  )
+  const saved = config.stockAccountMapPath
+  config.stockAccountMapPath = mapPath
+  try {
+    const { getForeignAccountMaxima } = await import('../lib/adapters/portfolio-db')
+    const rows2024 = getForeignAccountMaxima(2024).rows.filter((row) => row.institution === 'tossbank' && row.account.startsWith('Example FX'))
+    assert.deepEqual(rows2024.map((row) => row.id), ['tossbank|Example FX'])
+    const row = rows2024[0]
+    assert.equal(row.maxDate, '2024-03-01')
+    assert.ok(Math.abs(row.maxUsd! - 2_000) < 0.01, String(row.maxUsd))
+    assert.equal(row.coverage, 'partial')
+    // retiredOn closes the account, whatever its sections are called.
+    assert.ok(!getForeignAccountMaxima(2026).rows.some((r) => r.account.startsWith('Example FX')))
+  } finally {
+    config.stockAccountMapPath = saved
+  }
+})
+
+test('bankAccountGroup maps a multi-currency entry\'s per-currency series to the entry, and nothing else', () => {
+  const entries = [
+    { institution: 'tossbank', kind: 'fx', multiCurrency: true, alias: 'Example FX' },
+    { institution: 'hana', kind: 'fx', alias: 'Example (USD)' },
+  ]
+  assert.equal(bankAccountGroup(entries, 'tossbank', 'Example FX (USD)'), 'Example FX')
+  assert.equal(bankAccountGroup(entries, 'tossbank', 'Example FX (JPY)'), 'Example FX')
+  assert.equal(bankAccountGroup(entries, 'tossbank', 'Example FX'), 'Example FX')
+  // Another institution, a lowercase code, or a single-currency entry: unchanged.
+  assert.equal(bankAccountGroup(entries, 'mg', 'Example FX (USD)'), 'Example FX (USD)')
+  assert.equal(bankAccountGroup(entries, 'tossbank', 'Example FX (usd)'), 'Example FX (usd)')
+  assert.equal(bankAccountGroup(entries, 'hana', 'Example (USD)'), 'Example (USD)')
 })

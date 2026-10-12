@@ -315,3 +315,31 @@ test('a closed 새마을금고 term deposit, named by its map alias and closed b
     config.stockAccountMapPath = saved
   }
 })
+
+test('a closed multi-currency account, filed as one series per currency, is not in the reminder', async () => {
+  const { config } = await import('@/config')
+  const { getSupplementaryCoverage } = await import('../lib/adapters/portfolio-db')
+  const conn = new Database(dbPath)
+  const insert = conn.prepare("insert into cash_balances (institution, account, owner, kind, currency, as_of_date, balance, source, derived) values ('tossbank', ?, 'self', 'deposit', 'USD', ?, ?, 'tossbank-fx-0000-x-y.pdf', 0)")
+  insert.run('Example FX ••0000 (USD)', daysAgo(500), 1)
+  insert.run('Example FX ••0000 (USD)', daysAgo(400), 0)
+  conn.close()
+  const fxMap = path.join(dir, 'fx.json')
+  writeFileSync(
+    fxMap,
+    JSON.stringify({
+      bankAccounts: [
+        { institution: 'tossbank', kind: 'fx', currency: 'USD', multiCurrency: true, accountNumber: '0000-0000-0000', alias: 'Example FX ••0000', retiredOn: daysAgo(400) },
+      ],
+    })
+  )
+  const saved = config.stockAccountMapPath
+  try {
+    config.stockAccountMapPath = fxMap
+    assert.ok(!getSupplementaryCoverage().rows.some((row) => row.label.startsWith('tossbank Example FX')))
+    config.stockAccountMapPath = path.join(dir, 'absent.json')
+    assert.ok(getSupplementaryCoverage().rows.some((row) => row.label === 'tossbank Example FX ••0000 (USD)'))
+  } finally {
+    config.stockAccountMapPath = saved
+  }
+})
