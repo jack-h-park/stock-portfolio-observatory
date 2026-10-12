@@ -7,6 +7,9 @@ checked for continuity; Robinhood's export prints none, so its history is walked
 from one anchor balance kept in the gitignored account map. 토스뱅크 workbooks are
 one account per last4 in the file name; a Fidelity cash management account's
 balance includes its core money-market position (see FIDELITY_CORE_FUNDS).
+새마을금고 exports are named by their full 계좌번호 in the map; a closed term deposit
+(`mg-term-*`) becomes a derived balance whose principal is matched from the
+월급통장 (see mg_term_accounts).
 """
 from __future__ import annotations
 
@@ -420,7 +423,15 @@ def parse_mirae_cma(path, findings, notes=None):
     return out
 
 
+# Converted sheets, by path: a 새마을금고 월급통장 is read once to learn its
+# 계좌번호 and again for its rows, and a soffice conversion is slow.
+_XLS_CACHE = {}
+
+
 def _xls_rows(source, findings):
+    key = str(Path(source).resolve())
+    if key in _XLS_CACHE:
+        return [list(r) for r in _XLS_CACHE[key]]
     fx = _fx_ledger_module()
     binary = fx.soffice_binary()
     if not binary:
@@ -434,7 +445,208 @@ def _xls_rows(source, findings):
             findings.append(f"{source.name}: XLS conversion failed ({type(error).__name__}); rows were not read")
             return []
         converted = Path(temp_dir) / f"{source.stem}.csv"
-        return _csv_rows(converted.read_text(encoding="utf-8", errors="replace"))
+        rows = _csv_rows(converted.read_text(encoding="utf-8", errors="replace"))
+    _XLS_CACHE[key] = rows
+    return [list(r) for r in rows]
+
+
+# --- 새마을금고: which account a sheet is, and closed term deposits -------------
+#
+# The map lists more than one 새마을금고 account: the 월급통장 (자립예탁금) and one
+# entry per closed term deposit (정기예탁금). An account is identified only by its
+# full 계좌번호 matched against the map (scripts/mirae_accounts.py has the rule).
+
+# The labels of the 요약정보 block. Each label's value is the next non-empty cell
+# in its row; cells are spread over columns, so nothing is read by position.
+MG_SUMMARY_LABELS = ("통장(상품)명", "계좌번호", "개설일", "해지일", "총수령액", "예금주명", "상태", "현재잔액", "출금가능금액")
+# The tax withheld on a term deposit's interest (이자소득세 14% + 지방소득세 1.4%).
+MG_INTEREST_TAX = 0.154
+# How close a 인터넷신규 outflow must come to 총수령액 − 이자 × (1 − tax) to be the principal.
+MG_PRINCIPAL_TOLERANCE = 0.01
+
+
+def _digits(value):
+    return re.sub(r"\D", "", str(value or ""))
+
+
+def mg_summary(rows):
+    """{label: value} from a converted 새마을금고 sheet's 요약정보 block."""
+    found = {}
+    for r in rows:
+        cells = [_cell_text(c) for c in r]
+        for i, cell in enumerate(cells):
+            if cell not in MG_SUMMARY_LABELS or cell in found:
+                continue
+            value = next((v for v in cells[i + 1:] if v), "")
+            if value and value not in MG_SUMMARY_LABELS:
+                found[cell] = value
+    return found
+
+
+def _dotted_date(text, label):
+    m = re.fullmatch(r"(\d{4})\.(\d{2})\.(\d{2})", (text or "").strip())
+    if not m:
+        raise ValueError(f"{label} is not a YYYY.MM.DD date")
+    return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+
+
+def parse_mg_term(rows):
+    """A converted 해지계좌 거래내역조회: {number, opened, closed, payout, interest}.
+
+    The 요약정보 block gives the 계좌번호, 개설일, 해지일 and 총수령액; the
+    transaction table (found by its 거래일자 / 거래구분 / 금액 header) gives the
+    이자 rows. The opening deposit is not in these files: the 조회기간 reaches back
+    a year or two, so a file usually shows only the closing day.
+    """
+    summary = mg_summary(rows)
+    missing = [label for label in ("계좌번호", "개설일", "해지일", "총수령액") if not summary.get(label)]
+    if missing:
+        raise ValueError(f"the 요약정보 block has no {', '.join(missing)}")
+    payout = _num(summary["총수령액"])
+    if payout is None or payout <= 0:
+        raise ValueError("총수령액 is not a positive amount")
+    interest = 0.0
+    wanted = ("거래일자", "거래구분", "금액")
+    for i, r in enumerate(rows):
+        header = [_cell_text(c) for c in r]
+        if all(w in header for w in wanted):
+            kind_col, amount_col = header.index("거래구분"), header.index("금액")
+            for row in rows[i + 1:]:
+                if len(row) > amount_col and _cell_text(row[kind_col]) == "이자":
+                    interest += _num(row[amount_col]) or 0.0
+            break
+    return {"number": _digits(summary["계좌번호"]), "opened": _dotted_date(summary["개설일"], "개설일"),
+            "closed": _dotted_date(summary["해지일"], "해지일"), "payout": payout, "interest": interest}
+
+
+def _mg_numbered_entries(account_map):
+    return [e for e in account_map.get("bankAccounts", [])
+            if isinstance(e, dict) and e.get("institution") == "mg" and _digits(e.get("accountNumber"))]
+
+
+def _mg_deposit_groups(paths, account_map, findings):
+    """{label: [paths]}: 새마을금고 거래내역조회 exports, by the map entry for each one's printed 계좌번호.
+
+    A map with no numbered 새마을금고 entry keeps the old behaviour: every export is
+    the one account, named by institution and kind (key None).
+    """
+    entries = _mg_numbered_entries(account_map)
+    if not entries:
+        return {None: list(paths)}
+    groups = {}
+    for path in paths:
+        rows = _xls_rows(path, findings)
+        if not rows:
+            continue  # _xls_rows recorded why
+        number = _digits(mg_summary(rows).get("계좌번호"))
+        entry = next((e for e in entries if _digits(e["accountNumber"]) == number), None) if number else None
+        if not number:
+            findings.append(f"{path.name}: prints no 계좌번호, so which 새마을금고 account it is cannot be told; skipped")
+        elif entry is None:
+            findings.append(f"{path.name}: 계좌번호 {mirae_accounts.mask(number)} is not in the account map; skipped")
+        else:
+            groups.setdefault(entry.get("alias") or f"mg {number[-4:]}", []).append(path)
+    return groups
+
+
+def _is_opening(txn):
+    """A 월급통장 outflow into a new 예적금: its 거래내용 carries `인터넷신규`."""
+    return "인터넷신규" in str(txn.get("description", "")) and txn["amount"] < 0
+
+
+def mg_term_accounts(paths, account_map, salary, findings, notes):
+    """Closed term deposits as deposit accounts: the principal from 개설일, zero from 해지일.
+
+    The principal is the 월급통장's `인터넷신규` outflow on the 개설일 that comes
+    within MG_PRINCIPAL_TOLERANCE of 총수령액 − 이자 × (1 − MG_INTEREST_TAX).
+    Several deposits can open on one day, so outflows are handed out closest
+    match first and each goes to one deposit only. With no such outflow the
+    estimate itself is used, and a note names the account and the figure; if
+    the deposit's payout is in the 월급통장 all the same, a finding says the
+    principal needs checking.
+
+    The balances are not printed anywhere, so the account is `derived` and has no
+    continuity check. The opening and the `예적금만기` payout on the 해지일 are
+    marked `term` in `salary`, together and never one alone, which keeps them
+    out of the 새마을금고 예적금 estimate: the deposit is counted here, once.
+    """
+    entries = _mg_numbered_entries(account_map)
+    terms, seen = [], set()
+    for path in paths:
+        rows = _xls_rows(path, findings)
+        if not rows:
+            continue  # _xls_rows recorded why
+        try:
+            term = parse_mg_term(rows)
+        except ValueError as error:
+            findings.append(f"{path.name}: could not be parsed ({error})")
+            continue
+        shown = mirae_accounts.mask(term["number"])
+        entry = next((e for e in entries if _digits(e["accountNumber"]) == term["number"]), None)
+        if entry is None:
+            findings.append(f"{path.name}: 계좌번호 {shown} is not in the account map; skipped")
+            continue
+        if term["number"] in seen:
+            findings.append(f"{path.name}: a second file for {shown}; skipped")
+            continue
+        seen.add(term["number"])
+        term["estimate"] = term["payout"] - term["interest"] * (1 - MG_INTEREST_TAX)
+        terms.append((path, term, entry))
+
+    pairs = []
+    for index, (_path, term, _entry) in enumerate(terms):
+        for txn in salary:
+            if txn["date"] != term["opened"] or not _is_opening(txn):
+                continue
+            gap = abs(-txn["amount"] - term["estimate"])
+            if gap <= MG_PRINCIPAL_TOLERANCE * term["estimate"]:
+                pairs.append((gap, index, txn))
+    matched, used = {}, set()
+    for _gap, index, txn in sorted(pairs, key=lambda p: (p[0], p[1], p[2]["seq"])):
+        if index in matched or id(txn) in used:
+            continue
+        matched[index] = txn
+        used.add(id(txn))
+
+    accounts = []
+    for index, (path, term, entry) in enumerate(terms):
+        shown = mirae_accounts.mask(term["number"])
+        txn = matched.get(index)
+        payout = next((t for t in salary if t["date"] == term["closed"] and not t.get("term")
+                       and str(t.get("description", "")).startswith("예적금만기") and abs(t["amount"] - term["payout"]) < 1), None)
+        opening = txn
+        if txn is not None:
+            principal = -txn["amount"]
+        else:
+            principal = round(term["estimate"])
+            notes.append(f"{path.name}: no 인터넷신규 outflow on {term['opened']} in the 월급통장 matches term deposit "
+                         f"{shown}; its principal is estimated as 총수령액 − 이자 × (1 − {MG_INTEREST_TAX}) "
+                         f"= {principal:,.0f}")
+            if payout is not None:
+                # The payout proves the deposit, but its opening was not found: the
+                # day's 인터넷신규 closest to the estimate stands in for it, so the
+                # estimate drops the deposit's two legs together. With none that day
+                # the payout stays in the estimate too, rather than leave it one-sided.
+                findings.append(f"{path.name}: term deposit {shown} was paid out on {term['closed']}, but no 인터넷신규 "
+                                f"outflow on {term['opened']} comes within {MG_PRINCIPAL_TOLERANCE:.0%} of its estimated "
+                                "principal; check the principal")
+                spare = [t for t in salary if t["date"] == term["opened"] and _is_opening(t) and id(t) not in used]
+                opening = min(spare, key=lambda t: abs(-t["amount"] - term["estimate"]), default=None)
+        # A deposit's legs leave the 새마을금고 예적금 estimate only as a pair, so it is
+        # counted once: here, and not again there.
+        if opening is not None:
+            used.add(id(opening))
+            opening["term"] = True
+            if payout is not None:
+                payout["term"] = True
+        accounts.append({
+            "institution": "mg", "account": entry.get("alias") or f"mg {term['number'][-4:]}", "kind": "deposit",
+            "currency": "KRW", "owner": "self", "derived": True,
+            "principal": "matched" if txn is not None else "estimated", "sources": [path.name],
+            "balances": [{"date": term["opened"], "balance": principal}, {"date": term["closed"], "balance": 0.0}],
+            "continuityBreaks": [],
+        })
+    return accounts
 
 
 FAMILIES = [
@@ -604,7 +816,7 @@ def _bucket(flow):
         # and the two legs are one round trip.
         return f"counterparty:{memo}"
     if flow["statement"] == "mg":
-        if memo == "인터넷신규" or memo.startswith("예적금만기"):
+        if "인터넷신규" in memo or memo.startswith("예적금만기"):
             return "mg-savings"
         if flow.get("kind") == "현금" and flow["amount"] > 0:
             return "counterparty:현금|새마을금고 내역"
@@ -725,10 +937,12 @@ def estimate_closed_accounts(statements, transfers, account_map, findings):
     flows = []
     for statement, source, txns in statements + [("mirae", "mirae-brokerage", transfers)]:
         for t in txns:
+            # A row marked `term` moved money into or out of a term deposit that
+            # mg_term_accounts already counts; it is not money held elsewhere.
             flows.append({"statement": statement, "source": source, "date": t["date"], "seq": t["seq"],
                           "amount": t["amount"], "memo": t.get("counterparty") or t.get("description", ""),
                           "counterpartyInstitution": t.get("counterpartyInstitution", ""), "kind": t.get("kind", ""),
-                          "paired": False})
+                          "paired": bool(t.get("term"))})
     pair_transfers(flows)
     buckets = {}
     for f in sorted((f for f in flows if not f["paired"]), key=lambda f: (f["date"], f["seq"])):
@@ -770,6 +984,7 @@ def main():
     account_map = json.loads(MAP_PATH.read_text(encoding="utf-8")) if map_present else {}
     findings, notes, accounts = [], [], []
     krw_statements = []
+    mg_salary = []  # every 새마을금고 거래내역조회 row, for the term deposits' principal
     for prefix, institution, kind, currency, parse, key_pattern in FAMILIES:
         files = sorted(SOURCE_DIR.glob(f"{prefix}*")) if SOURCE_DIR.exists() else []
         if not files:
@@ -777,6 +992,10 @@ def main():
         by_account, labels = {}, {}
         if (institution, kind) == ("mirae", "cma"):
             by_account = _mirae_cma_groups(files, account_map, map_present, findings, notes)
+            labels = {key: key for key in by_account if key is not None}
+            files = []
+        elif (institution, kind) == ("mg", "deposit"):
+            by_account = _mg_deposit_groups(files, account_map, findings)
             labels = {key: key for key in by_account if key is not None}
             files = []
         for path in files:
@@ -811,6 +1030,8 @@ def main():
                 continue
             if currency == "KRW" and institution in ("tossbank", "mg", "mirae"):
                 krw_statements.append((institution, "mirae-cma" if institution == "mirae" else f"{institution}-{key or kind}", txns))
+            if institution == "mg":
+                mg_salary.extend(txns)  # the same row objects: a `term` mark reaches the estimate
             derived = all(t["balance"] is None for t in txns)
             balances = _derive(alias, txns, account_map, findings) if derived else end_of_day(txns)
             accounts.append({
@@ -818,6 +1039,9 @@ def main():
                 "derived": derived, "sources": [name for _, name, _ in parsed], "balances": balances,
                 "continuityBreaks": [] if derived else continuity_breaks(txns),
             })
+    term_files = sorted(SOURCE_DIR.glob("mg-term-*")) if SOURCE_DIR.exists() else []
+    if term_files:
+        accounts.extend(mg_term_accounts(term_files, account_map, mg_salary, findings, notes))
     transfers = []
     for glob in MIRAE_TRANSFER_GLOBS:
         parsed = []

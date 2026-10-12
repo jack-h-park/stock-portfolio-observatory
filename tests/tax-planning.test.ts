@@ -424,3 +424,78 @@ test('the US-measured short gain and loss are reported beside the KRW ones', () 
   assert.equal(aggregate.usMeasuredNetShortGainKrw, 2_000_000)
   assert.equal(aggregate.usMeasuredShortLossHarvestKrw, 0)
 })
+
+// The planner's KRW gain is Korea's measure: cost at the acquisition-date rate. The holdings-side
+// cost_basis_krw of a US lot is at today's rate, so it would drop the exchange-rate move.
+test('the KRW gain and the Korea tax use the acquisition-date won cost when the lot carries one', () => {
+  const currentPolicy = policy()
+  // $10,000 bought at 1,400, valued $12,000 at 1,000: USD +2,000, Korea's KRW −2,000,000.
+  const usLot = lot({
+    tax_term: 'short', holding_days: 100, native_cost_basis: 10_000, native_market_value: 12_000,
+    native_unrealized_gl: 2_000, cost_basis_krw: 10_000_000, acquisition_cost_krw: 14_000_000,
+  })
+  const plan = buildTaxPlan({ lots: [usLot], policy: currentPolicy, scenario: 'US_AND_KR', objective: 'raise-cash' })
+  assert.equal(plan.candidates[0].gainKrw, -2_000_000)
+  const aggregate = summarizeTaxCandidates({ candidates: plan.candidates, policy: currentPolicy, scenario: 'US_AND_KR', year: 2026 })
+  assert.equal(aggregate.krTaxKrw, 0)
+  assert.ok(aggregate.usTaxKrw > 0)
+
+  // Without the column (an older database) the holdings-side cost stands in, as before.
+  const legacy = buildTaxPlan({ lots: [{ ...usLot, acquisition_cost_krw: undefined }], policy: currentPolicy, scenario: 'US_AND_KR', objective: 'raise-cash' })
+  assert.equal(legacy.candidates[0].gainKrw, 2_000_000)
+})
+
+test('with the acquisition-date cost a USD-gain lot is mixed in a joint filing year', () => {
+  const planSet = buildMonthlySalePlanSet({
+    lots: [lot({
+      id: 1, acquired_date: '2026-07-01', tax_term: 'short', holding_days: 100, native_cost_basis: 10_000,
+      native_market_value: 12_000, native_unrealized_gl: 2_000, cost_basis_krw: 10_000_000, acquisition_cost_krw: 14_000_000,
+    })],
+    policy: policy(),
+    selectedStrategy: 'STAGED',
+    asOfDate: '2026-07-20',
+  })
+  assert.ok(planSet.selectedPlan.instructions.every((instruction) => instruction.year > 2027 || instruction.role === 'mixed'))
+})
+
+// A won lot's US gain is its proceeds at the planning rate less its won cost at the
+// acquisition-date rate, so the exchange-rate move reaches the US side as it does in reality.
+test('a Korea-listed lot is measured for the US at its acquisition-date dollar cost', () => {
+  const currentPolicy = policy()
+  // ₩10,000,000 bought at 1,250 ($8,000), now ₩11,000,000 at 1,000 ($11,000): US +$3,000, KRW +₩1,000,000.
+  const krLot = lot({
+    market: 'KR', currency: 'KRW', ticker: '000000', fx_rate_to_base: 1, tax_term: 'short', holding_days: 100,
+    native_cost_basis: 10_000_000, native_market_value: 11_000_000, native_unrealized_gl: 1_000_000,
+    cost_basis_krw: 10_000_000, acquisition_cost_usd: 8_000,
+  })
+  const plan = buildTaxPlan({ lots: [krLot], policy: currentPolicy, scenario: 'US_ONLY', objective: 'raise-cash' })
+  const aggregate = summarizeTaxCandidates({ candidates: plan.candidates, policy: currentPolicy, scenario: 'US_ONLY', year: 2026 })
+  const expected = estimateUsCapitalGainTax({
+    year: 2026, filingStatus: 'MFJ', stateCode: 'NONE', ordinaryIncomeUsd: 336_000,
+    shortGainUsd: 3_000, longGainUsd: 0, federalBracketInflationPct: 2.5, fallbackStateRatePct: 0, niitRatePct: 0,
+  })
+  assert.equal(aggregate.usTaxKrw, expected.taxBeforeForeignTaxCreditUsd * 1000)
+  assert.equal(plan.candidates[0].usTaxKrw, 3_000_000 * 0.37)
+  // Korea's measure is unchanged.
+  assert.equal(plan.candidates[0].gainKrw, 1_000_000)
+
+  // Without the column (an older database) the KRW gain at the planning rate stands in.
+  const legacy = buildTaxPlan({ lots: [{ ...krLot, acquisition_cost_usd: undefined }], policy: currentPolicy, scenario: 'US_ONLY', objective: 'raise-cash' })
+  assert.equal(legacy.candidates[0].usTaxKrw, 1_000_000 * 0.37)
+})
+
+test('gains Korea already taxed this year use up the basic deduction before a planned sale', () => {
+  // A planned US sale with a ₩1,000,000 KRW gain, inside the ₩2,500,000 deduction on its own.
+  const plannedLot = lot({ native_market_value: 11_000, native_unrealized_gl: 1_000, cost_basis_krw: 10_000_000 })
+  const withoutYtd = policy()
+  const plan = buildTaxPlan({ lots: [plannedLot], policy: withoutYtd, scenario: 'KR_ONLY', objective: 'raise-cash' })
+  assert.equal(summarizeTaxCandidates({ candidates: plan.candidates, policy: withoutYtd, scenario: 'KR_ONLY', year: 2026 }).krTaxKrw, 0)
+
+  const withYtd = policy()
+  withYtd.jurisdictions.find((j) => j.code === 'KR')!.manualAssumptions.ytdRealizedTaxableGainKrw = 2_000_000
+  const aggregate = summarizeTaxCandidates({ candidates: plan.candidates, policy: withYtd, scenario: 'KR_ONLY', year: 2026 })
+  assert.equal(aggregate.krNetTaxableGainBeforeDeductionKrw, 3_000_000)
+  assert.equal(aggregate.krTaxKrw, 500_000 * 0.22)
+  // Another year starts its own pool.
+  assert.equal(summarizeTaxCandidates({ candidates: plan.candidates, policy: withYtd, scenario: 'KR_ONLY', year: 2027 }).krTaxKrw, 0)
+})

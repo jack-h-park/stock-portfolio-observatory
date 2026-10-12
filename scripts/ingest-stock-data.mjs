@@ -1060,6 +1060,15 @@ create table tax_lots_all (
   native_market_value real,
   native_unrealized_gl real,
   cost_basis_krw real not null,
+  -- The won cost Korea taxes against: a foreign-currency lot converted at the
+  -- USD/KRW rate on its ACQUISITION date. cost_basis_krw converts US and crypto
+  -- lots at today's rate, which is what the holdings pages show; the two differ
+  -- by the exchange-rate move since purchase. Null where no rate reaches back.
+  acquisition_cost_krw real,
+  -- The dollar cost the IRS measures against: a USD lot's own cost, and a won
+  -- lot's won cost at the USD/KRW rate on its acquisition date. Null where no
+  -- rate reaches back.
+  acquisition_cost_usd real,
   unit_cost real,
   holding_days integer,
   tax_term text,
@@ -1083,6 +1092,10 @@ create table realized_lots_all (
   sold_date text,
   quantity_sold real,
   cost_basis_krw real,
+  -- As on tax_lots_all: the won cost at the acquisition-date rate, and the
+  -- dollar cost the IRS measures against.
+  acquisition_cost_krw real,
+  acquisition_cost_usd real,
   proceeds_krw real,
   realized_gl_krw real,
   holding_days integer,
@@ -4868,6 +4881,34 @@ const HOLDING_COLUMNS = [
 ]
 // holdingRows is inserted after the pension and gold blocks below, so a row for
 // an account those blocks own can be dropped first instead of stored twice.
+// Korea measures a foreign-currency lot's gain with the cost at the
+// ACQUISITION-date rate and the proceeds at the sale-date rate. US and crypto
+// lots carry cost_basis_krw at today's rate (open) or the sale-date rate
+// (realized), so they get the acquisition-date figure here. Lots from the
+// Korean certificates already carry the won amount actually paid, which is the
+// acquisition-date figure, and keep it.
+function acquisitionCostKrw(row) {
+  const converted = (row.market === 'US' || row.market === CRYPTO_MARKET) && row.currency === 'USD'
+  if (!converted) return row.cost_basis_krw ?? null
+  const cost = number(row.native_cost_basis)
+  const rate = historicalUsdKrwOn(text(row.acquired_date).slice(0, 10))
+  return cost == null || !rate ? null : cost * rate
+}
+// The IRS mirror image: a won lot's dollar cost is its won cost at the
+// acquisition-date rate, so its US gain carries the exchange-rate move the
+// same way a USD lot's Korea gain does.
+function acquisitionCostUsd(row) {
+  if (row.currency === 'USD') return number(row.native_cost_basis)
+  if (row.currency !== 'KRW') return null
+  const costKrw = row.acquisition_cost_krw ?? row.cost_basis_krw
+  const rate = historicalUsdKrwOn(text(row.acquired_date).slice(0, 10))
+  return costKrw == null || !rate ? null : Number(costKrw) / rate
+}
+for (const row of [...taxLotRows, ...realizedRows]) {
+  row.acquisition_cost_krw = acquisitionCostKrw(row)
+  row.acquisition_cost_usd = acquisitionCostUsd(row)
+}
+
 insertMany(db, 'tax_lots', taxLotRows, [
   'market',
   'currency',
@@ -4887,6 +4928,8 @@ insertMany(db, 'tax_lots', taxLotRows, [
   'native_market_value',
   'native_unrealized_gl',
   'cost_basis_krw',
+  'acquisition_cost_krw',
+  'acquisition_cost_usd',
   'unit_cost',
   'holding_days',
   'tax_term',
@@ -4905,6 +4948,8 @@ insertMany(db, 'realized_lots', realizedRows, [
   'sold_date',
   'quantity_sold',
   'cost_basis_krw',
+  'acquisition_cost_krw',
+  'acquisition_cost_usd',
   'proceeds_krw',
   'realized_gl_krw',
   'holding_days',
@@ -6875,6 +6920,51 @@ check(
         `${unconvertible.length ? `; ${unconvertible.length} lot(s) had no FX for their acquisition or sale date` : ''}` +
         `${taxPolicy ? '' : ` (no policy file at ${path.basename(taxPolicyPath)})`}` +
         bridgedRealizedDetail,
+  'warning'
+)
+
+// The Korea side of the same question. Korea taxes a year's foreign-stock gains
+// as one pool with one basic deduction, so a planned sale's Korea tax depends on
+// what the year has already realized — and the planner, like its US half, only
+// knows that through an assumption someone keeps current. This computes it, in
+// Korea's measure: proceeds at the sale-date rate less the cost at the
+// ACQUISITION-date rate (acquisition_cost_krw), over the lots Korea taxes — US
+// stocks, plus Korea-listed ones only when the policy's domestic flags say so,
+// which is the planner's own krTaxable rule. Crypto is not a stock gain.
+//
+// Published and checked, not written into the policy, for the reason the US
+// figure is not: it is a replay of our own and the operator decides.
+const krTaxAssumptions = (taxPolicy?.jurisdictions ?? []).find((j) => j?.code === 'KR')?.manualAssumptions ?? null
+const krDomesticTaxable = Boolean(krTaxAssumptions?.domesticMajorShareholder) || Boolean(krTaxAssumptions?.domesticListedOffMarketSale)
+const krTaxableRealized = realizedForTaxYear.filter((r) => r.market === 'US' || (r.market === 'KR' && krDomesticTaxable))
+const krMeasuredGain = (r) => {
+  const cost = r.acquisition_cost_krw ?? r.cost_basis_krw
+  return r.proceeds_krw == null || cost == null ? null : Number(r.proceeds_krw) - Number(cost)
+}
+const krUnmeasured = krTaxableRealized.filter((r) => krMeasuredGain(r) == null)
+const computedKrGainKrw = krTaxableRealized.reduce((sum, r) => sum + (krMeasuredGain(r) ?? 0), 0)
+const assumedKrGainKrw = Number(krTaxAssumptions?.ytdRealizedTaxableGainKrw ?? 0)
+// A thousand won: below the rounding a hand-entered won figure carries.
+const krYtdAgrees = Math.abs(assumedKrGainKrw - computedKrGainKrw) <= 1000
+db.prepare('insert or replace into meta (key, value) values (?, ?)').run(
+  'kr_ytd_realized_computed',
+  JSON.stringify({
+    taxYear,
+    gainKrw: Math.round(computedKrGainKrw),
+    lots: krTaxableRealized.length,
+    unmeasuredLots: krUnmeasured.length,
+  })
+)
+check(
+  'kr_ytd_realized_assumption_reviewed',
+  krTaxableRealized.length === 0 || krYtdAgrees,
+  krTaxableRealized.length === 0
+    ? `no ${taxYear} sales Korea taxes as stock gains`
+    : `${krTaxableRealized.length} lot(s) sold in ${taxYear} that Korea taxes give ₩${Math.round(computedKrGainKrw).toLocaleString('en-US')} ` +
+      `at acquisition-date cost; KR ytdRealizedTaxableGainKrw is ₩${Math.round(assumedKrGainKrw).toLocaleString('en-US')}` +
+      (krYtdAgrees ? '' : ' — update it on the tax settings page') +
+      (krUnmeasured.length ? `; ${krUnmeasured.length} lot(s) have no won proceeds or cost and count as zero` : '') +
+      (taxPolicy ? '' : ` (no policy file at ${path.basename(taxPolicyPath)})`),
   'warning'
 )
 

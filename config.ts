@@ -39,6 +39,9 @@ export const config = {
   ),
   stockTaxPolicyPath: env('STOCK_TAX_POLICY_PATH', repoPath('data/tax-policy.json')),
   stockTaxPolicyExamplePath: env('STOCK_TAX_POLICY_EXAMPLE_PATH', repoPath('data/tax-policy.example.json')),
+  // KR/US target split, edited in the app on /rebalance. Like tax-policy.json it is
+  // owned by the host that serves the app and is never pushed.
+  stockRebalancePolicyPath: env('STOCK_REBALANCE_POLICY_PATH', repoPath('data/rebalance-policy.json')),
   stockTaxPlansPath: env('STOCK_TAX_PLANS_PATH', repoPath('data/tax-plans.json')),
   // The gitignored account map (scripts/account-map.mjs). Same variable the ingest
   // reads; the app reads only its pension token list, for the reminder's rows.

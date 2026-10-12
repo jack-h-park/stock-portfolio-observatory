@@ -53,6 +53,7 @@ data/tax-policy.json
 # One generation of what push-sources.sh replaced, kept on the receiving side.
 data/.push-backup/
 data/tax-plans.json
+data/rebalance-policy.json
 data/historical-fx-rates.json
 data/historical-prices.json
 # Parsed broker certificates: every trade, with amounts. Never commit.

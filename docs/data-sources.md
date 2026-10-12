@@ -38,7 +38,8 @@ the same naming grammar as the other source files:
 | Chase checking | `chase-checking-<from>-<to>.csv` |
 | Bank of America checking | `boa-checking-<from>-<to>.csv` |
 | Robinhood bank | `robinhood-bank-<checking\|savings>-<from>-<to>.csv` |
-| MG Community Credit Cooperative deposit | `mg-deposit-<from>-<to>.xls` |
+| MG Community Credit Cooperative deposit | `mg-deposit-<from>-<to>.xls`: a 거래내역조회. With an account map, the 계좌번호 it prints must be a `{ "institution": "mg" }` entry under `bankAccounts` with that full `accountNumber`; the filer refuses an unmapped number (showing its last four digits) and the extractor names the account by the entry's `alias`. With no numbered mg entry in the map, every export is the one account, as before |
+| MG closed term deposit (정기예탁금) | `mg-term-<last4>-<개설일>-<해지일>.xls`: a 해지계좌 거래내역조회, one closed deposit per file; see [Closed 새마을금고 term deposits](#closed-새마을금고-term-deposits) |
 | Toss Bank | `tossbank-<last4>-<from>-<to>.xlsx`, filed decrypted; the last 4 digits and the period come from the workbook's own header block, one account per last4 |
 | Fidelity cash management account (CMA) | `fidelity-cma-<from>-<to>.csv`, filed only when the export is named `History_for_Account_<ID>[-<N>].csv` and `<ID>` is a CMA in the account map; any other Fidelity history stays a brokerage file |
 | 미래에셋 CMA (발행어음형) | `mirae-cma-<from>-<to>.pdf`: a 미래에셋 거래내역증명서 whose full 계좌번호 is a `{ "institution": "mirae", "kind": "cma" }` entry in the account map (page 2 prints 계좌유형 `종합_CMA`, which is checked against it; see [미래에셋 account identity](#미래에셋-account-identity)). The balance is 예수금잔액 plus the 발행어음 principal held, and needs a certificate whose page 2 prints `거래구분 전체` (or that carries 발행어음 rows); one issued with `거래구분 CMA자동매매 제외`, or showing neither, writes no balances and is reported under `cash_statements_parsed`. Named by that entry's `label` or `alias`; a certificate whose number the map lacks is skipped with a finding. With no map at all, every CMA certificate is `미래에셋 CMA`, and a note says so |
@@ -58,6 +59,63 @@ alias (`tossbank <last4>`). A CMA's `Cash Balance` includes its core money-marke
 reinvestment row as zero movement when it checks continuity.
 
 The result shows on `/net-worth` and as a Balances column on `/accounts`.
+
+#### Closed 새마을금고 term deposits
+
+A 새마을금고 term deposit (정기예탁금) closed before its statements were kept has
+one export of its own: the 해지계좌 거래내역조회. Its 요약정보 block prints the
+계좌번호, 개설일, 해지일 and 총수령액, but the 조회기간 reaches back only a year or
+two, so in practice the file shows the closing day alone (the 이자 row, then the
+해지 row) and never the opening deposit.
+
+Each deposit is a `bankAccounts` entry with its full number and its dates:
+
+```json
+{ "institution": "mg", "kind": "deposit", "currency": "KRW", "accountNumber": "<full 계좌번호>",
+  "alias": "새마을금고 정기예금 …<last digits>", "openedOn": "YYYY-MM-DD", "retiredOn": "YYYY-MM-DD" }
+```
+
+**The filer** reads the full 계좌번호 and refuses a number the map does not list,
+showing only its last four digits. It names the file
+`mg-term-<last 4 digits, check digit included>-<개설일>-<해지일>.xls`; the 개설일
+and 해지일 must agree with the entry's `openedOn` and `retiredOn` when it has them.
+The 월급통장 detector does not claim these files.
+
+**The extractor** writes one `deposit` account per file, named by the entry's
+`alias`: the principal on the 개설일, carried forward, and 0 on the 해지일, since
+the payout leaves the account that day. The principal comes from the 월급통장
+(`mg-deposit-*.xls`, read in the same run): the `인터넷신규` outflow on the
+개설일. Several deposits can open on one day, so the outflow taken is the one
+within 1% of 총수령액 − 이자 × (1 − 0.154), the closest first, and each outflow goes
+to one deposit only. With no such outflow (the 월급통장 export does not reach back
+to the 개설일, for one), that estimate is the principal and a note in
+`bank-balances.json` names the account by its last four digits and the figure.
+Each account says which in `principal` (`matched` or `estimated`).
+
+These balances are not printed by any bank, so the account is `derived`: it has no
+continuity check, and the FBAR table reads a year it spans as `derived`
+(understated) rather than daily, because the interest credited on the last day is
+not in it. They are in `cash_balances`, so the total-assets trend and FBAR count
+them; `retiredOn` keeps them out of the reminder.
+
+The rule is not specific to term deposits: **any foreign cash account whose
+`cash_balances` rows carry `derived = 1` now reads as FBAR basis `derived`
+(understated), not daily**, for every year its series would otherwise have
+covered day by day.
+
+A deposit on file is counted once. Its opening `인터넷신규` outflow (matched on
+the 거래내용 containing `인터넷신규`, not on the bare word) and its `예적금만기`
+payout on the 해지일 leave the estimated 새마을금고 예적금 below, and only as a
+pair. When the payout is in the 월급통장 but no opening came within 1%, a finding
+names the account by its last four digits, and the same-day `인터넷신규` outflow
+closest to the estimated principal leaves the estimate with the payout. With no
+`인터넷신규` on the 개설일 at all, both stay in the estimate.
+
+The filer reads the 개설일 and 해지일 out of the file's bytes, not its cells: they
+are the earliest and the latest standalone date it prints, since every
+transaction falls between them and the 조회기간's dates share one string. A
+해지일 later than the 조회기간 end is refused, as is one the map's `retiredOn`
+contradicts.
 
 #### Accounts no statement covers
 
@@ -363,6 +421,33 @@ review for US tax" with its realized gains, dividends and likely-PFIC count.
 `pensionTaxCredit.byYear` lists the Korean pension tax-credit limits, each band
 applying from its `fromYear` until the next. The pre-2023 limits depended on
 income and age; the example records the common case only.
+
+**Two won costs on a US or crypto lot, on purpose.** `cost_basis_krw` converts
+the dollar cost at today's rate on an open lot and at the sale-date rate on a
+realized one, so the won gain is the dollar gain at one rate. That is what the
+holdings, lots and position pages show. `acquisition_cost_krw` converts the same
+cost at the USD/KRW rate on the acquisition date (`historical_fx_rates`), which
+is how Korea measures a foreign-currency gain, and the tax planner's KRW gain
+uses it. The two differ by the exchange-rate move since purchase. Lots from the
+Korean certificates carry the won amount actually paid, so both columns hold it.
+A lot acquired before the rate history starts has no acquisition cost, and the
+planner falls back to `cost_basis_krw` for it.
+
+The mirror image for the US side is `acquisition_cost_usd`: a USD lot's own
+dollar cost, and a won lot's won cost at the acquisition-date USD/KRW rate. The
+planner measures a won lot's US gain as its proceeds at the planning rate less
+that, so a Korea-listed stock bought when the won was weaker carries the
+exchange-rate move into its US gain, as the IRS measures it.
+
+**Korea's year-to-date gain is an assumption, checked like the US one.** Korea
+taxes a year's foreign-stock gains as one pool with one basic deduction, so the
+planner adds `KR.ytdRealizedTaxableGainKrw` from the tax policy to the planned
+sales of the input year. The ingest computes the same figure from
+`realized_lots` — proceeds at the sale-date rate less `acquisition_cost_krw`,
+over US-market lots and Korea-listed ones only when the domestic flags are set —
+publishes it as `kr_ytd_realized_computed` (shown beside the field on the tax
+settings page), and `kr_ytd_realized_assumption_reviewed` fails while the two
+differ by more than ₩1,000.
 
 **An RSU account can hold nothing, and that is why it was missed.** 삼성증권's
 주식보상 account is where RSUs vest, and its position can sit at zero — vested

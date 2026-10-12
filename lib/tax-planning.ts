@@ -28,6 +28,11 @@ export type TaxPlanningLot = {
   native_market_value: number | null
   native_unrealized_gl: number | null
   cost_basis_krw: number
+  // The won cost Korea taxes against (acquisition-date rate). cost_basis_krw is
+  // at today's rate for US and crypto lots; absent on an older database.
+  acquisition_cost_krw?: number | null
+  // The dollar cost the IRS measures against: a won lot's won cost at the acquisition-date rate.
+  acquisition_cost_usd?: number | null
   holding_days: number | null
   tax_term: string | null
   /** The account's wrapper. Absent on a lot read before wrappers existed: a plain brokerage lot. */
@@ -35,6 +40,8 @@ export type TaxPlanningLot = {
 }
 
 export type TaxPlanCandidate = TaxPlanningLot & {
+  // The planning USD/KRW rate the candidate was built with, for its US measure in KRW.
+  usdKrwRate?: number
   proceedsNative: number | null
   proceedsKrw: number | null
   gainNative: number | null
@@ -387,11 +394,16 @@ function netCapitalGainBuckets(netShortGain: number, netLongGain: number) {
   }
 }
 
-// The IRS measures a USD lot's gain in USD (proceeds USD minus cost USD), so it must not absorb
-// USD/KRW movement since acquisition the way gainKrw does. Non-USD lots carry no acquisition-date
-// USD basis here, so their US gain falls back to the KRW gain at the planning rate.
+// The IRS measures a gain in USD: proceeds at today's rate less the cost in dollars at
+// acquisition. A USD lot's own gain already is that. A won lot's is its proceeds converted at the
+// planning rate less acquisition_cost_usd, its won cost at the acquisition-date rate, so the
+// exchange-rate move since purchase lands on the US side as it does in reality. Without that
+// column (an older database) the KRW gain at the planning rate stands in.
 function usGainUsd(row: TaxPlanCandidate, usdKrwRate: number) {
   if (row.currency === 'USD' && row.gainNative != null) return Number(row.gainNative)
+  if (row.acquisition_cost_usd != null && row.proceedsKrw != null) {
+    return Number(row.proceedsKrw) / usdKrwRate - Number(row.acquisition_cost_usd)
+  }
   return Number(row.gainKrw ?? 0) / usdKrwRate
 }
 
@@ -400,7 +412,23 @@ function usGainKrw(row: TaxPlanCandidate) {
   if (row.currency === 'USD' && row.gainNative != null && Number(row.proceedsNative ?? 0) > 0) {
     return Number(row.gainNative) * (Number(row.proceedsKrw ?? 0) / Number(row.proceedsNative))
   }
+  if (row.acquisition_cost_usd != null && row.usdKrwRate) return usGainUsd(row, row.usdKrwRate) * row.usdKrwRate
   return Number(row.gainKrw ?? 0)
+}
+
+// The planning USD/KRW rate from the lots themselves, before they are candidates: the same rule
+// as candidateUsdKrwRate, whose proceedsKrw / proceedsNative is a USD lot's FX rate.
+function lotsUsdKrwRate(lots: TaxPlanningLot[], policy: TaxPolicy) {
+  const configured = assumptionNumber(policy, 'US', 'planningUsdKrwRate', 0)
+  if (configured > 0) return configured
+  const rates = lots
+    .filter((lot) => lot.currency === 'USD' && Number(lot.native_market_value ?? 0) > 0)
+    .map((lot) => Number(lot.fx_rate_to_base ?? 0) || (lot.native_cost_basis > 0 ? lot.cost_basis_krw / lot.native_cost_basis : 0))
+    .filter((rate) => Number.isFinite(rate) && rate > 0)
+    .sort((a, b) => a - b)
+  if (!rates.length) return 1_350
+  const middle = Math.floor(rates.length / 2)
+  return rates.length % 2 ? rates[middle] : (rates[middle - 1] + rates[middle]) / 2
 }
 
 // The gain each return that is filed in `year` would see: the US in USD (at the current rate, in
@@ -510,7 +538,10 @@ export function summarizeTaxCandidates({
     : 0
 
   const krTaxableRows = priced.filter((row) => krTaxable(row, policy))
-  const krNetTaxableGainKrw = sumGain(krTaxableRows)
+  // Korea taxes the year's foreign-stock gains as one pool with one basic deduction, so the
+  // gains already realized this year join the planned ones, as ytd*GainUsd does on the US side.
+  const krYtdRealizedGainKrw = yearInput ? assumptionNumber(policy, 'KR', 'ytdRealizedTaxableGainKrw', 0) : 0
+  const krNetTaxableGainKrw = sumGain(krTaxableRows) + krYtdRealizedGainKrw
   const krDeductionKrw = assumptionNumber(policy, 'KR', 'stockBasicDeductionKrw', 2500000)
   const krTaxRatePct = assumptionNumber(policy, 'KR', 'foreignStockFlatRatePct', 22)
   const krRate = pctRate(krTaxRatePct)
@@ -623,6 +654,7 @@ export function buildTaxPlan({
   const krDomesticTaxable = assumptionBool(policy, 'KR', 'domesticMajorShareholder', false) || assumptionBool(policy, 'KR', 'domesticListedOffMarketSale', false)
   const krForeignTaxCreditMode = assumptionString(policy, 'KR', 'foreignTaxCreditMode', 'manual')
 
+  const planningUsdKrwRate = lotsUsdKrwRate(lots, policy)
   const candidates = lotsInUsEstimate(lots, policy).map((lot) => {
     const proceedsNative = lot.native_market_value == null ? null : Number(lot.native_market_value)
     const explicitFxRate = Number(lot.fx_rate_to_base ?? 0)
@@ -630,11 +662,20 @@ export function buildTaxPlan({
     const fxRateToBase = lot.currency === 'KRW' ? 1 : explicitFxRate || basisFxRate
     const normalizedProceedsKrw = proceedsNative == null ? null : proceedsNative * fxRateToBase
     const gainNative = lot.native_unrealized_gl == null ? (proceedsNative == null ? null : proceedsNative - Number(lot.native_cost_basis ?? 0)) : Number(lot.native_unrealized_gl)
-    const gainKrw = normalizedProceedsKrw == null ? null : normalizedProceedsKrw - Number(lot.cost_basis_krw ?? 0)
+    // The planner's KRW gain is Korea's measure: proceeds at today's rate less the cost at the
+    // acquisition-date rate. cost_basis_krw would put both at today's rate and drop the exchange-rate
+    // move since purchase, which Korea taxes. The US side does not read it (usGainUsd).
+    const krCostKrw = Number(lot.acquisition_cost_krw ?? lot.cost_basis_krw ?? 0)
+    const gainKrw = normalizedProceedsKrw == null ? null : normalizedProceedsKrw - krCostKrw
     const holdingBucket = isLongTerm(lot) ? 'long' : 'short'
 
-    // US gain in KRW at the current rate: a USD lot's gain is measured in USD (see usGainUsd).
-    const lotUsGainKrw = lot.currency === 'USD' && gainNative != null ? gainNative * fxRateToBase : gainKrw
+    // US gain in KRW at the current rate: measured in USD (see usGainUsd), for won lots too.
+    const lotUsGainKrw =
+      lot.currency === 'USD' && gainNative != null
+        ? gainNative * fxRateToBase
+        : lot.acquisition_cost_usd != null && normalizedProceedsKrw != null
+          ? normalizedProceedsKrw - Number(lot.acquisition_cost_usd) * planningUsdKrwRate
+          : gainKrw
     const usApplies = isScenarioEnabled(scenario, 'US') && lotUsGainKrw != null && lotUsGainKrw > 0
     const usRate = pctRate((holdingBucket === 'long' ? usLongRatePct : usShortRatePct) + usStateRatePct + usNiitRatePct)
     const usTaxKrw = usApplies ? lotUsGainKrw * usRate : 0
@@ -644,6 +685,7 @@ export function buildTaxPlan({
     const estimatedTaxKrw = usTaxKrw + krTaxKrw
     return {
       ...lot,
+      usdKrwRate: planningUsdKrwRate,
       proceedsNative,
       proceedsKrw: normalizedProceedsKrw,
       gainNative,
@@ -1236,6 +1278,8 @@ function scheduledCandidate(
     native_market_value: original.native_market_value == null ? null : original.native_market_value * fraction,
     native_unrealized_gl: original.native_unrealized_gl == null ? null : original.native_unrealized_gl * fraction,
     cost_basis_krw: original.cost_basis_krw * fraction,
+    acquisition_cost_krw: original.acquisition_cost_krw == null ? original.acquisition_cost_krw : original.acquisition_cost_krw * fraction,
+    acquisition_cost_usd: original.acquisition_cost_usd == null ? original.acquisition_cost_usd : original.acquisition_cost_usd * fraction,
     proceedsNative: original.proceedsNative == null ? null : original.proceedsNative * fraction,
     proceedsKrw: instruction.proceedsKrw,
     gainNative: original.gainNative == null ? null : original.gainNative * fraction,

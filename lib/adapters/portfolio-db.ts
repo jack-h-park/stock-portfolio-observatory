@@ -6,6 +6,7 @@ import Database from 'better-sqlite3'
 import { config } from '@/config'
 import { buildTaxPlan, summarizeTaxCandidates, type TaxPlanningLot } from '@/lib/tax-planning'
 import { allocateTax, buildInvestmentEpisodes, mergeAssetEvents, type AssetEvent, type ClosedLot, type DividendRow, type InflowEvent, type OpenLot } from '@/lib/asset-events'
+import { getRebalancePolicy } from '@/lib/rebalance-policy'
 import { getTaxPolicyState, usTaxableWrappers, wrapperTreatment, type TaxPolicy, type WrapperTreatment } from '@/lib/tax-policy'
 import { ASSET_CLASSES, depositsSeries, summarizeNetWorth, totalAssetsSeries, type AsOfNote, type CashBalanceRow, type NetWorth, type TotalAssetsSeries } from '@/lib/net-worth'
 import type { PensionContributionYear } from '@/lib/pension'
@@ -1229,7 +1230,9 @@ function closedOn(points: BalancePoint[], retiredOn: string): BalancePoint[] {
  *
  * - cash outside the US banks (isUsCashInstitution), from daily balances
  *   carried forward; a USD account's maximum is read in dollars. A bankAccounts
- *   entry with `retiredOn` ends its account's series on that date;
+ *   entry with `retiredOn` ends its account's series on that date. A series
+ *   with derived rows (a closed term deposit's principal) is `derived`, never
+ *   `daily`: no bank printed it;
  * - stock accounts outside the US brokerages (isUsBrokerage), KR and US market
  *   alike, so a Korean broker's US stocks count: month-end values of the lots
  *   held times the historical price, converted at that date's USD/KRW rate when
@@ -1290,25 +1293,29 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
       // An unreadable map is the ingest's failure to report; here no account is retired.
     }
     const rateAt = usdKrwRateAt(conn)
-    const cashByAccount = new Map<string, { institution: string; account: string; currency: string; points: BalancePoint[] }>()
+    const cashByAccount = new Map<string, { institution: string; account: string; currency: string; derived: boolean; points: BalancePoint[] }>()
     if (hasTable('cash_balances')) {
+      const derivedColumn = columnsOf('cash_balances').has('derived') ? 'derived' : '0 as derived'
       const rows = conn
-        .prepare('select institution, account, currency, as_of_date as date, balance from cash_balances order by as_of_date, id')
-        .all() as { institution: string; account: string; currency: string; date: string; balance: number }[]
+        .prepare(`select institution, account, currency, as_of_date as date, balance, ${derivedColumn} from cash_balances order by as_of_date, id`)
+        .all() as { institution: string; account: string; currency: string; date: string; balance: number; derived: number }[]
       for (const row of rows) {
         if (isUsCashInstitution(row.institution)) continue
         const key = `${row.institution}|${row.account}`
-        const entry = cashByAccount.get(key) ?? { institution: row.institution, account: row.account, currency: row.currency, points: [] }
+        const entry = cashByAccount.get(key) ?? { institution: row.institution, account: row.account, currency: row.currency, derived: false, points: [] }
         entry.points.push({ date: row.date, valueKrw: Number(row.balance) })
+        if (row.derived) entry.derived = true
         cashByAccount.set(key, entry)
       }
     }
-    for (const [key, { institution, account, currency, points: history }] of cashByAccount) {
+    for (const [key, { institution, account, currency, derived, points: history }] of cashByAccount) {
       const retiredOn = retired.get(key) ?? null
       if (retiredOn && retiredOn < start) continue
       const points = retiredOn ? closedOn(history, retiredOn) : history
-      const found = maxBalance(points, year)
-      if (!found) continue
+      const reached = maxBalance(points, year)
+      if (!reached) continue
+      // Carried forward day by day, but not printed by any bank: understated.
+      const found = derived && reached.coverage === 'daily' ? { ...reached, coverage: 'derived' as const } : reached
       if (currency === 'USD') {
         // Dollars in, dollars out. Without a Treasury rate the won figure falls
         // back to the market rate on the date of the maximum, and with neither
@@ -2653,10 +2660,7 @@ export function getCryptoPremium(): CryptoPremium {
 export function getRebalanceReview(): RebalanceReview {
   const conn = db()
   try {
-    const marketTargets = [
-      { market: 'KR', targetPct: 50 },
-      { market: 'US', targetPct: 50 },
-    ]
+    const { marketTargets } = getRebalancePolicy()
     const positionCapPct = 15
     const totals = conn
       .prepare(
@@ -2688,7 +2692,7 @@ export function getRebalanceReview(): RebalanceReview {
       positions.reduce((sum, row) => (row.market === market ? sum + positionValue(row) : sum), 0)
 
     // Market gaps are measured against the TARGETED markets only, not the whole
-    // portfolio. The 50/50 policy is a split between two equity books; a market
+    // portfolio. The KR/US policy is a split between two equity books; a market
     // with no target — crypto — is not a third slice of it. Dividing by the full
     // portfolio would push both KR and US below their targets purely because
     // crypto exists, reporting "Add" on both sides of a split that is already
@@ -4028,6 +4032,13 @@ export function getTaxPlanningLots(
           ? `${alias}.${STOCK_WRAPPER_SQL}`
           : '1 = 1'
     const params = scoped && !allWrappers ? [...wrappers, ...wrappers, limit] : [limit]
+    // A database written before the column existed reads as null, and the
+    // planner falls back to cost_basis_krw for it.
+    const lotColumns = new Set(
+      (conn.prepare(`pragma table_info(${lotsTable})`).all() as { name: string }[]).map((column) => column.name)
+    )
+    const acquisitionCost = lotColumns.has('acquisition_cost_krw') ? 'tax_lots.acquisition_cost_krw' : 'null'
+    const acquisitionCostUsd = lotColumns.has('acquisition_cost_usd') ? 'tax_lots.acquisition_cost_usd' : 'null'
     return conn
       .prepare(
         `with holding_prices as (
@@ -4063,6 +4074,8 @@ export function getTaxPlanningLots(
                tax_lots.open_quantity * coalesce(holding_prices.current_price, holding_prices.implied_price) - tax_lots.native_cost_basis
              ) as native_unrealized_gl,
              tax_lots.cost_basis_krw,
+             ${acquisitionCost} as acquisition_cost_krw,
+             ${acquisitionCostUsd} as acquisition_cost_usd,
              tax_lots.holding_days,
              tax_lots.tax_term,
              tax_lots.account_wrapper

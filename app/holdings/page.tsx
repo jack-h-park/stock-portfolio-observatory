@@ -136,7 +136,7 @@ export default async function HoldingsPage({
               { key: 'native_market_value', label: copy.marketValue, align: 'right', sortable: true, nowrap: true, render: (r) => (r.native_market_value == null ? copy.noValue : money(r.native_market_value, r.currency)) },
               { key: 'native_unrealized_gl', label: copy.sort.gain, description: copy.gainDescription, align: 'right', sortable: true, nowrap: true, render: (r) => <Signed value={r.native_unrealized_gl} format={(m) => money(m, r.currency)} /> },
               { key: 'base_unrealized_gl', label: copy.baseGain, description: copy.baseGainDescription, align: 'right', sortable: true, priority: 'tertiary', nowrap: true, render: (r) => <Signed value={r.base_unrealized_gl} format={(m) => money(m, 'KRW')} /> },
-              { key: 'unrealized_gl_pct', label: copy.sort.return, align: 'right', sortable: true, nowrap: true, render: (r) => <Signed value={r.unrealized_gl_pct} format={(m) => fmtPct(m)} /> },
+              { key: 'native_unrealized_gl_pct', label: copy.sort.return, align: 'right', sortable: true, nowrap: true, render: (r) => <Signed value={r.native_unrealized_gl_pct} format={(m) => fmtPct(m)} /> },
               { key: 'long_term_qty', label: copy.longTerm, description: copy.longTermDescription, align: 'right', sortable: true, priority: 'tertiary', render: (r) => fmtNumber(r.long_term_qty, 2) },
               { key: 'short_term_qty', label: copy.shortTerm, description: copy.shortTermDescription, align: 'right', sortable: true, priority: 'tertiary', render: (r) => fmtNumber(r.short_term_qty, 2) },
               { key: 'lot_count', label: copy.taxLots, description: copy.lotDescription, align: 'right', sortable: true, priority: 'tertiary' },
