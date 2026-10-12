@@ -105,8 +105,38 @@ def parse_mg_rows(rows):
         memo = r[memo_col].strip() if memo_col is not None and len(r) > memo_col else ""
         parsed.append((day, _clock(r[col["거래시간"]]), in_amt - out_amt, _num(r[col["잔액"]]), memo))
     parsed.sort(key=lambda t: (t[0], t[1]))
+    parsed = _chain_same_second(parsed)
     return [{"date": d, "seq": i, "description": memo, "amount": a, "balance": b}
             for i, (d, _t, a, b, memo) in enumerate(parsed)]
+
+
+def _chain_same_second(parsed):
+    """Order rows that share a second by the running balance.
+
+    The 새마을금고 sheet prints rows of one second in either order: one export
+    newest first, another oldest first. Within such a group the row that comes
+    next is the one whose balance is the previous balance plus its amount. A
+    group that no order chains keeps the order it had.
+    """
+    out, i = [], 0
+    while i < len(parsed):
+        j = i
+        while j + 1 < len(parsed) and parsed[j + 1][:2] == parsed[i][:2]:
+            j += 1
+        group = parsed[i:j + 1]
+        if len(group) > 1 and out and out[-1][3] is not None:
+            previous, left, chained = out[-1][3], list(group), []
+            while left:
+                nxt = next((g for g in left if g[3] is not None and abs(previous + g[2] - g[3]) < 0.5), None)
+                if nxt is None:
+                    break
+                chained.append(nxt)
+                left.remove(nxt)
+                previous = nxt[3]
+            group = chained if not left else group
+        out.extend(group)
+        i = j + 1
+    return out
 
 
 # Core money-market funds a Fidelity cash account sweeps into. A row that reinvests

@@ -406,3 +406,31 @@ print(json.dumps({"inflows": inflows, "accounts": [a["account"] for a in out]}))
   assert.deepEqual(r.inflows, [])
   assert.deepEqual(r.accounts, ['Friend'])
 })
+
+test('two 새마을금고 rows of the same second, printed newest first, are read oldest first', () => {
+  const r = py(`
+rows = [
+ ["", "거래일자", "거래시간", "", "거래구분", "거래내용/메모", "", "출금액", "", "", "입금액", "잔액"],
+ ["", "2021.12.24", "02:17:17", "", "지로", "B", "", "0", "", "", "700", "1300"],
+ ["", "2021.12.24", "02:17:17", "", "지로", "A", "", "0", "", "", "300", "600"],
+ ["", "2021.12.23", "09:00:00", "", "지로", "C", "", "0", "", "", "300", "300"],
+]
+t = m.parse_mg_rows(rows)
+print(json.dumps({"order": [x["description"] for x in t], "breaks": m.continuity_breaks(t)}))`)
+  assert.deepEqual(r.order, ['C', 'A', 'B'])
+  assert.deepEqual(r.breaks, [])
+})
+
+test('same-second 새마을금고 rows printed oldest first stay oldest first: the running balance decides', () => {
+  const r = py(`
+rows = [
+ ["", "거래일자", "거래시간", "", "거래구분", "거래내용/메모", "", "출금액", "", "", "입금액", "잔액"],
+ ["", "2023.05.19", "02:00:00", "", "지로", "A", "", "0", "", "", "300", "600"],
+ ["", "2023.05.19", "02:00:00", "", "지로", "B", "", "0", "", "", "700", "1300"],
+ ["", "2023.05.18", "09:00:00", "", "지로", "C", "", "0", "", "", "300", "300"],
+]
+t = m.parse_mg_rows(rows)
+print(json.dumps({"order": [x["description"] for x in t], "breaks": m.continuity_breaks(t)}))`)
+  assert.deepEqual(r.order, ['C', 'A', 'B'])
+  assert.deepEqual(r.breaks, [])
+})
