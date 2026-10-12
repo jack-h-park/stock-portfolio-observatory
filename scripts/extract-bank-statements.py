@@ -1254,6 +1254,69 @@ def pair_transfers(flows):
     return flows
 
 
+# --- USD transfers between two accounts on file ---------------------------------
+#
+# `pair_transfers` is KRW-only. For USD, two equal and opposite rows in two
+# accounts are an own-account transfer only when something besides the amount
+# says so: a payment between two of one's accounts names the other institution
+# in at least one of its rows ("ACH Deposit from American Express"). Amount and
+# date alone also match a peer payment and an unrelated credit of the same size,
+# and marking that would hide real income. The date window is symmetric because
+# a receiving account can post the credit a day before the sending account's
+# debit date.
+
+USD_PAIR_DAYS = 3
+USD_INSTITUTION_WORDS = {
+    "amex": ("american express", "amex"),
+    "chase": ("chase",),
+    "boa": ("bank of america", "bkofamerica"),
+    "robinhood-bank": ("robinhood",),
+    "fidelity": ("fidelity", "fid bkg"),
+}
+
+
+def _names_institution(description, institution):
+    text = (description or "").lower()
+    return any(word in text for word in USD_INSTITUTION_WORDS.get(institution, ()))
+
+
+def pair_usd_transfers(sources):
+    """Mark equal and opposite USD rows between two accounts on file as own transfers; returns the pair count.
+
+    `sources` are (institution, account, currency, txns) as `main` builds them; the
+    txn dicts are marked in place, so the `inflows` written afterwards carry it.
+    One-to-one, nearest date first; a row already marked is left alone.
+    """
+    legs = [(institution, alias, txn) for institution, alias, currency, txns in sources if currency == "USD"
+            for txn in txns if txn["amount"] != 0 and not txn.get("ownTransfer")]
+    by_size = {}
+    for index, (_, _, txn) in enumerate(legs):
+        by_size.setdefault(round(abs(txn["amount"]), 2), []).append(index)
+    candidates = []
+    for group in by_size.values():
+        credits = [i for i in group if legs[i][2]["amount"] > 0]
+        debits = [i for i in group if legs[i][2]["amount"] < 0]
+        for c in credits:
+            for d in debits:
+                (c_inst, c_account, credit), (d_inst, d_account, debit) = legs[c], legs[d]
+                if (c_inst, c_account) == (d_inst, d_account):
+                    continue
+                gap = _days(credit["date"], debit["date"])
+                if gap > USD_PAIR_DAYS:
+                    continue
+                if not (_names_institution(credit.get("description"), d_inst) or _names_institution(debit.get("description"), c_inst)):
+                    continue
+                candidates.append((gap, credit["date"], c, d))
+    taken, pairs = set(), 0
+    for _gap, _date, c, d in sorted(candidates):
+        if c in taken or d in taken:
+            continue
+        taken.update((c, d))
+        legs[c][2]["ownTransfer"] = legs[d][2]["ownTransfer"] = True
+        pairs += 1
+    return pairs
+
+
 def held_outside(points):
     """Per day, the money outside the statements that later comes back.
 
@@ -1478,6 +1541,9 @@ def main():
                 findings.append(f"{path.name}: transfers could not be read for the estimates ({type(error).__name__}: {error})")
         transfers += merge_txns([[{**t, "balance": None} for t in rows] for rows in parsed])
     estimated, external_inflows = estimate_closed_accounts(krw_statements, transfers, account_map, findings, notes)
+    usd_pairs = pair_usd_transfers(inflow_sources)
+    if usd_pairs:
+        notes.append(f"{usd_pairs} USD transfer(s) between accounts on file paired as own transfers")
     # After the estimate, so the `term` and `ownTransfer` marks are already set.
     inflows = [{"institution": inst, "account": alias, "currency": cur, "date": t["date"], "amount": round(t["amount"], 2),
                 "description": t.get("description", ""), "counterparty": t.get("counterparty", ""),
