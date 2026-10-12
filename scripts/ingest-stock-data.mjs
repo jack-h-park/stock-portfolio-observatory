@@ -5106,13 +5106,18 @@ insertMany(db, 'cash_balances', cashRows, ['institution', 'account', 'owner', 'k
 // anything else stays unclassified so the check below can ask for a rule.
 const BANK_INFLOW_CATEGORIES = ['salary', 'dividend', 'interest', 'other', 'transfer']
 const BANK_INFLOW_MATCH_KEYS = ['institution', 'accountIncludes', 'descriptionIncludes', 'counterpartyIncludes', 'currency']
+// Bounds narrow a rule to a period or an amount range (a run of 조의금 in one week,
+// 1원 account-verification credits). They never stand alone: a rule still needs
+// one of the text keys above, so a bound cannot turn into a catch-all.
+const BANK_INFLOW_BOUND_KEYS = ['dateFrom', 'dateTo', 'amountMin', 'amountMax']
 const bankInflowRuleProblems = []
 // Defaults read the whole description, which for 토스뱅크 is "{적요} {메모}" and for
 // 새마을금고 can be a sender's name. Interest must therefore be the word 이자 standing
-// alone as a memo (optionally 예금/결산/자동 before it, 입금/지급 after it), so a
-// sender named 이자영 stays unclassified. Korean names cannot contain 배당.
+// alone as a memo (optionally 보통예금/정기예금/예금/적금/결산/자동 before it, and
+// whitespace, 입금, 지급 or a bracketed note such as (세후) or (모으기통장) after it),
+// so a sender named 이자영 stays unclassified. Korean names cannot contain 배당.
 const BANK_DIVIDEND_RE = /배당|DIVIDEND/i
-const BANK_INTEREST_RE = /(^|\s)(예금|결산|자동\s?)?이자(\s|입금|지급|$)|INTEREST/i
+const BANK_INTEREST_RE = /(^|\s)(보통예금|정기예금|예금|적금|결산|자동\s?)?이자(\s|입금|지급|\(|$)|INTEREST/i
 // A rule is usable only with an allowed category and a match that constrains at
 // least one known key: includesText treats an empty needle as a hit, so a rule
 // with no usable key would swallow every row. Problems name the rule's id or
@@ -5126,10 +5131,18 @@ const bankInflowRules = (Array.isArray(manualMappings.bankInflowRules) ? manualM
   }
   const m = r.match
   const isMatchObj = m && typeof m === 'object' && !Array.isArray(m)
-  // A key outside the known five would be ignored by the matcher, so the rule
+  // A key outside the known text keys and bounds would be ignored by the matcher, so the rule
   // would match more broadly than its author meant: reject the whole rule.
-  if (isMatchObj && Object.keys(m).some((k) => !BANK_INFLOW_MATCH_KEYS.includes(k))) {
-    bankInflowRuleProblems.push(`${name} has a match key outside ${BANK_INFLOW_MATCH_KEYS.join('/')}; rule skipped`)
+  if (isMatchObj && Object.keys(m).some((k) => !BANK_INFLOW_MATCH_KEYS.includes(k) && !BANK_INFLOW_BOUND_KEYS.includes(k))) {
+    bankInflowRuleProblems.push(`${name} has a match key outside ${[...BANK_INFLOW_MATCH_KEYS, ...BANK_INFLOW_BOUND_KEYS].join('/')}; rule skipped`)
+    return false
+  }
+  const b = isMatchObj ? m : {}
+  const badDate = ['dateFrom', 'dateTo'].some((k) => b[k] !== undefined && !(typeof b[k] === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b[k])))
+  const badAmount = ['amountMin', 'amountMax'].some((k) => b[k] !== undefined && !(typeof b[k] === 'number' && Number.isFinite(b[k])))
+  const reversed = (b.dateFrom && b.dateTo && b.dateFrom > b.dateTo) || (Number.isFinite(b.amountMin) && Number.isFinite(b.amountMax) && b.amountMin > b.amountMax)
+  if (badDate || badAmount || reversed) {
+    bankInflowRuleProblems.push(`${name} has a dateFrom/dateTo that is not YYYY-MM-DD, an amountMin/amountMax that is not a number, or a range whose start is after its end; rule skipped`)
     return false
   }
   // A whitespace-only value trims to '' in includesText, which matches everything.
@@ -5145,7 +5158,11 @@ const bankInflowMatches = (row, match = {}) =>
   includesText(row.account, match.accountIncludes) &&
   includesText(row.description, match.descriptionIncludes) &&
   includesText(row.counterparty, match.counterpartyIncludes) &&
-  includesText(row.currency, match.currency)
+  includesText(row.currency, match.currency) &&
+  (match.dateFrom === undefined || row.date >= match.dateFrom) &&
+  (match.dateTo === undefined || row.date <= match.dateTo) &&
+  (match.amountMin === undefined || row.amount >= match.amountMin) &&
+  (match.amountMax === undefined || row.amount <= match.amountMax)
 const bankInflowRows = bankBalances.inflows.map((f) => {
   let category = null
   let rule = null
@@ -5897,7 +5914,7 @@ check(
 check(
   'bank_inflow_rules_valid',
   bankInflowRuleProblems.length === 0,
-  bankInflowRuleProblems.length ? bankInflowRuleProblems.slice(0, 3).join('; ') : 'every bank inflow rule has an allowed category',
+  bankInflowRuleProblems.length ? `${bankInflowRuleProblems.length} rule(s) skipped: ${bankInflowRuleProblems.slice(0, 3).join('; ')}` : 'every bank inflow rule has an allowed category',
   'warning',
   'supplementary'
 )

@@ -125,7 +125,7 @@ test('a rule with an unknown match key next to a valid one is rejected whole', (
 
 test('the interest default reads memos, not sender names', () => {
   const names = ['이자영', '이자영 안녕', '김이자']
-  const memos = ['이자', '이자입금', '예금이자', '결산이자', '이자 지급', 'INTEREST PAYMENT', '자동 이자']
+  const memos = ['이자', '이자입금', '예금이자', '결산이자', '이자 지급', 'INTEREST PAYMENT', '자동 이자', '이자(모으기통장)', '예금이자(세후)', '적금이자', '보통예금이자']
   const bank = {
     ...BANK,
     inflows: [
@@ -137,4 +137,47 @@ test('the interest default reads memos, not sender names', () => {
   const cat = (d: string) => (db.prepare('select category from bank_inflows where description = ?').get(d) as any).category
   for (const n of names) assert.equal(cat(n), 'unclassified', n)
   for (const m of memos) assert.equal(cat(m), 'interest', m)
+})
+
+test('a rule can be limited to a date range and an amount range', () => {
+  const bank = {
+    ...BANK,
+    inflows: [
+      inflow('tossbank', '토스뱅크', 'KRW', '2025-09-19', 100000, '보낸사람A'),
+      inflow('tossbank', '토스뱅크', 'KRW', '2025-09-30', 50000, '보낸사람B'),
+      inflow('tossbank', '토스뱅크', 'KRW', '2025-10-01', 100000, '보낸사람A'),
+      inflow('tossbank', '토스뱅크', 'KRW', '2025-09-20', 900000, '보낸사람C'),
+      inflow('mg', '새마을금고', 'KRW', '2025-07-01', 1, '토스038'),
+      inflow('mg', '새마을금고', 'KRW', '2025-07-02', 2, '토스039'),
+    ],
+  }
+  const db = ingestBank(bank, { ...MAPPINGS, bankInflowRules: [
+    { id: 'event-window', match: { institution: 'tossbank', dateFrom: '2025-09-18', dateTo: '2025-09-30', amountMax: 300000 }, category: 'other' },
+    { id: 'one-won', match: { institution: 'mg', amountMax: 1 }, category: 'transfer' },
+  ] })
+  const rows = db.prepare('select date, description, category, rule from bank_inflows order by date, description').all() as any[]
+  assert.deepEqual(rows.map((r) => [r.date, r.description, r.category]), [
+    ['2025-07-01', '토스038', 'transfer'],
+    ['2025-07-02', '토스039', 'unclassified'],
+    ['2025-09-19', '보낸사람A', 'other'],
+    ['2025-09-20', '보낸사람C', 'unclassified'],
+    ['2025-09-30', '보낸사람B', 'other'],
+    ['2025-10-01', '보낸사람A', 'unclassified'],
+  ])
+  assert.equal(checkOf(db, 'bank_inflow_rules_valid').status, 'pass')
+})
+
+test('a date or amount bound alone is not enough, and a malformed bound rejects the rule', () => {
+  const bank = { ...BANK, inflows: [inflow('mg', '새마을금고', 'KRW', '2025-07-01', 1, '토스038')] }
+  const db = ingestBank(bank, { ...MAPPINGS, bankInflowRules: [
+    { id: 'bounds-only', match: { amountMax: 1 }, category: 'transfer' },
+    { id: 'bad-date', match: { institution: 'mg', dateFrom: '2025/07/01' }, category: 'transfer' },
+    { id: 'bad-amount', match: { institution: 'mg', amountMax: '1' }, category: 'transfer' },
+    { id: 'reversed', match: { institution: 'mg', dateFrom: '2025-08-01', dateTo: '2025-07-01' }, category: 'transfer' },
+  ] })
+  assert.equal((db.prepare('select category from bank_inflows').get() as any).category, 'unclassified')
+  const check = checkOf(db, 'bank_inflow_rules_valid')
+  assert.equal(check.status, 'fail')
+  assert.match(check.detail, /^4 rule\(s\) skipped/)
+  for (const id of ['bounds-only', 'bad-date', 'bad-amount']) assert.match(check.detail, new RegExp(id))
 })
