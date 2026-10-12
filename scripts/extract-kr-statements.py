@@ -244,6 +244,15 @@ CASH_LEG_TYPES = {
     "금현물매수출금",
 }
 
+# Moves inside one account that change no holding and no flow. The foreign
+# deposit of a 종합 account sweeps into 외화RP overnight and back the next day
+# (`외화RP매수`, `외화RP환매도`), and the closing of an account is only a marker.
+# The cash balance they print is still read (see ForeignRp); the row is not a
+# transaction.
+NO_EFFECT_TYPES = {"외화RP매수", "외화RP환매도", "계좌폐쇄"}
+RP_BUY_TYPE = "외화RP매수"
+RP_SELL_TYPE = "외화RP환매도"
+
 
 def number(value):
     raw = nfc(str(value or "")).strip().replace(",", "")
@@ -271,7 +280,113 @@ def clean_ticker(value):
     return re.sub(r"^A(?=\d[0-9A-Z]{5}$)", "", nfc(str(value or "")).strip())
 
 
+# A 거래내역증명서 that exists only as photos of a monitor is transcribed to a
+# `.txt` beside the PDFs (docs/data-sources.md, "Transcribed statements"), in the
+# layout `kr-statements-transcribed/` has always held. It is read through the
+# same page/table interface a PDF has, so the account map, the period, the
+# overlap rules and every parser below see no difference — except one: where a
+# PDF and a transcription cover the same days, the PDF is the one read.
+TRANSCRIBED_SUFFIX = ".txt"
+TRANSCRIPT_PAGE = re.compile(r"^---\s*(\d+)\s*/\s*(\d+)\s*쪽\s*---$")
+TRANSCRIPT_ACCOUNT = re.compile(r"^계좌번호\s*:\s*(\S+)\s*(?:\((.*)\))?\s*$")
+TRANSCRIPT_PERIOD = re.compile(r"^조회기간\(거래일자\)\s*:\s*(.+?)\s*$")
+TRANSCRIPT_FILTER = re.compile(r"^거래구분\s*:\s*(.+?)\s*(?:/|$)")
+TRANSCRIPT_COLUMNS = 22
+# The 22 transcribed fields, as (row, cell) in the 12-column layout above. The
+# transcription joins the two physical lines of one record; this splits them.
+TRANSCRIPT_CELLS = (
+    ("a", 0), ("b", 0), ("a", 1), ("b", 1), ("b", 2), ("b", 3), ("a", 4), ("b", 4),
+    ("a", 5), ("b", 5), ("a", 6), ("b", 6), ("a", 7), ("b", 7), ("a", 8), ("b", 8),
+    ("a", 9), ("b", 9), ("b", 10), ("a", 10), ("a", 11), ("b", 11),
+)
+
+
+class _TranscribedPage:
+    def __init__(self, text, table):
+        self._text = text
+        self._table = table
+
+    def extract_text(self):
+        return self._text
+
+    def extract_tables(self):
+        return [self._table] if self._table else []
+
+
+class TranscribedStatement:
+    """A transcribed 거래내역증명서, with the part of pdfplumber's PDF it is read through."""
+
+    def __init__(self, path):
+        self.pages = []
+        header, rows_by_page, in_rows = [], {}, False
+        page_total, current = 0, None
+        for raw in Path(path).read_text(encoding="utf-8").splitlines():
+            line = nfc(raw).strip()
+            if line == "[거래내역]":
+                in_rows = True
+                continue
+            if not in_rows:
+                header.append(line)
+                continue
+            marker = TRANSCRIPT_PAGE.match(line)
+            if marker:
+                current, page_total = int(marker.group(1)), int(marker.group(2))
+                rows_by_page.setdefault(current, [])
+                continue
+            if "|" not in line or line.startswith("거래일자|") or not DATE_CELL.match(line.split("|", 1)[0].strip()):
+                continue
+            fields = [f.strip() for f in line.split("|")]
+            if len(fields) != TRANSCRIPT_COLUMNS:
+                raise ValueError(f"{Path(path).name}: a transcribed row has {len(fields)} fields, "
+                                 f"expected {TRANSCRIPT_COLUMNS}: {line[:60]}")
+            if current is None:
+                raise ValueError(f"{Path(path).name}: a row before the first `--- n/N쪽 ---` marker")
+            rows_by_page[current].append(fields)
+        number = label = period = book = None
+        for line in header:
+            if number is None and TRANSCRIPT_ACCOUNT.match(line):
+                found = TRANSCRIPT_ACCOUNT.match(line)
+                number, label = found.group(1), (found.group(2) or "")
+            elif period is None and TRANSCRIPT_PERIOD.match(line):
+                period = TRANSCRIPT_PERIOD.match(line).group(1)
+            elif book is None and TRANSCRIPT_FILTER.match(line):
+                book = TRANSCRIPT_FILTER.match(line).group(1)
+        if not number or not period:
+            raise ValueError(f"{Path(path).name}: the header names no 계좌번호 or 조회기간")
+        # Every page prints the same banner a certificate page does, so the
+        # readers that look at pages 1-3 (account number, period, 거래구분, 계좌유형) find it.
+        banner = (f"계좌정보 계좌번호 {number} 계좌유형 {label} 거래일자 {period} "
+                  f"거래구분 {book or '전체'} 상품구분 전체 종목구분 전체")
+        # A certificate's first page is its cover (증명서, 제공내역); the statement
+        # pages follow, so page 2 is where 계좌유형 and 거래구분 are printed.
+        self.pages.append(_TranscribedPage(f"증 명 서 계좌번호 {number} 제공내역 {period} 거래내역", []))
+        for page_no in range(1, max(page_total, len(rows_by_page)) + 1):
+            table = []
+            for fields in rows_by_page.get(page_no, []):
+                row_a, row_b = [""] * 12, [""] * 12
+                for value, (which, cell) in zip(fields, TRANSCRIPT_CELLS):
+                    (row_a if which == "a" else row_b)[cell] = value
+                # row C (상대금융기관, 환율, …) is not transcribed; its blank row keeps
+                # `records()` from reading the NEXT record's row A as this one's.
+                table.extend([row_a, row_b, [""] * 12])
+            if table:
+                table.insert(0, ["거래내역"] + [""] * 11)
+            self.pages.append(_TranscribedPage(f"{banner} 페이지: {page_no:02d}/{page_total or page_no:02d}", table))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
 def open_pdf(path):
+    if str(path).lower().endswith(TRANSCRIBED_SUFFIX):
+        try:
+            return TranscribedStatement(path)
+        except (OSError, ValueError) as error:
+            print(f"[kr-statement] {error}", file=sys.stderr)
+            return None
     for candidate in (None, PDF_PASSWORD):
         if candidate is None:
             try:
@@ -499,8 +614,15 @@ def statements_to_read(pdfs, report, distinct_accounts=None):
         if statement_series(key) == statement_series(other)
     ]
 
+    # A transcription is a photograph read by a person or a model; a PDF is what
+    # the broker issued. Where the two cover the same days the PDF is read, and a
+    # transcription never supersedes one, however long its period.
+    transcribed = {k for k, parts in documents.items() if parts[0].suffix.lower() == TRANSCRIBED_SUFFIX}
+
     superseded = {}
     mismatched = set()
+    ceded = {}
+    settled = set()  # pairs already resolved here, which the partial-overlap loop must not redo
     for key, (start, end), other, (o_start, o_end) in pairs:
         if not same_account(key, other):
             declared = distinct_accounts is not None and distinct_accounts(
@@ -515,6 +637,17 @@ def statements_to_read(pdfs, report, distinct_accounts=None):
             continue
         key_in_other = o_start <= start and end <= o_end
         other_in_key = start <= o_start and o_end <= end
+        if (key in transcribed) != (other in transcribed):
+            text, pdf_key = (key, other) if key in transcribed else (other, key)
+            t_span, p_span = ((start, end), (o_start, o_end)) if text == key else ((o_start, o_end), (start, end))
+            if p_span[0] <= t_span[0] and t_span[1] <= p_span[1]:
+                superseded[text] = (pdf_key, *t_span, *p_span)
+            elif t_span[0] <= p_span[1] and p_span[0] <= t_span[1]:
+                shared = (max(t_span[0], p_span[0]), min(t_span[1], p_span[1]))
+                ceded.setdefault(text, []).append((*shared, pdf_key))
+                print(f"[kr-statements] overlap: {text} (transcribed) leaves {shared[0]}~{shared[1]} to {pdf_key}")
+            settled.add((key, other))
+            continue
         if key_in_other and other_in_key:
             # The same period from the same account: the same rows. Keep the
             # later-named one, which is the later download.
@@ -524,9 +657,8 @@ def statements_to_read(pdfs, report, distinct_accounts=None):
         elif other_in_key:
             superseded[other] = (key, o_start, o_end, start, end)
 
-    ceded = {}
     for key, (start, end), other, (o_start, o_end) in pairs:
-        if key in superseded or other in superseded or not same_account(key, other):
+        if key in superseded or other in superseded or not same_account(key, other) or (key, other) in settled:
             continue
         if not (o_start <= end and start <= o_end):
             continue
@@ -742,6 +874,41 @@ def samsung_cash_point(row):
     if not row.get("cash_printed"):
         return None
     return ("KRW", "KRW", row["cash_balance"])
+
+
+class ForeignRp:
+    """The foreign cash an account holds in 외화RP, added back to its cash pool.
+
+    A 종합 account that sweeps its dollars into RP prints 외화예수금 on the day's
+    first line and leaves it blank on the 외화RP매수 that follows, because the
+    cash is then in the RP: read alone, the pool is $0 every evening and the
+    dollars appear only in the morning. The RP is cash — it is redeemed in full
+    the next day with its interest — so the pool the FBAR maximum wants is the
+    printed cash plus the principal in RP, and this adds it.
+
+    A 외화RP매수 puts its 외화입출금액 into RP. A 외화RP환매도 takes its
+    외화거래금액 (principal and interest) out again, never below zero. Every
+    other line's printed cash is shown with what is in RP at that moment.
+    """
+
+    def __init__(self):
+        self.principal = {}  # (account, currency) -> principal in RP
+
+    def adjust(self, account, raw_type, row_a, row_b, points):
+        out = []
+        for pool, currency, balance in points:
+            if currency == "KRW":
+                out.append((pool, currency, balance))
+                continue
+            key = (account, currency)
+            held = self.principal.get(key, 0.0)
+            if raw_type == RP_BUY_TYPE:
+                held += number(row_b[8])
+            elif raw_type == RP_SELL_TYPE:
+                held = max(0.0, held - number(row_a[8]))
+            self.principal[key] = held
+            out.append((pool, currency, round(balance + held, 2)))
+        return out
 
 
 def cash_row(date, account, point, source, page):
@@ -1514,8 +1681,10 @@ def main():
         if not mirae_accounts.no_map_allowed():
             blocking_kinds.add("mirae-no-account-map")
 
-    pdfs = statements_to_read(sorted(statements_dir.glob(f"{MIRAE_PREFIX}*.pdf")), report,
-                              mapped_distinct_accounts(account_map))
+    pdfs = statements_to_read(
+        sorted(p for p in statements_dir.glob(f"{MIRAE_PREFIX}*")
+               if p.suffix.lower() in (".pdf", TRANSCRIBED_SUFFIX)),
+        report, mapped_distinct_accounts(account_map))
     if not pdfs:
         print(f"ERROR: no 미래에셋 statements in {statements_dir}", file=sys.stderr)
         return 1
@@ -1528,6 +1697,7 @@ def main():
     skipped_locked = []
     unconverted = 0
 
+    foreign_rp = ForeignRp()
     for pdf_path in pdfs:
         name = pdf_path.name
         if BALANCE_DOCTYPE in name:
@@ -1551,9 +1721,9 @@ def main():
                     ceded += 1
                     continue
                 raw_type = a[1].strip()
-                for point in mirae_cash_points(a, b):
+                for point in foreign_rp.adjust(account, raw_type, a, b, mirae_cash_points(a, b)):
                     cash.append(cash_row(a[0].strip().replace("/", "-"), account, point, name, page_no))
-                if raw_type in CASH_LEG_TYPES:
+                if raw_type in CASH_LEG_TYPES or raw_type in NO_EFFECT_TYPES:
                     continue
                 mapped = ACCOUNT_TYPE_MAP.get(account, {}).get(raw_type) or TYPE_MAP.get(raw_type)
                 if mapped is None:
