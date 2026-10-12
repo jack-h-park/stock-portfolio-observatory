@@ -225,7 +225,7 @@ own money; its interest and any other credit are not. The ingest loads them into
 1. `ownTransfer` is set: `transfer`. Never counted as income.
 2. The first valid entry of `bankInflowRules` in `manual-mappings.json`.
 3. A description matching `/배당|DIVIDEND/i`: `dividend`.
-4. A description holding 이자 as a memo word (alone, or with 예금/결산/자동 before it or 입금/지급 after it) or `INTEREST`: `interest`. A name that merely contains 이자 does not match.
+4. A description holding 이자 as a memo word (alone, or with 보통예금/정기예금/예금/적금/결산/자동 before it, and whitespace, 입금, 지급 or a bracketed note such as `(세후)` after it) or `INTEREST`: `interest`. A name that merely contains 이자 does not match.
 5. Otherwise `unclassified`.
 
 A `bankInflowRules` entry is `{ "id", "match", "category", "note" }`. `category`
@@ -233,11 +233,30 @@ is `salary`, `dividend`, `interest`, `other` or `transfer`. `match` may combine
 `institution`, `accountIncludes`, `descriptionIncludes`, `counterpartyIncludes`
 and `currency`; every key given must hit, and at least one must have a non-empty
 value after trimming (an empty or blank needle matches everything, so a rule with
-none would swallow every row). A rule with another category, a key outside those
-five, or no usable key is skipped and reported
-by the `bank_inflow_rules_valid` check, which names the rule's id or index and
-never its match strings. The employer strings belong in the ops host's untracked
-file; the example only shows the shape (`EXAMPLE CO PAYROLL`).
+none would swallow every row).
+
+`match` may also narrow a rule with bounds: `dateFrom` and `dateTo` (`YYYY-MM-DD`,
+inclusive) and `amountMin` and `amountMax` (a number, inclusive, in the credit's
+own currency). A bound never stands alone, because a rule still needs one of the
+five text keys. This is how a run of condolence transfers from many different
+senders in one week becomes one rule, without also catching what those people
+send another time:
+
+```json
+{ "id": "condolence-week", "match": { "institution": "tossbank", "dateFrom": "2025-09-18", "dateTo": "2025-09-30", "amountMax": 300000 }, "category": "other" }
+```
+
+and how 1원 account-verification credits leave the unclassified count
+(`{ "institution": "mg", "amountMax": 1 }` → `transfer`).
+
+A rule with another category, a key outside those nine, a bound that is not a
+`YYYY-MM-DD` date or a number, a range whose start is after its end, or no usable
+text key is skipped and reported by the `bank_inflow_rules_valid` check. The
+check counts the skipped rules and names the first three by id or index, never
+by their match strings. The employer strings live in the laptop's untracked
+`data/manual-mappings.json`, which `push-sources` carries to the ops host. Edit
+that copy, because a change made on the host is overwritten by the next push.
+The example only shows the shape (`EXAMPLE CO PAYROLL`).
 
 No bank statement was found to repeat a row that `dividends` already holds, so
 there is no de-duplication rule: a brokerage cash-management credit such as
