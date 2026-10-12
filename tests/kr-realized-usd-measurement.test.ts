@@ -80,7 +80,8 @@ function computedYtd(fxRates: { price_date: string; rate: number }[]) {
   })
   const db = new Database(dbPath, { readonly: true })
   const row = db.prepare('select value from meta where key = ?').get('us_ytd_realized_computed') as { value: string }
-  return JSON.parse(row.value) as { shortUsd: number; longUsd: number; unconvertibleLots: number }
+  const lot = db.prepare('select acquisition_cost_usd from realized_lots where ticker = ?').get('APL') as { acquisition_cost_usd: number | null }
+  return { ...(JSON.parse(row.value) as { shortUsd: number; longUsd: number; unconvertibleLots: number }), acquisitionCostUsd: lot.acquisition_cost_usd }
 }
 
 test('a won-denominated sale is measured in dollars leg by leg, not by converting the won gain', () => {
@@ -92,6 +93,8 @@ test('a won-denominated sale is measured in dollars leg by leg, not by convertin
   // The single-rate reading was -125,000 / 1,250 = -100.
   assert.equal(ytd.shortUsd, 100)
   assert.equal(ytd.longUsd, 0)
+  // The lot records the same dollar cost the YTD figure used: ₩1,500,000 at 1,500.
+  assert.equal(ytd.acquisitionCostUsd, 1000)
 })
 
 test('an acquisition older than the rate history is unconvertible rather than priced at today\'s rate', () => {

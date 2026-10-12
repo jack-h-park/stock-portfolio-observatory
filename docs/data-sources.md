@@ -394,6 +394,12 @@ Korean certificates carry the won amount actually paid, so both columns hold it.
 A lot acquired before the rate history starts has no acquisition cost, and the
 planner falls back to `cost_basis_krw` for it.
 
+The mirror image for the US side is `acquisition_cost_usd`: a USD lot's own
+dollar cost, and a won lot's won cost at the acquisition-date USD/KRW rate. The
+planner measures a won lot's US gain as its proceeds at the planning rate less
+that, so a Korea-listed stock bought when the won was weaker carries the
+exchange-rate move into its US gain, as the IRS measures it.
+
 **Korea's year-to-date gain is an assumption, checked like the US one.** Korea
 taxes a year's foreign-stock gains as one pool with one basic deduction, so the
 planner adds `KR.ytdRealizedTaxableGainKrw` from the tax policy to the planned

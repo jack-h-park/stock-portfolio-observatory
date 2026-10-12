@@ -458,6 +458,32 @@ test('with the acquisition-date cost a USD-gain lot is mixed in a joint filing y
   assert.ok(planSet.selectedPlan.instructions.every((instruction) => instruction.year > 2027 || instruction.role === 'mixed'))
 })
 
+// A won lot's US gain is its proceeds at the planning rate less its won cost at the
+// acquisition-date rate, so the exchange-rate move reaches the US side as it does in reality.
+test('a Korea-listed lot is measured for the US at its acquisition-date dollar cost', () => {
+  const currentPolicy = policy()
+  // ₩10,000,000 bought at 1,250 ($8,000), now ₩11,000,000 at 1,000 ($11,000): US +$3,000, KRW +₩1,000,000.
+  const krLot = lot({
+    market: 'KR', currency: 'KRW', ticker: '000000', fx_rate_to_base: 1, tax_term: 'short', holding_days: 100,
+    native_cost_basis: 10_000_000, native_market_value: 11_000_000, native_unrealized_gl: 1_000_000,
+    cost_basis_krw: 10_000_000, acquisition_cost_usd: 8_000,
+  })
+  const plan = buildTaxPlan({ lots: [krLot], policy: currentPolicy, scenario: 'US_ONLY', objective: 'raise-cash' })
+  const aggregate = summarizeTaxCandidates({ candidates: plan.candidates, policy: currentPolicy, scenario: 'US_ONLY', year: 2026 })
+  const expected = estimateUsCapitalGainTax({
+    year: 2026, filingStatus: 'MFJ', stateCode: 'NONE', ordinaryIncomeUsd: 336_000,
+    shortGainUsd: 3_000, longGainUsd: 0, federalBracketInflationPct: 2.5, fallbackStateRatePct: 0, niitRatePct: 0,
+  })
+  assert.equal(aggregate.usTaxKrw, expected.taxBeforeForeignTaxCreditUsd * 1000)
+  assert.equal(plan.candidates[0].usTaxKrw, 3_000_000 * 0.37)
+  // Korea's measure is unchanged.
+  assert.equal(plan.candidates[0].gainKrw, 1_000_000)
+
+  // Without the column (an older database) the KRW gain at the planning rate stands in.
+  const legacy = buildTaxPlan({ lots: [{ ...krLot, acquisition_cost_usd: undefined }], policy: currentPolicy, scenario: 'US_ONLY', objective: 'raise-cash' })
+  assert.equal(legacy.candidates[0].usTaxKrw, 1_000_000 * 0.37)
+})
+
 test('gains Korea already taxed this year use up the basic deduction before a planned sale', () => {
   // A planned US sale with a ₩1,000,000 KRW gain, inside the ₩2,500,000 deduction on its own.
   const plannedLot = lot({ native_market_value: 11_000, native_unrealized_gl: 1_000, cost_basis_krw: 10_000_000 })
