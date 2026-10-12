@@ -205,6 +205,61 @@ The refresh loads these into `cash_estimates`. Only the total-assets trend reads
 that table: the FBAR maxima, the deposit freshness checks and today's Total assets
 card read `cash_balances` alone.
 
+#### Bank inflows
+
+`/cash-inflow` answers "what money came in, by month and year": salary, dividends,
+interest and other. The extractor keeps every incoming transaction of the
+statements it already reads and writes them as `inflows` in `bank-balances.json`
+(institution, account, currency, date, amount, description, counterparty and an
+`ownTransfer` flag). `ownTransfer` is set on one leg of a paired transfer between
+two statements on file, on a term-deposit move, and on money coming back from an
+account no statement covers (see above). The 토스뱅크 파킹통장 and 외화통장 PDF
+statements are statement accounts too, so their credits are inflows. A 파킹통장's
+채우기 pairs with the checking account's `파킹통장` row and both legs are own
+transfers; an unpaired 채우기/꺼내기/모으기 is still one. Its interest (`자동 이자`) is
+not, and counts as `interest`; a credit paid in from outside is left unmarked. A
+외화통장 credit whose 거래내용 names an exchange (`채우기`, `모으기`, `사기`, `환전`) is
+own money; its interest and any other credit are not. The ingest loads them into
+`bank_inflows` and gives each one a `category`, first match wins:
+
+1. `ownTransfer` is set: `transfer`. Never counted as income.
+2. The first valid entry of `bankInflowRules` in `manual-mappings.json`.
+3. A description matching `/배당|DIVIDEND/i`: `dividend`.
+4. A description holding 이자 as a memo word (alone, or with 예금/결산/자동 before it or 입금/지급 after it) or `INTEREST`: `interest`. A name that merely contains 이자 does not match.
+5. Otherwise `unclassified`.
+
+A `bankInflowRules` entry is `{ "id", "match", "category", "note" }`. `category`
+is `salary`, `dividend`, `interest`, `other` or `transfer`. `match` may combine
+`institution`, `accountIncludes`, `descriptionIncludes`, `counterpartyIncludes`
+and `currency`; every key given must hit, and at least one must have a non-empty
+value after trimming (an empty or blank needle matches everything, so a rule with
+none would swallow every row). A rule with another category, a key outside those
+five, or no usable key is skipped and reported
+by the `bank_inflow_rules_valid` check, which names the rule's id or index and
+never its match strings. The employer strings belong in the ops host's untracked
+file; the example only shows the shape (`EXAMPLE CO PAYROLL`).
+
+No bank statement was found to repeat a row that `dividends` already holds, so
+there is no de-duplication rule: a brokerage cash-management credit such as
+`DIVIDEND RECEIVED` is new money and lands in `dividend` by step 3. Dividends on
+the page are the net amount from `dividends`: a Toss `외화증권배당금입금` is
+already net, a `환급` row is taken as it arrives, and anything else is gross minus
+`native_tax_withheld` (`NET_DIVIDEND_SQL`, `lib/adapters/income-fx.ts`). The
+Korean extractor writes `Tax` to `dividends.tsv` for that column.
+`SHARE_REWARD`, `STAKING_REWARD` and `선환전차액입금` (the user's own FX-difference
+money returned) are left out.
+
+`bank_inflows_classified` reports the unclassified credits as counts and
+per-currency sums, never descriptions. Fix them by adding a rule. Known gaps:
+
+- USD own-account transfers are not paired, so they show as unclassified until a
+  `transfer` rule covers them.
+- A 예적금 payout's interest is counted inside the transfer, not as `interest`.
+- A 토스뱅크 credit whose memo names both 예금/적금 and 이자 is bucketed as a
+  savings return and so marked `ownTransfer`.
+- The 미래에셋 CMA statement was not checked for repeated dividends: the file
+  was encrypted.
+
 #### Money that arrived from outside, and the asset events list
 
 The same grouping also yields `externalInflows`: money that arrived from a
@@ -495,6 +550,13 @@ uses it. The two differ by the exchange-rate move since purchase. Lots from the
 Korean certificates carry the won amount actually paid, so both columns hold it.
 A lot acquired before the rate history starts has no acquisition cost, and the
 planner falls back to `cost_basis_krw` for it.
+
+**Dated FX for income.** `/income` still shows gross amounts, but each dividend
+row now converts at the USD/KRW rate of its own date, stored as `usd_krw_rate`
+on `dividends` (and on `bank_inflows`), not at today's rate. A date with no rate
+of its own takes the nearest earlier one in `historical_fx_rates`; a row that
+finds none falls back to today's rate and is stamped `usd_krw_rate_dated = 0`.
+The `income_fx_dated` check (a warning) counts those rows and names the earliest.
 
 The mirror image for the US side is `acquisition_cost_usd`: a USD lot's own
 dollar cost, and a won lot's won cost at the acquisition-date USD/KRW rate. The

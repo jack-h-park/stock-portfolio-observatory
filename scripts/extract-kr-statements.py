@@ -680,7 +680,7 @@ TRANSACTION_COLUMNS = [
 ]
 DIVIDEND_COLUMNS = [
     "Date", "Account", "Symbol", "Name", "Currency", "Native Amount", "FX Rate",
-    "Amount (KRW)", "Type", "Source", "Page",
+    "Amount (KRW)", "Tax", "Type", "Source", "Page",
 ]
 # The uninvested cash each account held at the end of each day the statements
 # print a balance, one row per pool. Read by the FBAR maximum-balance table,
@@ -1612,6 +1612,7 @@ def main():
                         "Native Amount": row["Native Amount"],
                         "FX Rate": rate,
                         "Amount (KRW)": row["Amount (KRW)"],
+                        "Tax": row["Tax"],
                         "Type": raw_type,
                         "Source": name,
                         "Page": page_no,
@@ -1644,6 +1645,7 @@ def main():
                 "Native Amount": row["Native Amount"],
                 "FX Rate": row["FX Rate"],
                 "Amount (KRW)": row["Amount (KRW)"],
+                "Tax": row["Tax"],
                 "Type": row["Raw Type"],
                 "Source": row["Source"],
                 "Page": row["Page"],
@@ -1671,6 +1673,7 @@ def main():
                 "Native Amount": row["Native Amount"],
                 "FX Rate": row["FX Rate"],
                 "Amount (KRW)": row["Amount (KRW)"],
+                "Tax": row["Tax"],
                 "Type": row["Raw Type"],
                 "Source": row["Source"],
                 "Page": row["Page"],

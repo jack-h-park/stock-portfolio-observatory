@@ -371,7 +371,7 @@ def close_series(balances, retired_on):
     return [b for b in balances if b["date"] < retired_on] + [closing]
 
 
-def tossbank_pdf_accounts(account_map, findings, notes):
+def tossbank_pdf_accounts(account_map, findings, notes, inflow_sources=None):
     """(accounts, krw_statements) from the 토스뱅크 PDF families, each statement named by its full 계좌번호.
 
     A statement is matched to the map's tossbank `bankAccounts` entry with that
@@ -385,6 +385,11 @@ def tossbank_pdf_accounts(account_map, findings, notes):
     sections as one account. A currency the pipeline cannot value (anything but
     KRW and USD) is left out with a note, and one the account never held is not
     written. `retiredOn` ends a series (close_series).
+
+    When `inflow_sources` is given, each account written is added to it, as the
+    FAMILIES accounts are, so its incoming rows reach `inflows`. A 파킹통장's own
+    moves are marked later, by estimate_closed_accounts; a 외화통장 section's are
+    marked here (_mark_fx_own_moves), since no estimate reads that account.
     """
     entries = [e for e in account_map.get("bankAccounts", [])
                if isinstance(e, dict) and e.get("institution") == "tossbank" and _digits(e.get("accountNumber"))]
@@ -442,7 +447,24 @@ def tossbank_pdf_accounts(account_map, findings, notes):
                 })
                 if kind == "parking":
                     statements.append(("tossbank", f"tossbank-parking-{number[-4:]}", txns))
+                else:
+                    _mark_fx_own_moves(txns)
+                if inflow_sources is not None:
+                    inflow_sources.append(("tossbank", label, currency, txns))
     return accounts, statements
+
+
+# A 외화통장 credit with this 거래내용 is the holder's own won exchanged into the
+# section (`외화 채우기`, `모으기`, `JPY 사기`): never income. Interest, and a credit
+# with any other 거래내용 (a remittance from abroad), is left for the ingest.
+FX_OWN_MOVE_RE = re.compile(r"채우기|모으기|사기|환전")
+
+
+def _mark_fx_own_moves(txns):
+    for t in txns:
+        memo = t.get("description", "")
+        if t["amount"] > 0 and "이자" not in memo and FX_OWN_MOVE_RE.search(memo):
+            t["ownTransfer"] = True
 
 
 def merge_txns(groups):
@@ -1046,6 +1068,10 @@ def parse_mirae_transfers(path):
     return out
 
 
+# A 파킹통장 statement row that only moves the holder's money in or out of it.
+PARKING_OWN_MOVE_RE = re.compile(r"채우기|꺼내기|모으기")
+
+
 def _is_parking_statement(flow):
     """A row of a 파킹통장 거래내역서 on file (tossbank_pdf_accounts)."""
     return str(flow.get("source", "")).startswith("tossbank-parking-")
@@ -1206,11 +1232,19 @@ def estimate_closed_accounts(statements, transfers, account_map, findings, notes
             flows.append({"statement": statement, "source": source, "date": t["date"], "seq": t["seq"],
                           "amount": t["amount"], "memo": t.get("counterparty") or t.get("description", ""),
                           "counterpartyInstitution": t.get("counterpartyInstitution", ""), "kind": t.get("kind", ""),
-                          "paired": bool(t.get("term"))})
+                          "paired": bool(t.get("term")), "txn": t})
     pair_transfers(flows)
+    for f in flows:
+        if f["paired"]:
+            f["txn"]["ownTransfer"] = True  # one leg of a paired transfer, or a term-deposit move
     buckets = {}
     for f in sorted((f for f in flows if not f["paired"]), key=lambda f: (f["date"], f["seq"])):
         key = _bucket(f)
+        if key in ESTIMATE_ALIASES and (not _is_parking_statement(f) or PARKING_OWN_MOVE_RE.search(f["memo"])):
+            # Money coming back from an account no statement covers, or a 파킹통장
+            # statement's 채우기/꺼내기 whose other leg is not on file. Any other credit
+            # on a 파킹통장 statement (one paid in from outside) is left unmarked.
+            f["txn"]["ownTransfer"] = True
         if key:
             buckets.setdefault(key, []).append((f["date"], -f["amount"]))
     anchors = {a.get("alias"): a for a in account_map.get("anchors", [])}
@@ -1260,6 +1294,7 @@ def main():
     map_present = MAP_PATH.exists()
     account_map = json.loads(MAP_PATH.read_text(encoding="utf-8")) if map_present else {}
     findings, notes, accounts = [], [], []
+    inflow_sources = []  # (institution, alias, currency, txns), for the incoming rows
     krw_statements = []
     mg_salary = []  # every 새마을금고 거래내역조회 row, for the term deposits' principal
     for prefix, institution, kind, currency, parse, key_pattern in FAMILIES:
@@ -1311,12 +1346,13 @@ def main():
                 mg_salary.extend(txns)  # the same row objects: a `term` mark reaches the estimate
             derived = all(t["balance"] is None for t in txns)
             balances = _derive(alias, txns, account_map, findings) if derived else with_day_max(end_of_day(txns), txns)
+            inflow_sources.append((institution, alias, currency, txns))
             accounts.append({
                 "institution": institution, "account": alias, "kind": account_kind, "currency": currency, "owner": "self",
                 "derived": derived, "sources": [name for _, name, _ in parsed], "balances": balances,
                 "continuityBreaks": [] if derived else continuity_breaks(txns),
             })
-    tossbank_accounts, parking_statements = tossbank_pdf_accounts(account_map, findings, notes)
+    tossbank_accounts, parking_statements = tossbank_pdf_accounts(account_map, findings, notes, inflow_sources)
     accounts.extend(tossbank_accounts)
     krw_statements.extend(parking_statements)
     term_files = sorted(SOURCE_DIR.glob("mg-term-*")) if SOURCE_DIR.exists() else []
@@ -1331,12 +1367,19 @@ def main():
             except Exception as error:  # an unread certificate only weakens the pairing
                 findings.append(f"{path.name}: transfers could not be read for the estimates ({type(error).__name__}: {error})")
         transfers += merge_txns([[{**t, "balance": None} for t in rows] for rows in parsed])
-    estimated, inflows = estimate_closed_accounts(krw_statements, transfers, account_map, findings, notes)
+    estimated, external_inflows = estimate_closed_accounts(krw_statements, transfers, account_map, findings, notes)
+    # After the estimate, so the `term` and `ownTransfer` marks are already set.
+    inflows = [{"institution": inst, "account": alias, "currency": cur, "date": t["date"], "amount": round(t["amount"], 2),
+                "description": t.get("description", ""), "counterparty": t.get("counterparty", ""),
+                "ownTransfer": bool(t.get("ownTransfer") or t.get("term"))}
+               for inst, alias, cur, txns in inflow_sources for t in txns if t["amount"] > 0]
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     document = {"generatedAt": datetime.now(timezone.utc).isoformat(), "accounts": accounts,
-                "estimatedAccounts": estimated, "externalInflows": inflows, "findings": findings, "notes": notes}
+                "estimatedAccounts": estimated, "externalInflows": external_inflows, "inflows": inflows,
+                "findings": findings, "notes": notes}
     OUT_PATH.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"bank balances: {len(accounts)} account(s), {len(estimated)} estimated, {len(findings)} finding(s), "
+    print(f"bank balances: {len(accounts)} account(s), {len(estimated)} estimated, {len(inflows)} inflow(s), {len(external_inflows)} external inflow(s), "
+          f"{len(findings)} finding(s), "
           f"{len(notes)} note(s) → {OUT_PATH}")
 
 

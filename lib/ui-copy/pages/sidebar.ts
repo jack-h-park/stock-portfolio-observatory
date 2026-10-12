@@ -22,6 +22,7 @@ export const sidebar = defineCopy({
           { href: '/review', label: 'Portfolio Review' },
           { href: '/rebalance', label: 'Rebalancing' },
           { href: '/income', label: 'Income' },
+          { href: '/cash-inflow', label: 'Cash Inflow' },
         ],
       },
       {
@@ -87,6 +88,7 @@ export const sidebar = defineCopy({
           { href: '/review', label: '포트폴리오 검토' },
           { href: '/rebalance', label: '리밸런싱' },
           { href: '/income', label: '수익 내역' },
+          { href: '/cash-inflow', label: '현금 유입' },
         ],
       },
       {

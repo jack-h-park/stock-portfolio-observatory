@@ -11,6 +11,14 @@
     }
   ],
   "dividendOverrides": [],
+  "bankInflowRules": [
+    {
+      "id": "salary-example",
+      "match": { "institution": "chase", "descriptionIncludes": "EXAMPLE CO PAYROLL" },
+      "category": "salary",
+      "note": "Classify a bank credit for /cash-inflow. First match wins. Categories: salary, dividend, interest, other, transfer (an own-account move, never counted). A credit no rule matches shows as unclassified."
+    }
+  ],
   "instrumentAliases": [
     {
       "from": "US5949181045",

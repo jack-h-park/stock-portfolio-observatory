@@ -404,3 +404,51 @@ export function StackedAssetChart({
     </ResponsiveContainer>
   )
 }
+
+export function StackedBarChart({
+  data,
+  xKey,
+  series,
+  height = 240,
+  yAxisPrefix = '',
+  yAxisSuffix = '',
+  yAxisLabel,
+  allowDecimals = false,
+}: {
+  data: Record<string, unknown>[]
+  xKey: string
+  series: { key: string; label: string; color: string }[]
+  height?: number
+  yAxisPrefix?: string
+  yAxisSuffix?: string
+  yAxisLabel?: string
+  allowDecimals?: boolean
+}) {
+  const format = (value: number) => `${yAxisPrefix}${value.toLocaleString()}${yAxisSuffix}`
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
+        <XAxis dataKey={xKey} tick={AXIS} tickLine={false} axisLine={{ stroke: 'var(--border-default)' }} />
+        <YAxis
+          width={64}
+          tick={AXIS}
+          tickLine={false}
+          axisLine={false}
+          allowDecimals={allowDecimals}
+          tickFormatter={format}
+          label={yAxisLabel ? { value: yAxisLabel, angle: -90, position: 'insideLeft', style: AXIS } : undefined}
+        />
+        <Tooltip
+          cursor={{ fill: 'var(--bg-surface)' }}
+          contentStyle={TOOLTIP_SURFACE}
+          formatter={(value: number) => format(value)}
+        />
+        <Legend wrapperStyle={{ fontSize: 11 }} />
+        {series.map((s) => (
+          <Bar key={s.key} dataKey={s.key} stackId="a" fill={s.color} name={s.label} maxBarSize={28} />
+        ))}
+      </BarChart>
+    </ResponsiveContainer>
+  )
+}
