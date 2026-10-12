@@ -97,7 +97,8 @@ The refresh loads them into `external_inflows` and names them from a gitignored
 labels file. The file is `STOCK_ASSET_EVENT_LABELS_PATH`, default
 `data/asset-event-labels.local.json`; `data/asset-event-labels.example.json` shows
 its shape. A group is `counterparty:<name>` for a 토스뱅크 counterparty,
-`counterparty:<memo>|새마을금고 내역` for a 새마을금고 one, and
+`counterparty:<memo>|새마을금고 내역` for a 새마을금고 one (`counterparty:현금|새마을금고 내역`
+for cash paid in at the counter, whatever the memo says), and
 `counterparty:<거래종류>|미래에셋증권` for one in the 미래에셋 CMA. A salary paid less than
 120 days apart chains into one inflow spanning years; hide it. A label that names
 no inflow is reported under `cash_statements_parsed`.

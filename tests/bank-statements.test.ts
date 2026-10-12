@@ -434,3 +434,18 @@ print(json.dumps({"order": [x["description"] for x in t], "breaks": m.continuity
   assert.deepEqual(r.order, ['C', 'A', 'B'])
   assert.deepEqual(r.breaks, [])
 })
+
+test('a 새마을금고 cash deposit at the counter is its own group, never netted against transfers in the same name', () => {
+  const r = py(`
+rows = [
+ ["", "거래일자", "거래시간", "", "거래구분", "거래내용/메모", "", "출금액", "", "", "입금액", "잔액"],
+ ["", "2023.09.22", "10:00:00", "", "현금", "본인", "", "0", "", "", "2100", "2100"],
+ ["", "2022.03.17", "10:00:00", "", "스마트뱅킹", "본인", "", "1000", "", "", "0", "0"],
+ ["", "2022.03.16", "10:00:00", "", "대체", "입금", "", "0", "", "", "1000", "1000"],
+]
+mg = m.parse_mg_rows(rows)
+m.MIN_ESTIMATE_KRW = 1
+_, inflows = m.estimate_closed_accounts([("mg", "mg-deposit", mg)], [], {}, [])
+print(json.dumps([[i["group"], i["amountKrw"]] for i in inflows if i["group"].startswith("counterparty:현금")]))`)
+  assert.deepEqual(r, [['counterparty:현금|새마을금고 내역', 2100]])
+})

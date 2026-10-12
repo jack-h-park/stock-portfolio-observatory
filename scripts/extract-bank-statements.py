@@ -95,6 +95,7 @@ def parse_mg_rows(rows):
     header = [c.strip() for c in rows[header_at]]
     col = {name: header.index(name) for name in ("거래일자", "거래시간", "출금액", "입금액", "잔액")}
     memo_col = header.index("거래내용/메모") if "거래내용/메모" in header else None
+    kind_col = header.index("거래구분") if "거래구분" in header else None
     parsed = []
     for r in rows[header_at + 1:]:
         day = (r[col["거래일자"]] if len(r) > col["거래일자"] else "").strip().replace(".", "-")
@@ -103,11 +104,14 @@ def parse_mg_rows(rows):
         out_amt = _num(r[col["출금액"]]) or 0.0
         in_amt = _num(r[col["입금액"]]) or 0.0
         memo = r[memo_col].strip() if memo_col is not None and len(r) > memo_col else ""
-        parsed.append((day, _clock(r[col["거래시간"]]), in_amt - out_amt, _num(r[col["잔액"]]), memo))
+        kind = r[kind_col].strip() if kind_col is not None and len(r) > kind_col else ""
+        parsed.append((day, _clock(r[col["거래시간"]]), in_amt - out_amt, _num(r[col["잔액"]]), memo, kind))
     parsed.sort(key=lambda t: (t[0], t[1]))
     parsed = _chain_same_second(parsed)
-    return [{"date": d, "seq": i, "description": memo, "amount": a, "balance": b}
-            for i, (d, _t, a, b, memo) in enumerate(parsed)]
+    # `kind` is the 거래구분 (현금, 대체, 스마트뱅킹, 지로, …): a 현금 row is cash paid
+    # in at the counter, which no transfer in the same name can be the return of.
+    return [{"date": d, "seq": i, "description": memo, "amount": a, "balance": b, "kind": kind}
+            for i, (d, _t, a, b, memo, kind) in enumerate(parsed)]
 
 
 def _chain_same_second(parsed):
@@ -602,6 +606,8 @@ def _bucket(flow):
     if flow["statement"] == "mg":
         if memo == "인터넷신규" or memo.startswith("예적금만기"):
             return "mg-savings"
+        if flow.get("kind") == "현금" and flow["amount"] > 0:
+            return "counterparty:현금|새마을금고 내역"
         return f"counterparty:{memo}|새마을금고 내역"
     if "대체" in memo:  # 미래에셋: a 계좌대체 to or from an account other than the ones on file
         return "mirae-other"
@@ -721,7 +727,8 @@ def estimate_closed_accounts(statements, transfers, account_map, findings):
         for t in txns:
             flows.append({"statement": statement, "source": source, "date": t["date"], "seq": t["seq"],
                           "amount": t["amount"], "memo": t.get("counterparty") or t.get("description", ""),
-                          "counterpartyInstitution": t.get("counterpartyInstitution", ""), "paired": False})
+                          "counterpartyInstitution": t.get("counterpartyInstitution", ""), "kind": t.get("kind", ""),
+                          "paired": False})
     pair_transfers(flows)
     buckets = {}
     for f in sorted((f for f in flows if not f["paired"]), key=lambda f: (f["date"], f["seq"])):
