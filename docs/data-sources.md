@@ -394,6 +394,16 @@ Korean certificates carry the won amount actually paid, so both columns hold it.
 A lot acquired before the rate history starts has no acquisition cost, and the
 planner falls back to `cost_basis_krw` for it.
 
+**Korea's year-to-date gain is an assumption, checked like the US one.** Korea
+taxes a year's foreign-stock gains as one pool with one basic deduction, so the
+planner adds `KR.ytdRealizedTaxableGainKrw` from the tax policy to the planned
+sales of the input year. The ingest computes the same figure from
+`realized_lots` — proceeds at the sale-date rate less `acquisition_cost_krw`,
+over US-market lots and Korea-listed ones only when the domestic flags are set —
+publishes it as `kr_ytd_realized_computed` (shown beside the field on the tax
+settings page), and `kr_ytd_realized_assumption_reviewed` fails while the two
+differ by more than ₩1,000.
+
 **An RSU account can hold nothing, and that is why it was missed.** 삼성증권's
 주식보상 account is where RSUs vest, and its position can sit at zero — vested
 shares move on to another broker soon after. An account with no position looks

@@ -86,6 +86,7 @@
       "filingCurrency": "KRW",
       "manualAssumptions": {
         "stockBasicDeductionKrw": 2500000,
+        "ytdRealizedTaxableGainKrw": 0,
         "foreignStockFlatRatePct": 22,
         "domesticMajorShareholder": false,
         "domesticListedOffMarketSale": false,

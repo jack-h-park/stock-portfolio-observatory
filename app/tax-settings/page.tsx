@@ -43,6 +43,15 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
       return null
     }
   })()
+  // The Korea half, computed by the ingest in Korea's measure (cost at the acquisition-date rate).
+  const krYtdComputed = (() => {
+    try {
+      const raw = getMeta()?.kr_ytd_realized_computed
+      return raw ? (JSON.parse(raw) as { taxYear: string; gainKrw: number; lots: number }) : null
+    } catch {
+      return null
+    }
+  })()
   const ytdHint = (term: 'shortUsd' | 'longUsd') =>
     ytdComputed
       ? copy.us.ytdHint(ytdComputed.basis, ytdComputed.taxYear, fmtNumber(ytdComputed[term], 2), ytdComputed.lots)
@@ -285,6 +294,13 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
           <Card title={copy.kr.title}>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label={copy.kr.stockBasicDeduction} name="krStockBasicDeductionKrw" defaultValue={assumptionNumber(policy, 'KR', 'stockBasicDeductionKrw', 2500000)} suffix="KRW" />
+              <Field
+                label={copy.kr.ytdRealizedTaxableGain}
+                name="krYtdRealizedTaxableGainKrw"
+                defaultValue={assumptionNumber(policy, 'KR', 'ytdRealizedTaxableGainKrw', 0)}
+                suffix="KRW"
+                hint={krYtdComputed ? copy.kr.ytdHint(krYtdComputed.taxYear, fmtNumber(krYtdComputed.gainKrw, 0), krYtdComputed.lots) : undefined}
+              />
               <Field label={copy.kr.foreignStockRate} name="krForeignStockFlatRatePct" defaultValue={assumptionNumber(policy, 'KR', 'foreignStockFlatRatePct', 22)} suffix="%" />
               <Field label={copy.kr.foreignTaxableResidenceThreshold} name="krForeignStockTaxableResidenceYearsThreshold" defaultValue={assumptionNumber(policy, 'KR', 'foreignStockTaxableResidenceYearsThreshold', 5)} suffix={copy.readOrder.years} />
               <Field label={copy.kr.residentThroughYear} name="krResidentThroughYear" defaultValue={assumptionNumber(policy, 'KR', 'residentThroughYear', 2027)} />

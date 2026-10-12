@@ -6838,6 +6838,51 @@ check(
   'warning'
 )
 
+// The Korea side of the same question. Korea taxes a year's foreign-stock gains
+// as one pool with one basic deduction, so a planned sale's Korea tax depends on
+// what the year has already realized — and the planner, like its US half, only
+// knows that through an assumption someone keeps current. This computes it, in
+// Korea's measure: proceeds at the sale-date rate less the cost at the
+// ACQUISITION-date rate (acquisition_cost_krw), over the lots Korea taxes — US
+// stocks, plus Korea-listed ones only when the policy's domestic flags say so,
+// which is the planner's own krTaxable rule. Crypto is not a stock gain.
+//
+// Published and checked, not written into the policy, for the reason the US
+// figure is not: it is a replay of our own and the operator decides.
+const krTaxAssumptions = (taxPolicy?.jurisdictions ?? []).find((j) => j?.code === 'KR')?.manualAssumptions ?? null
+const krDomesticTaxable = Boolean(krTaxAssumptions?.domesticMajorShareholder) || Boolean(krTaxAssumptions?.domesticListedOffMarketSale)
+const krTaxableRealized = realizedForTaxYear.filter((r) => r.market === 'US' || (r.market === 'KR' && krDomesticTaxable))
+const krMeasuredGain = (r) => {
+  const cost = r.acquisition_cost_krw ?? r.cost_basis_krw
+  return r.proceeds_krw == null || cost == null ? null : Number(r.proceeds_krw) - Number(cost)
+}
+const krUnmeasured = krTaxableRealized.filter((r) => krMeasuredGain(r) == null)
+const computedKrGainKrw = krTaxableRealized.reduce((sum, r) => sum + (krMeasuredGain(r) ?? 0), 0)
+const assumedKrGainKrw = Number(krTaxAssumptions?.ytdRealizedTaxableGainKrw ?? 0)
+// A thousand won: below the rounding a hand-entered won figure carries.
+const krYtdAgrees = Math.abs(assumedKrGainKrw - computedKrGainKrw) <= 1000
+db.prepare('insert or replace into meta (key, value) values (?, ?)').run(
+  'kr_ytd_realized_computed',
+  JSON.stringify({
+    taxYear,
+    gainKrw: Math.round(computedKrGainKrw),
+    lots: krTaxableRealized.length,
+    unmeasuredLots: krUnmeasured.length,
+  })
+)
+check(
+  'kr_ytd_realized_assumption_reviewed',
+  krTaxableRealized.length === 0 || krYtdAgrees,
+  krTaxableRealized.length === 0
+    ? `no ${taxYear} sales Korea taxes as stock gains`
+    : `${krTaxableRealized.length} lot(s) sold in ${taxYear} that Korea taxes give ₩${Math.round(computedKrGainKrw).toLocaleString('en-US')} ` +
+      `at acquisition-date cost; KR ytdRealizedTaxableGainKrw is ₩${Math.round(assumedKrGainKrw).toLocaleString('en-US')}` +
+      (krYtdAgrees ? '' : ' — update it on the tax settings page') +
+      (krUnmeasured.length ? `; ${krUnmeasured.length} lot(s) have no won proceeds or cost and count as zero` : '') +
+      (taxPolicy ? '' : ` (no policy file at ${path.basename(taxPolicyPath)})`),
+  'warning'
+)
+
 // A rename whose target is itself renamed would leave the ingest with the
 // symbol halfway through the chain, splitting the position it was written to
 // join — the failure it was meant to fix, wearing a third ticker. Cheap to

@@ -513,7 +513,10 @@ export function summarizeTaxCandidates({
     : 0
 
   const krTaxableRows = priced.filter((row) => krTaxable(row, policy))
-  const krNetTaxableGainKrw = sumGain(krTaxableRows)
+  // Korea taxes the year's foreign-stock gains as one pool with one basic deduction, so the
+  // gains already realized this year join the planned ones, as ytd*GainUsd does on the US side.
+  const krYtdRealizedGainKrw = yearInput ? assumptionNumber(policy, 'KR', 'ytdRealizedTaxableGainKrw', 0) : 0
+  const krNetTaxableGainKrw = sumGain(krTaxableRows) + krYtdRealizedGainKrw
   const krDeductionKrw = assumptionNumber(policy, 'KR', 'stockBasicDeductionKrw', 2500000)
   const krTaxRatePct = assumptionNumber(policy, 'KR', 'foreignStockFlatRatePct', 22)
   const krRate = pctRate(krTaxRatePct)
