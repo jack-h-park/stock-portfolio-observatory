@@ -181,3 +181,21 @@ test('a date or amount bound alone is not enough, and a malformed bound rejects 
   assert.match(check.detail, /^4 rule\(s\) skipped/)
   for (const id of ['bounds-only', 'bad-date', 'bad-amount']) assert.match(check.detail, new RegExp(id))
 })
+
+test('an Amex-shaped interest credit is interest by default and an incentive credit waits for a rule', () => {
+  const db = ingestBank(
+    {
+      accounts: [], estimatedAccounts: [], findings: [], notes: [],
+      inflows: [
+        inflow('amex', 'Example Amex checking', 'USD', '2025-03-31', 1.12, 'Interest Deposit'),
+        inflow('amex', 'Example Amex checking', 'USD', '2025-04-15', 300, 'Customer Incentive Payment'),
+      ],
+    },
+    { ...MAPPINGS, bankInflowRules: [] },
+  )
+  const rows = db.prepare('select description, category from bank_inflows order by date').all() as any[]
+  assert.deepEqual(rows.map((r) => [r.description, r.category]), [
+    ['Interest Deposit', 'interest'],
+    ['Customer Incentive Payment', 'unclassified'],
+  ])
+})
