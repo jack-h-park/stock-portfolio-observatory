@@ -4,8 +4,9 @@ import path from 'node:path'
 import { createHash } from 'node:crypto'
 import Database from 'better-sqlite3'
 import { config } from '@/config'
+import { buildTaxPlan, summarizeTaxCandidates, type TaxPlanningLot } from '@/lib/tax-planning'
+import { allocateTax, buildInvestmentEpisodes, mergeAssetEvents, type AssetEvent, type ClosedLot, type DividendRow, type InflowEvent, type OpenLot } from '@/lib/asset-events'
 import { getRebalancePolicy } from '@/lib/rebalance-policy'
-import type { TaxPlanningLot } from '@/lib/tax-planning'
 import { getTaxPolicyState, usTaxableWrappers, wrapperTreatment, type TaxPolicy, type WrapperTreatment } from '@/lib/tax-policy'
 import { ASSET_CLASSES, depositsSeries, summarizeNetWorth, totalAssetsSeries, type AsOfNote, type CashBalanceRow, type NetWorth, type TotalAssetsSeries } from '@/lib/net-worth'
 import type { PensionContributionYear } from '@/lib/pension'
@@ -4007,7 +4008,13 @@ export function getPositionDetail(market: string, ticker: string): PositionDetai
  * so with the defaults this is exactly the stock view. An `isa` set to anything
  * else drops the ISA lots, and a pension wrapper set to `taxable` adds its lots.
  */
-export function getTaxPlanningLots(limit = 500, policy: TaxPolicy = getTaxPolicyState().policy): TaxPlanningLot[] {
+export function getTaxPlanningLots(
+  limit = 500,
+  policy: TaxPolicy = getTaxPolicyState().policy,
+  // Every security lot whatever its wrapper, for a reader that values lots the
+  // tax estimate leaves out (the asset events list). The tax planner never sets it.
+  { allWrappers = false }: { allWrappers?: boolean } = {}
+): TaxPlanningLot[] {
   const conn = db()
   try {
     const wrappers = ['taxable', ...usTaxableWrappers(policy)]
@@ -4017,12 +4024,14 @@ export function getTaxPlanningLots(limit = 500, policy: TaxPolicy = getTaxPolicy
     // read as it always was.
     const scoped = lotsTable === 'tax_lots_all'
     const rowFilter = (alias: string) =>
-      scoped
+      scoped && allWrappers
+        ? `${alias}.asset_class = 'security'`
+        : scoped
         ? `(${alias}.account_wrapper in (${wrappers.map(() => '?').join(', ')}) and ${alias}.asset_class = 'security')`
         : alias === 'h'
           ? `${alias}.${STOCK_WRAPPER_SQL}`
           : '1 = 1'
-    const params = scoped ? [...wrappers, ...wrappers, limit] : [limit]
+    const params = scoped && !allWrappers ? [...wrappers, ...wrappers, limit] : [limit]
     // A database written before the column existed reads as null, and the
     // planner falls back to cost_basis_krw for it.
     const lotColumns = new Set(
@@ -4088,6 +4097,87 @@ export function getTaxPlanningLots(limit = 500, policy: TaxPolicy = getTaxPolicy
          limit ?`
       )
       .all(...params) as TaxPlanningLot[]
+  } finally {
+    conn.close()
+  }
+}
+
+// A lot's market value in KRW: the native value at the lot's own rate, or the
+// rate its cost was booked at, the same way buildTaxPlan converts it.
+function lotValueKrw(lot: TaxPlanningLot): number | null {
+  if (lot.native_market_value == null) return null
+  const basisRate = lot.currency === 'USD' && lot.native_cost_basis > 0 ? lot.cost_basis_krw / lot.native_cost_basis : 0
+  const rate = lot.currency === 'KRW' ? 1 : Number(lot.fx_rate_to_base ?? 0) || basisRate
+  return rate ? Number(lot.native_market_value) * rate : null
+}
+
+/**
+ * The large events behind the total-assets trend: labeled money from outside
+ * (external_inflows, hidden ones left out) and investment episodes over every
+ * security lot, open lots valued at today's price with the tax planner's
+ * per-lot estimate. A lot the tax estimate leaves out (a non-taxable wrapper)
+ * carries no tax.
+ */
+export function getAssetEvents(): AssetEvent[] {
+  const policy = getTaxPolicyState().policy
+  const openLots = getTaxPlanningLots(100_000, policy, { allWrappers: true })
+  // The aggregate for selling every taxable open lot now, shared out by gain:
+  // a lot's own flat-rate figure leaves out the deduction, netting and credits.
+  const candidates = buildTaxPlan({ lots: getTaxPlanningLots(100_000, policy), policy }).candidates
+  const aggregate = summarizeTaxCandidates({ candidates, policy, scenario: policy.activeScenario })
+  const taxById = allocateTax(candidates, aggregate.combinedTaxAfterCreditsKrw)
+  const open: OpenLot[] = openLots.map((lot) => ({
+    id: lot.id,
+    market: lot.market,
+    ticker: lot.ticker,
+    name: lot.name,
+    acquiredDate: String(lot.acquired_date).slice(0, 10),
+    costKrw: Number(lot.cost_basis_krw ?? 0),
+    marketValueKrw: lotValueKrw(lot),
+    estimatedTaxKrw: lotValueKrw(lot) == null ? null : taxById.get(lot.id) ?? 0,
+  }))
+  const conn = db()
+  try {
+    const hasTable = (name: string) => Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(name))
+    const realizedTable = allAssetsTable(conn, 'realized_lots')
+    const securityOnly = realizedTable === 'realized_lots_all' ? " and asset_class = 'security'" : ''
+    const closed = (
+      hasTable(realizedTable)
+        ? (conn
+            .prepare(
+              // A year a 1099-B covers: its replay rows are superseded but still
+              // say when the shares were held, so they give the cost timeline and
+              // no gain; the filed rows give the gain and no cost, placed on their
+              // acquired date or, for an aggregated "Various" lot, the sale date.
+              `select id, market, ticker, name,
+                      substr(coalesce(nullif(acquired_date, ''), sold_date), 1, 10) as acquiredDate,
+                      substr(sold_date, 1, 10) as soldDate,
+                      case when basis = '1099b' then 0 else coalesce(cost_basis_krw, 0) end as costKrw,
+                      case when superseded_by is not null then 0 else coalesce(realized_gl_krw, 0) end as realizedKrw
+                 from ${realizedTable}
+                where nullif(sold_date, '') is not null
+                  and (nullif(acquired_date, '') is not null or basis = '1099b')${securityOnly}`
+            )
+            .all() as ClosedLot[])
+        : []
+    )
+    const dividendsTable = allAssetsTable(conn, 'dividends')
+    const dividends = hasTable(dividendsTable)
+      ? (conn
+          .prepare(
+            `select market, ticker, substr(date, 1, 10) as date, amount_krw as amountKrw from ${dividendsTable}
+              where ticker is not null${dividendsTable === 'dividends_all' ? " and asset_class = 'security'" : ''}`
+          )
+          .all() as DividendRow[])
+      : []
+    const inflows = hasTable('external_inflows')
+      ? (
+          conn
+            .prepare('select first_date as start, last_date as "end", label, category, amount_krw as amountKrw, arrivals from external_inflows where hidden = 0')
+            .all() as Omit<InflowEvent, 'kind'>[]
+        ).map((row) => ({ kind: 'inflow' as const, ...row }))
+      : []
+    return mergeAssetEvents(inflows, buildInvestmentEpisodes({ closed, open, dividends }))
   } finally {
     conn.close()
   }

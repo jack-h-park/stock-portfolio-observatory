@@ -289,3 +289,41 @@ test('accounts with an unsupported currency or kind are dropped and reported', (
   assert.equal(check.status, 'fail')
   assert.match(check.detail, /EUR|currency/)
 })
+
+test('external inflows land with their label; an unlabeled one keeps a null label, a hidden one is flagged', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'inflow-src-'))
+  const balances = path.join(dir, 'bank-balances.json')
+  const labels = path.join(dir, 'labels.json')
+  writeFileSync(balances, JSON.stringify({ accounts: [], findings: [], externalInflows: [
+    { group: 'counterparty:Buyer|Bank', firstDate: '2024-06-01', lastDate: '2024-09-04', amountKrw: 50_000_000, arrivals: 5 },
+    { group: 'counterparty:Payroll|MG', firstDate: '2025-01-24', lastDate: '2025-01-24', amountKrw: 30_000_000, arrivals: 1 },
+    { group: 'counterparty:Someone|Bank', firstDate: '2025-03-01', lastDate: '2025-03-01', amountKrw: 12_000_000, arrivals: 1 },
+  ] }))
+  writeFileSync(labels, JSON.stringify({ labels: [
+    { group: 'counterparty:Buyer|Bank', label: 'Home sale', category: 'asset_sale' },
+    { group: 'counterparty:Payroll|MG', label: 'Bonus', category: 'income', hidden: true },
+  ] }))
+  const db = ingest({ STOCK_BANK_BALANCES_PATH: balances, STOCK_ASSET_EVENT_LABELS_PATH: labels })
+  assert.deepEqual(db.prepare('select grp, first_date, amount_krw, label, category, hidden from external_inflows order by first_date').all(), [
+    { grp: 'counterparty:Buyer|Bank', first_date: '2024-06-01', amount_krw: 50_000_000, label: 'Home sale', category: 'asset_sale', hidden: 0 },
+    { grp: 'counterparty:Payroll|MG', first_date: '2025-01-24', amount_krw: 30_000_000, label: 'Bonus', category: 'income', hidden: 1 },
+    { grp: 'counterparty:Someone|Bank', first_date: '2025-03-01', amount_krw: 12_000_000, label: null, category: null, hidden: 0 },
+  ])
+})
+
+test('a label that matches no inflow is reported as a note, so a mistyped group does not pass in silence', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'inflow-src-'))
+  const balances = path.join(dir, 'bank-balances.json')
+  const labels = path.join(dir, 'labels.json')
+  writeFileSync(balances, JSON.stringify({ accounts: [], findings: [], externalInflows: [
+    { group: 'counterparty:Buyer', firstDate: '2024-06-01', lastDate: '2024-06-01', amountKrw: 50_000_000, arrivals: 1 },
+  ] }))
+  writeFileSync(labels, JSON.stringify({ labels: [
+    { group: 'counterparty:Buyer', label: 'Home sale' },
+    { group: 'counterparty:Buyer|Some Bank', label: 'Old shape' },
+  ] }))
+  const db = ingest({ STOCK_BANK_BALANCES_PATH: balances, STOCK_ASSET_EVENT_LABELS_PATH: labels })
+  const check = db.prepare("select status, detail from validation_checks where name = 'cash_statements_parsed'").get() as any
+  assert.match(check.detail, /counterparty:Buyer\|Some Bank/)
+  assert.doesNotMatch(check.detail, /label "counterparty:Buyer" /)
+})

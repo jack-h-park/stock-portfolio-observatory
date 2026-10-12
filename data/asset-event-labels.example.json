@@ -1,0 +1,6 @@
+{
+  "labels": [
+    { "group": "counterparty:Example Buyer", "from": "2024-06-01", "to": "2024-09-30", "label": "Home sale", "category": "asset_sale" },
+    { "group": "counterparty:Example Payroll|새마을금고 내역", "label": "Monthly salary", "category": "income", "hidden": true }
+  ]
+}

@@ -7,6 +7,7 @@ import { PortfolioMultiTrendChart, PortfolioTrendChart, StackedAssetChart, Trend
 import {
   dbAvailable,
   getAccountAllocation,
+  getAssetEvents,
   getDividendByYear,
   getMeta,
   getNetWorth,
@@ -30,6 +31,8 @@ import {
 } from '@/lib/overview-trend'
 import { config } from '@/config'
 import { ASSET_CLASSES } from '@/lib/net-worth'
+import { chartMarkers, snapEventDates } from '@/lib/asset-events'
+import { AssetEventList } from '@/components/AssetEventList'
 import { dividendChartAmount, fmtDate, fmtDateTime, fmtNumber } from '@/lib/format'
 import { convertMoney, createMoneyFormatter } from '@/lib/currency'
 import { getAssetView } from '@/lib/asset-view-server'
@@ -127,6 +130,9 @@ export default async function OverviewPage({
   const portfolioSnapshots = getPortfolioSnapshots(trendRangeDays(selectedRange.days))
   // All-assets view only: every class stacked on the same snapshot dates, plus today.
   const totalAssets = assetView === 'all' ? getTotalAssetsSeries(portfolioSnapshots.map((snapshot) => snapshot.snapshot_date), netWorthSummary) : null
+  // The large asset events, only where the total-assets chart renders.
+  const eventMarkers = totalAssets ? snapEventDates(getAssetEvents(), totalAssets.points.map((point) => point.date)) : []
+  const eventsCopy = getPageCopy('assetEvents', language)
   const top = getTopHoldings(10)
   const accounts = getAccountAllocation()
   const dividendYears = getDividendByYear()
@@ -619,6 +625,7 @@ export default async function OverviewPage({
             currency={currencyPreferences.displayCurrency}
             labels={{ ...copy.assetClasses, total: copy.totalAssets }}
             axisLabel={displayAxisLabel}
+            markers={chartMarkers(eventMarkers, totalAssets.points[0]?.date)}
           />
           <div className="mt-1 text-label text-ink-3">
             {copy.totalAssetsStarts(
@@ -626,6 +633,9 @@ export default async function OverviewPage({
             )}
           </div>
           <div className="mt-2 text-label leading-relaxed text-ink-3">{copy.totalAssetsTrendNote}</div>
+          <div className="mt-4">
+            <AssetEventList markers={eventMarkers} copy={eventsCopy} money={(krw) => money(krw)} />
+          </div>
         </Card>
       ) : null}
 

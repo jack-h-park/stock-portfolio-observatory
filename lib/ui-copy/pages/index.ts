@@ -21,6 +21,7 @@ import { health } from '@/lib/ui-copy/pages/health'
 import { accounts } from '@/lib/ui-copy/pages/accounts'
 import { netWorth } from '@/lib/ui-copy/pages/netWorth'
 import { pension } from '@/lib/ui-copy/pages/pension'
+import { assetEvents } from '@/lib/ui-copy/pages/assetEvents'
 
 export const PAGE_COPY = {
   taxSettings,
@@ -46,4 +47,5 @@ export const PAGE_COPY = {
   accounts,
   netWorth,
   pension,
+  assetEvents,
 }

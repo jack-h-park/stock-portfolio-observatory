@@ -349,7 +349,7 @@ mg = [
  {"date": "2026-04-03", "seq": 2, "amount": 103.0, "description": "예적금만기 자동이체"},
 ]
 m.MIN_ESTIMATE_KRW = 1
-out = m.estimate_closed_accounts([("tossbank", "tossbank-0001", toss), ("mg", "mg-deposit", mg)], [], {}, [])
+out, _ = m.estimate_closed_accounts([("tossbank", "tossbank-0001", toss), ("mg", "mg-deposit", mg)], [], {}, [])
 print(json.dumps({a["account"]: a["balances"] for a in out}))`)
   assert.deepEqual(r, {
     '새마을금고 예적금': [{ date: '2026-01-03', balance: 100 }, { date: '2026-04-03', balance: 0 }],
@@ -366,7 +366,7 @@ toss = [
 ]
 m.MIN_ESTIMATE_KRW = 1
 anchors = {"anchors": [{"alias": "미래에셋 기타 계좌", "date": "2026-03-31", "balance": 250.0}]}
-out = m.estimate_closed_accounts([("tossbank", "tossbank-0001", toss)], [], anchors, [])
+out, _ = m.estimate_closed_accounts([("tossbank", "tossbank-0001", toss)], [], anchors, [])
 print(json.dumps(out[0]["balances"]))`)
   // Without the anchor only the 50 that came back would count. The walk: 250 on
   // 03-31, 250 after 02-02, 50 after 01-02; after the anchor, the conservative 0.
@@ -375,4 +375,77 @@ print(json.dumps(out[0]["balances"]))`)
     { date: '2026-02-02', balance: 250 },
     { date: '2026-05-02', balance: 0 },
   ])
+})
+
+test('arrivals are what comes in with nothing sent out first; a return of money sent out is not one', () => {
+  const r = py(`
+print(json.dumps(m.arrivals([("2026-01-05", 300.0), ("2026-02-10", -305.0), ("2026-03-01", -1000.0)])))`)
+  // 5 over the 300 sent out (interest), then 1000 with nothing outstanding.
+  assert.deepEqual(r, [['2026-02-10', 5], ['2026-03-01', 1000]])
+})
+
+test('arrivals from one group within 120 days are one inflow dated at the first', () => {
+  const r = py(`
+print(json.dumps(m.group_arrivals("counterparty:Buyer|Bank", [("2026-01-05", 100.0), ("2026-03-01", 200.0), ("2026-09-01", 50.0)])))`)
+  assert.deepEqual(r, [
+    { group: 'counterparty:Buyer|Bank', firstDate: '2026-01-05', lastDate: '2026-03-01', amountKrw: 300, arrivals: 2 },
+    { group: 'counterparty:Buyer|Bank', firstDate: '2026-09-01', lastDate: '2026-09-01', amountKrw: 50, arrivals: 1 },
+  ])
+})
+
+test('a loan repaid from another bank is a return, and a matured deposit is never outside money', () => {
+  const r = py(`
+toss = [
+ {"date": "2026-01-02", "seq": 0, "amount": -200.0, "counterparty": "Friend", "counterpartyInstitution": "Bank A"},
+ {"date": "2026-02-02", "seq": 1, "amount": 200.0, "counterparty": "Friend", "counterpartyInstitution": "Bank B"},
+]
+mg = [{"date": "2026-01-30", "seq": 0, "amount": 150.0, "description": "예적금만기 자동이체"}]
+m.MIN_ESTIMATE_KRW = 1
+out, inflows = m.estimate_closed_accounts([("tossbank", "tossbank-0001", toss), ("mg", "mg-deposit", mg)], [], {}, [])
+print(json.dumps({"inflows": inflows, "accounts": [a["account"] for a in out]}))`)
+  assert.deepEqual(r.inflows, [])
+  assert.deepEqual(r.accounts, ['Friend'])
+})
+
+test('two 새마을금고 rows of the same second, printed newest first, are read oldest first', () => {
+  const r = py(`
+rows = [
+ ["", "거래일자", "거래시간", "", "거래구분", "거래내용/메모", "", "출금액", "", "", "입금액", "잔액"],
+ ["", "2021.12.24", "02:17:17", "", "지로", "B", "", "0", "", "", "700", "1300"],
+ ["", "2021.12.24", "02:17:17", "", "지로", "A", "", "0", "", "", "300", "600"],
+ ["", "2021.12.23", "09:00:00", "", "지로", "C", "", "0", "", "", "300", "300"],
+]
+t = m.parse_mg_rows(rows)
+print(json.dumps({"order": [x["description"] for x in t], "breaks": m.continuity_breaks(t)}))`)
+  assert.deepEqual(r.order, ['C', 'A', 'B'])
+  assert.deepEqual(r.breaks, [])
+})
+
+test('same-second 새마을금고 rows printed oldest first stay oldest first: the running balance decides', () => {
+  const r = py(`
+rows = [
+ ["", "거래일자", "거래시간", "", "거래구분", "거래내용/메모", "", "출금액", "", "", "입금액", "잔액"],
+ ["", "2023.05.19", "02:00:00", "", "지로", "A", "", "0", "", "", "300", "600"],
+ ["", "2023.05.19", "02:00:00", "", "지로", "B", "", "0", "", "", "700", "1300"],
+ ["", "2023.05.18", "09:00:00", "", "지로", "C", "", "0", "", "", "300", "300"],
+]
+t = m.parse_mg_rows(rows)
+print(json.dumps({"order": [x["description"] for x in t], "breaks": m.continuity_breaks(t)}))`)
+  assert.deepEqual(r.order, ['C', 'A', 'B'])
+  assert.deepEqual(r.breaks, [])
+})
+
+test('a 새마을금고 cash deposit at the counter is its own group, never netted against transfers in the same name', () => {
+  const r = py(`
+rows = [
+ ["", "거래일자", "거래시간", "", "거래구분", "거래내용/메모", "", "출금액", "", "", "입금액", "잔액"],
+ ["", "2023.09.22", "10:00:00", "", "현금", "본인", "", "0", "", "", "2100", "2100"],
+ ["", "2022.03.17", "10:00:00", "", "스마트뱅킹", "본인", "", "1000", "", "", "0", "0"],
+ ["", "2022.03.16", "10:00:00", "", "대체", "입금", "", "0", "", "", "1000", "1000"],
+]
+mg = m.parse_mg_rows(rows)
+m.MIN_ESTIMATE_KRW = 1
+_, inflows = m.estimate_closed_accounts([("mg", "mg-deposit", mg)], [], {}, [])
+print(json.dumps([[i["group"], i["amountKrw"]] for i in inflows if i["group"].startswith("counterparty:현금")]))`)
+  assert.deepEqual(r, [['counterparty:현금|새마을금고 내역', 2100]])
 })

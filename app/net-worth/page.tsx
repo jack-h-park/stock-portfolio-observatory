@@ -4,7 +4,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, MetricField } from '@/components/ui'
 import { CardRow } from '@/components/layout'
 import { StackedAssetChart } from '@/components/charts'
-import { getForeignAccountMaxima, getMeta, getNetWorth, getSnapshotDates, getTotalAssetsSeries, portfolioToday } from '@/lib/adapters/portfolio-db'
+import { getAssetEvents, getForeignAccountMaxima, getMeta, getNetWorth, getSnapshotDates, getTotalAssetsSeries, portfolioToday } from '@/lib/adapters/portfolio-db'
 import { convertMoney, createMoneyFormatter, formatKrw, formatUsd } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { fmtDate, fmtDateTime } from '@/lib/format'
@@ -12,6 +12,8 @@ import { getLanguage } from '@/lib/i18n-server'
 import { routeMetadata, routeSection } from '@/lib/page-names'
 import { lastCompleteYear, type ForeignAccountRow } from '@/lib/fbar'
 import { ASSET_CLASSES, type NetWorth, type TotalAssetsPoint } from '@/lib/net-worth'
+import { chartMarkers, snapEventDates } from '@/lib/asset-events'
+import { AssetEventList } from '@/components/AssetEventList'
 import { getPageCopy } from '@/lib/ui-copy'
 
 export const dynamic = 'force-dynamic'
@@ -39,6 +41,8 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
   // Every snapshot date, plus today. The month-end table keeps the last point of
   // each month: the month's last snapshot, and today for the current month.
   const totalAssets = getTotalAssetsSeries(getSnapshotDates(100 * 365), netWorth)
+  const eventMarkers = snapEventDates(getAssetEvents(), totalAssets.points.map((point) => point.date))
+  const eventsCopy = getPageCopy('assetEvents', language)
   const monthEnds = new Map<string, HistoryRow>()
   for (const point of totalAssets.points) monthEnds.set(point.date.slice(0, 7), { ...point, month: point.date.slice(0, 7) })
   const history = [...monthEnds.values()]
@@ -140,11 +144,15 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
           currency={currencyPreferences.displayCurrency}
           labels={{ ...copy.classes, total: copy.historyColumns.total }}
           axisLabel={currencyPreferences.displayCurrency === 'USD' ? copy.chartAxisUsd : copy.chartAxisKrw}
+          markers={chartMarkers(eventMarkers, totalAssets.points[0]?.date)}
         />
         <div className="mt-1 text-label text-ink-3">
           {copy.trendStarts(classes.filter((key) => totalAssets.startsOn[key]).map((key) => copy.classSince(copy.classes[key], fmtDate(totalAssets.startsOn[key]!))))}
         </div>
         <div className="mt-2 text-label leading-relaxed text-ink-3">{copy.trendNote}</div>
+        <div className="mt-4">
+          <AssetEventList markers={eventMarkers} copy={eventsCopy} money={(krw) => money(krw)} />
+        </div>
       </Card>
 
       <Card title={copy.balances}>

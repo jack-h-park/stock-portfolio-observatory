@@ -46,6 +46,9 @@
 # and anchor balances. The refresh host's extractors need it to name and anchor
 # the deposits, and it may be absent on a machine that has no bank accounts
 # (the CONFIG loop below skips a missing file with a note).
+# asset-event-labels.local.json names the money that arrived from outside (a
+# sale, an inheritance) for the asset events list; its groups carry real
+# counterparties, so it is gitignored too, and edited here.
 #
 # Copying the generated database back over the one being served would replace
 # live data with whatever this machine last happened to build. So the directory
@@ -131,6 +134,7 @@ SOURCES=(
 CONFIG=(
   manual-mappings.json
   accounts.local.json
+  asset-event-labels.local.json
 )
 
 [ -d "$LOCAL_DIR" ] || { echo "ERROR: no data directory at $LOCAL_DIR" >&2; exit 1; }
