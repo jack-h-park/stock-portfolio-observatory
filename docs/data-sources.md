@@ -380,6 +380,59 @@ the kind the series names. A number of another kind in that series (a CMA under
 two formats (`NNN-NNNNNNNNN`, `NNN-NN-NNNNNNN`) is one account: numbers are
 compared by their digits.
 
+### Transcribed statements
+
+A closed account's 거래내역증명서 may exist only as photos of a monitor (the
+broker's viewer would not save or print it). The photos are transcribed once to a
+`.txt` and filed beside the PDFs; the extractors read it as they read a PDF.
+
+| Account | File |
+|---|---|
+| 종합 (a `kind: "general"` entry) | `kr-statements/mirae-general-transactions-<from>-<to>-<발급번호>.txt` |
+| CMA (a `kind: "cma"` entry) | `bank-statements/mirae-cma-<from>-<to>-<발급번호>.txt` |
+
+The format is the one `kr-statements-transcribed/` already uses: a header
+(`계좌번호: <full number> (<계좌유형>)`, `조회기간(거래일자): <from> ~ <to>`,
+`거래구분: 전체`), then `[거래내역]`, a column line, and `--- NN/MM쪽 ---` page
+markers with one `|`-separated line of 22 fields per record (the two physical
+lines of a record joined). Numbers keep their thousands separators; a blank is a
+value the original does not print. The file is read through the same page and
+table interface a PDF has, so the account map, the printed period and the
+overlap rules apply unchanged: a number the map lacks is skipped with a finding.
+
+- **A PDF always wins.** Where a PDF and a transcription of the same account
+  cover the same days, the PDF is read for them. A transcription inside a PDF's
+  period is not read at all; one that merely overlaps leaves the shared days.
+- **Read a photo with its right-hand columns.** 거래금액, 예수금잔액, 유가잔고 and
+  the 외화 columns are the right half of the page. A portrait photo of a
+  landscape page cuts them off, and a row with no amount is not usable. A
+  transcription is only as good as its checks; the header of each file lists what
+  was checked (dates, 거래번호 sequence per day, 거래금액 − 제세금합 = 입출금액, the
+  예수금 and 외화예수금 chains, and that the account closes at zero).
+- **Never commit one.** The files hold real transactions and the repo is public.
+  They live under `STOCK_DATA_DIR` like any statement and travel with
+  `push-sources.sh`. Add the account's map entry (`label` for a second 종합,
+  `alias` for a CMA, and `retiredOn` once closed) *before* pushing the file, or
+  the refresh stops at an `account-mismatch` / `mirae-unmapped-account` finding.
+
+Two things about these accounts the PDF layouts never needed:
+
+- **RP.** A CMA that sweeps into RP (`마감후 CMA조건부매수`, `CMA-RP환매도`,
+  `CMA-RP재투자(매도)`) is read like the 발행어음 CMA: a buy moves cash into
+  principal and changes nothing, a sell adds only its net interest, and the
+  account balance is the printed 예수금잔액 plus the principal held. A blank
+  예수금잔액 beside a 입출금액 is a zero, since the certificate prints nothing
+  when a line empties the pool. A 종합 account that sweeps its dollars into
+  `외화RP` prints 외화예수금 in the morning and nothing after the evening
+  `외화RP매수`; the principal in RP is added back so the pool does not read $0
+  every night (`ForeignRp` in `extract-kr-statements.py`). `외화RP매수`,
+  `외화RP환매도` and `계좌폐쇄` are not transactions.
+- **Which CMA.** Each CMA is its own source in the estimates, so a 계좌대체
+  between two CMAs, or from a CMA to a 금현물 account, finds its other leg. The
+  금현물 certificate is read for transfers too, not only the 종합 and ISA ones.
+  A closed CMA on file stops being estimated as `미래에셋 기타 계좌`: drop the
+  matching `anchors` entry of the map.
+
 ### Pension accounts and gold
 
 The IRP and 연금저축 accounts and the 미래에셋 금현물 account are filed by the

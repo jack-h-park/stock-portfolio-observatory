@@ -570,6 +570,13 @@ def _kr_statements_module():
 CMA_SWEEPS_EXCLUDED = "CMA자동매매제외"
 CMA_SWEEPS_INCLUDED = "거래구분전체"
 CMA_SWEEP_KIND = "발행어음"
+# A CMA that sweeps into RP (the Naver-linked one) moves its cash the same way,
+# under other names: `마감후 CMA조건부매수` puts the day's cash into RP, and
+# `CMA-RP환매도` / `CMA-RP재투자(매도)` take principal back with the interest.
+# The principal of a buy is its 입출금액; the principal of a sell is its 거래수량.
+CMA_RP_KINDS = ("CMA조건부매수", "CMA-RP")
+# The account closing: a marker row, no money.
+CMA_CLOSED_KIND = "계좌폐쇄"
 CMA_REMEDY = "re-issue the 거래내역증명서 with CMA자동매매 포함, or provide a 잔고증명서"
 
 
@@ -582,6 +589,11 @@ def _cma_direction(kind):
     if "출금" in kind or "송금" in kind:
         return -1
     return 0
+
+
+def _is_cma_sweep(kind):
+    """A move between 예수금 and what the CMA sweeps into: 발행어음 or RP."""
+    return CMA_SWEEP_KIND in kind or any(marker in kind for marker in CMA_RP_KINDS)
 
 
 def parse_mirae_cma(path, findings, notes=None):
@@ -630,7 +642,7 @@ def parse_mirae_cma(path, findings, notes=None):
             f"{path.name}: issued with CMA자동매매 제외, so its 예수금잔액 leaves out the 발행어음 sweeps and is "
             f"not the account balance; no balances written — {CMA_REMEDY}")
         return None
-    has_sweeps = any(CMA_SWEEP_KIND in a[1] for _page, a, _b, _c in records)
+    has_sweeps = any(_is_cma_sweep(a[1]) for _page, a, _b, _c in records)
     if CMA_SWEEPS_INCLUDED not in filter_text and not has_sweeps:
         findings.append(
             f"{path.name}: page 2 shows neither 거래구분 전체 nor 발행어음 rows, so whether the 발행어음 sweeps are "
@@ -641,12 +653,16 @@ def parse_mirae_cma(path, findings, notes=None):
     principal, oversold = 0.0, False
     for seq, (_page, a, b, _c) in enumerate(records):
         kind = a[1].strip()
+        if CMA_CLOSED_KIND in kind:
+            continue
         direction = _cma_direction(kind)
         if not direction:
             unknown[kind] = unknown.get(kind, 0) + 1
         cash = kr.number(b[6]) if b[6].strip() else kr.number(a[6])
-        if CMA_SWEEP_KIND in kind:
-            units = kr.number(b[2])
+        if _is_cma_sweep(kind):
+            # A 발행어음 buy's units are its 거래수량; an RP buy prints none, and its
+            # principal is the cash it took.
+            units = kr.number(b[2]) if (CMA_SWEEP_KIND in kind or direction > 0) else cash
             if direction < 0:
                 principal += units
                 change = 0.0
@@ -658,6 +674,12 @@ def parse_mirae_cma(path, findings, notes=None):
         else:
             change = direction * cash
         printed = kr.number(a[7]) if a[7].strip() else None
+        if printed is None and CMA_SWEEP_KIND not in kind and cash:
+            # The certificate prints nothing rather than 0 when a line empties
+            # the 예수금: a blank beside a 입출금액 is the pool reaching zero (the
+            # same rule kr-statements reads its cash lines by). A 발행어음 buy
+            # prints no balance and no 입출금액, so it is not caught here.
+            printed = 0.0
         out.append({"date": a[0].strip().replace("/", "-"), "seq": seq, "description": kind, "amount": change,
                     "balance": round(printed + principal, 2) if printed is not None else None})
     for kind, count in sorted(unknown.items()):
@@ -1035,7 +1057,8 @@ def _derive(alias, txns, account_map, findings):
 
 KR_DIR = DATA_DIR / "kr-statements"
 # 미래에셋 종합/ISA transfers, read only to pair a CMA or 토스뱅크 transfer with its other leg.
-MIRAE_TRANSFER_GLOBS = ("mirae-general-transactions-*.pdf", "mirae-isa-transactions-*.pdf")
+MIRAE_TRANSFER_GLOBS = ("mirae-general-transactions-*.pdf", "mirae-isa-transactions-*.pdf",
+                        "mirae-gold-transactions-*.pdf", "mirae-general-transactions-*.txt")
 # A counterparty bank, as 토스뱅크 prints it, whose statements this extractor reads.
 STATEMENT_BANKS = {"MG새마을금고": "mg", "미래에셋증권": "mirae", "토스뱅크": "tossbank"}
 PAIR_DAYS = 3
@@ -1139,8 +1162,12 @@ def pair_transfers(flows):
     for bank, code in STATEMENT_BANKS.items():
         pair(lambda f, bank=bank: f["statement"] == "tossbank" and f["counterpartyInstitution"] == bank,
              lambda f, code=code: f["statement"] == code, PAIR_DAYS)
-    pair(lambda f: f["source"] == "mirae-cma" and "대체" in f["memo"],
+    pair(lambda f: f["source"].startswith("mirae-cma") and "대체" in f["memo"],
          lambda f: f["source"] == "mirae-brokerage" and "대체" in f["memo"], 0)
+    # Two CMAs of one holder move money between each other the same way; each is
+    # its own source, so a transfer between them finds its other leg.
+    pair(lambda f: f["source"].startswith("mirae-cma") and "대체" in f["memo"],
+         lambda f: f["source"].startswith("mirae-cma") and "대체" in f["memo"], 0)
     return flows
 
 
@@ -1341,7 +1368,9 @@ def main():
             if not txns:
                 continue
             if currency == "KRW" and institution in ("tossbank", "mg", "mirae"):
-                krw_statements.append((institution, "mirae-cma" if institution == "mirae" else f"{institution}-{key or kind}", txns))
+                # One source per account: two 미래에셋 CMAs must not share a name,
+                # or a transfer between them is read as both legs of one account.
+                krw_statements.append((institution, f"mirae-cma:{alias}" if institution == "mirae" else f"{institution}-{key or kind}", txns))
             if institution == "mg":
                 mg_salary.extend(txns)  # the same row objects: a `term` mark reaches the estimate
             derived = all(t["balance"] is None for t in txns)
