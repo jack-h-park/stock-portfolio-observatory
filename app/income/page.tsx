@@ -5,7 +5,7 @@ import { TrendBarChart } from '@/components/charts'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
 import { getIncomeReview } from '@/lib/adapters/portfolio-db'
 import { fmtNumber, fmtPct } from '@/lib/format'
-import { convertMoney, createMoneyFormatter } from '@/lib/currency'
+import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
@@ -22,17 +22,13 @@ export default async function IncomePage() {
   const language = await getLanguage()
   const currencyPreferences = await getCurrencyPreferences()
   const money = createMoneyFormatter(currencyPreferences)
-  // The chart plots the KRW base figure, so it has to convert on the same terms as
-  // every money value on the page — otherwise the axis stays ₩ while the cards read $.
-  const displayBaseValue = (value: number | null | undefined) =>
-    convertMoney(Number(value ?? 0), 'KRW', currencyPreferences.displayCurrency, currencyPreferences.usdKrwRate).value
   const usd = currencyPreferences.displayCurrency === 'USD'
   const chartDivisor = usd ? 1 : 1000
   const chartPrefix = usd ? '$' : '₩'
   const chartSuffix = usd ? '' : 'K'
   const copy = getPageCopy('income', language)
   const glossary = getGlossary(language)
-  const income = getIncomeReview()
+  const income = getIncomeReview(currencyPreferences.displayCurrency)
   const latestMonth = income.byMonth[income.byMonth.length - 1]
   const latestMonthLabel = latestMonth?.month ?? 'n/a'
 
@@ -43,7 +39,12 @@ export default async function IncomePage() {
         title={copy.title}
         emphasis={copy.emphasis}
         subtitle={copy.subtitle(fmtNumber(income.totals.row_count), latestMonthLabel)}
-        action={income.totals.tickerless_count ? <Badge tone="warning">{copy.tickerlessRows(fmtNumber(income.totals.tickerless_count))}</Badge> : <Badge tone="success">{copy.tickerMapped}</Badge>}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            {income.totals.tickerless_count ? <Badge tone="warning">{copy.tickerlessRows(fmtNumber(income.totals.tickerless_count))}</Badge> : <Badge tone="success">{copy.tickerMapped}</Badge>}
+            {income.totals.undated_count > 0 ? <Badge tone="warning">{copy.undatedRows(fmtNumber(income.totals.undated_count))}</Badge> : null}
+          </div>
+        }
       />
 
       <CardRow columns="hero">
@@ -51,13 +52,13 @@ export default async function IncomePage() {
           title={copy.trailing12mIncome}
           info={copy.trailing12mInfo}
           eyebrow={copy.incomeRunRate}
-          value={money(income.totals.trailing_12m_base_income)}
+          value={money(income.totals.trailing_12m_base_income, income.currency)}
           hint={copy.baseIncomeHint}
         >
           <KpiBand>
             <MetricField
               label={copy.ytdIncome}
-              value={money(income.totals.ytd_base_income)}
+              value={money(income.totals.ytd_base_income, income.currency)}
               hint={copy.latestMonth(latestMonthLabel)}
               tone="success"
               valueClassName="text-title"
@@ -110,15 +111,15 @@ export default async function IncomePage() {
           <div className="grid gap-3 text-caption">
             <div className="flex items-center justify-between">
               <span className="text-ink-3">{copy.dividendDistribution}</span>
-              <span className="font-medium tabular-nums text-ink">{money(income.totals.dividend_base_income)}</span>
+              <span className="font-medium tabular-nums text-ink">{money(income.totals.dividend_base_income, income.currency)}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-ink-3">{copy.interest}</span>
-              <span className="font-medium tabular-nums text-ink">{money(income.totals.interest_base_income)}</span>
+              <span className="font-medium tabular-nums text-ink">{money(income.totals.interest_base_income, income.currency)}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-ink-3">{copy.otherIncome}</span>
-              <span className="font-medium tabular-nums text-ink">{money(income.totals.other_base_income)}</span>
+              <span className="font-medium tabular-nums text-ink">{money(income.totals.other_base_income, income.currency)}</span>
             </div>
           </div>
         </Card>
@@ -129,7 +130,7 @@ export default async function IncomePage() {
               <li key={`${row.market}:${row.currency}`} className="flex items-center gap-3 py-2 text-caption">
                 <Badge tone={marketTone(row.market)}>{row.market}</Badge>
                 <div className="min-w-0 flex-1">
-                  <div className="font-medium tabular-nums text-ink">{money(row.base_income)}</div>
+                  <div className="font-medium tabular-nums text-ink">{money(row.base_income, income.currency)}</div>
                   <div className="text-label text-ink-3">{money(row.native_income, row.currency)} {copy.native} · {fmtNumber(row.row_count)} {copy.rows}</div>
                 </div>
               </li>
@@ -159,7 +160,7 @@ export default async function IncomePage() {
       <CardRow>
         <Card title={copy.monthlyIncomeTrend}>
           <TrendBarChart
-            data={income.byMonth.map((row) => ({ month: row.month.slice(2), income: Math.round(displayBaseValue(row.base_income) / chartDivisor) }))}
+            data={income.byMonth.map((row) => ({ month: row.month.slice(2), income: Math.round(row.base_income / chartDivisor) }))}
             xKey="month"
             yKey="income"
             height={300}
@@ -179,7 +180,7 @@ export default async function IncomePage() {
               { key: 'currency', label: copy.columns.currency },
               { key: 'row_count', label: copy.columns.rows, align: 'right', render: (r) => fmtNumber(r.row_count) },
               { key: 'native_income', label: copy.columns.native, align: 'right', render: (r) => money(r.native_income, r.currency) },
-              { key: 'base_income', label: copy.columns.base, align: 'right', render: (r) => money(r.base_income) },
+              { key: 'base_income', label: copy.columns.base, align: 'right', render: (r) => money(r.base_income, income.currency) },
             ]}
           />
         </Card>
@@ -207,7 +208,7 @@ export default async function IncomePage() {
               },
               { key: 'row_count', label: copy.columns.rows, align: 'right', render: (r) => fmtNumber(r.row_count) },
               { key: 'native_income', label: copy.columns.nativeIncome, align: 'right', render: (r) => money(r.native_income, r.currency) },
-              { key: 'base_income', label: copy.columns.baseIncome, align: 'right', render: (r) => money(r.base_income) },
+              { key: 'base_income', label: copy.columns.baseIncome, align: 'right', render: (r) => money(r.base_income, income.currency) },
               { key: 'market_value', label: copy.columns.marketValue, align: 'right', render: (r) => (r.market_value == null ? 'n/a' : money(r.market_value)) },
               { key: 'trailing_yield', label: copy.columns.yield, align: 'right', render: (r) => fmtPct(r.trailing_yield) },
               { key: 'yield_on_cost', label: copy.columns.yieldOnCost, align: 'right', render: (r) => fmtPct(r.yield_on_cost) },
@@ -227,7 +228,7 @@ export default async function IncomePage() {
                 { key: 'name', label: copy.columns.name },
                 { key: 'row_count', label: copy.columns.rows, align: 'right', render: (r) => fmtNumber(r.row_count) },
                 { key: 'native_income', label: copy.columns.native, align: 'right', render: (r) => money(r.native_income, r.currency) },
-                { key: 'base_income', label: copy.columns.base, align: 'right', render: (r) => money(r.base_income) },
+                { key: 'base_income', label: copy.columns.base, align: 'right', render: (r) => money(r.base_income, income.currency) },
               ]}
             />
           )}

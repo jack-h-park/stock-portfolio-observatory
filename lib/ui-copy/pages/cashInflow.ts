@@ -1,0 +1,38 @@
+import { defineCopy } from '@/lib/ui-copy/define'
+
+export const cashInflow = defineCopy({
+  en: {
+    title: 'Cash Inflow', emphasis: 'Inflow',
+    subtitle: 'New money that arrived: salary, dividends net of withholding, interest and other credits, at the rate of the day each arrived.',
+    headlineEyebrow: 'Total inflow', notAvailable: 'n/a',
+    monthly: 'Monthly', yearly: 'Yearly',
+    trailing12m: 'Last 12 months', ytd: 'Year to date', monthlyAverage: 'Monthly average', salaryShare: 'Salary share',
+    trailing12mInfo: 'Salary, dividends, interest and other credits over the last twelve months. Unclassified credits and transfers between your own accounts are not included.',
+    categories: { salary: 'Salary', dividend: 'Dividends', interest: 'Interest', other: 'Other', unclassified: 'Unclassified' },
+    trendCard: 'Inflow by period', tableCard: 'Periods', detailCard: (period: string) => `Inflows in ${period}`,
+    unclassified: (count: string) => `${count} unclassified credit(s)`,
+    unclassifiedHint: 'Not in the totals. Add a bankInflowRules entry in manual-mappings.json to classify one.',
+    undated: (count: string) => `${count} row(s) at today's rate`,
+    noBankData: 'No bank statements on file: showing dividends and interest only.',
+    chartNote: 'Each credit converted at the USD/KRW rate of the day it arrived.',
+    axisKrw: 'KRW thousand', axisUsd: 'USD',
+    columns: { period: 'Period', total: 'Total', date: 'Date', category: 'Category', label: 'Description', account: 'Account', native: 'Native', amount: 'Amount' },
+  },
+  ko: {
+    title: '현금 유입', emphasis: '유입',
+    subtitle: '새로 들어온 돈입니다. 급여, 원천징수 후 배당, 이자, 기타 입금을 입금일 환율로 환산했습니다.',
+    headlineEyebrow: '총 유입', notAvailable: '해당 없음',
+    monthly: '월간', yearly: '연간',
+    trailing12m: '최근 12개월', ytd: '연초 이후', monthlyAverage: '월평균', salaryShare: '급여 비중',
+    trailing12mInfo: '최근 12개월의 급여, 배당, 이자, 기타 입금입니다. 미분류 입금과 내 계좌 간 이체는 포함하지 않습니다.',
+    categories: { salary: '급여', dividend: '배당', interest: '이자', other: '기타', unclassified: '미분류' },
+    trendCard: '기간별 유입', tableCard: '기간별 합계', detailCard: (period: string) => `${period} 입금 내역`,
+    unclassified: (count: string) => `미분류 입금 ${count}건`,
+    unclassifiedHint: '합계에 포함되지 않습니다. manual-mappings.json의 bankInflowRules에 규칙을 추가하면 분류됩니다.',
+    undated: (count: string) => `오늘 환율 적용 ${count}건`,
+    noBankData: '은행 거래내역이 없어 배당과 이자만 표시합니다.',
+    chartNote: '각 입금을 입금일의 원/달러 환율로 환산했습니다.',
+    axisKrw: '천 원', axisUsd: '달러',
+    columns: { period: '기간', total: '합계', date: '날짜', category: '분류', label: '내용', account: '계좌', native: '원 통화 금액', amount: '금액' },
+  },
+})

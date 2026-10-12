@@ -4,6 +4,7 @@ import path from 'node:path'
 import { createHash } from 'node:crypto'
 import Database from 'better-sqlite3'
 import { config } from '@/config'
+import { datedAmountSql, NET_DIVIDEND_SQL, type DisplayCurrency } from '@/lib/adapters/income-fx'
 import { buildTaxPlan, summarizeTaxCandidates, type TaxPlanningLot } from '@/lib/tax-planning'
 import { allocateTax, buildInvestmentEpisodes, mergeAssetEvents, type AssetEvent, type ClosedLot, type DividendRow, type InflowEvent, type OpenLot } from '@/lib/asset-events'
 import { getRebalancePolicy } from '@/lib/rebalance-policy'
@@ -509,6 +510,7 @@ export type PortfolioReview = {
 }
 
 export type IncomeReview = {
+  currency: DisplayCurrency
   totals: {
     row_count: number
     tickerless_count: number
@@ -520,6 +522,7 @@ export type IncomeReview = {
     usd_income: number
     ytd_base_income: number
     trailing_12m_base_income: number
+    undated_count: number
     yield_on_market: number | null
     yield_on_cost: number | null
   }
@@ -1214,6 +1217,19 @@ export function portfolioToday() {
     month: '2-digit',
     day: '2-digit',
   }).format(new Date())
+}
+
+/** Year and month (1-12) of `at` in the ingest's time zone. */
+export function portfolioYearMonth(at: Date = new Date()) {
+  const [year, month] = new Intl.DateTimeFormat('en-CA', {
+    timeZone: process.env.STOCK_TIME_ZONE || 'America/Los_Angeles',
+    year: 'numeric',
+    month: '2-digit',
+  })
+    .format(at)
+    .split('-')
+    .map(Number)
+  return { year, month }
 }
 
 /** Snapshot dates within the last `days`, oldest first: the dates the total-assets chart plots. */
@@ -2644,9 +2660,11 @@ export function getMarketBreakdown(): MarketBreakdown[] {
   }
 }
 
-export function getIncomeReview(): IncomeReview {
+export function getIncomeReview(display: DisplayCurrency): IncomeReview {
   const conn = db()
   try {
+    const v = datedAmountSql(display)
+    const vKrw = datedAmountSql('KRW')
     const currentYear = String(new Date().getFullYear())
     const trailingStart = new Date()
     trailingStart.setMonth(trailingStart.getMonth() - 12)
@@ -2664,25 +2682,27 @@ export function getIncomeReview(): IncomeReview {
         `select
           count(*) as row_count,
           sum(case when ticker is null or trim(ticker) = '' then 1 else 0 end) as tickerless_count,
-          coalesce(sum(amount_krw), 0) as base_income,
-          coalesce(sum(case when income_category = 'dividend' then amount_krw else 0 end), 0) as dividend_base_income,
-          coalesce(sum(case when income_category = 'interest' then amount_krw else 0 end), 0) as interest_base_income,
-          coalesce(sum(case when income_category not in ('dividend', 'interest') then amount_krw else 0 end), 0) as other_base_income,
+          coalesce(sum(${v}), 0) as base_income,
+          coalesce(sum(case when income_category = 'dividend' then ${v} else 0 end), 0) as dividend_base_income,
+          coalesce(sum(case when income_category = 'interest' then ${v} else 0 end), 0) as interest_base_income,
+          coalesce(sum(case when income_category not in ('dividend', 'interest') then ${v} else 0 end), 0) as other_base_income,
           coalesce(sum(case when currency = 'KRW' then native_amount else 0 end), 0) as krw_income,
           coalesce(sum(case when currency = 'USD' then native_amount else 0 end), 0) as usd_income,
-          coalesce(sum(case when substr(date, 1, 4) = ? then amount_krw else 0 end), 0) as ytd_base_income,
-          coalesce(sum(case when substr(date, 1, 7) >= ? then amount_krw else 0 end), 0) as trailing_12m_base_income
+          coalesce(sum(case when substr(date, 1, 4) = ? then ${v} else 0 end), 0) as ytd_base_income,
+          coalesce(sum(case when substr(date, 1, 7) >= ? then ${v} else 0 end), 0) as trailing_12m_base_income,
+          coalesce(sum(case when substr(date, 1, 7) >= ? then ${vKrw} else 0 end), 0) as trailing_12m_krw,
+          coalesce(sum(case when usd_krw_rate_dated = 0 and currency != ? then 1 else 0 end), 0) as undated_count
          from dividends`
       )
-      .get(currentYear, trailingStartMonth) as Omit<IncomeReview['totals'], 'yield_on_market' | 'yield_on_cost'>
+      .get(currentYear, trailingStartMonth, trailingStartMonth, display) as Omit<IncomeReview['totals'], 'yield_on_market' | 'yield_on_cost'> & { trailing_12m_krw: number }
     const byMonth = conn
       .prepare(
         `select
           substr(date, 1, 7) as month,
-          coalesce(sum(amount_krw), 0) as base_income,
-          coalesce(sum(case when income_category = 'dividend' then amount_krw else 0 end), 0) as dividend_base_income,
-          coalesce(sum(case when income_category = 'interest' then amount_krw else 0 end), 0) as interest_base_income,
-          coalesce(sum(case when income_category not in ('dividend', 'interest') then amount_krw else 0 end), 0) as other_base_income,
+          coalesce(sum(${v}), 0) as base_income,
+          coalesce(sum(case when income_category = 'dividend' then ${v} else 0 end), 0) as dividend_base_income,
+          coalesce(sum(case when income_category = 'interest' then ${v} else 0 end), 0) as interest_base_income,
+          coalesce(sum(case when income_category not in ('dividend', 'interest') then ${v} else 0 end), 0) as other_base_income,
           count(*) as row_count
          from dividends
          group by substr(date, 1, 7)
@@ -2696,7 +2716,7 @@ export function getIncomeReview(): IncomeReview {
           substr(date, 1, 4) as year,
           currency,
           coalesce(sum(native_amount), 0) as native_income,
-          coalesce(sum(amount_krw), 0) as base_income,
+          coalesce(sum(${v}), 0) as base_income,
           count(*) as row_count
          from dividends
          group by substr(date, 1, 4), currency
@@ -2705,7 +2725,7 @@ export function getIncomeReview(): IncomeReview {
       .all() as IncomeReview['byYear']
     const byMarket = conn
       .prepare(
-        `select market, currency, coalesce(sum(native_amount), 0) as native_income, coalesce(sum(amount_krw), 0) as base_income, count(*) as row_count
+        `select market, currency, coalesce(sum(native_amount), 0) as native_income, coalesce(sum(${v}), 0) as base_income, count(*) as row_count
          from dividends
          group by market, currency
          order by base_income desc`
@@ -2716,7 +2736,8 @@ export function getIncomeReview(): IncomeReview {
         `with income as (
            select market, currency, ticker, max(coalesce(name, ticker)) as name,
              coalesce(sum(native_amount), 0) as native_income,
-             coalesce(sum(amount_krw), 0) as base_income,
+             coalesce(sum(${v}), 0) as base_income,
+             coalesce(sum(${vKrw}), 0) as base_income_krw,
              count(*) as row_count
            from dividends
            where ticker is not null and trim(ticker) != ''
@@ -2733,8 +2754,8 @@ export function getIncomeReview(): IncomeReview {
          select income.*,
            holding_values.market_value,
            holding_values.cost_basis,
-           case when holding_values.market_value > 0 then income.base_income / holding_values.market_value * 100 else null end as trailing_yield,
-           case when holding_values.cost_basis > 0 then income.base_income / holding_values.cost_basis * 100 else null end as yield_on_cost
+           case when holding_values.market_value > 0 then income.base_income_krw / holding_values.market_value * 100 else null end as trailing_yield,
+           case when holding_values.cost_basis > 0 then income.base_income_krw / holding_values.cost_basis * 100 else null end as yield_on_cost
          from income
          left join holding_values on holding_values.market = income.market and holding_values.ticker = income.ticker
          order by income.base_income desc
@@ -2745,7 +2766,7 @@ export function getIncomeReview(): IncomeReview {
       .prepare(
         `select market, currency, name, type,
           coalesce(sum(native_amount), 0) as native_income,
-          coalesce(sum(amount_krw), 0) as base_income,
+          coalesce(sum(${v}), 0) as base_income,
           count(*) as row_count
          from dividends
          where ticker is null or trim(ticker) = ''
@@ -2754,11 +2775,14 @@ export function getIncomeReview(): IncomeReview {
          limit 20`
       )
       .all() as IncomeReview['tickerless']
+    // Holdings are valued in KRW, so the yields divide the KRW figure whatever the display currency is.
+    const { trailing_12m_krw: trailing12mKrw, ...totalsOut } = totals
     return {
+      currency: display,
       totals: {
-        ...totals,
-        yield_on_market: portfolioTotals.market_value > 0 ? (totals.trailing_12m_base_income / portfolioTotals.market_value) * 100 : null,
-        yield_on_cost: portfolioTotals.cost_basis > 0 ? (totals.trailing_12m_base_income / portfolioTotals.cost_basis) * 100 : null,
+        ...totalsOut,
+        yield_on_market: portfolioTotals.market_value > 0 ? (trailing12mKrw / portfolioTotals.market_value) * 100 : null,
+        yield_on_cost: portfolioTotals.cost_basis > 0 ? (trailing12mKrw / portfolioTotals.cost_basis) * 100 : null,
       },
       byMonth: byMonth.reverse(),
       byYear,
@@ -2766,6 +2790,110 @@ export function getIncomeReview(): IncomeReview {
       byPosition,
       tickerless,
     }
+  } finally {
+    conn.close()
+  }
+}
+
+export type CashInflowCategory = 'salary' | 'dividend' | 'interest' | 'other' | 'unclassified'
+export type CashInflowPeriod = { period: string; salary: number; dividend: number; interest: number; other: number; unclassified: number; total: number }
+export type CashInflow = {
+  currency: DisplayCurrency
+  granularity: 'month' | 'year'
+  periods: CashInflowPeriod[]
+  totals: { trailing12m: number; ytd: number; monthlyAverage12m: number; salaryShare12m: number | null }
+  unclassifiedCount: number
+  undatedCount: number
+  hasBankData: boolean
+}
+export type CashInflowRow = { date: string; source: 'bank' | 'dividend'; category: CashInflowCategory; label: string; account: string; currency: string; native: number; amount: number }
+
+// Dividend-table rows that are not cash arriving: in-kind rewards, and the
+// pre-conversion FX difference (선환전차액입금), which returns the user's own money.
+const NON_CASH_DIVIDEND_TYPES = ['SHARE_REWARD', 'STAKING_REWARD', '선환전차액입금']
+
+// Bank credits (transfers between own accounts are never read) unioned with
+// dividend-table rows, one shape: date, source, category, label, account,
+// currency, native, amount (display currency, own-date rate), dated (0/1).
+function cashInflowUnion(conn: Database.Database, display: DisplayCurrency) {
+  const hasBank = Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'bank_inflows'").get())
+  const excluded = NON_CASH_DIVIDEND_TYPES.map((t) => `'${t}'`).join(', ')
+  const bank = hasBank
+    ? `select date, 'bank' as source, category, coalesce(description, '') as label, account, currency, amount as native,
+         ${datedAmountSql(display, 'amount')} as amount, usd_krw_rate_dated as dated
+       from bank_inflows where category != 'transfer'`
+    : `select null as date, null as source, null as category, null as label, null as account, null as currency, 0 as native, 0 as amount, 1 as dated where 0`
+  const netNative = `(${NET_DIVIDEND_SQL})`
+  return `${bank}
+    union all
+    select date, 'dividend', case income_category when 'dividend' then 'dividend' when 'interest' then 'interest' else 'other' end,
+      coalesce(name, ticker, ''), account, currency, ${netNative}, ${datedAmountSql(display, netNative)}, usd_krw_rate_dated
+    from dividends where upper(coalesce(type, '')) not in (${excluded})`
+}
+
+const CASH_INFLOW_CATEGORIES = ['salary', 'dividend', 'interest', 'other', 'unclassified'] as const
+
+function cashInflowPeriods(conn: Database.Database, display: DisplayCurrency, len: number): CashInflowPeriod[] {
+  const sums = CASH_INFLOW_CATEGORIES.map((c) => `coalesce(sum(case when category = '${c}' then amount end), 0) as ${c}`).join(', ')
+  const rows = conn
+    .prepare(`select substr(date, 1, ${len}) as period, ${sums} from (${cashInflowUnion(conn, display)}) where date is not null group by period order by period`)
+    .all() as Omit<CashInflowPeriod, 'total'>[]
+  return rows.map((r) => ({ ...r, total: r.salary + r.dividend + r.interest + r.other }))
+}
+
+/**
+ * Salary, dividends (net of withholding), interest and other credits by month or
+ * year in the display currency, each row at its own date's USD/KRW rate.
+ * `total` leaves out `unclassified`. `now` exists so tests control the window.
+ */
+export function getCashInflow(granularity: 'month' | 'year', display: DisplayCurrency, now: Date = new Date()): CashInflow {
+  const conn = db()
+  try {
+    const periods = cashInflowPeriods(conn, display, granularity === 'month' ? 7 : 4)
+    const months = granularity === 'month' ? periods : cashInflowPeriods(conn, display, 7)
+    // The current month is the month in the app's time zone, not UTC's.
+    const { year: nowYear, month: nowMonth } = portfolioYearMonth(now)
+    const currentMonth = `${nowYear}-${String(nowMonth).padStart(2, '0')}`
+    const start = new Date(Date.UTC(nowYear, nowMonth - 1 - 11, 1)).toISOString().slice(0, 7)
+    const year = currentMonth.slice(0, 4)
+    const inWindow = months.filter((p) => p.period >= start && p.period <= currentMonth)
+    const trailing12m = inWindow.reduce((s, p) => s + p.total, 0)
+    const salary12m = inWindow.reduce((s, p) => s + p.salary, 0)
+    const ytd = months.filter((p) => p.period.startsWith(year) && p.period <= currentMonth).reduce((s, p) => s + p.total, 0)
+    const hasBank = Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'bank_inflows'").get())
+    const unclassifiedCount = hasBank
+      ? (conn.prepare("select count(*) as n from bank_inflows where category = 'unclassified'").get() as { n: number }).n
+      : 0
+    const hasBankData = hasBank && Boolean(conn.prepare('select 1 from bank_inflows limit 1').get())
+    const undatedCount = (
+      conn.prepare(`select count(*) as n from (${cashInflowUnion(conn, display)}) where date is not null and dated = 0 and currency != '${display}'`).get() as { n: number }
+    ).n
+    return {
+      currency: display,
+      granularity,
+      periods,
+      totals: { trailing12m, ytd, monthlyAverage12m: trailing12m / 12, salaryShare12m: trailing12m === 0 ? null : salary12m / trailing12m },
+      unclassifiedCount,
+      undatedCount,
+      hasBankData,
+    }
+  } finally {
+    conn.close()
+  }
+}
+
+/** The rows behind one period ('YYYY-MM' or 'YYYY'), oldest first; unclassified bank rows included. */
+export function getCashInflowRows(period: string, display: DisplayCurrency): CashInflowRow[] {
+  const conn = db()
+  try {
+    return conn
+      .prepare(
+        `select date, source, category, label, coalesce(account, '') as account, coalesce(currency, '') as currency, native, amount
+         from (${cashInflowUnion(conn, display)})
+         where date is not null and substr(date, 1, length(?)) = ?
+         order by date, source, label`
+      )
+      .all(period, period) as CashInflowRow[]
   } finally {
     conn.close()
   }

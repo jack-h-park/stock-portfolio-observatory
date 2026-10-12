@@ -67,7 +67,7 @@ function normalizeBankBalances(raw) {
   }
   if (!isObject(raw)) {
     problems.push('top level is not an object')
-    return { doc: { accounts: [], estimatedAccounts: [], externalInflows: [], findings: [], notes: [] }, problems }
+    return { doc: { accounts: [], estimatedAccounts: [], externalInflows: [], findings: [], notes: [], inflows: [] }, problems }
   }
   let rawAccounts = raw.accounts
   if (!Array.isArray(rawAccounts)) {
@@ -154,18 +154,48 @@ function normalizeBankBalances(raw) {
   // Informational lines from the extractor (for example a 토스뱅크 balance that was
   // computed because the statement printed none). Shown, never counted as a fault.
   const notes = raw.notes === null ? [] : strings(raw.notes, 'notes')
-  return { doc: { accounts, estimatedAccounts, externalInflows, findings, notes }, problems }
+  // Money arriving in a bank account. An entry that cannot be read is dropped
+  // and reported; one bad row must not cost the others.
+  const inflows = []
+  const rawBankInflows = raw.inflows === undefined ? [] : raw.inflows
+  if (!Array.isArray(rawBankInflows)) problems.push('inflows is not an array')
+  ;(Array.isArray(rawBankInflows) ? rawBankInflows : []).forEach((f, i) => {
+    const label = `inflows[${i}]`
+    if (!isObject(f) || ['institution', 'account', 'date'].some((k) => typeof f[k] !== 'string' || !f[k])) {
+      problems.push(`${label} lacks a string institution, account and date; inflow dropped`)
+      return
+    }
+    if (!['KRW', 'USD'].includes(f.currency)) {
+      problems.push(`${label} has unsupported currency '${f.currency}'; inflow dropped`)
+      return
+    }
+    if (typeof f.amount !== 'number' || !Number.isFinite(f.amount) || f.amount <= 0) {
+      problems.push(`${label} lacks a finite positive amount; inflow dropped`)
+      return
+    }
+    inflows.push({
+      institution: f.institution,
+      account: f.account,
+      currency: f.currency,
+      date: f.date,
+      amount: f.amount,
+      description: typeof f.description === 'string' ? f.description : '',
+      counterparty: typeof f.counterparty === 'string' ? f.counterparty : '',
+      ownTransfer: Boolean(f.ownTransfer),
+    })
+  })
+  return { doc: { accounts, estimatedAccounts, externalInflows, findings, notes, inflows }, problems }
 }
 let bankBalancesProblems = []
 const bankBalances = (() => {
-  if (!fs.existsSync(bankBalancesPath)) return { accounts: [], estimatedAccounts: [], externalInflows: [], findings: [], notes: [] }
+  if (!fs.existsSync(bankBalancesPath)) return { accounts: [], estimatedAccounts: [], externalInflows: [], findings: [], notes: [], inflows: [] }
   try {
     const { doc, problems } = normalizeBankBalances(JSON.parse(fs.readFileSync(bankBalancesPath, 'utf8')))
     bankBalancesProblems = problems
     return doc
   } catch (error) {
     bankBalancesProblems = [error instanceof Error ? error.message : String(error)]
-    return { accounts: [], estimatedAccounts: [], externalInflows: [], findings: [], notes: [] }
+    return { accounts: [], estimatedAccounts: [], externalInflows: [], findings: [], notes: [], inflows: [] }
   }
 })()
 const assetEventLabelsPath =
@@ -949,6 +979,24 @@ create table cash_balances (
   derived integer not null default 0
 );
 
+-- Money arriving in a bank account, from the "inflows" of bank-balances.json. The
+-- category is decided at ingest: salary | dividend | interest | other | transfer |
+-- unclassified. An own-account move is a transfer and never counts as new money.
+create table bank_inflows (
+  id integer primary key,
+  institution text not null,
+  account text not null,
+  currency text not null,
+  date text not null,
+  amount real not null,
+  description text not null default '',
+  counterparty text not null default '',
+  category text not null,
+  rule text,
+  usd_krw_rate real,
+  usd_krw_rate_dated integer not null default 0
+);
+
 create table cash_estimates (
   id integer primary key,
   institution text not null,
@@ -1194,6 +1242,8 @@ create table dividends_all (
   native_amount real not null,
   native_tax_withheld real,
   amount_krw real not null,
+  usd_krw_rate real,
+  usd_krw_rate_dated integer not null default 0,
   type text,
   income_category text,
   mapping_status text,
@@ -1424,15 +1474,33 @@ const historicalFxDates = (historicalFxDocument.rates ?? [])
   .filter((r) => r.date && Number.isFinite(r.rate))
   .sort((a, b) => a.date.localeCompare(b.date))
 
-function krwOn(nativeAmount, currency, date) {
-  if (nativeAmount == null) return null
-  if (!currency || currency === 'KRW') return nativeAmount
+// The USD/KRW rate on `date`: the historical table's rate for that day or the
+// closest earlier one. Older than the table, it is today's snapshot rate and
+// says so (`dated: false`), so a view can count what it could not date.
+function usdKrwOn(date) {
   let best = null
   for (const entry of historicalFxDates) {
     if (entry.date > date) break
     best = entry
   }
-  const rate = best?.rate ?? fxRate(currency)?.rate ?? null
+  if (best) return { rate: best.rate, dated: true }
+  const current = fxRate('USD')?.rate ?? null
+  return current == null ? null : { rate: current, dated: false }
+}
+
+function krwOn(nativeAmount, currency, date) {
+  if (nativeAmount == null) return null
+  if (!currency || currency === 'KRW') return nativeAmount
+  let rate
+  if (currency === 'USD') rate = usdKrwOn(date)?.rate ?? null
+  else {
+    let best = null
+    for (const entry of historicalFxDates) {
+      if (entry.date > date) break
+      best = entry
+    }
+    rate = best?.rate ?? fxRate(currency)?.rate ?? null
+  }
   return rate == null ? null : nativeAmount * rate
 }
 
@@ -2178,7 +2246,8 @@ const dividendRows = datasets.dividends.rows.map((r) => ({
   ticker: normalizeTicker(r.Symbol),
   name: text(r.Name),
   native_amount: number(pick(r, 'Native Amount', 'Amount (KRW)')) ?? 0,
-  native_tax_withheld: null,
+  // Absent in a dividends.tsv written before the column existed; number() gives null.
+  native_tax_withheld: number(r.Tax),
   amount_krw: krAmount(r, 'Amount (KRW)') ?? 0,
   type: text(r.Type),
   source: text(r.Source),
@@ -5032,6 +5101,67 @@ insertMany(db, 'fx_events', fxLedger.events ?? [], [
   'note',
 ])
 insertMany(db, 'cash_balances', cashRows, ['institution', 'account', 'owner', 'kind', 'currency', 'as_of_date', 'balance', 'day_max_balance', 'source', 'derived'])
+// Classify each bank credit. Order: an own-account move is a transfer; the first
+// bankInflowRules match wins; then the description decides dividend or interest;
+// anything else stays unclassified so the check below can ask for a rule.
+const BANK_INFLOW_CATEGORIES = ['salary', 'dividend', 'interest', 'other', 'transfer']
+const BANK_INFLOW_MATCH_KEYS = ['institution', 'accountIncludes', 'descriptionIncludes', 'counterpartyIncludes', 'currency']
+const bankInflowRuleProblems = []
+// Defaults read the whole description, which for 토스뱅크 is "{적요} {메모}" and for
+// 새마을금고 can be a sender's name. Interest must therefore be the word 이자 standing
+// alone as a memo (optionally 예금/결산/자동 before it, 입금/지급 after it), so a
+// sender named 이자영 stays unclassified. Korean names cannot contain 배당.
+const BANK_DIVIDEND_RE = /배당|DIVIDEND/i
+const BANK_INTEREST_RE = /(^|\s)(예금|결산|자동\s?)?이자(\s|입금|지급|$)|INTEREST/i
+// A rule is usable only with an allowed category and a match that constrains at
+// least one known key: includesText treats an empty needle as a hit, so a rule
+// with no usable key would swallow every row. Problems name the rule's id or
+// index and the reason, never its match strings.
+const bankInflowRules = (Array.isArray(manualMappings.bankInflowRules) ? manualMappings.bankInflowRules : []).filter((r, i) => {
+  const isObj = r && typeof r === 'object' && !Array.isArray(r)
+  const name = `bankInflowRules[${i}]${isObj && r.id ? ` (${r.id})` : ''}`
+  if (!isObj || !BANK_INFLOW_CATEGORIES.includes(r.category)) {
+    bankInflowRuleProblems.push(`${name} has a category that is not one of ${BANK_INFLOW_CATEGORIES.join('|')}; rule skipped`)
+    return false
+  }
+  const m = r.match
+  const isMatchObj = m && typeof m === 'object' && !Array.isArray(m)
+  // A key outside the known five would be ignored by the matcher, so the rule
+  // would match more broadly than its author meant: reject the whole rule.
+  if (isMatchObj && Object.keys(m).some((k) => !BANK_INFLOW_MATCH_KEYS.includes(k))) {
+    bankInflowRuleProblems.push(`${name} has a match key outside ${BANK_INFLOW_MATCH_KEYS.join('/')}; rule skipped`)
+    return false
+  }
+  // A whitespace-only value trims to '' in includesText, which matches everything.
+  const constrains = isMatchObj && BANK_INFLOW_MATCH_KEYS.some((k) => typeof m[k] === 'string' && m[k].trim() !== '')
+  if (!constrains) {
+    bankInflowRuleProblems.push(`${name} has no match on ${BANK_INFLOW_MATCH_KEYS.join('/')} with a non-blank value; rule skipped`)
+    return false
+  }
+  return true
+})
+const bankInflowMatches = (row, match = {}) =>
+  includesText(row.institution, match.institution) &&
+  includesText(row.account, match.accountIncludes) &&
+  includesText(row.description, match.descriptionIncludes) &&
+  includesText(row.counterparty, match.counterpartyIncludes) &&
+  includesText(row.currency, match.currency)
+const bankInflowRows = bankBalances.inflows.map((f) => {
+  let category = null
+  let rule = null
+  if (f.ownTransfer) category = 'transfer'
+  if (!category) {
+    const r = bankInflowRules.find((x) => bankInflowMatches(f, x.match))
+    if (r) {
+      category = r.category
+      rule = r.id ?? null
+    }
+  }
+  if (!category) category = BANK_DIVIDEND_RE.test(f.description) ? 'dividend' : BANK_INTEREST_RE.test(f.description) ? 'interest' : 'unclassified'
+  const fx = usdKrwOn(f.date)
+  return { ...f, category, rule, usd_krw_rate: fx?.rate ?? null, usd_krw_rate_dated: fx?.dated ? 1 : 0 }
+})
+insertMany(db, 'bank_inflows', bankInflowRows, ['institution', 'account', 'currency', 'date', 'amount', 'description', 'counterparty', 'category', 'rule', 'usd_krw_rate', 'usd_krw_rate_dated'])
 insertMany(
   db,
   'cash_estimates',
@@ -5092,6 +5222,13 @@ insertMany(db, 'fx_account_balances', fxLedger.balances ?? [], [
   'balance_usd',
   'source',
 ])
+// Each income row carries the USD/KRW rate of its own date so a view can
+// convert a payment at what the dollar was worth when it arrived.
+for (const row of dividendRows) {
+  const fx = usdKrwOn(row.date)
+  row.usd_krw_rate = fx?.rate ?? null
+  row.usd_krw_rate_dated = fx?.dated ? 1 : 0
+}
 insertMany(db, 'dividends', dividendRows, [
   'market',
   'currency',
@@ -5106,6 +5243,8 @@ insertMany(db, 'dividends', dividendRows, [
   'native_amount',
   'native_tax_withheld',
   'amount_krw',
+  'usd_krw_rate',
+  'usd_krw_rate_dated',
   'type',
   'income_category',
   'mapping_status',
@@ -5740,6 +5879,28 @@ check(
   'warning',
   'supplementary'
 )
+const unclassifiedInflows = bankInflowRows.filter((r) => r.category === 'unclassified')
+const unclassifiedSums = ['KRW', 'USD']
+  .map((c) => [c, unclassifiedInflows.filter((r) => r.currency === c).reduce((n, r) => n + r.amount, 0)])
+  .filter(([, sum]) => sum > 0)
+  .map(([c, sum]) => `${c} ${sum.toLocaleString('en-US', c === 'USD' ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : { maximumFractionDigits: 0 })}`)
+// The detail carries counts and sums only: descriptions and counterparties can hold names.
+check(
+  'bank_inflows_classified',
+  unclassifiedInflows.length === 0,
+  unclassifiedInflows.length
+    ? `${unclassifiedInflows.length} bank inflow(s) match no rule: ${unclassifiedSums.join(' · ')}`
+    : 'every bank inflow is classified',
+  'warning',
+  'supplementary'
+)
+check(
+  'bank_inflow_rules_valid',
+  bankInflowRuleProblems.length === 0,
+  bankInflowRuleProblems.length ? bankInflowRuleProblems.slice(0, 3).join('; ') : 'every bank inflow rule has an allowed category',
+  'warning',
+  'supplementary'
+)
 const continuityBreaks = bankBalances.accounts.flatMap((a) => a.continuityBreaks.map((b) => `${a.account} ${b}`))
 check(
   'cash_balance_continuity',
@@ -6357,6 +6518,15 @@ check(
   'dividend_rows_match_transactions',
   txDividendCount === dividendRows.length,
   `${txDividendCount} transaction dividends vs ${dividendRows.length} dividend rows`
+)
+const undatedIncome = dividendRows.filter((r) => !r.usd_krw_rate_dated).map((r) => r.date).sort()
+check(
+  'income_fx_dated',
+  undatedIncome.length === 0,
+  undatedIncome.length
+    ? `${undatedIncome.length} income row(s) have no dated USD/KRW rate and convert at today's rate; earliest ${undatedIncome[0]}`
+    : 'every income row converts at the USD/KRW rate of its own date',
+  'warning'
 )
 check('holdings_required_fields', invalidHoldings.length === 0, `${invalidHoldings.length} invalid holding row(s)`)
 check('taxlots_required_fields', invalidLots.length === 0, `${invalidLots.length} invalid tax lot row(s)`)

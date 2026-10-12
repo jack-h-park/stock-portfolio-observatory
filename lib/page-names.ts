@@ -24,6 +24,7 @@ export const ROUTE_HREFS = [
   '/review',
   '/rebalance',
   '/income',
+  '/cash-inflow',
   '/tax-planning',
   '/tax-settings',
   '/lots',

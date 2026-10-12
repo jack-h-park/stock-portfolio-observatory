@@ -7,6 +7,7 @@ import { rebalance } from '@/lib/ui-copy/pages/rebalance'
 import { dataOps } from '@/lib/ui-copy/pages/dataOps'
 import { holdings } from '@/lib/ui-copy/pages/holdings'
 import { income } from '@/lib/ui-copy/pages/income'
+import { cashInflow } from '@/lib/ui-copy/pages/cashInflow'
 import { fx } from '@/lib/ui-copy/pages/fx'
 import { reconciliation } from '@/lib/ui-copy/pages/reconciliation'
 import { overview } from '@/lib/ui-copy/pages/overview'
@@ -33,6 +34,7 @@ export const PAGE_COPY = {
   dataOps,
   holdings,
   income,
+  cashInflow,
   fx,
   reconciliation,
   overview,
