@@ -362,7 +362,13 @@ def close_series(balances, retired_on):
         datetime.strptime(str(retired_on), "%Y-%m-%d")
     except ValueError:
         return balances
-    return [b for b in balances if b["date"] < retired_on] + [{"date": retired_on, "balance": 0.0}]
+    closing = {"date": retired_on, "balance": 0.0}
+    # What the account held on the closing day before it closed stays as that day's high.
+    for b in balances:
+        peak = max(b["balance"], b.get("dayMax", b["balance"])) if b["date"] == retired_on else 0
+        if peak > 0:
+            closing["dayMax"] = peak
+    return [b for b in balances if b["date"] < retired_on] + [closing]
 
 
 def tossbank_pdf_accounts(account_map, findings, notes):
@@ -426,6 +432,7 @@ def tossbank_pdf_accounts(account_map, findings, notes):
                     notes.append(f"{label}: the {currency} section is not written, because the pipeline has no "
                                  f"{currency} rate to value it")
                     continue
+                balances = with_day_max(balances, txns)
                 if entry.get("retiredOn"):
                     balances = close_series(balances, entry["retiredOn"])
                 accounts.append({
@@ -468,6 +475,28 @@ def end_of_day(txns):
         if txn["balance"] is not None:
             last[txn["date"]] = txn["balance"]
     return [{"date": d, "balance": b} for d, b in sorted(last.items())]
+
+
+def with_day_max(balances, txns):
+    """End-of-day balances plus `dayMax`, the day's highest post-transaction balance.
+
+    For statements that print a balance after every row. The FBAR maximum wants
+    the highest balance at any time, and an end-of-day balance loses a peak that
+    left the same day (money in and out on one day, or a peak just before a
+    same-day withdrawal or closing). `dayMax` is written only on a day whose
+    highest row balance is above its end-of-day balance; a missing `dayMax`
+    means the end-of-day balance was the day's high. Everything except the FBAR
+    table keeps reading `balance`.
+    """
+    high = {}
+    for txn in txns:
+        if txn["balance"] is not None:
+            high[txn["date"]] = max(high.get(txn["date"], txn["balance"]), txn["balance"])
+    out = []
+    for b in balances:
+        peak = high.get(b["date"])
+        out.append({**b, "dayMax": peak} if peak is not None and peak > b["balance"] else b)
+    return out
 
 
 def walk_from_anchor(txns, anchor_date, anchor_balance):
@@ -1281,7 +1310,7 @@ def main():
             if institution == "mg":
                 mg_salary.extend(txns)  # the same row objects: a `term` mark reaches the estimate
             derived = all(t["balance"] is None for t in txns)
-            balances = _derive(alias, txns, account_map, findings) if derived else end_of_day(txns)
+            balances = _derive(alias, txns, account_map, findings) if derived else with_day_max(end_of_day(txns), txns)
             accounts.append({
                 "institution": institution, "account": alias, "kind": account_kind, "currency": currency, "owner": "self",
                 "derived": derived, "sources": [name for _, name, _ in parsed], "balances": balances,

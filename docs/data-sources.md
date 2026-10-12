@@ -703,6 +703,23 @@ table shows KRW only and says so. A year's maximum is flagged "may be understate
 unless the account's balance history is daily through the year; US institutions
 are excluded.
 
+**Intraday highs in the FBAR table.** FBAR asks for the highest balance at any
+time, and `cash_balances.balance` is an end-of-day balance, which loses money that
+came in and left on the same day, or a peak just before a same-day withdrawal or
+closing. For every statement family that prints a balance after each row (the
+토스뱅크 workbooks and PDF statements, 새마을금고, 미래에셋 CMA, and the US bank
+CSVs), the extractor also writes `dayMax` on a balance row whose day printed a
+higher post-transaction balance than its end-of-day one; the ingest stores it in
+the nullable `cash_balances.day_max_balance` (null means the end-of-day balance was
+the day's high, or the family prints no running balance). On a closing day
+(`retiredOn`) the row is 0 with `dayMax` set to what the account held before it
+closed. The FBAR maximum takes `max(day_max_balance, balance)` on that day only;
+later days carry the end-of-day balance forward. The total-assets trend, the
+deposit freshness checks and everything else read `balance` alone. A
+multi-currency account (the 외화통장) sums each currency's day high on a date in
+dollars, which is an upper bound: the sections are printed separately and their
+highs need not have happened at the same moment.
+
 **Brokerage cash in the FBAR table.** A Korean brokerage row is its securities at
 each month-end plus the account's uninvested cash on that date, carried forward
 from the last balance the statements print. `extract-kr-statements.py` writes

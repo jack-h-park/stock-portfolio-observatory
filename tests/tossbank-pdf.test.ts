@@ -209,7 +209,8 @@ test('retiredOn ends a 파킹통장 series: nothing after it is written, and it 
   assert.deepEqual(a.balances, [
     { date: '2024-03-03', balance: 200_000 },
     { date: '2024-06-20', balance: 0 },
-    { date: '2024-06-30', balance: 0 },
+    // The interest credited on the closing day was held before the close: the day's high.
+    { date: '2024-06-30', balance: 0, dayMax: 5 },
   ])
 })
 

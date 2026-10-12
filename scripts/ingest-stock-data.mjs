@@ -107,7 +107,12 @@ function normalizeBankBalances(raw) {
       owner: typeof a.owner === 'string' && a.owner ? a.owner : 'self',
       derived: Boolean(a.derived),
       sources: strings(a.sources, `${label}.sources`),
-      balances: balances.map((b) => ({ date: b.date, balance: b.balance })),
+      // dayMax: the day's highest printed balance (FBAR only); anything but a finite number is dropped.
+      balances: balances.map((b) => ({
+        date: b.date,
+        balance: b.balance,
+        ...(typeof b.dayMax === 'number' && Number.isFinite(b.dayMax) ? { dayMax: b.dayMax } : {}),
+      })),
       continuityBreaks: strings(a.continuityBreaks, `${label}.continuityBreaks`),
     })
   })
@@ -695,6 +700,7 @@ const cashRows = [
       currency: account.currency,
       as_of_date: b.date,
       balance: b.balance,
+      day_max_balance: typeof b.dayMax === 'number' && Number.isFinite(b.dayMax) ? b.dayMax : null,
       source: account.sources.join(', ') || path.basename(bankBalancesPath),
       derived: account.derived ? 1 : 0,
     }))
@@ -707,6 +713,7 @@ const cashRows = [
     currency: 'USD',
     as_of_date: b.as_of_date,
     balance: b.balance_usd,
+    day_max_balance: null,
     source: b.source,
     derived: 0,
   })),
@@ -935,6 +942,9 @@ create table cash_balances (
   currency text not null,
   as_of_date text not null,
   balance real not null,
+  -- The day's highest printed post-transaction balance, where it is above the
+  -- end-of-day balance (bank-balances.json dayMax). Read only by the FBAR table.
+  day_max_balance real,
   source text not null,
   derived integer not null default 0
 );
@@ -5021,7 +5031,7 @@ insertMany(db, 'fx_events', fxLedger.events ?? [], [
   'page',
   'note',
 ])
-insertMany(db, 'cash_balances', cashRows, ['institution', 'account', 'owner', 'kind', 'currency', 'as_of_date', 'balance', 'source', 'derived'])
+insertMany(db, 'cash_balances', cashRows, ['institution', 'account', 'owner', 'kind', 'currency', 'as_of_date', 'balance', 'day_max_balance', 'source', 'derived'])
 insertMany(
   db,
   'cash_estimates',

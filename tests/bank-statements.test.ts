@@ -206,7 +206,7 @@ test('토스뱅크 rows, newest first with float cells, read in order with signe
   assert.equal(doc.accounts.length, 1)
   const a = doc.accounts[0]
   assert.deepEqual([a.institution, a.account, a.kind, a.currency], ['tossbank', 'tossbank 0000', 'checking', 'KRW'])
-  assert.deepEqual(a.balances, [{ date: '2026-09-01', balance: 1000 }, { date: '2026-09-02', balance: 500 }])
+  assert.deepEqual(a.balances, [{ date: '2026-09-01', balance: 1000 }, { date: '2026-09-02', balance: 500, dayMax: 800 }])
   assert.deepEqual(a.continuityBreaks, [])
 })
 
@@ -287,7 +287,8 @@ test('a Fidelity CMA dividend and its core-fund reinvestment do not read as a co
   const a = doc.accounts[0]
   assert.deepEqual([a.institution, a.account, a.kind, a.currency], ['fidelity', 'Fidelity CMA', 'cma', 'USD'])
   assert.deepEqual(a.continuityBreaks, [])
-  assert.deepEqual(a.balances, [{ date: '2026-09-01', balance: 1000 }, { date: '2026-09-30', balance: 1051.93 }])
+  // The dividend row printed 1061.93 before the purchase that day: the day's high.
+  assert.deepEqual(a.balances, [{ date: '2026-09-01', balance: 1000 }, { date: '2026-09-30', balance: 1051.93, dayMax: 1061.93 }])
   assert.deepEqual(doc.findings, [])
 })
 
@@ -448,4 +449,25 @@ m.MIN_ESTIMATE_KRW = 1
 _, inflows = m.estimate_closed_accounts([("mg", "mg-deposit", mg)], [], {}, [])
 print(json.dumps([[i["group"], i["amountKrw"]] for i in inflows if i["group"].startswith("counterparty:현금")]))`)
   assert.deepEqual(r, [['counterparty:현금|새마을금고 내역', 2100]])
+})
+
+test('with_day_max keeps a same-day peak that end_of_day loses, and close_series keeps it on the closing day', () => {
+  const r = py(`
+t = [
+ {"date": "2026-02-01", "seq": 0, "amount": 100.0, "balance": 100.0},
+ {"date": "2026-02-03", "seq": 1, "amount": 5000.0, "balance": 5100.0},
+ {"date": "2026-02-03", "seq": 2, "amount": -5000.0, "balance": 100.0},
+ {"date": "2026-02-04", "seq": 3, "amount": 50.0, "balance": 150.0},
+ {"date": "2026-03-10", "seq": 4, "amount": 900.0, "balance": 1050.0},
+ {"date": "2026-03-10", "seq": 5, "amount": -1050.0, "balance": 0.0},
+]
+b = m.with_day_max(m.end_of_day(t), t)
+print(json.dumps({"b": b, "closed": m.close_series(b, "2026-03-10")}))`)
+  assert.deepEqual(r.b, [
+    { date: '2026-02-01', balance: 100 },
+    { date: '2026-02-03', balance: 100, dayMax: 5100 },
+    { date: '2026-02-04', balance: 150 },
+    { date: '2026-03-10', balance: 0, dayMax: 1050 },
+  ])
+  assert.deepEqual(r.closed.at(-1), { date: '2026-03-10', balance: 0, dayMax: 1050 })
 })
