@@ -85,7 +85,7 @@ export function treasuryRateFor(year: number, rates: TreasuryRate[]): { krwPerUs
  * uninvested cash where its statements print a running balance, and says
  * `cashIncluded: false` where they do not.
  */
-export const US_CASH_INSTITUTIONS: readonly string[] = ['chase', 'boa', 'robinhood-bank', 'fidelity']
+export const US_CASH_INSTITUTIONS: readonly string[] = ['chase', 'boa', 'robinhood-bank', 'fidelity', 'amex']
 
 export function isUsCashInstitution(institution: string) {
   return US_CASH_INSTITUTIONS.includes(institution.trim().toLowerCase())

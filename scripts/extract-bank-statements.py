@@ -344,7 +344,8 @@ def parse_tossbank_fx_lines(lines):
 
 
 def _pdf_lines(path):
-    """Every page's text lines. The statements are not encrypted; the password is only a fallback."""
+    """Every page's text lines. A PDF that opens with no password (an American Express checking
+    statement is encrypted with an empty one) needs none; STOCK_PDF_PASSWORD is the fallback."""
     pdf = _kr_statements_module().open_pdf(str(path))
     if pdf is None:
         raise ValueError("could not be opened")
@@ -917,6 +918,119 @@ def mg_term_accounts(paths, account_map, salary, findings, notes):
     return accounts
 
 
+# --- American Express checking (Rewards Checking) PDF statements ----------------
+#
+# One statement per period, a text PDF. The summary box prints the opening and
+# closing balance, the credit and debit totals and the interest earned; the table
+# prints the balance after every row, a "Beginning Balance" row and an "Ending
+# Balance" row. A debit's amount carries a leading minus and a credit's does not,
+# so the sign is read, never inferred from a column. A description wraps onto
+# further lines; the last line of a transaction is `ID <digits>`, a bank
+# reference that is dropped. A long statement continues on a second page that
+# repeats the table header after a footer block.
+
+AMEX_MONEY = r"-?\$[\d,]+\.\d{2}"
+AMEX_TABLE_HEADER = "Date Description Credits Debits Balance"
+AMEX_TABLE_END = ("Continued on next page", "Account Details", "Important Notice")
+AMEX_ROW_RE = re.compile(rf"^(\d{{2}}/\d{{2}}/\d{{4}}) (.*?)\s*({AMEX_MONEY})(?:\s+({AMEX_MONEY}))?$")
+AMEX_REFERENCE_RE = re.compile(r"^ID \d+$")
+AMEX_INTEREST_RE = re.compile(r"^Interest Deposit\b")
+
+
+def parse_amex_lines(lines):
+    """(summary, rows) from the text lines of every page of one statement.
+
+    Rows are the table's lines in order. A dated line with two money tokens is a
+    transaction (amount, then balance); with one it is a Beginning/Ending Balance
+    marker (amount 0). Lines between a row and the next dated line are its
+    description; lines before the first dated row of a page continue the last row
+    of the page before. The table is only what lies between its header and the
+    next footer marker, so the name, `p. 2/2` and `Statement Date:` lines of a
+    second page are never read as description.
+    """
+    text = "\n".join(lines)
+
+    def money(label):
+        found = re.search(rf"{label}\s+({AMEX_MONEY})", text)
+        return _num(found.group(1)) if found else None
+
+    begin = re.search(rf"Beginning Balance as of (\d{{2}}/\d{{2}}/\d{{4}}) ({AMEX_MONEY})", text)
+    end = re.search(rf"Ending Balance as of (\d{{2}}/\d{{2}}/\d{{4}}) ({AMEX_MONEY})", text)
+    last4 = re.search(r"Account Ending:\s*\*?(\d{4})\b", text)
+    summary = {
+        "last4": last4.group(1) if last4 else None,
+        "begin_date": _mdy(begin.group(1)) if begin else None, "begin": _num(begin.group(2)) if begin else None,
+        "end_date": _mdy(end.group(1)) if end else None, "end": _num(end.group(2)) if end else None,
+        "credits": money("Total Credits This Period"), "debits": money("Total Debits This Period"),
+        "interest": money("Interest Earned This Period"),
+    }
+    rows, parts, inside = [], [], False
+    for raw in lines:
+        line = raw.strip()
+        if line == AMEX_TABLE_HEADER:
+            inside = True
+            continue
+        if any(line.startswith(marker) for marker in AMEX_TABLE_END):
+            inside = False
+            continue
+        if not inside or not line:
+            continue
+        found = AMEX_ROW_RE.match(line)
+        if found:
+            day, head, first, second = found.groups()
+            marker = second is None
+            rows.append({"date": _mdy(day), "seq": len(rows), "description": head.strip(),
+                         "amount": 0.0 if marker else _num(first), "balance": _num(first if marker else second),
+                         "marker": marker})
+            parts.append([])
+        elif rows and not AMEX_REFERENCE_RE.match(line):
+            parts[-1].append(line)
+    for row, extra in zip(rows, parts):
+        row["description"] = " ".join([row["description"], *extra]).strip()
+    return summary, rows
+
+
+def amex_problems(summary, rows):
+    """What the statement's own summary says is wrong with the rows read from it; [] when they agree."""
+    missing = [key for key in ("begin", "end", "credits", "debits", "interest") if summary[key] is None]
+    if missing:
+        return [f"the summary box has no {', '.join(missing)}"]
+    if not rows or not (rows[0]["marker"] and rows[-1]["marker"]):
+        return ["the activity table lacks its Beginning/Ending Balance rows"]
+    problems = []
+    previous = rows[0]["balance"]
+    for row in rows[1:]:
+        if abs(previous + row["amount"] - row["balance"]) > 0.005:
+            problems.append(f"the running balance breaks at the row dated {row['date']}")
+            break
+        previous = row["balance"]
+    if round(summary["begin"] + summary["credits"] + summary["debits"], 2) != summary["end"]:
+        problems.append("the summary's opening balance plus its credits and debits is not its closing balance")
+    if rows[0]["balance"] != summary["begin"] or rows[-1]["balance"] != summary["end"]:
+        problems.append("the table's Beginning/Ending Balance rows disagree with the summary")
+    credits = round(sum(t["amount"] for t in rows if t["amount"] > 0), 2)
+    debits = round(sum(t["amount"] for t in rows if t["amount"] < 0), 2)
+    if credits != summary["credits"] or debits != summary["debits"]:
+        problems.append("the rows read do not add up to the summary's credit and debit totals")
+    interest = round(sum(t["amount"] for t in rows if AMEX_INTEREST_RE.match(t["description"])), 2)
+    if interest != summary["interest"]:
+        problems.append("the Interest Deposit rows do not add up to the summary's interest earned")
+    return problems
+
+
+def parse_amex(path, findings, notes=None):
+    """The rows of one Amex checking statement, or None (with one finding) when it cannot be trusted."""
+    summary, rows = parse_amex_lines(_pdf_lines(path))
+    problems = amex_problems(summary, rows)
+    named = re.match(r"^amex-checking-(\d{4})-", path.name)
+    if named and summary["last4"] and named.group(1) != summary["last4"]:
+        problems.append(f"the file name says last four digits {named.group(1)} but the statement prints {summary['last4']}")
+    if problems:
+        findings.append(f"{path.name}: {'; '.join(problems)}; skipped")
+        return None
+    return [{k: v for k, v in t.items() if k != "marker"} for t in rows]
+
+
 FAMILIES = [
     # (filename prefix, institution, kind, currency, parser, account-key regex or None)
     # A key regex splits one prefix into one account per captured key (the last4 in the file name).
@@ -933,6 +1047,8 @@ FAMILIES = [
     ("tossbank-fx-", "tossbank", "fx", None, None, None),
     ("fidelity-cma-", "fidelity", "cma", "USD", lambda p, f, n: parse_fidelity_cma(p.read_text(encoding="utf-8-sig")), None),
     ("mirae-cma-", "mirae", "cma", "KRW", lambda p, f, n: parse_mirae_cma(p, f, n), None),
+    # American Express Rewards Checking statements (PDF, one account per last4 in the file name).
+    ("amex-checking-", "amex", "checking", "USD", lambda p, f, n: parse_amex(p, f, n), r"^amex-checking-(\d{4})-"),
 ]
 
 # Which files a family reads. By default every file whose name starts with the
@@ -1171,6 +1287,78 @@ def pair_transfers(flows):
     return flows
 
 
+# --- USD transfers between two accounts on file ---------------------------------
+#
+# `pair_transfers` is KRW-only. For USD, two equal and opposite rows in two
+# accounts are an own-account transfer only when something besides the amount
+# says so: a payment between two of one's accounts names the other institution
+# in at least one of its rows ("ACH Deposit from American Express"). Amount and
+# date alone also match a peer payment and an unrelated credit of the same size,
+# and marking that would hide real income. The date window is symmetric because
+# a receiving account can post the credit a day before the sending account's
+# debit date.
+
+USD_PAIR_DAYS = 3
+USD_INSTITUTION_WORDS = {
+    "amex": ("american express", "amex"),
+    "chase": ("chase",),
+    "boa": ("bank of america", "bkofamerica"),
+    "robinhood-bank": ("robinhood",),
+    "fidelity": ("fidelity", "fid bkg"),
+}
+
+
+# Wording of a payment on a card issued by the institution, which is a bill paid
+# and not money moved between two deposit accounts: "AMERICAN EXPRESS ACH PMT",
+# "AMEX EPAYMENT", "CHASE CREDIT CRD AUTOPAY". A row with it is never evidence.
+USD_CARD_PAYMENT_RE = re.compile(r"\b(ach pmt|epayment|autopay|auto pay|crd|card payment)\b", re.I)
+
+
+def _names_institution(description, institution):
+    """Whether a row's text names `institution` as a whole word, and is not a card bill payment."""
+    text = description or ""
+    if USD_CARD_PAYMENT_RE.search(text):
+        return False
+    return any(re.search(rf"\b{re.escape(word)}\b", text, re.I) for word in USD_INSTITUTION_WORDS.get(institution, ()))
+
+
+def pair_usd_transfers(sources):
+    """Mark equal and opposite USD rows between two accounts on file as own transfers; returns the pair count.
+
+    `sources` are (institution, account, currency, txns) as `main` builds them; the
+    txn dicts are marked in place, so the `inflows` written afterwards carry it.
+    One-to-one, nearest date first; a row already marked is left alone.
+    """
+    legs = [(institution, alias, txn) for institution, alias, currency, txns in sources if currency == "USD"
+            for txn in txns if txn["amount"] != 0 and not txn.get("ownTransfer")]
+    by_size = {}
+    for index, (_, _, txn) in enumerate(legs):
+        by_size.setdefault(round(abs(txn["amount"]), 2), []).append(index)
+    candidates = []
+    for group in by_size.values():
+        credits = [i for i in group if legs[i][2]["amount"] > 0]
+        debits = [i for i in group if legs[i][2]["amount"] < 0]
+        for c in credits:
+            for d in debits:
+                (c_inst, c_account, credit), (d_inst, d_account, debit) = legs[c], legs[d]
+                if (c_inst, c_account) == (d_inst, d_account):
+                    continue
+                gap = _days(credit["date"], debit["date"])
+                if gap > USD_PAIR_DAYS:
+                    continue
+                if not (_names_institution(credit.get("description"), d_inst) or _names_institution(debit.get("description"), c_inst)):
+                    continue
+                candidates.append((gap, credit["date"], c, d))
+    taken, pairs = set(), 0
+    for _gap, _date, c, d in sorted(candidates):
+        if c in taken or d in taken:
+            continue
+        taken.update((c, d))
+        legs[c][2]["ownTransfer"] = legs[d][2]["ownTransfer"] = True
+        pairs += 1
+    return pairs
+
+
 def held_outside(points):
     """Per day, the money outside the statements that later comes back.
 
@@ -1397,6 +1585,9 @@ def main():
                 findings.append(f"{path.name}: transfers could not be read for the estimates ({type(error).__name__}: {error})")
         transfers += merge_txns([[{**t, "balance": None} for t in rows] for rows in parsed])
     estimated, external_inflows = estimate_closed_accounts(krw_statements, transfers, account_map, findings, notes)
+    usd_pairs = pair_usd_transfers(inflow_sources)
+    if usd_pairs:
+        notes.append(f"{usd_pairs} USD transfer(s) between accounts on file paired as own transfers")
     # After the estimate, so the `term` and `ownTransfer` marks are already set.
     inflows = [{"institution": inst, "account": alias, "currency": cur, "date": t["date"], "amount": round(t["amount"], 2),
                 "description": t.get("description", ""), "counterparty": t.get("counterparty", ""),

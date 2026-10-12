@@ -37,6 +37,7 @@ the same naming grammar as the other source files:
 | --- | --- |
 | Chase checking | `chase-checking-<from>-<to>.csv` |
 | Bank of America checking | `boa-checking-<from>-<to>.csv` |
+| American Express checking | `amex-checking-<last4>-<from>-<to>.pdf`: the monthly Rewards Checking statement (a text PDF with an empty password). The last four digits come from `Account Ending: *NNNN` and the window from the summary's `Beginning Balance as of` / `Ending Balance as of` dates. The map's `bankAccounts` entry `{ "institution": "amex", "last4": "<last4>", "kind": "checking", "alias": "..." }` supplies the alias (without it the account is `amex <last4>`); an entry of another `kind` refuses the file, as does an `Account Name` that is not a checking account. The extractor skips, with a finding, a statement whose rows disagree with its own summary (opening + credits + debits, the credit and debit totals, the interest earned) or whose file name carries other last four digits than it prints. The account is domestic, so it counts in total assets and is not in the FBAR table |
 | Robinhood bank | `robinhood-bank-<checking\|savings>-<from>-<to>.csv` |
 | MG Community Credit Cooperative deposit | `mg-deposit-<from>-<to>.xls`: a 거래내역조회. With an account map, the 계좌번호 it prints must be a `{ "institution": "mg" }` entry under `bankAccounts` with that full `accountNumber`; the filer refuses an unmapped number (showing its last four digits) and the extractor names the account by the entry's `alias`. With no numbered mg entry in the map, every export is the one account, as before |
 | MG closed term deposit (정기예탁금) | `mg-term-<last4>-<개설일>-<해지일>.xls`: a 해지계좌 거래내역조회, one closed deposit per file; see [Closed 새마을금고 term deposits](#closed-새마을금고-term-deposits) |
@@ -213,7 +214,10 @@ statements it already reads and writes them as `inflows` in `bank-balances.json`
 (institution, account, currency, date, amount, description, counterparty and an
 `ownTransfer` flag). `ownTransfer` is set on one leg of a paired transfer between
 two statements on file, on a term-deposit move, and on money coming back from an
-account no statement covers (see above). The 토스뱅크 파킹통장 and 외화통장 PDF
+account no statement covers (see above). A USD credit is also an own transfer when it
+pairs with an equal and opposite debit in another account on file within three days,
+in either order, and one of the two descriptions names the other's institution (so a
+peer payment of the same size is not caught). The 토스뱅크 파킹통장 and 외화통장 PDF
 statements are statement accounts too, so their credits are inflows. A 파킹통장's
 채우기 pairs with the checking account's `파킹통장` row and both legs are own
 transfers; an unpaired 채우기/꺼내기/모으기 is still one. Its interest (`자동 이자`) is
@@ -271,8 +275,10 @@ money returned) are left out.
 `bank_inflows_classified` reports the unclassified credits as counts and
 per-currency sums, never descriptions. Fix them by adding a rule. Known gaps:
 
-- USD own-account transfers are not paired, so they show as unclassified until a
-  `transfer` rule covers them.
+- A USD own-account transfer is paired only when the other account's statement is on
+  file and a description names the institution; otherwise a `transfer` rule is still
+  what classifies it. The rules are kept: pairing wins first (the row's `rule` is then
+  empty), and the other statement may simply not have arrived yet.
 - A 예적금 payout's interest is counted inside the transfer, not as `interest`.
 - A 토스뱅크 credit whose memo names both 예금/적금 and 이자 is bucketed as a
   savings return and so marked `ownTransfer`.

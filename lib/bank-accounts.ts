@@ -20,7 +20,7 @@ export type BankAccountEntry = {
 const DEFAULT_ALIASES: Record<string, string> = { 'mirae|cma': '미래에셋 CMA' }
 
 /** Institutions whose bank files carry the account's last4 in their name (FAMILIES key_pattern there). Keep in step. */
-const LAST4_INSTITUTIONS = new Set(['tossbank'])
+const LAST4_INSTITUTIONS = new Set(['tossbank', 'amex'])
 
 /** The `cash_balances.account` the bank extractor files this entry's balances under. */
 export function bankAccountName(entry: BankAccountEntry): string {

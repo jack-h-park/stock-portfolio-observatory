@@ -1813,6 +1813,63 @@ def detect_tossbank_pdf(doc):
                 [f"조회기간 {iso(start)} … {iso(stop)}",
                  f"계좌번호 {mirae_accounts.mask(number)} is {entry.get('alias') or 'a 토스뱅크 ' + kind + ' account'} in the account map"])
 
+AMEX_TABLE_HEADER = "Date Description Credits Debits Balance"
+AMEX_BEGIN_RE = re.compile(r"Beginning Balance as of (\d{2}/\d{2}/\d{4})")
+AMEX_END_RE = re.compile(r"Ending Balance as of (\d{2}/\d{2}/\d{4})")
+AMEX_LAST4_RE = re.compile(r"Account Ending:\s*\*?(\d{4})\b")
+AMEX_ACCOUNT_NAME_RE = re.compile(r"Account Name:\s*(.+?)\s*$", re.M)
+
+
+def detect_amex_checking(doc):
+    """American Express checking statement (PDF) → bank-statements/amex-checking-<last4>-<from>-<to>.pdf
+
+    Told apart by the issuer name, the `Statement Summary` box and the activity
+    table's header on page 1. The period is the window the summary declares
+    (`Beginning Balance as of` … `Ending Balance as of`), written as an explicit
+    window and never as an as-of: a statement covers exactly that, and the as-of
+    form lets a later file replace it. The statement prints only the last four
+    digits of the account (`Account Ending: *NNNN`), so that is the identity; the
+    account map's `bankAccounts` entry for `institution: "amex"` and that `last4`
+    only supplies the alias and must be a checking account. An absent entry is
+    not a refusal (the account is then named `amex <last4>`), but a product
+    other than checking is: no such statement has been seen, so its layout is
+    not guessed.
+    """
+    if doc.suffix != ".pdf":
+        return None
+    text = doc.page_text(0)
+    if "American Express" not in text or "Statement Summary" not in text or AMEX_TABLE_HEADER not in text:
+        return None
+    what = "American Express checking statement"
+    named = AMEX_ACCOUNT_NAME_RE.search(text)
+    product = named.group(1) if named else ""
+    if "checking" not in product.lower():
+        return Refusal(what, f"its Account Name is {product or 'not printed'!r}, and only a checking account is filed from this document")
+    last4 = AMEX_LAST4_RE.search(text)
+    if not last4:
+        return Refusal(what, "it prints no `Account Ending` last four digits, so which account it is cannot be told")
+    begin, end = AMEX_BEGIN_RE.search(text), AMEX_END_RE.search(text)
+    if not (begin and end):
+        return Refusal(what, "its summary has no Beginning/Ending Balance dates to take a period from")
+    start, stop = parse_mdy(begin.group(1)), parse_mdy(end.group(1))
+    if not (start and stop) or start > stop:
+        return Refusal(what, "its Beginning/Ending Balance dates are not a usable period")
+    number = last4.group(1)
+    entries, problem = account_map_list("bankAccounts")
+    if problem:
+        return Refusal(what, problem, "fix the JSON, or move the file aside")
+    entry = next((e for e in entries if e.get("institution") == "amex" and str(e.get("last4") or "") == number), None)
+    evidence = [f"declared period {iso(start)} … {iso(stop)}", f"Account Ending …{number}"]
+    if entry is None:
+        evidence.append(f"no amex bankAccounts entry with last4 {number}; add one to name the account "
+                        f"(otherwise it is `amex {number}`)")
+    elif entry.get("kind") != "checking":
+        return Refusal(what, f"the account map lists …{number} as a {entry.get('kind')} account, and only a checking "
+                             "account is filed from this document", "correct the entry's kind, or file it by hand")
+    else:
+        evidence.append(f"…{number} is {entry.get('alias') or 'an Amex checking account'} in the account map")
+    return Plan(DIR_BANK, f"amex-checking-{number}-{compact(start)}-{compact(stop)}.pdf", evidence)
+
 # ---------------------------------------------------------------------------
 # Pension accounts: the 삼성 연금저축 ledger, the hand-made holdings snapshot,
 # and the year-end certificates kept as evidence. The IRP and 금현물
@@ -2102,6 +2159,7 @@ DETECTORS = [
     ("새마을금고 해지계좌 거래내역조회 (.xls)", detect_mg_term),
     ("토스뱅크 거래내역 (.xlsx, encrypted)", detect_tossbank),
     ("토스뱅크 거래내역서 / 외화예금 거래내역확인서 (PDF)", detect_tossbank_pdf),
+    ("American Express checking statement (PDF)", detect_amex_checking),
     ("삼성증권 연금저축 거래내역확인서", detect_samsung_pension_ledger),
     ("pension holdings snapshot CSV", detect_pension_holdings),
     ("미래에셋 퇴직연금 잔고현황", detect_irp_balance_status),
