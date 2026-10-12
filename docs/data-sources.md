@@ -214,7 +214,10 @@ statements it already reads and writes them as `inflows` in `bank-balances.json`
 (institution, account, currency, date, amount, description, counterparty and an
 `ownTransfer` flag). `ownTransfer` is set on one leg of a paired transfer between
 two statements on file, on a term-deposit move, and on money coming back from an
-account no statement covers (see above). The 토스뱅크 파킹통장 and 외화통장 PDF
+account no statement covers (see above). A USD credit is also an own transfer when it
+pairs with an equal and opposite debit in another account on file within three days,
+in either order, and one of the two descriptions names the other's institution (so a
+peer payment of the same size is not caught). The 토스뱅크 파킹통장 and 외화통장 PDF
 statements are statement accounts too, so their credits are inflows. A 파킹통장's
 채우기 pairs with the checking account's `파킹통장` row and both legs are own
 transfers; an unpaired 채우기/꺼내기/모으기 is still one. Its interest (`자동 이자`) is
@@ -272,8 +275,10 @@ money returned) are left out.
 `bank_inflows_classified` reports the unclassified credits as counts and
 per-currency sums, never descriptions. Fix them by adding a rule. Known gaps:
 
-- USD own-account transfers are not paired, so they show as unclassified until a
-  `transfer` rule covers them.
+- A USD own-account transfer is paired only when the other account's statement is on
+  file and a description names the institution; otherwise a `transfer` rule is still
+  what classifies it. The rules are kept: pairing wins first (the row's `rule` is then
+  empty), and the other statement may simply not have arrived yet.
 - A 예적금 payout's interest is counted inside the transfer, not as `interest`.
 - A 토스뱅크 credit whose memo names both 예금/적금 and 이자 is bucketed as a
   savings return and so marked `ownTransfer`.
