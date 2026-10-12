@@ -333,8 +333,24 @@ export default async function TaxPlanningPage({
             <div className="flex items-center justify-between gap-3"><span>{copy.page.federalMethod}</span><Badge tone="success">{copy.page.federalMethodValue}</Badge></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.fallbackShortLong}</span><span className="tabular-nums text-ink">{fmtPct(plan.assumptions.usShortRatePct)} / {fmtPct(plan.assumptions.usLongRatePct)}</span></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.fallbackStateNiit}</span><span className="tabular-nums text-ink">{fmtPct(plan.assumptions.usStateRatePct)} / {fmtPct(plan.assumptions.usNiitRatePct)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>{copy.page.ytdCarryovers}</span><span className="tabular-nums text-ink">$0 / $0</span></div>
+            <div className="flex items-center justify-between gap-3">
+              <span>{copy.page.ytdCarryovers}</span>
+              <span className="tabular-nums text-ink">
+                {fmtMoney(
+                  assumptionNumber(taxPolicy.policy, 'US', 'ytdRealizedShortGainLossUsd', 0) +
+                    assumptionNumber(taxPolicy.policy, 'US', 'ytdRealizedLongGainLossUsd', 0),
+                  'USD'
+                )}{' '}
+                /{' '}
+                {fmtMoney(
+                  assumptionNumber(taxPolicy.policy, 'US', 'shortTermCapitalLossCarryoverUsd', 0) +
+                    assumptionNumber(taxPolicy.policy, 'US', 'longTermCapitalLossCarryoverUsd', 0),
+                  'USD'
+                )}
+              </span>
+            </div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.krStockDeduction}</span><span className="tabular-nums text-ink">{fmtKrw(plan.assumptions.krBasicDeductionKrw)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.krYtdRealized}</span><span className="tabular-nums text-ink">{fmtKrw(assumptionNumber(taxPolicy.policy, 'KR', 'ytdRealizedTaxableGainKrw', 0))}</span></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.krForeignStockRate}</span><span className="tabular-nums text-ink">{fmtPct(plan.assumptions.krForeignStockRatePct)}</span></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.creditModel}</span><span className="text-right text-ink">{plan.assumptions.krForeignTaxCreditMode}</span></div>
           </div>
