@@ -256,3 +256,12 @@ test('documents that are not an Amex checking statement are not claimed, and the
   assert.equal(detect('detect_bithumb_statement', pages), null)
   assert.equal(detect('detect_toss_transactions', pages), null)
 })
+
+test('a dated line inside a description that ends in an amount cannot become a balance row unnoticed', () => {
+  const rows = [...STATEMENT_MAR.rows]
+  rows.splice(4, 0, '03/04/2025 invoice ref $50.00')
+  const r = py(amexPages({ ...STATEMENT_MAR, rows }), `
+summary, rows = m.parse_amex_lines(lines)
+print(json.dumps(m.amex_problems(summary, rows)))`)
+  assert.match(r.join(' | '), /running balance/)
+})

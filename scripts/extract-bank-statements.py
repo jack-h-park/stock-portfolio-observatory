@@ -976,6 +976,12 @@ def amex_problems(summary, rows):
     if not rows or not (rows[0]["marker"] and rows[-1]["marker"]):
         return ["the activity table lacks its Beginning/Ending Balance rows"]
     problems = []
+    previous = rows[0]["balance"]
+    for row in rows[1:]:
+        if abs(previous + row["amount"] - row["balance"]) > 0.005:
+            problems.append(f"the running balance breaks at the row dated {row['date']}")
+            break
+        previous = row["balance"]
     if round(summary["begin"] + summary["credits"] + summary["debits"], 2) != summary["end"]:
         problems.append("the summary's opening balance plus its credits and debits is not its closing balance")
     if rows[0]["balance"] != summary["begin"] or rows[-1]["balance"] != summary["end"]:
@@ -1275,9 +1281,18 @@ USD_INSTITUTION_WORDS = {
 }
 
 
+# Wording of a payment on a card issued by the institution, which is a bill paid
+# and not money moved between two deposit accounts: "AMERICAN EXPRESS ACH PMT",
+# "AMEX EPAYMENT", "CHASE CREDIT CRD AUTOPAY". A row with it is never evidence.
+USD_CARD_PAYMENT_RE = re.compile(r"\b(ach pmt|epayment|autopay|auto pay|crd|card payment)\b", re.I)
+
+
 def _names_institution(description, institution):
-    text = (description or "").lower()
-    return any(word in text for word in USD_INSTITUTION_WORDS.get(institution, ()))
+    """Whether a row's text names `institution` as a whole word, and is not a card bill payment."""
+    text = description or ""
+    if USD_CARD_PAYMENT_RE.search(text):
+        return False
+    return any(re.search(rf"\b{re.escape(word)}\b", text, re.I) for word in USD_INSTITUTION_WORDS.get(institution, ()))
 
 
 def pair_usd_transfers(sources):

@@ -96,3 +96,27 @@ test('end to end: the Robinhood credit that follows an Amex debit is an own tran
   assert.equal(byDescription['Online Transfer / Payment: Credit EXAMPLE CO PAYROLL *****0001 XXXX0002 Example Holder External - EXAMPLE BANK, N.A.'], false)
   assert.ok(doc.notes.some((n: string) => /1 USD transfer/.test(n)), JSON.stringify(doc.notes))
 })
+
+test('an institution name inside another word is not evidence: "purchase" is not Chase', () => {
+  const r = run(`
+sources = [
+  src("fidelity", "Fid", "USD", [("2025-03-05", "DEBIT CARD PURCHASE EXAMPLE STORE", -50.0)]),
+  src("chase", "Chase", "USD", [("2025-03-06", "Zelle payment from EXAMPLE FRIEND", 50.0)]),
+]
+print(json.dumps({"n": m.pair_usd_transfers(sources), "flags": [[t.get("ownTransfer", False) for t in s[3]] for s in sources]}))`)
+  assert.equal(r.n, 0)
+  assert.deepEqual(r.flags, [[false], [false]])
+})
+
+test('paying a card issued by an institution is not a transfer to it, so a same-size credit stays income', () => {
+  const r = run(`
+def case(desc):
+    sources = [
+      src("chase", "Chase", "USD", [("2025-03-10", desc, -1200.0)]),
+      src("amex", "Amex", "USD", [("2025-03-11", "Online Transfer / Payment: Credit EXAMPLE CO PAYROLL", 1200.0)]),
+    ]
+    return m.pair_usd_transfers(sources)
+print(json.dumps({"card": case("AMERICAN EXPRESS ACH PMT"), "epay": case("AMEX EPAYMENT"), "autopay": case("AMERICAN EXPRESS AUTOPAY"),
+                  "transfer": case("Online Transfer to American Express checking")}))`)
+  assert.deepEqual(r, { card: 0, epay: 0, autopay: 0, transfer: 1 })
+})
