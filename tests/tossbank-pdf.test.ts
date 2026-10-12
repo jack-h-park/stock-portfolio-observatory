@@ -248,9 +248,9 @@ toss = [
 ]
 m.MIN_ESTIMATE_KRW = 1
 anchors = {"anchors": [{"alias": "토스뱅크 파킹통장", "date": "2025-02-05", "balance": 1000000.0}]}
-without = m.estimate_closed_accounts([("tossbank", "tossbank-0009", [dict(t) for t in toss])], [], anchors, [])
+without = m.estimate_closed_accounts([("tossbank", "tossbank-0009", [dict(t) for t in toss])], [], anchors, [])[0]
 notes = []
-withp = m.estimate_closed_accounts([("tossbank", "tossbank-0009", toss), ("tossbank", "tossbank-parking-0001", parking)], [], anchors, [], notes)
+withp = m.estimate_closed_accounts([("tossbank", "tossbank-0009", toss), ("tossbank", "tossbank-parking-0001", parking)], [], anchors, [], notes)[0]
 print(json.dumps({"without": [a["account"] for a in without], "with": [a["account"] for a in withp], "notes": notes}))`)
   // Without the statement the transfers are the estimate, as before.
   assert.deepEqual(r.without, ['토스뱅크 파킹통장'])
