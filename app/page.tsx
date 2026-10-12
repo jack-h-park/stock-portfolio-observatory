@@ -16,6 +16,7 @@ import {
   getTopHoldings,
   getTotalAssetsSeries,
   getTransactionTypes,
+  withGoldScope,
 } from '@/lib/adapters/portfolio-db'
 import {
   HEALTHY_TREND_COST_COVERAGE,
@@ -124,7 +125,9 @@ export default async function OverviewPage({
   const overview = getOverview()
   const netWorthSummary = getNetWorth(overview)
   const netWorth = assetView === 'all' ? netWorthSummary : null
-  const portfolioSnapshots = getPortfolioSnapshots(trendRangeDays(selectedRange.days))
+  const storedSnapshots = getPortfolioSnapshots(trendRangeDays(selectedRange.days))
+  // The gold scope is derived on read (lib/gold-trend.ts), so only that scope pays for it.
+  const portfolioSnapshots = selectedScope === 'GOLD' ? withGoldScope(storedSnapshots) : storedSnapshots
   // All-assets view only: every class stacked on the same snapshot dates, plus today.
   const totalAssets = assetView === 'all' ? getTotalAssetsSeries(portfolioSnapshots.map((snapshot) => snapshot.snapshot_date), netWorthSummary) : null
   const top = getTopHoldings(10)
@@ -469,6 +472,7 @@ export default async function OverviewPage({
 
       <Card
         title={copy.snapshotTrend(selectedScopeLabel)}
+        info={selectedScope === 'GOLD' ? copy.goldScopeInfo : undefined}
         className="mb-5"
         action={
           <div className="flex flex-wrap items-center justify-end gap-1">
@@ -535,6 +539,7 @@ export default async function OverviewPage({
               key={scope.key}
               href={`/?trend=${selectedRange.key}&scope=${scope.key}&metric=${selectedMetric.key}&view=${selectedView}`}
               scroll={false}
+              title={scope.key === 'GOLD' ? copy.scopeHints.GOLD : undefined}
               className={`rounded-sm border px-2 py-1 text-label ${selectedScope === scope.key ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
             >
               {copy.scopeLabels[scope.key]}
@@ -552,6 +557,9 @@ export default async function OverviewPage({
             </Link>
           ))}
         </div>
+        {selectedScope === 'GOLD' ? (
+          <div className="mb-3 rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{copy.goldScopeNote}</div>
+        ) : null}
         {selectedView === 'combined' ? (
           combinedTrendData.length === 0 ? (
             <EmptyState hint={copy.firstSnapshotHint}>{copy.noCombinedHistory}</EmptyState>

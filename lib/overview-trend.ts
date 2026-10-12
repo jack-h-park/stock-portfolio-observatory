@@ -5,6 +5,10 @@ import type { PortfolioSnapshot } from '@/lib/adapters/portfolio-db'
  * the points the two chart views plot. Stock-only in both asset views. Deposits,
  * pensions and gold have their own stacked chart (the total-assets trend), so
  * nothing here adds them to a stock figure.
+ *
+ * The GOLD scope is a cross-cut, not a class: physical gold plus the gold ETFs
+ * that Global, Korea and United States already count (lib/gold-trend.ts). It is
+ * never summed into those scopes.
  */
 
 export const TREND_METRICS = [
@@ -20,6 +24,7 @@ export const TREND_SCOPES = [
   { key: 'KR', label: 'Korea' },
   { key: 'US', label: 'United States' },
   { key: 'CRYPTO', label: 'Crypto' },
+  { key: 'GOLD', label: 'Gold' },
 ] as const
 
 export const TREND_FIELDS = {
@@ -51,6 +56,13 @@ export const TREND_FIELDS = {
     realized_gl: 'crypto_realized_gl_base',
     return_pct: 'crypto_return_pct',
   },
+  GOLD: {
+    market_value: 'gold_market_value',
+    cost_basis: 'gold_cost_basis',
+    unrealized_gl: 'gold_unrealized_gl',
+    realized_gl: 'gold_realized_gl',
+    return_pct: 'gold_return_pct',
+  },
 } as const
 
 export const TREND_COVERAGE_FIELDS = {
@@ -58,6 +70,7 @@ export const TREND_COVERAGE_FIELDS = {
   KR: 'kr_market_value_coverage',
   US: 'us_market_value_coverage',
   CRYPTO: 'crypto_market_value_coverage',
+  GOLD: 'gold_market_value_coverage',
 } as const
 
 export const MIN_TREND_COST_COVERAGE = 0.9
