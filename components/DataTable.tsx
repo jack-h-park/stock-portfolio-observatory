@@ -1,6 +1,6 @@
 import { clsx } from 'clsx'
 import Link from 'next/link'
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { EmptyState, InfoTooltip, Table } from '@/components/ui'
 import { CommonLabel } from '@/components/LanguageProvider'
 import { nextSort, type SortDirection, type TableSort } from '@/lib/table-sort'
@@ -43,6 +43,8 @@ export function DataTable({
   sort,
   sortHref,
   minWidth,
+  expandedRowKey,
+  renderExpanded,
 }: {
   columns: DataTableColumn[]
   rows: any[]
@@ -58,6 +60,11 @@ export function DataTable({
   /** Width below which the table scrolls sideways. Defaults to the standard
    *  48rem; lower it only for a table that lives in a half-width card. */
   minWidth?: string
+  /** The row whose `getRowKey` equals this gets `renderExpanded` drawn in one
+   *  full-width row directly beneath it — a drill-down that opens where the
+   *  reader clicked rather than at the bottom of the page. */
+  expandedRowKey?: string | number | null
+  renderExpanded?: (row: any) => ReactNode
 }) {
   if (rows.length === 0) return <EmptyState>{emptyMessage ?? <CommonLabel label="noRows" />}</EmptyState>
 
@@ -113,8 +120,12 @@ export function DataTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => (
-            <tr key={getRowKey?.(row, i) ?? row.id ?? i} className="border-b border-line-subtle hover:bg-surface/70">
+          {rows.map((row, i) => {
+            const rowKey = getRowKey?.(row, i) ?? row.id ?? i
+            const expanded = renderExpanded && expandedRowKey != null && rowKey === expandedRowKey
+            return (
+            <Fragment key={rowKey}>
+            <tr className="border-b border-line-subtle hover:bg-surface/70">
               {columns.map((col) => (
                 <td
                   key={col.key}
@@ -130,7 +141,16 @@ export function DataTable({
                 </td>
               ))}
             </tr>
-          ))}
+            {expanded ? (
+              <tr>
+                <td colSpan={columns.length} className="border-b border-line bg-surface/60 px-3 py-3">
+                  {renderExpanded(row)}
+                </td>
+              </tr>
+            ) : null}
+            </Fragment>
+            )
+          })}
         </tbody>
     </Table>
   )

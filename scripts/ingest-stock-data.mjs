@@ -993,6 +993,8 @@ create table bank_inflows (
   counterparty text not null default '',
   category text not null,
   rule text,
+  -- The matched rule's note, so the page can say why a row has its category.
+  rule_note text,
   usd_krw_rate real,
   usd_krw_rate_dated integer not null default 0
 );
@@ -5164,6 +5166,8 @@ const bankInflowRules = (Array.isArray(manualMappings.bankInflowRules) ? manualM
   }
   return true
 })
+// Each kept rule's position in the file, for naming a rule that has no id.
+const bankInflowRuleIndex = new Map(bankInflowRules.map((r) => [r, (manualMappings.bankInflowRules ?? []).indexOf(r)]))
 const bankInflowMatches = (row, match = {}) =>
   includesText(row.institution, match.institution) &&
   includesText(row.account, match.accountIncludes) &&
@@ -5177,19 +5181,23 @@ const bankInflowMatches = (row, match = {}) =>
 const bankInflowRows = bankBalances.inflows.map((f) => {
   let category = null
   let rule = null
+  let ruleNote = null
   if (f.ownTransfer) category = 'transfer'
   if (!category) {
     const r = bankInflowRules.find((x) => bankInflowMatches(f, x.match))
     if (r) {
       category = r.category
-      rule = r.id ?? null
+      // An id is optional; a rule without one is still named, so a row a rule
+      // classified never reads as "no rule matched".
+      rule = r.id ?? `bankInflowRules[${bankInflowRuleIndex.get(r)}]`
+      ruleNote = typeof r.note === 'string' && r.note.trim() ? r.note.trim() : null
     }
   }
   if (!category) category = BANK_DIVIDEND_RE.test(f.description) ? 'dividend' : BANK_INTEREST_RE.test(f.description) ? 'interest' : 'unclassified'
   const fx = usdKrwOn(f.date)
-  return { ...f, category, rule, usd_krw_rate: fx?.rate ?? null, usd_krw_rate_dated: fx?.dated ? 1 : 0 }
+  return { ...f, category, rule, rule_note: ruleNote, usd_krw_rate: fx?.rate ?? null, usd_krw_rate_dated: fx?.dated ? 1 : 0 }
 })
-insertMany(db, 'bank_inflows', bankInflowRows, ['institution', 'account', 'currency', 'date', 'amount', 'description', 'counterparty', 'category', 'rule', 'usd_krw_rate', 'usd_krw_rate_dated'])
+insertMany(db, 'bank_inflows', bankInflowRows, ['institution', 'account', 'currency', 'date', 'amount', 'description', 'counterparty', 'category', 'rule', 'rule_note', 'usd_krw_rate', 'usd_krw_rate_dated'])
 insertMany(
   db,
   'cash_estimates',
