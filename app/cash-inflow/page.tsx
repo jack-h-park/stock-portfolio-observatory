@@ -207,8 +207,7 @@ export default async function CashInflowPage({
           { key: 'category', label: copy.filter.label, options: CASH_INFLOW_FILTERS.map((value) => ({ value, label: copy.filter.options[value] })), selected: filter },
           { key: 'source', label: copy.scope.source.label, options: CASH_INFLOW_SOURCES.map((value) => ({ value, label: copy.scope.source.options[value] })), selected: source },
           { key: 'currency', label: copy.scope.currency.label, options: CASH_INFLOW_CURRENCIES.map((value) => ({ value, label: copy.scope.currency.options[value] })), selected: currency },
-          // The range's default is not "All", so its chip value is written out; FilterBar drops only ALL.
-          { key: 'range', label: copy.scope.range.label, options: CASH_INFLOW_RANGES.map((value) => ({ value, label: copy.scope.range.options[value] })), selected: range },
+          { key: 'range', label: copy.scope.range.label, options: CASH_INFLOW_RANGES.map((value) => ({ value, label: copy.scope.range.options[value] })), selected: range, defaultValue: '12m' },
         ]}
       />
 
@@ -307,13 +306,16 @@ export default async function CashInflowPage({
                     label: copy.yoyColumn,
                     align: 'right' as const,
                     render: (r: CashInflowPeriod) => {
-                      const change = r.previousTotal ? (r.total - r.previousTotal) / r.previousTotal : null
+                      const change = r.previousTotal != null && r.previousTotal > 0 ? (r.total - r.previousTotal) / r.previousTotal : null
                       return <span className={change == null ? 'text-ink-3' : signClass(change)}>{fmtPct(fractionPct(change), { signed: true, nullText: copy.notAvailable })}</span>
                     },
                   }]
                 : []),
             ]}
           />
+          {view === 'year' ? (
+            <p className="mt-2 text-label text-ink-3">{copy.yearlyNote(data.periods.find((p) => p.previousThrough)?.previousThrough ?? null)}</p>
+          ) : null}
         </Card>
       </CardRow>
     </>

@@ -27,6 +27,7 @@ b('2025-01-10', 'KRW', 2_000_000, 'salary')
 b('2025-03-10', 'USD', 100, 'salary')
 b('2025-05-20', 'KRW', 500, 'interest')
 b('2025-06-10', 'KRW', 3_000_000, 'salary')
+b('2025-05-01', 'KRW', 777, 'unclassified')
 const div = db.prepare('insert into dividends values (?,?,?,?,?,?,?,?,?,?,?,?)')
 div.run('2025-02-15', 'Invented Broker', 'AAA', 'Invented Corp', 'KRW', 10_000, 1_540, '배당금입금', 'korea_statement', 'dividend', 1000, 1)
 div.run('2025-04-15', 'Invented Broker', 'BBB', 'Invented ETF', 'USD', 20, 3, '외화증권배당금입금', 'korea_statement', 'dividend', 1000, 1)
@@ -72,18 +73,32 @@ test('source and currency narrow every figure; the currency is the credit\'s own
 test('yearly periods carry the previous year\'s total, and a range keeps the years it touches', async () => {
   const { getCashInflow } = await import('../lib/adapters/portfolio-db')
   const y = getCashInflow('year', 'KRW', NOW, 'All', { range: 'all' })
-  assert.deepEqual(y.periods.map((p) => [p.period, p.previousTotal]), [['2024', null], ['2025', 1_000_000]])
+  // 2025 is the current year: it meets January-June 2024 (1,000,000 on 2024-06), not all of 2024.
+  assert.deepEqual(y.periods.map((p) => [p.period, p.previousTotal, p.previousThrough]), [['2024', null, null], ['2025', 1_000_000, '2024-06']])
+  const mayNow = new Date('2025-05-15T03:00:00Z')
+  const may = getCashInflow('year', 'KRW', mayNow, 'All', { range: 'all' }).periods.find((p) => p.period === '2025')!
+  assert.deepEqual([may.previousTotal, may.previousThrough], [null, '2024-05'])
   assert.deepEqual(getCashInflow('year', 'KRW', NOW, 'All', { range: '12m' }).periods.map((p) => p.period), ['2024', '2025'])
   assert.deepEqual(getCashInflow('year', 'KRW', NOW, 'All', { range: 'lastYear' }).periods.map((p) => p.period), ['2024'])
 })
 
-test('dividend detail rows carry ticker, gross and withheld; an already-net row withheld nothing', async () => {
+test('dividend detail rows carry ticker, gross and withheld; a Toss foreign dividend adds its 제세금 back', async () => {
   const { getCashInflowRows } = await import('../lib/adapters/portfolio-db')
   const [kr] = getCashInflowRows('2025-02', 'KRW', ['dividend'])
   assert.deepEqual([kr.ticker, kr.gross, kr.withheld, kr.native], ['AAA', 10_000, 1_540, 8_460])
+  // Booked net (20) with its 제세금 (3) apart: gross 23, withheld 3, net 20.
   const [toss] = getCashInflowRows('2025-04', 'KRW', ['dividend'])
-  assert.deepEqual([toss.gross, toss.withheld, toss.native], [20, 0, 20])
+  assert.deepEqual([toss.gross, toss.withheld, toss.native], [23, 3, 20])
   const [salary] = getCashInflowRows('2025-06', 'KRW', ['salary'])
   assert.deepEqual([salary.ticker, salary.gross, salary.withheld], [null, null, null])
   assert.equal(getCashInflowRows('2025-03', 'KRW', ['salary'], { currency: 'KRW' }).length, 0)
+})
+
+test('the header badges count within the chosen source, currency and range', async () => {
+  const { getCashInflow } = await import('../lib/adapters/portfolio-db')
+  const count = (scope: object) => getCashInflow('month', 'KRW', NOW, 'All', scope).unclassifiedCount
+  assert.equal(count({}), 1)
+  assert.equal(count({ source: 'broker' }), 0) // only bank credits can be unclassified
+  assert.equal(count({ currency: 'USD' }), 0)
+  assert.equal(count({ range: 'lastYear' }), 0)
 })

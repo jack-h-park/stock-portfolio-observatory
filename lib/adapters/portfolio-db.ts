@@ -2949,8 +2949,11 @@ export type CashInflowPeriod = {
   other: number
   unclassified: number
   total: number
-  /** Yearly view only: the year before's total under the same filter and scope, or null when there is none. */
+  /** Yearly view only: the year before's total under the same filter and scope, or null when there is none.
+   *  For the current year it covers January to this month of last year, so a part year meets a part year. */
   previousTotal: number | null
+  /** Set on the current year's row: the month ('YYYY-MM' of last year) the comparison runs to. */
+  previousThrough: string | null
 }
 export type CashInflowTotals = {
   trailing12m: number
@@ -3051,9 +3054,15 @@ function cashInflowUnion(conn: Database.Database, display: DisplayCurrency) {
     select date, 'dividend', case income_category when 'dividend' then 'dividend' when 'interest' then 'interest' else 'other' end,
       coalesce(name, ticker, ''), account, currency, ${netNative}, ${datedAmountSql(display, netNative)}, usd_krw_rate_dated,
       coalesce(type, income_category), case when coalesce(type, income_category) is null then 'none' else 'broker' end,
-      ticker, native_amount, native_amount - ${netNative}
+      ticker,
+      -- A Toss foreign dividend is booked net, its 제세금 apart: gross adds it back.
+      ${TOSS_NET_SQL} then native_amount + coalesce(native_tax_withheld, 0) else native_amount end,
+      ${TOSS_NET_SQL} then coalesce(native_tax_withheld, 0) else native_amount - ${netNative} end
     from dividends where upper(coalesce(type, '')) not in (${excluded})`
 }
+
+// The dividend rows NET_DIVIDEND_SQL treats as booked already net of withholding.
+const TOSS_NET_SQL = `case when source_system = 'korea_statement' and type = '외화증권배당금입금'`
 
 // The source and currency narrowing, as a where clause and its bound values.
 function cashInflowWhere(scope: CashInflowScope) {
@@ -3078,8 +3087,8 @@ function cashInflowPeriods(
   const where = cashInflowWhere(scope)
   const rows = conn
     .prepare(`select substr(date, 1, ${len}) as period, ${sums} from (${cashInflowUnion(conn, display)}) where ${where.sql} group by period order by period`)
-    .all(...where.params) as Omit<CashInflowPeriod, 'total' | 'previousTotal'>[]
-  return rows.map((r) => ({ ...r, total: categories.reduce((sum, c) => sum + r[c], 0), previousTotal: null }))
+    .all(...where.params) as Omit<CashInflowPeriod, 'total' | 'previousTotal' | 'previousThrough'>[]
+  return rows.map((r) => ({ ...r, total: categories.reduce((sum, c) => sum + r[c], 0), previousTotal: null, previousThrough: null }))
 }
 
 const monthKey = (year: number, month: number) => {
@@ -3142,7 +3151,8 @@ export function getCashInflow(
     const investment = sumMonths(window.start, window.end, (p) => p.dividend + p.interest)
     const countedRange = sumMonths(window.start, window.end, counted)
     const previousRaw = window.previous ? sumMonths(window.previous.start, window.previous.end, (p) => p.total) : null
-    const previousTotal = previousRaw ? previousRaw : null
+    // Nothing (or less than nothing) to compare with reads as n/a, never a divide by zero or a flipped sign.
+    const previousTotal = previousRaw != null && previousRaw > 0 ? previousRaw : null
 
     let periods: CashInflowPeriod[]
     if (granularity === 'month') {
@@ -3152,16 +3162,32 @@ export function getCashInflow(
       const byYear = new Map(years.map((y) => [y.period, y.total]))
       periods = years
         .filter((y) => y.period >= window.start.slice(0, 4) && y.period <= window.end.slice(0, 4))
-        .map((y) => ({ ...y, previousTotal: byYear.get(String(Number(y.period) - 1)) ?? null }))
+        .map((y) => {
+          if (Number(y.period) === nowYear) {
+            // A part year against the same months a year earlier, not the whole of last year.
+            const through = monthKey(nowYear - 1, nowMonth)
+            const sameMonths = sumMonths(`${nowYear - 1}-01`, through, (p) => p.total)
+            return { ...y, previousTotal: sameMonths > 0 ? sameMonths : null, previousThrough: through }
+          }
+          const prev = byYear.get(String(Number(y.period) - 1))
+          return { ...y, previousTotal: prev != null && prev > 0 ? prev : null }
+        })
     }
 
     const hasBank = Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'bank_inflows'").get())
-    const unclassifiedCount = hasBank
-      ? (conn.prepare("select count(*) as n from bank_inflows where category = 'unclassified'").get() as { n: number }).n
-      : 0
     const hasBankData = hasBank && Boolean(conn.prepare('select 1 from bank_inflows limit 1').get())
+    // The badges count within the chosen source, currency and range, like every figure beside them.
+    const where = cashInflowWhere(scope)
+    const inRange = `substr(date, 1, 7) between ? and ?`
+    const unclassifiedCount = (
+      conn
+        .prepare(`select count(*) as n from (${cashInflowUnion(conn, display)}) where ${where.sql} and ${inRange} and category = 'unclassified'`)
+        .get(...where.params, window.start, window.end) as { n: number }
+    ).n
     const undatedCount = (
-      conn.prepare(`select count(*) as n from (${cashInflowUnion(conn, display)}) where date is not null and dated = 0 and currency != '${display}'`).get() as { n: number }
+      conn
+        .prepare(`select count(*) as n from (${cashInflowUnion(conn, display)}) where ${where.sql} and ${inRange} and dated = 0 and currency != '${display}'`)
+        .get(...where.params, window.start, window.end) as { n: number }
     ).n
     return {
       currency: display,
