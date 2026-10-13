@@ -4,7 +4,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, MetricField } from '@/components/ui'
 import { CardRow } from '@/components/layout'
 import { StackedAssetChart } from '@/components/charts'
-import { getAssetEvents, getForeignAccountMaxima, getMeta, getNetWorth, getSnapshotDates, getTotalAssetsSeries, portfolioToday } from '@/lib/adapters/portfolio-db'
+import { getAssetEvents, getChildAssets, getForeignAccountMaxima, getMeta, getNetWorth, getSnapshotDates, getTotalAssetsSeries, portfolioToday } from '@/lib/adapters/portfolio-db'
 import { convertMoney, createMoneyFormatter, formatKrw, formatUsd } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { fmtDate, fmtDateTime } from '@/lib/format'
@@ -20,7 +20,8 @@ export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/net-worth')
 
 type CashRow = NetWorth['cash'][number]
-type HistoryRow = TotalAssetsPoint & { month: string }
+type HistoryRow = TotalAssetsPoint & { month: string; children?: number | null }
+type ChildRow = { key: string; owner: string; account: string; asOf: string | null; valueKrw: number; subtotal?: boolean }
 
 /** The first year the FBAR table offers: the Treasury rates file starts here. */
 const FBAR_FIRST_YEAR = 2020
@@ -43,8 +44,27 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
   const totalAssets = getTotalAssetsSeries(getSnapshotDates(100 * 365), netWorth)
   const eventMarkers = snapEventDates(getAssetEvents(), totalAssets.points.map((point) => point.date))
   const eventsCopy = getPageCopy('assetEvents', language)
+  // Self only unless ?children=1. Even then the children are their own band,
+  // column and table: never inside a total on this page.
+  const includeChildren = (Array.isArray(params.children) ? params.children[0] : params.children) === '1'
+  const childAssets = includeChildren ? getChildAssets(totalAssets.points.map((point) => point.date)) : null
+  const childrenOn = new Map((childAssets?.points ?? []).map((point) => [point.date, point.total]))
+  const childCopy = copy.children
+  const hrefWith = (next: { fbarYear?: number; children?: boolean }) => {
+    const query = new URLSearchParams()
+    const year = next.fbarYear ?? (params.fbarYear ? Number(Array.isArray(params.fbarYear) ? params.fbarYear[0] : params.fbarYear) : null)
+    if (year) query.set('fbarYear', String(year))
+    if (next.children ?? includeChildren) query.set('children', '1')
+    const text = query.toString()
+    return text ? `/net-worth?${text}` : '/net-worth'
+  }
+  const childRows: ChildRow[] = (childAssets?.owners ?? []).flatMap((owner) => [
+    ...owner.accounts.map((account) => ({ key: `${owner.owner}|${account.account}`, owner: owner.label, account: account.account, asOf: account.asOf, valueKrw: account.valueKrw })),
+    { key: `${owner.owner}|total`, owner: owner.label, account: childCopy.subtotal(owner.label), asOf: null, valueKrw: owner.totalKrw, subtotal: true },
+  ])
   const monthEnds = new Map<string, HistoryRow>()
-  for (const point of totalAssets.points) monthEnds.set(point.date.slice(0, 7), { ...point, month: point.date.slice(0, 7) })
+  for (const point of totalAssets.points)
+    monthEnds.set(point.date.slice(0, 7), { ...point, month: point.date.slice(0, 7), ...(includeChildren ? { children: childrenOn.get(point.date) ?? null } : {}) })
   const history = [...monthEnds.values()]
   const notesFor = (key: (typeof ASSET_CLASSES)[number]) =>
     netWorth.asOfNotes.filter((note) => note.assetClass === key).map((note) => copy.asOfNote(note.label, fmtDate(note.asOf))).join(' · ')
@@ -129,7 +149,21 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
         </Card>
       </CardRow>
 
-      <Card title={copy.trend} className="mb-5">
+      <Card
+        title={copy.trend}
+        className="mb-5"
+        action={
+          <Link
+            href={hrefWith({ children: !includeChildren })}
+            scroll={false}
+            aria-pressed={includeChildren}
+            title={childCopy.toggleHint}
+            className={`rounded-sm border px-2 py-1 text-label font-medium ${includeChildren ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
+          >
+            {childCopy.toggle}
+          </Link>
+        }
+      >
         <StackedAssetChart
           points={totalAssets.points.map((point) => ({
             date: point.date,
@@ -139,7 +173,9 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
             pensions: point.pensions == null ? null : toDisplayMillions(point.pensions),
             gold: point.gold == null ? null : toDisplayMillions(point.gold),
             total: toDisplayMillions(point.total),
+            ...(includeChildren ? { children: childrenOn.get(point.date) == null ? null : toDisplayMillions(childrenOn.get(point.date)!) } : {}),
           }))}
+          childrenBand={includeChildren ? { label: childCopy.band, combinedLabel: childCopy.combined } : undefined}
           startsOn={totalAssets.startsOn}
           currency={currencyPreferences.displayCurrency}
           labels={{ ...copy.classes, total: copy.historyColumns.total }}
@@ -154,6 +190,30 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
           <AssetEventList markers={eventMarkers} copy={eventsCopy} money={(krw) => money(krw)} />
         </div>
       </Card>
+
+      {includeChildren ? (
+        <Card title={childCopy.title} className="mb-5">
+          <p className="border-b border-line-subtle bg-surface px-4 py-3 text-label leading-relaxed text-ink-3">{childCopy.note}</p>
+          <DataTable
+            caption={childCopy.title}
+            rows={childRows}
+            getRowKey={(row: ChildRow) => row.key}
+            emptyMessage={childCopy.empty}
+            columns={[
+              { key: 'owner', label: childCopy.columns.owner, render: (row: ChildRow) => <span className="font-medium text-ink">{row.owner}</span> },
+              { key: 'account', label: childCopy.columns.account, render: (row: ChildRow) => (row.subtotal ? <span className="font-medium text-ink">{row.account}</span> : row.account) },
+              { key: 'asOf', label: childCopy.columns.asOf, nowrap: true, render: (row: ChildRow) => <span className="tabular-nums">{row.asOf ? fmtDate(row.asOf) : ''}</span> },
+              {
+                key: 'value',
+                label: childCopy.columns.value,
+                align: 'right',
+                nowrap: true,
+                render: (row: ChildRow) => <span className={`tabular-nums ${row.subtotal ? 'font-medium text-ink' : ''}`}>{money(row.valueKrw)}</span>,
+              },
+            ]}
+          />
+        </Card>
+      ) : null}
 
       <Card title={copy.balances}>
         {netWorth.unpricedCash.length ? (
@@ -229,6 +289,16 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
                 align: 'right' as const,
                 render: (row: HistoryRow) => <span className="font-medium tabular-nums text-ink">{money(row.total)}</span>,
               },
+              ...(includeChildren
+                ? [
+                    {
+                      key: 'children',
+                      label: childCopy.historyColumn,
+                      align: 'right' as const,
+                      render: (row: HistoryRow) => amount(row.children ?? null),
+                    },
+                  ]
+                : []),
             ]}
           />
         </Card>
@@ -242,7 +312,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
             {fbarYears.map((year) => (
               <Link
                 key={year}
-                href={`/net-worth?fbarYear=${year}`}
+                href={hrefWith({ fbarYear: year })}
                 scroll={false}
                 aria-current={year === fbarYear ? 'page' : undefined}
                 className={`rounded-sm border px-2 py-1 text-label font-medium ${year === fbarYear ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}

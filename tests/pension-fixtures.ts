@@ -107,6 +107,34 @@ export const PENSION_MAP = {
   ],
 }
 
+/**
+ * A child's 미래에셋 연금저축, owned by `child:example` and labelled from the map,
+ * plus a retired sibling the map knows but nothing loads. Invented throughout.
+ */
+export const CHILD_PENSION = '미래에셋증권(연금저축-예시)'
+export const CHILD_OWNER = 'child:example'
+export const CHILD_LABEL = '자녀(예시)'
+export const CHILD_TOKEN = 'child-example-pension-savings'
+export const CHILD_ENTRIES = [
+  {
+    token: CHILD_TOKEN,
+    account: CHILD_PENSION,
+    wrapper: 'pension_savings',
+    institution: '미래에셋증권',
+    accountNumber: '900-0000-0000-1',
+    owner: CHILD_OWNER,
+    ownerLabel: CHILD_LABEL,
+  },
+  { account: '미래에셋증권(연금저축-예시-해지)', wrapper: 'pension_savings', institution: '미래에셋증권', accountNumber: '900-0000-0000-2', owner: CHILD_OWNER, ownerLabel: CHILD_LABEL, retiredOn: '2026-07-08' },
+]
+/** 5 x the fixture price 36,000 = 180,000, plus 20,000 cash: 200,000 today. The snapshot itself sums to 190,000. */
+export const CHILD_HOLDINGS_CSV = [
+  'type,name,ticker,quantity,cost_krw,value_krw',
+  'ETF,Example 200 ETF,069500,5,150000,170000',
+  'CASH,Example child cash,,,20000,20000',
+].join('\n') + '\n'
+export const CHILD_DEPOSIT = tx({ Date: '2026-04-01', Account: CHILD_PENSION, Type: 'DEPOSIT', 'Raw Type': '입금', 'Native Amount': 300000, 'Amount (KRW)': 300000, 'Settlement (KRW)': 300000, Source: 'child-example-pension-savings-mirae-transactions-20240101-20261008.pdf' })
+
 export const IRP_HOLDINGS_CSV = [
   'type,name,ticker,quantity,cost_krw,value_krw',
   'ETF,Example 200 ETF,069500,10,300000,350000',
@@ -166,13 +194,15 @@ export const GOLD_PRICES = {
  */
 export function writeScenario(
   dir: string,
-  { withPensions, etfPriced = true }: { withPensions: boolean; etfPriced?: boolean }
+  { withPensions, etfPriced = true, withChildren = false }: { withPensions: boolean; etfPriced?: boolean; withChildren?: boolean }
 ) {
   writeSheetPayloads(dir)
   const kr = path.join(dir, 'kr-statements')
   mkdirSync(kr, { recursive: true })
-  const pick = (key: keyof typeof STOCK_INPUTS) =>
-    withPensions ? [...STOCK_INPUTS[key], ...PENSION_INPUTS[key]] : STOCK_INPUTS[key]
+  const pick = (key: keyof typeof STOCK_INPUTS) => [
+    ...(withPensions ? [...STOCK_INPUTS[key], ...PENSION_INPUTS[key]] : STOCK_INPUTS[key]),
+    ...(withChildren && key === 'transactions' ? [CHILD_DEPOSIT] : []),
+  ]
   writeFileSync(path.join(kr, 'transactions.tsv'), tsv(TRANSACTION_COLUMNS, pick('transactions')), 'utf8')
   writeFileSync(path.join(kr, 'dividends.tsv'), tsv(DIVIDEND_COLUMNS, pick('dividends')), 'utf8')
   writeFileSync(path.join(kr, 'taxlots.tsv'), tsv(TAXLOT_COLUMNS, pick('taxlots')), 'utf8')
@@ -197,7 +227,9 @@ export function writeScenario(
     mkdirSync(pension, { recursive: true })
     writeFileSync(path.join(pension, 'irp-holdings-20261008.csv'), IRP_HOLDINGS_CSV, 'utf8')
     writeFileSync(path.join(dir, 'pension-evidence.json'), JSON.stringify(evidence()), 'utf8')
-    writeFileSync(path.join(dir, 'accounts.local.json'), JSON.stringify(PENSION_MAP), 'utf8')
+    const map = withChildren ? { ...PENSION_MAP, pensionAccounts: [...PENSION_MAP.pensionAccounts, ...CHILD_ENTRIES] } : PENSION_MAP
+    writeFileSync(path.join(dir, 'accounts.local.json'), JSON.stringify(map), 'utf8')
+    if (withChildren) writeFileSync(path.join(pension, `${CHILD_TOKEN}-holdings-20261008.csv`), CHILD_HOLDINGS_CSV, 'utf8')
     writeFileSync(path.join(dir, 'gold-prices.json'), JSON.stringify(GOLD_PRICES), 'utf8')
     env.STOCK_PENSION_DIR = pension
     env.STOCK_PENSION_EVIDENCE_PATH = path.join(dir, 'pension-evidence.json')

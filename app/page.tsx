@@ -8,6 +8,7 @@ import {
   dbAvailable,
   getAccountAllocation,
   getAssetEvents,
+  getChildAssets,
   getDividendByYear,
   getMeta,
   getNetWorth,
@@ -81,7 +82,7 @@ type TrendViewKey = 'single' | 'combined'
 export default async function OverviewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ trend?: string; metric?: string; scope?: string; view?: string }>
+  searchParams: Promise<{ trend?: string; metric?: string; scope?: string; view?: string; children?: string }>
 }) {
   const language = await getLanguage()
   const currencyPreferences = await getCurrencyPreferences()
@@ -133,6 +134,12 @@ export default async function OverviewPage({
   const portfolioSnapshots = selectedScope === 'GOLD' ? withGoldScope(storedSnapshots) : storedSnapshots
   // All-assets view only: every class stacked on the same snapshot dates, plus today.
   const totalAssets = assetView === 'all' ? getTotalAssetsSeries(portfolioSnapshots.map((snapshot) => snapshot.snapshot_date), netWorthSummary) : null
+  // Self only unless ?children=1; then the children are their own band, never in the total.
+  const includeChildren = params.children === '1'
+  const childQuery = includeChildren ? '&children=1' : ''
+  const childAssets = totalAssets && includeChildren ? getChildAssets(totalAssets.points.map((point) => point.date)) : null
+  const childrenOn = new Map((childAssets?.points ?? []).map((point) => [point.date, point.total]))
+  const childCopy = getPageCopy('netWorth', language).children
   // The large asset events, only where the total-assets chart renders.
   const eventMarkers = totalAssets ? snapEventDates(getAssetEvents(), totalAssets.points.map((point) => point.date)) : []
   const eventsCopy = getPageCopy('assetEvents', language)
@@ -485,7 +492,7 @@ export default async function OverviewPage({
             {TREND_RANGES.map((range) => (
               <Link
                 key={range.key}
-                href={`/?trend=${range.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}`}
+                href={`/?trend=${range.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}${childQuery}`}
                 scroll={false}
                 className={`rounded-sm border px-2 py-1 text-label font-medium ${selectedRange.key === range.key ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
               >
@@ -530,12 +537,12 @@ export default async function OverviewPage({
         </div>
         <div className="mb-3 flex flex-wrap items-center gap-1">
           <Link
-            href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=single`}
+            href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=single${childQuery}`}
             scroll={false}
             className={`rounded-sm border px-2 py-1 text-label ${selectedView === 'single' ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
           >{copy.individual}</Link>
           <Link
-            href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=combined`}
+            href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=combined${childQuery}`}
             scroll={false}
             className={`rounded-sm border px-2 py-1 text-label ${selectedView === 'combined' ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
           >{copy.combined}</Link>
@@ -543,7 +550,7 @@ export default async function OverviewPage({
           {TREND_SCOPES.map((scope) => (
             <Link
               key={scope.key}
-              href={`/?trend=${selectedRange.key}&scope=${scope.key}&metric=${selectedMetric.key}&view=${selectedView}`}
+              href={`/?trend=${selectedRange.key}&scope=${scope.key}&metric=${selectedMetric.key}&view=${selectedView}${childQuery}`}
               scroll={false}
               title={scope.key === 'GOLD' ? copy.scopeHints.GOLD : undefined}
               className={`rounded-sm border px-2 py-1 text-label ${selectedScope === scope.key ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
@@ -555,7 +562,7 @@ export default async function OverviewPage({
           {TREND_METRICS.map((metric) => (
             <Link
               key={metric.key}
-              href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${metric.key}&view=single`}
+              href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${metric.key}&view=single${childQuery}`}
               scroll={false}
               className={`rounded-sm border px-2 py-1 text-label ${selectedMetric.key === metric.key ? 'border-line bg-surface font-medium text-ink' : 'border-transparent text-ink-3 hover:border-line hover:text-ink'}`}
             >
@@ -609,13 +616,22 @@ export default async function OverviewPage({
               {TREND_RANGES.map((range) => (
                 <Link
                   key={range.key}
-                  href={`/?trend=${range.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}`}
+                  href={`/?trend=${range.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}${childQuery}`}
                   scroll={false}
                   className={`rounded-sm border px-2 py-1 text-label font-medium ${selectedRange.key === range.key ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
                 >
                   {range.label}
                 </Link>
               ))}
+              <Link
+                href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}${includeChildren ? '' : '&children=1'}`}
+                scroll={false}
+                aria-pressed={includeChildren}
+                title={childCopy.toggleHint}
+                className={`rounded-sm border px-2 py-1 text-label font-medium ${includeChildren ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
+              >
+                {childCopy.toggle}
+              </Link>
             </div>
           }
         >
@@ -628,7 +644,9 @@ export default async function OverviewPage({
               pensions: point.pensions == null ? null : displayBaseMillions(point.pensions),
               gold: point.gold == null ? null : displayBaseMillions(point.gold),
               total: displayBaseMillions(point.total),
+              ...(includeChildren ? { children: childrenOn.get(point.date) == null ? null : displayBaseMillions(childrenOn.get(point.date)!) } : {}),
             }))}
+            childrenBand={includeChildren ? { label: childCopy.band, combinedLabel: childCopy.combined } : undefined}
             startsOn={totalAssets.startsOn}
             currency={currencyPreferences.displayCurrency}
             labels={{ ...copy.assetClasses, total: copy.totalAssets }}

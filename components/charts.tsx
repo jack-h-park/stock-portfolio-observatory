@@ -308,7 +308,13 @@ const ASSET_COLORS: Record<AssetClass, string> = {
   gold: 'var(--brand-pink)',
 }
 
-export type StackedAssetPoint = { date: string; total: number } & Record<AssetClass, number | null>
+/**
+ * `children` is the children's accounts, present only when the page includes
+ * them: drawn as its own band on top, never folded into `total`, which stays the
+ * maintainer's own.
+ */
+export type StackedAssetPoint = { date: string; total: number; children?: number | null } & Record<AssetClass, number | null>
+const CHILDREN_COLOR = 'var(--brand-cyan)'
 
 /**
  * Every asset class stacked, one area each, values already in the display
@@ -325,6 +331,7 @@ export function StackedAssetChart({
   height = 260,
   axisLabel,
   markers = [],
+  childrenBand,
 }: {
   points: StackedAssetPoint[]
   startsOn: Partial<Record<AssetClass, string>>
@@ -334,6 +341,8 @@ export function StackedAssetChart({
   axisLabel?: string
   /** Numbered event markers (lib/asset-events chartMarkers), one per plotted date. */
   markers?: { date: string; label: string }[]
+  /** Labels for the children's band and the combined total, when the page includes the children. Absent: no band. */
+  childrenBand?: { label: string; combinedLabel: string }
 }) {
   const prefix = currency === 'USD' ? '$' : '₩'
   const formatValue = (value: number) => `${prefix}${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}M`
@@ -358,6 +367,12 @@ export function StackedAssetChart({
             return (
               <div style={{ ...TOOLTIP_SURFACE, padding: '6px 8px' }}>
                 <div style={{ marginBottom: 4, color: 'var(--text-tertiary)' }}>{label}</div>
+                {childrenBand ? (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                    <span style={{ color: CHILDREN_COLOR }}>{childrenBand.label}</span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{point.children == null ? '—' : formatValue(point.children)}</span>
+                  </div>
+                ) : null}
                 {[...STACK_ORDER].reverse().map((key) => (
                   <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                     <span style={{ color: ASSET_COLORS[key] }}>{labels[key]}</span>
@@ -368,6 +383,12 @@ export function StackedAssetChart({
                   <span>{labels.total}</span>
                   <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatValue(point.total)}</span>
                 </div>
+                {childrenBand ? (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                    <span>{childrenBand.combinedLabel}</span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatValue(point.total + (point.children ?? 0))}</span>
+                  </div>
+                ) : null}
               </div>
             )
           }}
@@ -400,6 +421,22 @@ export function StackedAssetChart({
             isAnimationActive={false}
           />
         ))}
+        {childrenBand ? (
+          <Area
+            key="children"
+            type="linear"
+            dataKey="children"
+            name={childrenBand.label}
+            stackId="assets"
+            stroke={CHILDREN_COLOR}
+            fill={CHILDREN_COLOR}
+            fillOpacity={0.2}
+            strokeDasharray="4 2"
+            strokeWidth={1.5}
+            connectNulls={false}
+            isAnimationActive={false}
+          />
+        ) : null}
       </AreaChart>
     </ResponsiveContainer>
   )
