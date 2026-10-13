@@ -653,6 +653,13 @@ export default async function OverviewPage({
             axisLabel={displayAxisLabel}
             markers={chartMarkers(eventMarkers, totalAssets.points[0]?.date)}
           />
+          {(childAssets?.owners ?? [])
+            .filter((owner) => owner.derivation && owner.derivedFrom && owner.derivedUntil)
+            .map((owner) => (
+              <div key={owner.owner} className="mt-1 text-label text-ink-3">
+                {childCopy.derivedNote(owner.label, fmtDate(owner.derivedFrom!), fmtDate(owner.derivedUntil!), owner.derivation!)}
+              </div>
+            ))}
           <div className="mt-1 text-label text-ink-3">
             {copy.totalAssetsStarts(
               ASSET_CLASSES.filter((key) => totalAssets.startsOn[key]).map((key) => copy.classSince(copy.assetClasses[key], fmtDate(totalAssets.startsOn[key]!)))

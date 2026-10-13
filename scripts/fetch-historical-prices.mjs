@@ -25,15 +25,42 @@ const tossSnapshotPath = process.env.STOCK_TOSS_SNAPSHOT_PATH || path.join(proce
 // A calendar-day comparison is enough and stays honest over weekends and
 // holidays: on a Saturday the newest weekday is still Friday, the file already
 // has it, and the run correctly does nothing.
+// The KR ETFs a pension account traded. The stock `transactions` view leaves
+// pension rows out, so they are read from transactions_all; the ingest values a
+// pension's history before its first snapshot at these closes
+// (scripts/pension-replay.mjs). Only Korean listings, which the feed carries.
+function pensionEtfTickers() {
+  if (!fs.existsSync(dbPath)) return []
+  const conn = new Database(dbPath, { readonly: true, fileMustExist: true })
+  try {
+    const has = conn.prepare("select 1 from sqlite_master where name = 'transactions_all'").get()
+    if (!has) return []
+    return conn
+      .prepare(
+        `select 'KR' as market, ticker, min(date) as first_date, max(date) as last_date from transactions_all
+          where account_wrapper in ('irp', 'pension_savings') and type in ('BUY', 'SELL') and ticker is not null and ticker != ''
+          group by ticker order by ticker`
+      )
+      .all()
+      .filter((row) => /^[0-9][0-9A-Z]{5}$/.test(String(row.ticker).toUpperCase()))
+  } finally {
+    conn.close()
+  }
+}
+
 if (!process.env.FORCE_HISTORICAL_PRICES && fs.existsSync(pricesPath)) {
   const existing = JSON.parse(fs.readFileSync(pricesPath, 'utf8'))
+  // A pension ETF the file has never heard of (neither priced nor listed missing)
+  // is new since the last fetch, and is worth one refetch even on a covered day.
+  const known = new Set([...(existing.prices ?? []), ...(existing.missing ?? [])].map((row) => `${row.market}:${row.ticker}`))
+  const newPensionTickers = pensionEtfTickers().filter((row) => !known.has(`KR:${row.ticker}`))
   // NOT existing.endDate — that is the end of the range we ASKED for, which the
   // writer sets to tomorrow. Reading it here would clear every comparison below
   // and skip forever. And not the maximum price_date either: one SPAXX row can
   // carry a date the equity session has not reached. See coveredSession().
   const covered = coveredSession(existing.prices)
   const newestPossible = newestSettledSession()
-  if (covered >= newestPossible && Number(existing.valuationVersion || 0) >= 2) {
+  if (covered >= newestPossible && Number(existing.valuationVersion || 0) >= 2 && newPensionTickers.length === 0) {
     console.log(`Historical prices already cover ${covered} (newest settled ${newestPossible}); skipping full refetch.`)
     process.exit(0)
   }
@@ -140,7 +167,7 @@ try {
   }
   const skipped = [];
   const tickerMap = new Map(
-    [...transactions, ...holdings]
+    [...transactions, ...holdings, ...pensionEtfTickers()]
       .filter((row) => String(row.ticker).toUpperCase() !== 'QACDS')
       .map((row) => {
         const ticker = String(row.ticker)

@@ -39,6 +39,10 @@ export const netWorth = defineCopy({
       columns: { owner: 'Owner', account: 'Account', asOf: 'As of', value: 'Value' },
       subtotal: (label: string) => `${label} total`,
       empty: 'No child account is on file.',
+      derivedNote: (label: string, from: string, until: string, method: string) =>
+        method === 'contributions'
+          ? `${label}: ${from} to ${until} is derived from cumulative net contributions (money in less money out), not a market value; the series is the snapshot from then on.`
+          : `${label}: ${from} to ${until} is derived from the transaction certificate, with each day's holdings valued at that day's close plus cash; the series is the snapshot from then on.`,
     },
     fbar: {
       title: 'Foreign account maximum balances (FBAR / Form 8938)',
@@ -101,6 +105,10 @@ export const netWorth = defineCopy({
       columns: { owner: '명의', account: '계좌', asOf: '기준일', value: '평가액' },
       subtotal: (label: string) => `${label} 합계`,
       empty: '등록된 자녀 계좌가 없습니다.',
+      derivedNote: (label: string, from: string, until: string, method: string) =>
+        method === 'contributions'
+          ? `${label}: ${from}부터 ${until}까지는 평가액이 아니라 누적 순납입액(입금 - 출금)으로 추정한 값이며, 그 이후는 잔고 스냅샷입니다.`
+          : `${label}: ${from}부터 ${until}까지는 거래내역증명서로 추정한 값으로, 그날의 보유 수량을 그날 종가로 평가하고 예수금을 더했습니다. 그 이후는 잔고 스냅샷입니다.`,
     },
     fbar: {
       title: '해외 계좌 최대 잔고 (FBAR / Form 8938)',

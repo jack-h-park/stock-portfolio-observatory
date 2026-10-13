@@ -219,6 +219,34 @@ TYPE_MAP = {
 ACCOUNT_TYPE_MAP = {
     "미래에셋증권(IRP)": {"계좌대체입금": "DEPOSIT"},
 }
+# A 미래에셋 연금저축 (a child's account) is a pension too: a 계좌대체입금 into it
+# is a contribution, exactly as on the IRP. Its label comes from the account map,
+# so the entry is added per map rather than written here.
+PENSION_DEPOSIT_TYPES = {"계좌대체입금": "DEPOSIT"}
+
+
+def account_type_map(account_map):
+    """ACCOUNT_TYPE_MAP plus every mapped 미래에셋 pension account's label."""
+    out = {label: dict(types) for label, types in ACCOUNT_TYPE_MAP.items()}
+    for entry in mirae_accounts.entries(account_map):
+        if entry["kind"] in ("irp", "pension_savings"):
+            out.setdefault(entry["label"], {}).update(PENSION_DEPOSIT_TYPES)
+    return out
+
+
+# A child's 거래내역증명서 is filed under the child's map token, ahead of the broker:
+# `child-<name>-pension-savings-mirae-transactions-<from>-<to>.pdf`
+# (scripts/file-downloads.py). It is read with the 미래에셋 statements.
+CHILD_MIRAE_STATEMENT_RE = re.compile(r"^child-[a-z0-9-]+-mirae-transactions-")
+
+
+def mirae_statement_paths(statements_dir):
+    """Every 미래에셋 statement to consider: `mirae-*` and the children's."""
+    return sorted(
+        p for p in Path(statements_dir).iterdir()
+        if p.is_file() and p.suffix.lower() in (".pdf", TRANSCRIBED_SUFFIX)
+        and (p.name.startswith(MIRAE_PREFIX) or CHILD_MIRAE_STATEMENT_RE.match(p.name))
+    )
 
 # Types whose 종목번호 / 종목명 cells hold something that is not a security. The
 # 신탁계약출금 B row prints the customer's name under 종목명 and a contract code
@@ -380,6 +408,12 @@ class TranscribedStatement:
         return False
 
 
+# Per-account passwords from the account map (`pdfPassword`, a child's
+# certificate is encrypted with its own). Filled in by main() once the map is
+# read; tried after STOCK_PDF_PASSWORD. Never printed.
+MAP_PDF_PASSWORDS = []
+
+
 def open_pdf(path):
     if str(path).lower().endswith(TRANSCRIBED_SUFFIX):
         try:
@@ -387,7 +421,7 @@ def open_pdf(path):
         except (OSError, ValueError) as error:
             print(f"[kr-statement] {error}", file=sys.stderr)
             return None
-    for candidate in (None, PDF_PASSWORD):
+    for candidate in (None, PDF_PASSWORD, *MAP_PDF_PASSWORDS):
         if candidate is None:
             try:
                 return pdfplumber.open(path)
@@ -1681,10 +1715,9 @@ def main():
         if not mirae_accounts.no_map_allowed():
             blocking_kinds.add("mirae-no-account-map")
 
-    pdfs = statements_to_read(
-        sorted(p for p in statements_dir.glob(f"{MIRAE_PREFIX}*")
-               if p.suffix.lower() in (".pdf", TRANSCRIBED_SUFFIX)),
-        report, mapped_distinct_accounts(account_map))
+    MAP_PDF_PASSWORDS[:] = mirae_accounts.pdf_passwords(account_map)
+    type_overrides = account_type_map(account_map)
+    pdfs = statements_to_read(mirae_statement_paths(statements_dir), report, mapped_distinct_accounts(account_map))
     if not pdfs:
         print(f"ERROR: no 미래에셋 statements in {statements_dir}", file=sys.stderr)
         return 1
@@ -1725,7 +1758,7 @@ def main():
                     cash.append(cash_row(a[0].strip().replace("/", "-"), account, point, name, page_no))
                 if raw_type in CASH_LEG_TYPES or raw_type in NO_EFFECT_TYPES:
                     continue
-                mapped = ACCOUNT_TYPE_MAP.get(account, {}).get(raw_type) or TYPE_MAP.get(raw_type)
+                mapped = type_overrides.get(account, {}).get(raw_type) or TYPE_MAP.get(raw_type)
                 if mapped is None:
                     unmapped[raw_type] = unmapped.get(raw_type, 0) + 1
                     continue

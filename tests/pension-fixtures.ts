@@ -135,6 +135,32 @@ export const CHILD_HOLDINGS_CSV = [
 ].join('\n') + '\n'
 export const CHILD_DEPOSIT = tx({ Date: '2026-04-01', Account: CHILD_PENSION, Type: 'DEPOSIT', 'Raw Type': '입금', 'Native Amount': 300000, 'Amount (KRW)': 300000, 'Settlement (KRW)': 300000, Source: 'child-example-pension-savings-mirae-transactions-20240101-20261008.pdf' })
 
+/**
+ * The child's certificate history before its snapshot of 2026-10-08, as the
+ * extractor writes it: a 계좌대체입금 (DEPOSIT), one ETF buy with its fee, and a
+ * distribution. Cash after them is 160,000 - 150,000 - 100 + 10,100 = 20,000,
+ * and 5 units at the last close before the snapshot (34,000) is 170,000: the
+ * replay meets the snapshot's 190,000 exactly. Invented throughout.
+ */
+const CHILD_SOURCE = 'child-example-pension-savings-mirae-transactions-20240101-20261008.pdf'
+export const CHILD_HISTORY = [
+  tx({ Date: '2026-04-01', Account: CHILD_PENSION, Type: 'DEPOSIT', 'Raw Type': '계좌대체입금', 'Native Amount': 160000, 'Amount (KRW)': 160000, 'Settlement (KRW)': 160000, Source: CHILD_SOURCE }),
+  tx({ Date: '2026-04-02', Account: CHILD_PENSION, Type: 'BUY', 'Raw Type': '주식매수입고', Ticker: '069500', Name: 'Example 200 ETF', Quantity: 5, 'Native Amount': 150000, 'Amount (KRW)': 150000, 'Unit Price': 30000, Fee: 100, Source: CHILD_SOURCE }),
+  tx({ Date: '2026-06-01', Account: CHILD_PENSION, Type: 'DIVIDEND', 'Raw Type': 'ETF/상장클래스 분배금입금', Ticker: '069500', Name: 'Example 200 ETF', 'Native Amount': 10100, 'Amount (KRW)': 10100, 'Settlement (KRW)': 10100, Source: CHILD_SOURCE }),
+]
+export const CHILD_HISTORY_DIVIDEND = { Date: '2026-06-01', Account: CHILD_PENSION, Symbol: '069500', Name: 'Example 200 ETF', Currency: 'KRW', 'Native Amount': 10100, 'FX Rate': 1, 'Amount (KRW)': 10100, Type: 'ETF/상장클래스 분배금입금', Source: CHILD_SOURCE, Page: 1 }
+export const CHILD_HISTORY_LOT = { Account: CHILD_PENSION, Ticker: '069500', Name: 'Example 200 ETF', 'Acquired Date': '2026-04-02', 'Open Quantity': 5, Currency: 'KRW', 'Native Cost Basis': 150100, 'Native Unit Cost': 30020, 'Cost Basis (KRW)': 150100, 'Unit Cost': 30020, 'Holding Days': 189, 'As Of Date': '2026-10-08', 'Tax Term': 'Short-term', Source: CHILD_SOURCE }
+/** Daily closes for the child's ETF, as fetch-historical-prices writes them. */
+export const CHILD_HISTORICAL_PRICES = {
+  valuationVersion: 2,
+  prices: [
+    { market: 'KR', ticker: '069500', symbol: '069500.KS', currency: 'KRW', price_date: '2026-04-02', close: 30000, adj_close: 29000, source: 'fixture' },
+    { market: 'KR', ticker: '069500', symbol: '069500.KS', currency: 'KRW', price_date: '2026-06-01', close: 32000, adj_close: 31000, source: 'fixture' },
+    { market: 'KR', ticker: '069500', symbol: '069500.KS', currency: 'KRW', price_date: '2026-10-07', close: 34000, adj_close: 34000, source: 'fixture' },
+  ],
+  missing: [],
+}
+
 export const IRP_HOLDINGS_CSV = [
   'type,name,ticker,quantity,cost_krw,value_krw',
   'ETF,Example 200 ETF,069500,10,300000,350000',
@@ -194,14 +220,23 @@ export const GOLD_PRICES = {
  */
 export function writeScenario(
   dir: string,
-  { withPensions, etfPriced = true, withChildren = false }: { withPensions: boolean; etfPriced?: boolean; withChildren?: boolean }
+  {
+    withPensions,
+    etfPriced = true,
+    withChildren = false,
+    childHistory = false,
+    childPrices = true,
+    childBuyUnits = 5,
+  }: { withPensions: boolean; etfPriced?: boolean; withChildren?: boolean; childHistory?: boolean; childPrices?: boolean; childBuyUnits?: number }
 ) {
   writeSheetPayloads(dir)
   const kr = path.join(dir, 'kr-statements')
   mkdirSync(kr, { recursive: true })
   const pick = (key: keyof typeof STOCK_INPUTS) => [
     ...(withPensions ? [...STOCK_INPUTS[key], ...PENSION_INPUTS[key]] : STOCK_INPUTS[key]),
-    ...(withChildren && key === 'transactions' ? [CHILD_DEPOSIT] : []),
+    ...(withChildren && key === 'transactions' ? (childHistory ? CHILD_HISTORY.map((row) => (row.Type === 'BUY' ? { ...row, Quantity: childBuyUnits } : row)) : [CHILD_DEPOSIT]) : []),
+    ...(withChildren && childHistory && key === 'dividends' ? [CHILD_HISTORY_DIVIDEND] : []),
+    ...(withChildren && childHistory && key === 'taxlots' ? [CHILD_HISTORY_LOT] : []),
   ]
   writeFileSync(path.join(kr, 'transactions.tsv'), tsv(TRANSACTION_COLUMNS, pick('transactions')), 'utf8')
   writeFileSync(path.join(kr, 'dividends.tsv'), tsv(DIVIDEND_COLUMNS, pick('dividends')), 'utf8')
@@ -221,6 +256,10 @@ export function writeScenario(
     STOCK_KR_STATEMENTS_DIR: kr,
     STOCK_KR_PRICES_PATH: path.join(dir, 'kr-prices.json'),
     STOCK_TAX_POLICY_PATH: path.join(dir, 'tax-policy.json'),
+  }
+  if (withChildren && childHistory && childPrices) {
+    writeFileSync(path.join(dir, 'historical-prices.json'), JSON.stringify(CHILD_HISTORICAL_PRICES), 'utf8')
+    env.STOCK_HISTORICAL_PRICES_PATH = path.join(dir, 'historical-prices.json')
   }
   if (withPensions) {
     const pension = path.join(dir, 'pension')

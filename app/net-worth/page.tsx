@@ -193,7 +193,16 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
 
       {includeChildren ? (
         <Card title={childCopy.title} className="mb-5">
-          <p className="border-b border-line-subtle bg-surface px-4 py-3 text-label leading-relaxed text-ink-3">{childCopy.note}</p>
+          <p className="border-b border-line-subtle bg-surface px-4 py-3 text-label leading-relaxed text-ink-3">
+            {childCopy.note}
+            {(childAssets?.owners ?? [])
+              .filter((owner) => owner.derivation && owner.derivedFrom && owner.derivedUntil)
+              .map((owner) => (
+                <span key={owner.owner} className="mt-1 block">
+                  {childCopy.derivedNote(owner.label, fmtDate(owner.derivedFrom!), fmtDate(owner.derivedUntil!), owner.derivation!)}
+                </span>
+              ))}
+          </p>
           <DataTable
             caption={childCopy.title}
             rows={childRows}
