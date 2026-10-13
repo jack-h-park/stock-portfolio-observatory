@@ -2806,7 +2806,35 @@ export type CashInflow = {
   undatedCount: number
   hasBankData: boolean
 }
-export type CashInflowRow = { date: string; source: 'bank' | 'dividend'; category: CashInflowCategory; label: string; account: string; currency: string; native: number; amount: number }
+/**
+ * Why a row has its category: a bankInflowRules entry (`reason` is its note, else
+ * its id), the ingest's description default (dividend/interest words), the
+ * broker's own type word for a dividend-table row, or nothing (unclassified).
+ */
+export type CashInflowReasonKind = 'rule' | 'default' | 'broker' | 'none'
+export type CashInflowRow = {
+  date: string
+  source: 'bank' | 'dividend'
+  category: CashInflowCategory
+  label: string
+  account: string
+  currency: string
+  native: number
+  amount: number
+  reason: string | null
+  reasonKind: CashInflowReasonKind
+}
+
+/** What the page's category filter selects. `investment` is dividends plus interest. */
+export type CashInflowFilter = 'All' | 'salary' | 'investment' | 'dividend' | 'interest' | 'other' | 'unclassified'
+export const CASH_INFLOW_FILTERS: CashInflowFilter[] = ['All', 'salary', 'investment', 'dividend', 'interest', 'other', 'unclassified']
+
+/** The categories a filter sums. `All` is every counted category; unclassified is only ever its own filter. */
+export function cashInflowCategories(filter: CashInflowFilter): CashInflowCategory[] {
+  if (filter === 'All') return ['salary', 'dividend', 'interest', 'other']
+  if (filter === 'investment') return ['dividend', 'interest']
+  return [filter]
+}
 
 // Dividend-table rows that are not cash arriving: in-kind rewards, and the
 // pre-conversion FX difference (선환전차액입금), which returns the user's own money.
@@ -2818,39 +2846,48 @@ const NON_CASH_DIVIDEND_TYPES = ['SHARE_REWARD', 'STAKING_REWARD', '선환전차
 function cashInflowUnion(conn: Database.Database, display: DisplayCurrency) {
   const hasBank = Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'bank_inflows'").get())
   const excluded = NON_CASH_DIVIDEND_TYPES.map((t) => `'${t}'`).join(', ')
+  // rule_note arrived after bank_inflows did; a database not yet re-ingested lacks it.
+  const hasNote = hasBank && (conn.prepare('pragma table_info(bank_inflows)').all() as { name: string }[]).some((c) => c.name === 'rule_note')
+  const reason = hasNote ? 'coalesce(rule_note, rule)' : 'rule'
   const bank = hasBank
     ? `select date, 'bank' as source, category, coalesce(description, '') as label, account, currency, amount as native,
-         ${datedAmountSql(display, 'amount')} as amount, usd_krw_rate_dated as dated
+         ${datedAmountSql(display, 'amount')} as amount, usd_krw_rate_dated as dated, ${reason} as reason,
+         case when rule is not null then 'rule' when category in ('dividend', 'interest') then 'default' else 'none' end as reason_kind
        from bank_inflows where category != 'transfer'`
-    : `select null as date, null as source, null as category, null as label, null as account, null as currency, 0 as native, 0 as amount, 1 as dated where 0`
+    : `select null as date, null as source, null as category, null as label, null as account, null as currency, 0 as native, 0 as amount, 1 as dated, null as reason, null as reason_kind where 0`
   const netNative = `(${NET_DIVIDEND_SQL})`
   return `${bank}
     union all
     select date, 'dividend', case income_category when 'dividend' then 'dividend' when 'interest' then 'interest' else 'other' end,
-      coalesce(name, ticker, ''), account, currency, ${netNative}, ${datedAmountSql(display, netNative)}, usd_krw_rate_dated
+      coalesce(name, ticker, ''), account, currency, ${netNative}, ${datedAmountSql(display, netNative)}, usd_krw_rate_dated,
+      type, 'broker'
     from dividends where upper(coalesce(type, '')) not in (${excluded})`
 }
 
 const CASH_INFLOW_CATEGORIES = ['salary', 'dividend', 'interest', 'other', 'unclassified'] as const
 
-function cashInflowPeriods(conn: Database.Database, display: DisplayCurrency, len: number): CashInflowPeriod[] {
+function cashInflowPeriods(conn: Database.Database, display: DisplayCurrency, len: number, categories: CashInflowCategory[]): CashInflowPeriod[] {
   const sums = CASH_INFLOW_CATEGORIES.map((c) => `coalesce(sum(case when category = '${c}' then amount end), 0) as ${c}`).join(', ')
   const rows = conn
     .prepare(`select substr(date, 1, ${len}) as period, ${sums} from (${cashInflowUnion(conn, display)}) where date is not null group by period order by period`)
     .all() as Omit<CashInflowPeriod, 'total'>[]
-  return rows.map((r) => ({ ...r, total: r.salary + r.dividend + r.interest + r.other }))
+  return rows.map((r) => ({ ...r, total: categories.reduce((sum, c) => sum + r[c], 0) }))
 }
 
 /**
  * Salary, dividends (net of withholding), interest and other credits by month or
  * year in the display currency, each row at its own date's USD/KRW rate.
- * `total` leaves out `unclassified`. `now` exists so tests control the window.
+ * `total` sums the filter's categories (every counted one for `All`, so it leaves
+ * out `unclassified`); the per-category fields are always all there. `now` exists
+ * so tests control the window. Salary share is of all counted inflow, whatever
+ * the filter.
  */
-export function getCashInflow(granularity: 'month' | 'year', display: DisplayCurrency, now: Date = new Date()): CashInflow {
+export function getCashInflow(granularity: 'month' | 'year', display: DisplayCurrency, now: Date = new Date(), filter: CashInflowFilter = 'All'): CashInflow {
   const conn = db()
   try {
-    const periods = cashInflowPeriods(conn, display, granularity === 'month' ? 7 : 4)
-    const months = granularity === 'month' ? periods : cashInflowPeriods(conn, display, 7)
+    const categories = cashInflowCategories(filter)
+    const periods = cashInflowPeriods(conn, display, granularity === 'month' ? 7 : 4, categories)
+    const months = granularity === 'month' ? periods : cashInflowPeriods(conn, display, 7, categories)
     // The current month is the month in the app's time zone, not UTC's.
     const { year: nowYear, month: nowMonth } = portfolioYearMonth(now)
     const currentMonth = `${nowYear}-${String(nowMonth).padStart(2, '0')}`
@@ -2859,6 +2896,7 @@ export function getCashInflow(granularity: 'month' | 'year', display: DisplayCur
     const inWindow = months.filter((p) => p.period >= start && p.period <= currentMonth)
     const trailing12m = inWindow.reduce((s, p) => s + p.total, 0)
     const salary12m = inWindow.reduce((s, p) => s + p.salary, 0)
+    const counted12m = inWindow.reduce((s, p) => s + p.salary + p.dividend + p.interest + p.other, 0)
     const ytd = months.filter((p) => p.period.startsWith(year) && p.period <= currentMonth).reduce((s, p) => s + p.total, 0)
     const hasBank = Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'bank_inflows'").get())
     const unclassifiedCount = hasBank
@@ -2872,7 +2910,7 @@ export function getCashInflow(granularity: 'month' | 'year', display: DisplayCur
       currency: display,
       granularity,
       periods,
-      totals: { trailing12m, ytd, monthlyAverage12m: trailing12m / 12, salaryShare12m: trailing12m === 0 ? null : salary12m / trailing12m },
+      totals: { trailing12m, ytd, monthlyAverage12m: trailing12m / 12, salaryShare12m: counted12m === 0 ? null : salary12m / counted12m },
       unclassifiedCount,
       undatedCount,
       hasBankData,
@@ -2882,18 +2920,27 @@ export function getCashInflow(granularity: 'month' | 'year', display: DisplayCur
   }
 }
 
-/** The rows behind one period ('YYYY-MM' or 'YYYY'), oldest first; unclassified bank rows included. */
-export function getCashInflowRows(period: string, display: DisplayCurrency): CashInflowRow[] {
+/**
+ * The rows behind one period ('YYYY-MM' or 'YYYY'), oldest first. `categories`
+ * narrows them to one cell or one filter; without it every counted category and
+ * unclassified rows are returned (transfers never are).
+ */
+export function getCashInflowRows(period: string, display: DisplayCurrency, categories?: CashInflowCategory[]): CashInflowRow[] {
   const conn = db()
   try {
-    return conn
+    const wanted = categories ?? [...CASH_INFLOW_CATEGORIES]
+    const placeholders = wanted.map(() => '?').join(', ')
+    const rows = conn
       .prepare(
-        `select date, source, category, label, coalesce(account, '') as account, coalesce(currency, '') as currency, native, amount
+        `select date, source, category, label, coalesce(account, '') as account, coalesce(currency, '') as currency, native, amount,
+           reason, reason_kind as reasonKind
          from (${cashInflowUnion(conn, display)})
-         where date is not null and substr(date, 1, length(?)) = ?
+         where date is not null and substr(date, 1, length(?)) = ? and category in (${placeholders})
          order by date, source, label`
       )
-      .all(period, period) as CashInflowRow[]
+      .all(period, period, ...wanted) as (Omit<CashInflowRow, 'reason'> & { reason: string | null })[]
+    // A description default carries no text of its own; the kind says it.
+    return rows.map((r) => ({ ...r, reason: r.reasonKind === 'default' ? null : r.reason }))
   } finally {
     conn.close()
   }
