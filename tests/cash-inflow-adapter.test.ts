@@ -67,7 +67,9 @@ test('a row with no dated rate still converts, and is counted', async () => {
   const r = getCashInflow('month', 'KRW', NOW)
   assert.equal(r.undatedCount, 1) // the undated KRW row is already in KRW, never converted
   assert.equal(getCashInflow('month', 'USD', NOW).undatedCount, 1) // the undated USD row is not converted in USD
-  assert.ok(r.periods.some((p) => p.period === '2024-01' && p.salary === 1_500_000))
+  // Periods are limited to the range; the 2024 rows sit outside the default 12 months.
+  const all = getCashInflow('month', 'KRW', NOW, 'All', { range: 'all' })
+  assert.ok(all.periods.some((p) => p.period === '2024-01' && p.salary === 1_500_000))
 })
 
 test('trailing 12 months covers the current month and the 11 before it', async () => {

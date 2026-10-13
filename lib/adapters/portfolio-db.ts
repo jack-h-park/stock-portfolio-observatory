@@ -2941,12 +2941,41 @@ export function getIncomeReview(display: DisplayCurrency): IncomeReview {
 }
 
 export type CashInflowCategory = 'salary' | 'dividend' | 'interest' | 'other' | 'unclassified'
-export type CashInflowPeriod = { period: string; salary: number; dividend: number; interest: number; other: number; unclassified: number; total: number }
+export type CashInflowPeriod = {
+  period: string
+  salary: number
+  dividend: number
+  interest: number
+  other: number
+  unclassified: number
+  total: number
+  /** Yearly view only: the year before's total under the same filter and scope, or null when there is none. */
+  previousTotal: number | null
+}
+export type CashInflowTotals = {
+  trailing12m: number
+  ytd: number
+  monthlyAverage12m: number
+  salaryShare12m: number | null
+  /** The selected range, for the selected categories. */
+  rangeTotal: number
+  /** Calendar months in the range (All time: from the first credit to this month). */
+  rangeMonths: number
+  monthlyAverage: number
+  /** The range's counted categories, whatever the filter. */
+  salary: number
+  investment: number
+  counted: number
+  investmentShare: number | null
+  /** The same-length window just before the range; null under All time or when it holds nothing. */
+  previousTotal: number | null
+  change: number | null
+}
 export type CashInflow = {
   currency: DisplayCurrency
   granularity: 'month' | 'year'
   periods: CashInflowPeriod[]
-  totals: { trailing12m: number; ytd: number; monthlyAverage12m: number; salaryShare12m: number | null }
+  totals: CashInflowTotals
   unclassifiedCount: number
   undatedCount: number
   hasBankData: boolean
@@ -2968,11 +2997,24 @@ export type CashInflowRow = {
   amount: number
   reason: string | null
   reasonKind: CashInflowReasonKind
+  /** Dividend-table rows only, in the row's own currency: gross paid and the withholding taken from it. */
+  ticker: string | null
+  gross: number | null
+  withheld: number | null
 }
 
 /** What the page's category filter selects. `investment` is dividends plus interest. */
 export type CashInflowFilter = 'All' | 'salary' | 'investment' | 'dividend' | 'interest' | 'other' | 'unclassified'
 export const CASH_INFLOW_FILTERS: CashInflowFilter[] = ['All', 'salary', 'investment', 'dividend', 'interest', 'other', 'unclassified']
+/** Bank is bank_inflows; broker is the dividends table. */
+export type CashInflowSource = 'All' | 'bank' | 'broker'
+export const CASH_INFLOW_SOURCES: CashInflowSource[] = ['All', 'bank', 'broker']
+/** The credit's own currency, not the display currency. */
+export type CashInflowCurrency = 'All' | 'KRW' | 'USD'
+export const CASH_INFLOW_CURRENCIES: CashInflowCurrency[] = ['All', 'KRW', 'USD']
+export type CashInflowRange = '12m' | '24m' | 'ytd' | 'lastYear' | 'all'
+export const CASH_INFLOW_RANGES: CashInflowRange[] = ['12m', '24m', 'ytd', 'lastYear', 'all']
+export type CashInflowScope = { source?: CashInflowSource; currency?: CashInflowCurrency; range?: CashInflowRange }
 
 /** The categories a filter sums. `All` is every counted category; unclassified is only ever its own filter. */
 export function cashInflowCategories(filter: CashInflowFilter): CashInflowCategory[] {
@@ -2987,7 +3029,8 @@ const NON_CASH_DIVIDEND_TYPES = ['SHARE_REWARD', 'STAKING_REWARD', '선환전차
 
 // Bank credits (transfers between own accounts are never read) unioned with
 // dividend-table rows, one shape: date, source, category, label, account,
-// currency, native, amount (display currency, own-date rate), dated (0/1).
+// currency, native, amount (display currency, own-date rate), dated (0/1),
+// reason, reason_kind, ticker, gross, withheld.
 function cashInflowUnion(conn: Database.Database, display: DisplayCurrency) {
   const hasBank = Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'bank_inflows'").get())
   const excluded = NON_CASH_DIVIDEND_TYPES.map((t) => `'${t}'`).join(', ')
@@ -2997,52 +3040,121 @@ function cashInflowUnion(conn: Database.Database, display: DisplayCurrency) {
   const bank = hasBank
     ? `select date, 'bank' as source, category, coalesce(description, '') as label, account, currency, amount as native,
          ${datedAmountSql(display, 'amount')} as amount, usd_krw_rate_dated as dated, ${reason} as reason,
-         case when rule is not null then 'rule' when category in ('dividend', 'interest') then 'default' else 'none' end as reason_kind
+         case when rule is not null then 'rule' when category in ('dividend', 'interest') then 'default' else 'none' end as reason_kind,
+         null as ticker, null as gross, null as withheld
        from bank_inflows where category != 'transfer'`
-    : `select null as date, null as source, null as category, null as label, null as account, null as currency, 0 as native, 0 as amount, 1 as dated, null as reason, null as reason_kind where 0`
+    : `select null as date, null as source, null as category, null as label, null as account, null as currency, 0 as native, 0 as amount, 1 as dated,
+         null as reason, null as reason_kind, null as ticker, null as gross, null as withheld where 0`
   const netNative = `(${NET_DIVIDEND_SQL})`
   return `${bank}
     union all
     select date, 'dividend', case income_category when 'dividend' then 'dividend' when 'interest' then 'interest' else 'other' end,
       coalesce(name, ticker, ''), account, currency, ${netNative}, ${datedAmountSql(display, netNative)}, usd_krw_rate_dated,
-      coalesce(type, income_category), case when coalesce(type, income_category) is null then 'none' else 'broker' end
+      coalesce(type, income_category), case when coalesce(type, income_category) is null then 'none' else 'broker' end,
+      ticker, native_amount, native_amount - ${netNative}
     from dividends where upper(coalesce(type, '')) not in (${excluded})`
+}
+
+// The source and currency narrowing, as a where clause and its bound values.
+function cashInflowWhere(scope: CashInflowScope) {
+  const source = scope.source ?? 'All'
+  const currency = scope.currency ?? 'All'
+  return {
+    sql: `date is not null and (? = 'All' or source = ?) and (? = 'All' or currency = ?)`,
+    params: [source, source === 'broker' ? 'dividend' : source, currency, currency],
+  }
 }
 
 const CASH_INFLOW_CATEGORIES = ['salary', 'dividend', 'interest', 'other', 'unclassified'] as const
 
-function cashInflowPeriods(conn: Database.Database, display: DisplayCurrency, len: number, categories: CashInflowCategory[]): CashInflowPeriod[] {
+function cashInflowPeriods(
+  conn: Database.Database,
+  display: DisplayCurrency,
+  len: number,
+  categories: CashInflowCategory[],
+  scope: CashInflowScope
+): CashInflowPeriod[] {
   const sums = CASH_INFLOW_CATEGORIES.map((c) => `coalesce(sum(case when category = '${c}' then amount end), 0) as ${c}`).join(', ')
+  const where = cashInflowWhere(scope)
   const rows = conn
-    .prepare(`select substr(date, 1, ${len}) as period, ${sums} from (${cashInflowUnion(conn, display)}) where date is not null group by period order by period`)
-    .all() as Omit<CashInflowPeriod, 'total'>[]
-  return rows.map((r) => ({ ...r, total: categories.reduce((sum, c) => sum + r[c], 0) }))
+    .prepare(`select substr(date, 1, ${len}) as period, ${sums} from (${cashInflowUnion(conn, display)}) where ${where.sql} group by period order by period`)
+    .all(...where.params) as Omit<CashInflowPeriod, 'total' | 'previousTotal'>[]
+  return rows.map((r) => ({ ...r, total: categories.reduce((sum, c) => sum + r[c], 0), previousTotal: null }))
+}
+
+const monthKey = (year: number, month: number) => {
+  const d = new Date(Date.UTC(year, month - 1, 1))
+  return d.toISOString().slice(0, 7)
+}
+const monthsBetween = (start: string, end: string) =>
+  (Number(end.slice(0, 4)) - Number(start.slice(0, 4))) * 12 + Number(end.slice(5, 7)) - Number(start.slice(5, 7)) + 1
+
+/** The range's first and last month ('YYYY-MM'), and the window just before it of the same length (null under All time). */
+function cashInflowWindow(range: CashInflowRange, nowYear: number, nowMonth: number, firstMonth: string | null) {
+  const current = monthKey(nowYear, nowMonth)
+  const span =
+    range === '12m' ? { start: monthKey(nowYear, nowMonth - 11), end: current, back: 12 }
+    : range === '24m' ? { start: monthKey(nowYear, nowMonth - 23), end: current, back: 24 }
+    : range === 'ytd' ? { start: monthKey(nowYear, 1), end: current, back: 12 }
+    : range === 'lastYear' ? { start: monthKey(nowYear - 1, 1), end: monthKey(nowYear - 1, 12), back: 12 }
+    : { start: firstMonth && firstMonth < current ? firstMonth : current, end: current, back: null }
+  const shift = (key: string, by: number) => monthKey(Number(key.slice(0, 4)), Number(key.slice(5, 7)) - by)
+  const previous = span.back == null ? null : { start: shift(span.start, span.back), end: shift(span.end, span.back) }
+  return { start: span.start, end: span.end, months: monthsBetween(span.start, span.end), previous }
 }
 
 /**
  * Salary, dividends (net of withholding), interest and other credits by month or
  * year in the display currency, each row at its own date's USD/KRW rate.
  * `total` sums the filter's categories (every counted one for `All`, so it leaves
- * out `unclassified`); the per-category fields are always all there. `now` exists
- * so tests control the window. Salary share is of all counted inflow, whatever
- * the filter.
+ * out `unclassified`); the per-category fields are always all there. The scope
+ * narrows by source and the credit's own currency and picks the range; periods
+ * are limited to the range (yearly: every year it touches). `now` exists so tests
+ * control the window. Shares are of all counted inflow, whatever the filter.
  */
-export function getCashInflow(granularity: 'month' | 'year', display: DisplayCurrency, now: Date = new Date(), filter: CashInflowFilter = 'All'): CashInflow {
+export function getCashInflow(
+  granularity: 'month' | 'year',
+  display: DisplayCurrency,
+  now: Date = new Date(),
+  filter: CashInflowFilter = 'All',
+  scope: CashInflowScope = {}
+): CashInflow {
   const conn = db()
   try {
     const categories = cashInflowCategories(filter)
-    const periods = cashInflowPeriods(conn, display, granularity === 'month' ? 7 : 4, categories)
-    const months = granularity === 'month' ? periods : cashInflowPeriods(conn, display, 7, categories)
+    const months = cashInflowPeriods(conn, display, 7, categories, scope)
     // The current month is the month in the app's time zone, not UTC's.
     const { year: nowYear, month: nowMonth } = portfolioYearMonth(now)
-    const currentMonth = `${nowYear}-${String(nowMonth).padStart(2, '0')}`
-    const start = new Date(Date.UTC(nowYear, nowMonth - 1 - 11, 1)).toISOString().slice(0, 7)
-    const year = currentMonth.slice(0, 4)
-    const inWindow = months.filter((p) => p.period >= start && p.period <= currentMonth)
-    const trailing12m = inWindow.reduce((s, p) => s + p.total, 0)
-    const salary12m = inWindow.reduce((s, p) => s + p.salary, 0)
-    const counted12m = inWindow.reduce((s, p) => s + p.salary + p.dividend + p.interest + p.other, 0)
-    const ytd = months.filter((p) => p.period.startsWith(year) && p.period <= currentMonth).reduce((s, p) => s + p.total, 0)
+    const currentMonth = monthKey(nowYear, nowMonth)
+    const sumMonths = (from: string, to: string, pick: (p: CashInflowPeriod) => number) =>
+      months.filter((p) => p.period >= from && p.period <= to).reduce((s, p) => s + pick(p), 0)
+    const counted = (p: CashInflowPeriod) => p.salary + p.dividend + p.interest + p.other
+
+    // The fixed trailing-12-month figures, kept for existing callers.
+    const t12 = cashInflowWindow('12m', nowYear, nowMonth, null)
+    const trailing12m = sumMonths(t12.start, t12.end, (p) => p.total)
+    const counted12m = sumMonths(t12.start, t12.end, counted)
+    const ytd = sumMonths(`${nowYear}-01`, currentMonth, (p) => p.total)
+
+    const window = cashInflowWindow(scope.range ?? '12m', nowYear, nowMonth, months[0]?.period ?? null)
+    const rangeTotal = sumMonths(window.start, window.end, (p) => p.total)
+    const salary = sumMonths(window.start, window.end, (p) => p.salary)
+    const investment = sumMonths(window.start, window.end, (p) => p.dividend + p.interest)
+    const countedRange = sumMonths(window.start, window.end, counted)
+    const previousRaw = window.previous ? sumMonths(window.previous.start, window.previous.end, (p) => p.total) : null
+    const previousTotal = previousRaw ? previousRaw : null
+
+    let periods: CashInflowPeriod[]
+    if (granularity === 'month') {
+      periods = months.filter((p) => p.period >= window.start && p.period <= window.end)
+    } else {
+      const years = cashInflowPeriods(conn, display, 4, categories, scope)
+      const byYear = new Map(years.map((y) => [y.period, y.total]))
+      periods = years
+        .filter((y) => y.period >= window.start.slice(0, 4) && y.period <= window.end.slice(0, 4))
+        .map((y) => ({ ...y, previousTotal: byYear.get(String(Number(y.period) - 1)) ?? null }))
+    }
+
     const hasBank = Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'bank_inflows'").get())
     const unclassifiedCount = hasBank
       ? (conn.prepare("select count(*) as n from bank_inflows where category = 'unclassified'").get() as { n: number }).n
@@ -3055,7 +3167,21 @@ export function getCashInflow(granularity: 'month' | 'year', display: DisplayCur
       currency: display,
       granularity,
       periods,
-      totals: { trailing12m, ytd, monthlyAverage12m: trailing12m / 12, salaryShare12m: counted12m === 0 ? null : salary12m / counted12m },
+      totals: {
+        trailing12m,
+        ytd,
+        monthlyAverage12m: trailing12m / 12,
+        salaryShare12m: counted12m === 0 ? null : sumMonths(t12.start, t12.end, (p) => p.salary) / counted12m,
+        rangeTotal,
+        rangeMonths: window.months,
+        monthlyAverage: rangeTotal / window.months,
+        salary,
+        investment,
+        counted: countedRange,
+        investmentShare: countedRange === 0 ? null : investment / countedRange,
+        previousTotal,
+        change: previousTotal ? (rangeTotal - previousTotal) / previousTotal : null,
+      },
       unclassifiedCount,
       undatedCount,
       hasBankData,
@@ -3068,22 +3194,24 @@ export function getCashInflow(granularity: 'month' | 'year', display: DisplayCur
 /**
  * The rows behind one period ('YYYY-MM' or 'YYYY'), oldest first. `categories`
  * narrows them to one cell or one filter; without it every counted category and
- * unclassified rows are returned (transfers never are).
+ * unclassified rows are returned (transfers never are). `scope` narrows by source
+ * and currency as the page does.
  */
-export function getCashInflowRows(period: string, display: DisplayCurrency, categories?: CashInflowCategory[]): CashInflowRow[] {
+export function getCashInflowRows(period: string, display: DisplayCurrency, categories?: CashInflowCategory[], scope: CashInflowScope = {}): CashInflowRow[] {
   const conn = db()
   try {
     const wanted = categories ?? [...CASH_INFLOW_CATEGORIES]
     const placeholders = wanted.map(() => '?').join(', ')
+    const where = cashInflowWhere(scope)
     const rows = conn
       .prepare(
         `select date, source, category, label, coalesce(account, '') as account, coalesce(currency, '') as currency, native, amount,
-           reason, reason_kind as reasonKind
+           reason, reason_kind as reasonKind, ticker, gross, withheld
          from (${cashInflowUnion(conn, display)})
-         where date is not null and substr(date, 1, length(?)) = ? and category in (${placeholders})
+         where ${where.sql} and substr(date, 1, length(?)) = ? and category in (${placeholders})
          order by date, source, label`
       )
-      .all(period, period, ...wanted) as (Omit<CashInflowRow, 'reason'> & { reason: string | null })[]
+      .all(...where.params, period, period, ...wanted) as CashInflowRow[]
     // A description default carries no text of its own; the kind says it.
     return rows.map((r) => ({ ...r, reason: r.reasonKind === 'default' ? null : r.reason }))
   } finally {
