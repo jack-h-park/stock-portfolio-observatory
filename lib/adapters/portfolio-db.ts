@@ -1951,7 +1951,21 @@ function accountOwners(conn: Database.Database) {
 }
 
 export type ChildAccount = { account: string; valueKrw: number; asOf: string | null }
-export type ChildOwner = { owner: string; label: string; totalKrw: number; accounts: ChildAccount[] }
+export type ChildOwner = {
+  owner: string
+  label: string
+  totalKrw: number
+  accounts: ChildAccount[]
+  /**
+   * How the history before the first snapshot was derived, when it was: from
+   * the certificate's trades valued at each day's close ('replay'), or from the
+   * cumulative net contributions ('contributions'). Null when every point is a
+   * stored total. `derivedFrom`/`derivedUntil` bound the derived stretch.
+   */
+  derivation: 'replay' | 'contributions' | 'mixed' | null
+  derivedFrom: string | null
+  derivedUntil: string | null
+}
 export type ChildAssets = {
   owners: ChildOwner[]
   /** On each date asked for, every child's total (null before any of their accounts starts), and the sum. */
@@ -1968,7 +1982,8 @@ export function getChildAssets(dates: string[] = []): ChildAssets {
   const conn = db()
   try {
     const hasTable = (name: string) => Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(name))
-    const hasOwner = (table: string) => (conn.prepare(`pragma table_info(${table})`).all() as { name: string }[]).some((column) => column.name === 'owner')
+    const columnsOf = (table: string) => new Set((conn.prepare(`pragma table_info(${table})`).all() as { name: string }[]).map((column) => column.name))
+    const hasOwner = (table: string) => columnsOf(table).has('owner')
     if (!hasTable('holdings_all') || !hasOwner('holdings_all')) return { owners: [], points: dates.map((date) => ({ date, byOwner: {}, total: null })) }
     const labels = accountOwners(conn)
     const rows = conn
@@ -1982,7 +1997,15 @@ export function getChildAssets(dates: string[] = []): ChildAssets {
       .all() as { owner: string; account: string; valueKrw: number; asOf: string | null }[]
     const byOwner = new Map<string, ChildOwner>()
     for (const row of rows) {
-      const entry = byOwner.get(row.owner) ?? { owner: row.owner, label: labels.get(row.account)?.label || row.owner, totalKrw: 0, accounts: [] }
+      const entry = byOwner.get(row.owner) ?? {
+        owner: row.owner,
+        label: labels.get(row.account)?.label || row.owner,
+        totalKrw: 0,
+        accounts: [],
+        derivation: null,
+        derivedFrom: null,
+        derivedUntil: null,
+      }
       entry.accounts.push({ account: row.account, valueKrw: Number(row.valueKrw), asOf: row.asOf })
       entry.totalKrw += Number(row.valueKrw)
       byOwner.set(row.owner, entry)
@@ -1991,9 +2014,20 @@ export function getChildAssets(dates: string[] = []): ChildAssets {
     const history =
       hasTable('pension_points') && hasOwner('pension_points')
         ? (conn
-            .prepare(`select owner, account, date, value_krw as valueKrw from pension_points where not (${SELF_OWNER_SQL}) order by date, id`)
-            .all() as { owner: string; account: string; date: string; valueKrw: number }[])
+            .prepare(
+              `select owner, account, date, value_krw as valueKrw, ${columnsOf('pension_points').has('derivation') ? 'derivation' : 'null as derivation'}
+                 from pension_points where not (${SELF_OWNER_SQL}) order by date, id`
+            )
+            .all() as { owner: string; account: string; date: string; valueKrw: number; derivation: string | null }[])
         : []
+    for (const owner of owners) {
+      const derived = history.filter((point) => point.owner === owner.owner && point.derivation)
+      if (!derived.length) continue
+      const methods = new Set(derived.map((point) => point.derivation))
+      owner.derivation = methods.size > 1 ? 'mixed' : (derived[0].derivation as 'replay' | 'contributions')
+      owner.derivedFrom = derived[0].date
+      owner.derivedUntil = derived.at(-1)!.date
+    }
     const today = portfolioToday()
     const points = [...new Set(dates)].sort().map((date) => {
       const values: Record<string, number | null> = {}

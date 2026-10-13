@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
+import { replayPensionHistory } from './pension-replay.mjs'
 import { STOCK_WRAPPERS, activePensionEntries, assetClassFor, loadAccountMap, ownerFor, tagRows, wrapperFor } from './account-map.mjs'
 import { loadLocalEnv } from './env.mjs'
 import { portfolioDate, valuePortfolio } from './portfolio-snapshot.mjs'
@@ -1291,7 +1292,11 @@ create table pension_points (
   owner text not null default 'self',
   date text not null,
   value_krw real not null,
-  source text not null
+  source text not null,
+  -- null for a stored total; 'replay' (certificate trades valued at the day's
+  -- close, plus cash) or 'contributions' (cumulative net money in) for a point
+  -- derived before the account's first stored total (scripts/pension-replay.mjs).
+  derivation text
 );
 
 -- Who owns each account that is not the maintainer's: owner is a token such as
@@ -5476,6 +5481,18 @@ for (const entry of activePensionEntries(accountMap)) {
 // value and every year-end certificate's total, one point per account and date.
 // The certificate is the statement of record, so it wins a date it shares.
 const pensionPointRows = []
+/** account -> its replayed history, for the pension_history_replay check. */
+const pensionReplays = []
+/** ticker -> date-sorted KR closes, from historical_prices, for the replay. */
+const krHistoricalCloses = new Map()
+for (const row of historicalPriceDocument.prices ?? []) {
+  const close = Number(row?.close)
+  if (text(row?.market) !== 'KR' || !Number.isFinite(close) || close <= 0 || !text(row?.price_date)) continue
+  const ticker = normalizeTicker(row.ticker)
+  if (!krHistoricalCloses.has(ticker)) krHistoricalCloses.set(ticker, [])
+  krHistoricalCloses.get(ticker).push({ date: text(row.price_date).slice(0, 10), close })
+}
+for (const closes of krHistoricalCloses.values()) closes.sort((a, b) => a.date.localeCompare(b.date))
 for (const entry of activePensionEntries(accountMap)) {
   const token = text(entry?.token)
   const account = text(entry?.account)
@@ -5490,11 +5507,34 @@ for (const entry of activePensionEntries(accountMap)) {
     if (text(cert.token) !== token || typeof cert.totalKrw !== 'number' || !text(cert.asOf)) continue
     byDate.set(text(cert.asOf), { value: cert.totalKrw, source: `certificate:${text(cert.kind) || 'certificate'}:${text(cert.source)}` })
   }
-  for (const [date, point] of [...byDate].sort(([a], [b]) => a.localeCompare(b))) {
-    pensionPointRows.push({ account, account_wrapper: wrapper, owner, date, value_krw: point.value, source: point.source })
+  const stored = [...byDate].sort(([a], [b]) => a.localeCompare(b))
+  // Before the first stored total, the certificate's own history where it can
+  // be rebuilt (scripts/pension-replay.mjs). Flagged by `derivation`; an account
+  // the replay cannot value (an IRP's trust products, an untickered fund) keeps
+  // no point before its first total, as before.
+  const firstPoint = stored[0]
+  if (firstPoint) {
+    const result = replayPensionHistory({
+      rows: transactionRows.filter((r) => r.account === account),
+      firstPointDate: firstPoint[0],
+      prices: krHistoricalCloses,
+      cash: brokerageCashRows
+        .filter((r) => r.account === account && r.currency === 'KRW')
+        .map((r) => ({ date: r.as_of_date, balance: r.balance }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+    })
+    if (result.method) {
+      for (const point of result.points) {
+        pensionPointRows.push({ account, account_wrapper: wrapper, owner, date: point.date, value_krw: point.value, source: `derived:${result.method}`, derivation: result.method })
+      }
+      pensionReplays.push({ account, token, firstPoint: { date: firstPoint[0], value: firstPoint[1].value }, result })
+    }
+  }
+  for (const [date, point] of stored) {
+    pensionPointRows.push({ account, account_wrapper: wrapper, owner, date, value_krw: point.value, source: point.source, derivation: null })
   }
 }
-insertMany(db, 'pension_points', pensionPointRows, ['account', 'account_wrapper', 'owner', 'date', 'value_krw', 'source'])
+insertMany(db, 'pension_points', pensionPointRows, ['account', 'account_wrapper', 'owner', 'date', 'value_krw', 'source', 'derivation'])
 // Accounts the maintainer does not own, with the label the map gives the owner.
 insertMany(
   db,
@@ -5824,6 +5864,57 @@ check(
       : 'no pension snapshot and no pension trades'
     : `${pensionTradesAfterSnapshot.join('; ')}. The trades are stored, but the holdings stay at the snapshot ` +
       'until a newer one is filed (pension/<token>-holdings-<YYYYMMDD>.csv)',
+  'warning',
+  'supplementary'
+)
+// The replayed history must arrive where the snapshot stands: the units it
+// leaves held on the snapshot date against the snapshot's ETF quantities, and
+// its cash against the snapshot's cash rows. A difference means a row the
+// certificate did not carry (or the snapshot is off), and the derived points
+// before it are suspect. The two VALUES are only reported: a snapshot is taken
+// at the broker's price of the moment, often intraday, while the replay uses
+// the close, so the totals differ by the day's move even when every unit agrees.
+const pensionReplayBreaks = []
+const pensionReplayNotes = []
+for (const { account, token, firstPoint, result } of pensionReplays) {
+  const won = (value) => `₩${Math.round(value).toLocaleString('en-US')}`
+  if (result.method === 'contributions') {
+    pensionReplayNotes.push(`${account}: ${result.points.length} point(s) from cumulative net contributions before ${firstPoint.date} (${result.reason})`)
+    continue
+  }
+  const snapshot = (pensionSnapshotsByToken.get(token) ?? []).find((s) => s.date === firstPoint.date && s.kind === 'csv')
+  const problems = []
+  let cashLine = ''
+  if (snapshot) {
+    const held = new Map()
+    for (const row of snapshot.rows) {
+      if (row.type !== 'ETF' || !row.ticker) continue
+      const ticker = normalizeTicker(row.ticker)
+      held.set(ticker, (held.get(ticker) ?? 0) + (row.quantity ?? 0))
+    }
+    for (const ticker of new Set([...held.keys(), ...result.atFirstPoint.quantities.keys()])) {
+      const replayed = result.atFirstPoint.quantities.get(ticker) ?? 0
+      const snap = held.get(ticker) ?? 0
+      if (Math.abs(replayed - snap) > 1e-6) problems.push(`${ticker} replay ${replayed} vs snapshot ${snap}`)
+    }
+    const snapshotCash = snapshot.rows.filter((row) => row.type === 'CASH').reduce((sum, row) => sum + (row.value ?? 0), 0)
+    const cashTolerance = Math.max(Math.abs(firstPoint.value) * 0.005, 10_000)
+    cashLine = `cash ${won(result.atFirstPoint.cash)} vs snapshot ${won(snapshotCash)}`
+    if (Math.abs(result.atFirstPoint.cash - snapshotCash) > cashTolerance) problems.push(cashLine)
+  }
+  const line =
+    `${account}: ${result.points.length} replayed point(s) from ${result.points[0]?.date ?? firstPoint.date} to the snapshot of ${firstPoint.date}` +
+    ` (value at the close ${won(result.atFirstPoint.value)} vs snapshot ${won(firstPoint.value)}${cashLine ? `; ${cashLine}` : ''})`
+  if (problems.length) pensionReplayBreaks.push(`${line} — ${problems.join(', ')}`)
+  else pensionReplayNotes.push(`${line}: units and cash agree`)
+}
+check(
+  'pension_history_replay',
+  pensionReplayBreaks.length === 0,
+  pensionReplays.length === 0
+    ? 'no pension history rebuilt from certificates before a first snapshot'
+    : [...pensionReplayBreaks, ...pensionReplayNotes].join('; ') +
+        (pensionReplayBreaks.length ? '. The derived points before the snapshot are suspect until the difference is explained' : ''),
   'warning',
   'supplementary'
 )

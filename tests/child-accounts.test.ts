@@ -31,7 +31,8 @@ test('the ingest tags the child account with its owner, and loads nothing for a 
   const db = new Database(withKids.dbPath, { readonly: true })
   const owners = db.prepare('select distinct account, owner from holdings_all where owner != ?').all('self') as { account: string; owner: string }[]
   assert.deepEqual(owners, [{ account: CHILD_PENSION, owner: CHILD_OWNER }])
-  const points = db.prepare('select account, owner, value_krw as v from pension_points where owner != ?').all('self') as { account: string; owner: string; v: number }[]
+  // The stored total; the deposit before it is a derived point (tests/child-pension-history.test.ts).
+  const points = db.prepare('select account, owner, value_krw as v from pension_points where owner != ? and derivation is null').all('self') as { account: string; owner: string; v: number }[]
   assert.deepEqual(points, [{ account: CHILD_PENSION, owner: CHILD_OWNER, v: 190_000 }])
   assert.deepEqual(db.prepare('select account, owner, owner_label as label from account_owners').all(), [
     { account: CHILD_PENSION, owner: CHILD_OWNER, label: CHILD_LABEL },
