@@ -2860,7 +2860,7 @@ function cashInflowUnion(conn: Database.Database, display: DisplayCurrency) {
     union all
     select date, 'dividend', case income_category when 'dividend' then 'dividend' when 'interest' then 'interest' else 'other' end,
       coalesce(name, ticker, ''), account, currency, ${netNative}, ${datedAmountSql(display, netNative)}, usd_krw_rate_dated,
-      type, 'broker'
+      coalesce(type, income_category), case when coalesce(type, income_category) is null then 'none' else 'broker' end
     from dividends where upper(coalesce(type, '')) not in (${excluded})`
 }
 

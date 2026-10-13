@@ -35,7 +35,6 @@ const CATEGORY_COLOR: Record<CashInflowCategory, string> = {
   other: 'var(--text-tertiary)',
   unclassified: 'var(--accent-danger)',
 }
-const DETAIL_CATEGORIES: CashInflowCategory[] = ['salary', 'dividend', 'interest', 'other', 'unclassified']
 
 function first(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value
@@ -51,9 +50,9 @@ export default async function CashInflowPage({
   const filterParam = first(params.category)
   const filter: CashInflowFilter = CASH_INFLOW_FILTERS.includes(filterParam as CashInflowFilter) ? (filterParam as CashInflowFilter) : 'All'
   const detailParam = first(params.detail)
-  const detail = detailParam && DETAIL_PATTERN.test(detailParam) ? detailParam : null
+  // A month under the yearly view (or a year under the monthly one) matches no row.
+  const detail = detailParam && DETAIL_PATTERN.test(detailParam) && detailParam.length === (view === 'month' ? 7 : 4) ? detailParam : null
   const detailCategoryParam = first(params.detailCategory)
-  const detailCategory = DETAIL_CATEGORIES.includes(detailCategoryParam as CashInflowCategory) ? (detailCategoryParam as CashInflowCategory) : null
 
   const language = await getLanguage()
   const currencyPreferences = await getCurrencyPreferences()
@@ -67,11 +66,13 @@ export default async function CashInflowPage({
   // Under All the unclassified column stays visible, muted, as a to-do.
   const tableCategories: CashInflowCategory[] = filter === 'All' ? [...categories, 'unclassified'] : categories
   const showTotal = categories.length > 1
+  // A drill-down into a category the table does not show belongs to another filter.
+  const detailCategory = tableCategories.includes(detailCategoryParam as CashInflowCategory) ? (detailCategoryParam as CashInflowCategory) : null
   const chartPeriods = view === 'month' ? data.periods.slice(-24) : data.periods
 
-  // The drill-down for a whole period follows the filter; under All it also
-  // lists unclassified rows, so a period's credits are all in one place.
-  const detailCategories = detailCategory ? [detailCategory] : tableCategories
+  // The drill-down for a whole period lists what the row's Total counts, so its
+  // subtotal matches it; unclassified rows open from their own cell.
+  const detailCategories = detailCategory ? [detailCategory] : categories
   const detailRows = detail ? getCashInflowRows(detail, currencyPreferences.displayCurrency, detailCategories) : []
   const detailLabel = detailCategory ? copy.categories[detailCategory] : copy.filter.options[filter]
 
@@ -88,7 +89,7 @@ export default async function CashInflowPage({
 
   const reasonText = (r: CashInflowRow) => {
     if (r.reasonKind === 'rule') return copy.reasons.rule(r.reason ?? '')
-    if (r.reasonKind === 'broker') return copy.reasons.broker(r.reason ?? '')
+    if (r.reasonKind === 'broker' && r.reason) return copy.reasons.broker(r.reason)
     if (r.reasonKind === 'default') return r.category === 'dividend' ? copy.reasons.defaultDividend : copy.reasons.defaultInterest
     return copy.reasons.none
   }
@@ -102,7 +103,7 @@ export default async function CashInflowPage({
       <Link
         href={current ? href({}) : href({ detail: p.period, detailCategory: c })}
         scroll={false}
-        aria-label={copy.cellLink(p.period, copy.categories[c])}
+        aria-label={copy.cellLink(text, p.period, copy.categories[c])}
         aria-current={current ? 'true' : undefined}
         className={`rounded-sm hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-info/40 ${current ? 'font-semibold text-info' : muted ? 'text-ink-3' : 'text-info'}`}
       >
@@ -131,10 +132,10 @@ export default async function CashInflowPage({
             { key: 'date', label: copy.columns.date, nowrap: true },
             ...(detailCategory ? [] : [{ key: 'category', label: copy.columns.category, render: (r: CashInflowRow) => copy.categories[r.category] }]),
             { key: 'label', label: copy.columns.label },
-            { key: 'account', label: copy.columns.account, priority: 'secondary' as const },
+            { key: 'account', label: copy.columns.account, priority: 'tertiary' as const },
             { key: 'native', label: copy.columns.native, align: 'right' as const, priority: 'secondary' as const, render: (r: CashInflowRow) => `${fmtNumber(r.native, r.currency === 'KRW' ? 0 : 2)} ${r.currency}` },
             { key: 'amount', label: copy.columns.amount, align: 'right' as const, render: (r: CashInflowRow) => money(r.amount, data.currency) },
-            { key: 'reason', label: copy.reasonColumn, priority: 'secondary' as const, render: (r: CashInflowRow) => <span className="text-ink-3">{reasonText(r)}</span> },
+            { key: 'reason', label: copy.reasonColumn, render: (r: CashInflowRow) => <span className="text-ink-3">{reasonText(r)}</span> },
           ]}
         />
       </div>
@@ -187,8 +188,11 @@ export default async function CashInflowPage({
           value={money(data.totals.trailing12m, data.currency)}
         >
           <KpiBand>
-            <MetricField label={copy.ytd} value={money(data.totals.ytd, data.currency)} tone="success" valueClassName="text-title" />
-            <MetricField label={copy.monthlyAverage} value={money(data.totals.monthlyAverage12m, data.currency)} valueClassName="text-title" />
+            {/* Unclassified money is a to-do, not income: no success tone, no average. */}
+            <MetricField label={copy.ytd} value={money(data.totals.ytd, data.currency)} tone={filter === 'unclassified' ? undefined : 'success'} valueClassName="text-title" />
+            {filter === 'unclassified' ? null : (
+              <MetricField label={copy.monthlyAverage} value={money(data.totals.monthlyAverage12m, data.currency)} valueClassName="text-title" />
+            )}
             {filter === 'All' ? (
               <MetricField label={copy.salaryShare} value={fmtPct(salarySharePct(data.totals.salaryShare12m), { nullText: copy.notAvailable })} valueClassName="text-title" />
             ) : null}

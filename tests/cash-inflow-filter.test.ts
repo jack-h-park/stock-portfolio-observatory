@@ -28,6 +28,7 @@ bank.run('mg', 'Invented Checking', 'KRW', '2025-03-29', 900_000, 'OWN MOVE', ''
 bank.run('mg', 'Invented Checking', 'KRW', '2025-04-25', 3_000_000, 'EXAMPLE PAYROLL', '', 'salary', 'salary-example', 'Example payroll', 1000, 1)
 const div = db.prepare('insert into dividends values (?,?,?,?,?,?,?,?,?,?,?,?)')
 div.run('2025-03-15', 'Invented Broker', 'AAA', 'Invented ETF', 'USD', 10, 1, 'DIVIDEND', 'invented', 'dividend', 1000, 1)
+div.run('2025-05-15', 'Invented Broker', 'BBB', 'Invented Fund', 'USD', 5, null, null, 'invented', null, 1000, 1)
 db.close()
 
 process.env.STOCK_DB_PATH = dbPath
@@ -67,4 +68,10 @@ test('the rows behind one cell carry why each row has its category', async () =>
   assert.deepEqual([unclassified.reasonKind, unclassified.reason], ['none', null])
   // No category list: every counted category plus unclassified, never transfers.
   assert.equal(getCashInflowRows('2025-03', 'KRW').length, 5)
+})
+
+test('a dividend row with no type of its own falls back to its category, never an empty reason', async () => {
+  const { getCashInflowRows } = await import('../lib/adapters/portfolio-db')
+  const [row] = getCashInflowRows('2025-05', 'KRW', ['other'])
+  assert.deepEqual([row.reasonKind, row.reason], ['none', null])
 })

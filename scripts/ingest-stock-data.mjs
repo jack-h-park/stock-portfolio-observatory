@@ -5155,6 +5155,8 @@ const bankInflowRules = (Array.isArray(manualMappings.bankInflowRules) ? manualM
   }
   return true
 })
+// Each kept rule's position in the file, for naming a rule that has no id.
+const bankInflowRuleIndex = new Map(bankInflowRules.map((r) => [r, (manualMappings.bankInflowRules ?? []).indexOf(r)]))
 const bankInflowMatches = (row, match = {}) =>
   includesText(row.institution, match.institution) &&
   includesText(row.account, match.accountIncludes) &&
@@ -5174,7 +5176,9 @@ const bankInflowRows = bankBalances.inflows.map((f) => {
     const r = bankInflowRules.find((x) => bankInflowMatches(f, x.match))
     if (r) {
       category = r.category
-      rule = r.id ?? null
+      // An id is optional; a rule without one is still named, so a row a rule
+      // classified never reads as "no rule matched".
+      rule = r.id ?? `bankInflowRules[${bankInflowRuleIndex.get(r)}]`
       ruleNote = typeof r.note === 'string' && r.note.trim() ? r.note.trim() : null
     }
   }

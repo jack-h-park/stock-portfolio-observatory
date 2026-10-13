@@ -210,3 +210,11 @@ test("a matched rule's note is stored with the row, so the page can say why", ()
   assert.equal(note('EXAMPLE CO PAYROLL'), null)
   assert.equal(note('이자 지급'), null)
 })
+
+test('a rule without an id is still recorded as the rule that matched', () => {
+  const db = ingestBank(BANK, { ...MAPPINGS, bankInflowRules: [
+    { match: { institution: 'mg', descriptionIncludes: '급여' }, category: 'salary', note: 'Example payroll' },
+  ] })
+  const row = db.prepare("select category, rule, rule_note from bank_inflows where description = '급여'").get() as any
+  assert.deepEqual([row.category, row.rule, row.rule_note], ['salary', 'bankInflowRules[0]', 'Example payroll'])
+})
