@@ -514,6 +514,34 @@ A snapshot with any other name, or an unknown token, is refused with the name to
 - The example map, `data/accounts.local.example.json`, pins `accountNumber` for this reason.
 - Evidence or a snapshot with no matching entry is refused, never filed under a guess.
 
+**A child's account.** An entry may name an `owner` other than the maintainer and
+a display `ownerLabel`, for example `"owner": "child:a", "ownerLabel": "자녀(…)"`
+(the label comes only from the map, never from code):
+
+```json
+{ "token": "child-a-pension-savings", "account": "미래에셋증권(연금저축-…)", "accountNumber": "<full 계좌번호>",
+  "wrapper": "pension_savings", "institution": "미래에셋증권", "owner": "child:a", "ownerLabel": "자녀(…)",
+  "openedOn": "YYYY-MM-DD", "pdfPassword": "<the certificate's own password>" }
+```
+
+- Its snapshot is `pension/<token>-holdings-<YYYYMMDD>.csv`; the token's own prefix
+  keeps the maintainer's `pension-savings-holdings-*` from ever matching it.
+- Its rows carry the owner (`holdings_all`, `pension_points`, `pension_flows`, and
+  `account_owners` for the label). Net worth, the total-assets trend, FBAR, the
+  contribution limits and the tax review read `owner = 'self'` only. `/net-worth`
+  and `/` show the children only behind the 자녀 포함 / Include children toggle, as
+  their own band, column and table, never inside a total. `/pension` lists them in
+  their own section. The stock pages, the briefing and the stock checks never see
+  them (a pension wrapper is never a stock row).
+- `pdfPassword` opens that account's encrypted certificates: the filer tries no
+  password, then `STOCK_PDF_PASSWORD`, then every map `pdfPassword`, and still
+  decides the account by the full 계좌번호 printed inside. A 미래에셋 연금저축
+  거래내역증명서 files as `kr-statements/<token>-mirae-transactions-<from>-<to>.pdf`,
+  outside the `mirae-*` series the stock extractor reads. Its deposits are not yet
+  read into `pension_flows`.
+- A closed or zero account is listed with `retiredOn` (or without a `token`): known,
+  so its certificate is refused as retired, but never loaded, shown or reminded.
+
 Without a map entry, an account is still classified by its label. A label naming
 `IRP` or `퇴직연금` is `irp`, `연금저축` is `pension_savings`, and `금현물` is the
 `gold` asset class. So an unmapped pension account never reads as `taxable`.

@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
-import { STOCK_WRAPPERS, assetClassFor, loadAccountMap, ownerFor, tagRows, wrapperFor } from './account-map.mjs'
+import { STOCK_WRAPPERS, activePensionEntries, assetClassFor, loadAccountMap, ownerFor, tagRows, wrapperFor } from './account-map.mjs'
 import { loadLocalEnv } from './env.mjs'
 import { portfolioDate, valuePortfolio } from './portfolio-snapshot.mjs'
 import { resolveCryptoFiles, resolveUsHoldingFiles, resolveUsTransactionFiles, robinhoodStrategyLabel } from './source-files.mjs'
@@ -1286,9 +1286,20 @@ create table pension_points (
   id integer primary key,
   account text not null,
   account_wrapper text not null,
+  owner text not null default 'self',
   date text not null,
   value_krw real not null,
   source text not null
+);
+
+-- Who owns each account that is not the maintainer's: owner is a token such as
+-- 'child:<name>', owner_label the display label the account map gives it. An
+-- account absent here is 'self'. Every total-assets, FBAR and tax figure reads
+-- owner = 'self' only; a child's account is shown apart, labelled.
+create table account_owners (
+  account text primary key,
+  owner text not null,
+  owner_label text
 );
 
 -- The KRX gold price history (KRW per gram) from data/gold-prices.json, one row
@@ -5369,7 +5380,7 @@ let pensionPricedEtfs = 0
 /** account label -> { date, source } of the snapshot its holdings stand on. */
 const pensionSnapshotByAccount = new Map()
 const pensionSnapshotsByToken = new Map()
-for (const entry of accountMap.pensionAccounts ?? []) {
+for (const entry of activePensionEntries(accountMap)) {
   const token = text(entry?.token)
   const account = text(entry?.account)
   if (!token || !account) continue
@@ -5457,11 +5468,12 @@ for (const entry of accountMap.pensionAccounts ?? []) {
 // value and every year-end certificate's total, one point per account and date.
 // The certificate is the statement of record, so it wins a date it shares.
 const pensionPointRows = []
-for (const entry of accountMap.pensionAccounts ?? []) {
+for (const entry of activePensionEntries(accountMap)) {
   const token = text(entry?.token)
   const account = text(entry?.account)
   if (!token || !account) continue
   const wrapper = text(entry.wrapper) || wrapperFor({ account }, accountMap)
+  const owner = text(entry.owner) || ownerFor({ account }, accountMap)
   const byDate = new Map()
   for (const snap of pensionSnapshotsByToken.get(token) ?? []) {
     byDate.set(snap.date, { value: snap.rows.reduce((sum, r) => sum + (r.value ?? 0), 0), source: `snapshot:${snap.source}` })
@@ -5471,10 +5483,19 @@ for (const entry of accountMap.pensionAccounts ?? []) {
     byDate.set(text(cert.asOf), { value: cert.totalKrw, source: `certificate:${text(cert.kind) || 'certificate'}:${text(cert.source)}` })
   }
   for (const [date, point] of [...byDate].sort(([a], [b]) => a.localeCompare(b))) {
-    pensionPointRows.push({ account, account_wrapper: wrapper, date, value_krw: point.value, source: point.source })
+    pensionPointRows.push({ account, account_wrapper: wrapper, owner, date, value_krw: point.value, source: point.source })
   }
 }
-insertMany(db, 'pension_points', pensionPointRows, ['account', 'account_wrapper', 'date', 'value_krw', 'source'])
+insertMany(db, 'pension_points', pensionPointRows, ['account', 'account_wrapper', 'owner', 'date', 'value_krw', 'source'])
+// Accounts the maintainer does not own, with the label the map gives the owner.
+insertMany(
+  db,
+  'account_owners',
+  activePensionEntries(accountMap)
+    .map((entry) => ({ account: text(entry.account), owner: text(entry.owner) || 'self', owner_label: text(entry.ownerLabel) || null }))
+    .filter((row) => row.owner !== 'self'),
+  ['account', 'owner', 'owner_label']
+)
 
 // ---------------------------------------------------------------------------
 // Physical gold: one holding per gold account, built from its purchases.

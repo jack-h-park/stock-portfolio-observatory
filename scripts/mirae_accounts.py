@@ -17,7 +17,12 @@ The map entries a document can match:
 
 - `brokerageAccounts`: `{"institution": "mirae", "accountNumber", "kind": "isa" | "general" | "gold"}`
 - `bankAccounts`: `{"institution": "mirae", "kind": "cma", "accountNumber", "alias"}`
-- `pensionAccounts`: `{"token": "irp", "accountNumber", "wrapper": "irp", "institution": "미래에셋증권", ...}`
+- `pensionAccounts`: `{"token": "irp", "accountNumber", "wrapper": "irp", "institution": "미래에셋증권", ...}`,
+  and a 미래에셋 연금저축 (a child's account, say) with `"wrapper": "pension_savings"`.
+  Only an active entry (a `token`, no `retiredOn`) is a filing target; a retired
+  or token-less one is known (`inactive_numbers`), so its document is refused as
+  closed rather than as unknown. An entry may carry a `pdfPassword` for its own
+  encrypted certificates (`pdf_passwords`); it is never printed.
 
 Any of them may carry a `label`, which wins. Without one the label is the kind's
 default below (a CMA's is its `alias`, the IRP's its pensionAccounts `account`),
@@ -65,11 +70,13 @@ DEFAULT_LABELS = {
     "isa": "미래에셋증권(ISA)",
     "gold": "미래에셋증권(금현물)",
     "irp": "미래에셋증권(IRP)",
+    "pension_savings": "미래에셋증권(연금저축)",
     "cma": "미래에셋 CMA",
 }
 BROKERAGE_KINDS = ("isa", "general", "gold")
 # What each kind prints as 계좌유형, for messages.
-PRINTED_TYPES = {"general": "종합", "isa": "ISA", "gold": "금현물", "irp": "퇴직연금_개인IRP", "cma": "종합_CMA"}
+PRINTED_TYPES = {"general": "종합", "isa": "ISA", "gold": "금현물", "irp": "퇴직연금_개인IRP",
+                 "pension_savings": "연금저축계좌", "cma": "종합_CMA"}
 MIRAE_INSTITUTIONS = ("mirae", "미래에셋증권")
 
 
@@ -115,6 +122,8 @@ def type_kind(account_type):
     account_type = re.sub(r"\s+", "", unicodedata.normalize("NFC", account_type or ""))
     if re.search(r"IRP|퇴직연금", account_type, re.I):
         return "irp"
+    if "연금저축" in account_type:
+        return "pension_savings"
     if "금현물" in account_type:
         return "gold"
     if "ISA" in account_type.upper():
@@ -163,7 +172,36 @@ def entries(account_map):
             out.append({"number": digits(entry["accountNumber"]), "kind": "irp",
                         "label": entry.get("label") or entry.get("account") or DEFAULT_LABELS["irp"],
                         "section": "pensionAccounts", "token": entry.get("token")})
+    for entry in _list(account_map, "pensionAccounts"):
+        if (entry.get("wrapper") == "pension_savings" and entry.get("institution") in MIRAE_INSTITUTIONS
+                and digits(entry.get("accountNumber")) and _active(entry)):
+            out.append({"number": digits(entry["accountNumber"]), "kind": "pension_savings",
+                        "label": entry.get("label") or entry.get("account") or DEFAULT_LABELS["pension_savings"],
+                        "section": "pensionAccounts", "token": entry.get("token"),
+                        "owner": entry.get("owner") or "self"})
     return out
+
+
+def _active(entry):
+    return bool(str(entry.get("token") or "").strip()) and not entry.get("retiredOn")
+
+
+def inactive_numbers(account_map):
+    """Full numbers of 미래에셋 연금저축 entries that are retired or have no token: known, never filed."""
+    return {digits(e.get("accountNumber")) for e in _list(account_map, "pensionAccounts")
+            if e.get("wrapper") == "pension_savings" and e.get("institution") in MIRAE_INSTITUTIONS
+            and digits(e.get("accountNumber")) and not _active(e)}
+
+
+def pdf_passwords(account_map):
+    """Every per-account `pdfPassword` in the map, de-duplicated, in map order. Never print them."""
+    seen = []
+    for key in ("pensionAccounts", "brokerageAccounts", "bankAccounts"):
+        for entry in _list(account_map, key):
+            value = entry.get("pdfPassword")
+            if isinstance(value, str) and value and value not in seen:
+                seen.append(value)
+    return seen
 
 
 def find(account_map, number):

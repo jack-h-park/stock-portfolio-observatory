@@ -306,6 +306,7 @@ class Document:
         self._cells = None
         self._digest = None
         self.encrypted = False
+        self.opened_with = None
 
     # -- generic ----------------------------------------------------------
     @property
@@ -340,12 +341,24 @@ class Document:
         # same order scripts/extract-kr-statements.py uses.
         try:
             return pdfplumber.open(self.path)
-        except Exception:
-            if not PDF_PASSWORD:
+        except Exception as first:
+            # The global password first, then each per-account `pdfPassword` the
+            # account map carries (a child's certificate is encrypted with its
+            # own). Which account it is is still decided by the full 계좌번호
+            # printed inside, never by which password opened it.
+            candidates = ([PDF_PASSWORD] if PDF_PASSWORD else []) + [
+                p for p in map_pdf_passwords() if p != PDF_PASSWORD]
+            if not candidates:
                 raise
-            pdf = pdfplumber.open(self.path, password=PDF_PASSWORD)
-            self.encrypted = True
-            return pdf
+            for index, password in enumerate(candidates):
+                try:
+                    pdf = pdfplumber.open(self.path, password=password)
+                except Exception:
+                    continue
+                self.encrypted = True
+                self.opened_with = "STOCK_PDF_PASSWORD" if PDF_PASSWORD and index == 0 else "a per-account password from the account map"
+                return pdf
+            raise first
 
     def page_text(self, index=0):
         """NFC text of one page, or '' if the file cannot be read as a PDF."""
@@ -563,6 +576,13 @@ def mirae_account(what, numbers, printed_type=None, expected_kind=None):
     entry, problem = mirae_accounts.find(account_map, number)
     if problem:
         return None, Refusal(what, problem, "fix the JSON, or move the file aside")
+    if entry is None and number in mirae_accounts.inactive_numbers(account_map):
+        return None, Refusal(
+            what,
+            f"계좌번호 {mirae_accounts.mask(number)} is a retired or inactive pensionAccounts entry in the "
+            "account map, so nothing is filed for it",
+            "delete the file, or give the entry a token and no retiredOn if the account is in use again",
+        )
     if entry is None:
         typed = f" (it prints 계좌유형 {printed_type.strip()})" if printed_kind else ""
         return None, Refusal(
@@ -641,6 +661,15 @@ def detect_mirae_transactions(doc):
         return Plan(DIR_BANK, f"mirae-cma-{compact(start)}-{compact(end)}.pdf", evidence)
     if kind in ("irp", "gold"):
         return Plan(DIR_KR, f"mirae-{kind}-transactions-{compact(start)}-{compact(end)}.pdf", evidence)
+    if kind == "pension_savings":
+        # A 미래에셋 연금저축 (a child's account): named by its map token, and
+        # deliberately not `mirae-…`, so the stock statement extractor (which
+        # globs kr-statements/mirae-*) never reads a pension certificate as
+        # stock trades. Its deposits are not yet read into the pension flows.
+        token = str(entry.get("token") or "").strip()
+        if entry.get("owner") and entry["owner"] != "self":
+            evidence.append(f"owner {entry['owner']} in the account map")
+        return Plan(DIR_KR, f"{token}-mirae-transactions-{compact(start)}-{compact(end)}.pdf", evidence)
     period = period_from_window(start, end)
     name = f"mirae-{kind}-transactions-{period}"
 
@@ -1093,6 +1122,14 @@ def detect_chase(doc):
 
 
 FIDELITY_HISTORY_NAME = re.compile(r"^History_for_Account_([A-Z0-9]+)(-\d+)?\.csv$")
+
+
+def map_pdf_passwords():
+    """Per-account PDF passwords from the account map; none without a readable map."""
+    account_map, problem = mirae_accounts.load_map(ACCOUNT_MAP_PATH)
+    if problem or not account_map:
+        return []
+    return mirae_accounts.pdf_passwords(account_map)
 
 
 def account_map_list(key):
@@ -2349,7 +2386,7 @@ def main(argv):
             for note in plan.evidence:
                 print(f"      {note}")
             if docs[path].encrypted:
-                print("      opened with STOCK_PDF_PASSWORD")
+                print(f"      opened with {docs[path].opened_with or 'STOCK_PDF_PASSWORD'}")
 
     if failed:
         print("\nFAILED — left in the inbox, nothing written")

@@ -14,7 +14,7 @@ import type { PensionContributionYear } from '@/lib/pension'
 import { groupAccountRanges, type AccountDataRange, type AssetType, type RangeKind, type RangeRow } from '@/lib/account-ranges'
 import { foreignAccountMaxima, isUsBrokerage, isUsCashInstitution, maxBalance, treasuryRateFor, type BalancePoint, type ForeignAccountInput, type ForeignAccountMaxima } from '@/lib/fbar'
 import treasuryRates from '@/data/treasury-reporting-rates.json'
-import { loadAccountMap } from '@/scripts/account-map.mjs'
+import { isActivePensionEntry, loadAccountMap } from '@/scripts/account-map.mjs'
 import { bankAccountGroup, retiredBankAccounts, retiredBrokerageAccounts, type BankAccountEntry } from '@/lib/bank-accounts'
 import { createLotValuer } from '@/scripts/lot-valuation.mjs'
 import {
@@ -47,6 +47,19 @@ export const STOCK_ROW_SQL = "account_wrapper in ('taxable', 'isa') and asset_cl
 const PENSION_ROW_SQL = "account_wrapper in ('irp', 'pension_savings')"
 /** Physical gold in holdings_all, whatever its wrapper. */
 const GOLD_ROW_SQL = "asset_class = 'gold'"
+
+/**
+ * The maintainer's own rows. A child's account (owner `child:<name>`) is never
+ * inside a total-assets, FBAR or tax figure; it is shown apart, labelled.
+ * `coalesce` keeps a row from before the column default reading as someone else's.
+ */
+const SELF_OWNER_SQL = "coalesce(owner, 'self') = 'self'"
+
+/** `and <self only>` when `table` has an owner column, '' for a database older than it. */
+function selfOnlyAnd(conn: Database.Database, table: string) {
+  const has = (conn.prepare(`pragma table_info(${table})`).all() as { name: string }[]).some((column) => column.name === 'owner')
+  return has ? ` and ${SELF_OWNER_SQL}` : ''
+}
 
 /** The unfiltered table behind a stock-only view, or the plain table in a database older than the views. */
 function allAssetsTable(conn: Database.Database, name: 'holdings' | 'tax_lots' | 'transactions' | 'dividends' | 'realized_lots') {
@@ -1289,7 +1302,9 @@ export function getTotalAssetsSeries(dates: string[], precomputed?: NetWorth): T
       depositsSeries(past, [...cashBalanceRows(conn), ...cashEstimateRows(conn)], usdKrwRateAt(conn)).series.map((point) => [point.date, point.krw])
     )
     const pensionPoints = hasTable('pension_points')
-      ? (conn.prepare('select account, date, value_krw as valueKrw from pension_points order by date, id').all() as { account: string; date: string; valueKrw: number }[])
+      ? (conn
+          .prepare(`select account, date, value_krw as valueKrw from pension_points where 1 = 1${selfOnlyAnd(conn, 'pension_points')} order by date, id`)
+          .all() as { account: string; date: string; valueKrw: number }[])
       : []
     // Gold BUY rows carry grams as quantity and the purchase amount in KRW. No
     // gold sale is on file; the holding itself (getNetWorth) handles one.
@@ -1336,6 +1351,7 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
                from (
                  select *, row_number() over (partition by institution, account order by as_of_date desc, id desc) as rn
                    from cash_balances
+                  where 1 = 1${selfOnlyAnd(conn, 'cash_balances')}
                )
               where rn = 1
               order by institution, account`
@@ -1347,13 +1363,15 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
       .get() as { rate: number } | undefined
     // Pensions and gold live only in holdings_all, never in the stock view the
     // overview totals read. A row with no market value counts at cost.
+    const selfHoldings = hasTable('holdings_all') ? selfOnlyAnd(conn, 'holdings_all') : ''
     const others = hasTable('holdings_all')
       ? (conn
           .prepare(
             `select
                coalesce(sum(case when ${PENSION_ROW_SQL} then coalesce(base_market_value, base_cost, 0) end), 0) as pensions,
                coalesce(sum(case when ${GOLD_ROW_SQL} then coalesce(base_market_value, base_cost, 0) end), 0) as gold
-               from holdings_all`
+               from holdings_all
+              where 1 = 1${selfHoldings}`
           )
           .get() as { pensions: number; gold: number })
       : { pensions: 0, gold: 0 }
@@ -1363,7 +1381,7 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
           .prepare(
             `select distinct case when ${PENSION_ROW_SQL} then 'pensions' else 'gold' end as assetClass, account as label, as_of_date as asOf
                from holdings_all
-              where (${PENSION_ROW_SQL} or ${GOLD_ROW_SQL})
+              where (${PENSION_ROW_SQL} or ${GOLD_ROW_SQL})${selfHoldings}
                 and (valuation_source in ('snapshot', 'cost') or base_market_value is null)
                 and as_of_date is not null
               order by account, as_of_date`
@@ -1521,8 +1539,12 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
       const derivedColumn = cashColumns.has('derived') ? 'derived' : '0 as derived'
       // day_max_balance: the day's highest printed balance, where the statement prints one per row.
       const dayMaxColumn = cashColumns.has('day_max_balance') ? 'day_max_balance' : 'null as day_max_balance'
+      // FBAR is per filer: a child's account is the child's, never in these rows.
       const rows = conn
-        .prepare(`select institution, account, currency, as_of_date as date, balance, ${dayMaxColumn}, ${derivedColumn} from cash_balances order by as_of_date, id`)
+        .prepare(
+          `select institution, account, currency, as_of_date as date, balance, ${dayMaxColumn}, ${derivedColumn} from cash_balances
+            where 1 = 1${selfOnlyAnd(conn, 'cash_balances')} order by as_of_date, id`
+        )
         .all() as { institution: string; account: string; currency: string; date: string; balance: number; day_max_balance: number | null; derived: number }[]
       for (const row of rows) {
         if (isUsCashInstitution(row.institution)) continue
@@ -1761,9 +1783,11 @@ export function getForeignAccountMaxima(year: number): ForeignAccountMaxima {
       add(institution, account, kind, found && cashIncluded && !covered ? { ...found, coverage: 'partial' } : found, { cashIncluded })
     }
 
-    // Pensions: certificate and snapshot totals.
+    // Pensions: certificate and snapshot totals, the filer's own accounts only.
     if (hasTable('pension_points')) {
-      const rows = conn.prepare('select account, date, value_krw as valueKrw from pension_points order by date, id').all() as {
+      const rows = conn
+        .prepare(`select account, date, value_krw as valueKrw from pension_points where 1 = 1${selfOnlyAnd(conn, 'pension_points')} order by date, id`)
+        .all() as {
         account: string
         date: string
         valueKrw: number
@@ -1828,6 +1852,10 @@ export type PensionHolding = {
 export type PensionAccount = {
   account: string
   wrapper: string
+  /** 'self', or the owner token of a child's account (`child:<name>`). */
+  owner: string
+  /** The account map's display label for a non-self owner, such as 자녀(…). Null for 'self'. */
+  ownerLabel: string | null
   valueKrw: number
   costKrw: number
   returnPct: number | null
@@ -1858,6 +1886,7 @@ export function getPensionAccounts(): PensionAccount[] {
     const accounts = conn
       .prepare(`select account, account_wrapper as wrapper from (${accountSources.join(' union ')}) order by account_wrapper, account`)
       .all() as { account: string; wrapper: string }[]
+    const owners = accountOwners(conn)
     const holdingsStmt = hasHoldings
       ? conn.prepare(
           `select ticker, name, coalesce(base_market_value, base_cost, 0) as valueKrw, coalesce(base_cost, total_cost_krw, 0) as costKrw,
@@ -1890,9 +1919,12 @@ export function getPensionAccounts(): PensionAccount[] {
       const hasEmployer = flows.some((row) => row.employerRows > 0)
       const valueKrw = holdings.reduce((sum, row) => sum + row.valueKrw, 0)
       const costKrw = holdings.reduce((sum, row) => sum + row.costKrw, 0)
+      const owned = owners.get(account)
       return {
         account,
         wrapper,
+        owner: owned?.owner ?? 'self',
+        ownerLabel: owned?.label ?? null,
         valueKrw,
         costKrw,
         returnPct: costKrw > 0 ? ((valueKrw - costKrw) / costKrw) * 100 : null,
@@ -1908,6 +1940,85 @@ export function getPensionAccounts(): PensionAccount[] {
   } finally {
     conn.close()
   }
+}
+
+/** account -> its non-self owner and label, from account_owners. Empty in a database older than the table. */
+function accountOwners(conn: Database.Database) {
+  const found = conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'account_owners'").get()
+  if (!found) return new Map<string, { owner: string; label: string | null }>()
+  const rows = conn.prepare('select account, owner, owner_label as label from account_owners').all() as { account: string; owner: string; label: string | null }[]
+  return new Map(rows.filter((row) => row.owner && row.owner !== 'self').map((row) => [row.account, { owner: row.owner, label: row.label }]))
+}
+
+export type ChildAccount = { account: string; valueKrw: number; asOf: string | null }
+export type ChildOwner = { owner: string; label: string; totalKrw: number; accounts: ChildAccount[] }
+export type ChildAssets = {
+  owners: ChildOwner[]
+  /** On each date asked for, every child's total (null before any of their accounts starts), and the sum. */
+  points: { date: string; byOwner: Record<string, number | null>; total: number | null }[]
+}
+
+/**
+ * The children's accounts, apart from every self total: today's value from
+ * holdings_all and their history from pension_points, both where owner is not
+ * 'self'. `dates` are the trend's dates; today's (and any later) point is the
+ * current holdings value, as the Total assets card's last point is.
+ */
+export function getChildAssets(dates: string[] = []): ChildAssets {
+  const conn = db()
+  try {
+    const hasTable = (name: string) => Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(name))
+    const hasOwner = (table: string) => (conn.prepare(`pragma table_info(${table})`).all() as { name: string }[]).some((column) => column.name === 'owner')
+    if (!hasTable('holdings_all') || !hasOwner('holdings_all')) return { owners: [], points: dates.map((date) => ({ date, byOwner: {}, total: null })) }
+    const labels = accountOwners(conn)
+    const rows = conn
+      .prepare(
+        `select owner, account, coalesce(sum(coalesce(base_market_value, base_cost, 0)), 0) as valueKrw, max(as_of_date) as asOf
+           from holdings_all
+          where ${PENSION_ROW_SQL} and not (${SELF_OWNER_SQL})
+          group by owner, account
+          order by owner, account`
+      )
+      .all() as { owner: string; account: string; valueKrw: number; asOf: string | null }[]
+    const byOwner = new Map<string, ChildOwner>()
+    for (const row of rows) {
+      const entry = byOwner.get(row.owner) ?? { owner: row.owner, label: labels.get(row.account)?.label || row.owner, totalKrw: 0, accounts: [] }
+      entry.accounts.push({ account: row.account, valueKrw: Number(row.valueKrw), asOf: row.asOf })
+      entry.totalKrw += Number(row.valueKrw)
+      byOwner.set(row.owner, entry)
+    }
+    const owners = [...byOwner.values()]
+    const history =
+      hasTable('pension_points') && hasOwner('pension_points')
+        ? (conn
+            .prepare(`select owner, account, date, value_krw as valueKrw from pension_points where not (${SELF_OWNER_SQL}) order by date, id`)
+            .all() as { owner: string; account: string; date: string; valueKrw: number }[])
+        : []
+    const today = portfolioToday()
+    const points = [...new Set(dates)].sort().map((date) => {
+      const values: Record<string, number | null> = {}
+      for (const owner of owners) {
+        if (date >= today) {
+          values[owner.owner] = owner.totalKrw
+          continue
+        }
+        const own = history.filter((point) => point.owner === owner.owner)
+        values[owner.owner] = steppedSum(own, date)
+      }
+      const present = Object.values(values).filter((value): value is number => value != null)
+      return { date, byOwner: values, total: present.length ? present.reduce((sum, value) => sum + value, 0) : null }
+    })
+    return { owners, points }
+  } finally {
+    conn.close()
+  }
+}
+
+/** Each account's latest point on or before `date`, summed; null when no account has started. */
+function steppedSum(points: { account: string; date: string; valueKrw: number }[], date: string): number | null {
+  const latest = new Map<string, number>()
+  for (const point of points) if (point.date <= date) latest.set(point.account, Number(point.valueKrw))
+  return latest.size ? [...latest.values()].reduce((sum, value) => sum + value, 0) : null
 }
 
 export function getHoldings(limit = 200): Holding[] {
@@ -3768,7 +3879,11 @@ export function getSupplementaryCoverage(): SupplementaryCoverage {
 
     // Every pension account the map lists, filed or not: one with no snapshot yet
     // is 'missing', which is the reminder's whole point.
-    const pensionAccounts: { token?: unknown; account?: unknown; wrapper?: unknown }[] = accountMap?.pensionAccounts ?? []
+    // A closed or token-less entry (a child's retired account) is known, never reminded.
+    // A child's account is listed under its owner's label, on the same cadence.
+    const pensionAccounts: { token?: unknown; account?: unknown; wrapper?: unknown; owner?: unknown; ownerLabel?: unknown }[] = (
+      accountMap?.pensionAccounts ?? []
+    ).filter(isActivePensionEntry)
     const snapshotStmt = hasTable('holdings_all')
       ? conn.prepare(
           `select max(as_of_date) as latest from holdings_all where account = ? and (? is null or account_wrapper = ?) and ${PENSION_ROW_SQL}`
@@ -3780,7 +3895,10 @@ export function getSupplementaryCoverage(): SupplementaryCoverage {
       if (!token || !account) continue
       const wrapper = String(entry?.wrapper ?? '').trim() || null
       const latest = (snapshotStmt?.get(account, wrapper, wrapper) as { latest: string | null } | undefined)?.latest ?? null
-      push('pension', account, latest, `${account} 보유 현황을 캡처해 pension/${token}-holdings-YYYYMMDD.csv로 넣으세요`)
+      const owner = String(entry?.owner ?? '').trim()
+      const ownerLabel = String(entry?.ownerLabel ?? '').trim()
+      const label = owner && owner !== 'self' ? `${ownerLabel || owner} ${account}` : account
+      push('pension', label, latest, `${label} 보유 현황을 캡처해 pension/${token}-holdings-YYYYMMDD.csv로 넣으세요`)
     }
 
     // Gold: how far each account's 금현물 statement reaches, and how old the price is.
@@ -4566,7 +4684,8 @@ export function getWrapperReview(policy: TaxPolicy = getTaxPolicyState().policy)
   const conn = db()
   try {
     if (allAssetsTable(conn, 'holdings') !== 'holdings_all') return []
-    const nonStock = "account_wrapper not in ('taxable', 'isa') and asset_class = 'security'"
+    // The maintainer's tax review: a child's account is the child's, never in it.
+    const nonStock = `account_wrapper not in ('taxable', 'isa') and asset_class = 'security' and ${SELF_OWNER_SQL}`
     const accounts = conn
       .prepare(
         `select account, account_wrapper as wrapper from (

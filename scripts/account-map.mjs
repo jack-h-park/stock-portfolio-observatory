@@ -50,8 +50,27 @@ export function assetClassFor(row, map) {
   return map.accounts?.[row.account]?.assetClass ?? (/금현물/.test(String(row.account ?? '')) ? 'gold' : 'security')
 }
 
+/**
+ * 'self' (the maintainer) unless the map names another owner, such as
+ * `child:<name>` for a child's account. A pension account takes its owner from
+ * its pensionAccounts entry, so its transactions and flows carry it too.
+ */
 export function ownerFor(row, map) {
-  return map.accounts?.[row.account]?.owner ?? 'self'
+  const override = map.accounts?.[row.account]?.owner
+  if (override) return override
+  const pension = activePensionEntries(map).find((entry) => entry.account === row.account)
+  return (typeof pension?.owner === 'string' && pension.owner.trim()) || 'self'
+}
+
+export const SELF_OWNER = 'self'
+
+/** A pensionAccounts entry that is closed (`retiredOn`) or has no token is known, but never loaded or shown. */
+export function isActivePensionEntry(entry) {
+  return Boolean(entry && typeof entry === 'object' && String(entry.token ?? '').trim() && String(entry.account ?? '').trim() && !entry.retiredOn)
+}
+
+export function activePensionEntries(map) {
+  return (map?.pensionAccounts ?? []).filter(isActivePensionEntry)
 }
 
 export function tagRows(rows, map) {

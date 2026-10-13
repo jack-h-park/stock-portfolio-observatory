@@ -23,7 +23,11 @@ export default async function PensionPage() {
   const { policy } = getTaxPolicyState()
   const available = dbAvailable()
   const meta = available ? getMeta() : {}
-  const accounts = available ? getPensionAccounts() : []
+  const allAccounts = available ? getPensionAccounts() : []
+  // The maintainer's own accounts carry every figure on this page; a child's
+  // account is shown in its own section and never reaches the limits or totals.
+  const accounts = allAccounts.filter((account) => account.owner === 'self')
+  const childAccounts = allAccounts.filter((account) => account.owner !== 'self')
   const wrapperReview = available ? getWrapperReview(policy) : []
   const years = contributionsAgainstLimits(accounts, policy)
   // Money in the display currency, as the Overview shows it.
@@ -31,6 +35,67 @@ export default async function PensionPage() {
   const krw = (value: number | null) => (value == null ? copy.none : money(value))
   // Statutory limits are fixed won amounts; converting them would make them drift with the rate.
   const limitKrw = (value: number | null) => (value == null ? copy.none : fmtKrw(value))
+
+  const accountSection = (list: PensionAccount[], holdingsTitle: string) => (
+    <>
+      <CardRow columns={2}>
+        {list.map((account: PensionAccount) => (
+          <Card key={`${account.wrapper}:${account.account}`} title={account.account} action={<Badge tone="info">{copy.wrappers[account.wrapper] ?? account.wrapper}</Badge>}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <MetricField
+                label={copy.value}
+                value={money(account.valueKrw)}
+                hint={account.snapshotDate ? copy.snapshotAsOf(fmtDate(account.snapshotDate)) : undefined}
+                valueClassName="text-title"
+              />
+              <MetricField label={copy.cost} value={money(account.costKrw)} valueClassName="text-title" />
+              <MetricField
+                label={copy.return}
+                value={<Signed value={account.returnPct} format={(n) => fmtPct(n)} nullText={copy.none} />}
+                valueClassName="text-title"
+              />
+            </div>
+          </Card>
+        ))}
+      </CardRow>
+
+      <Card title={holdingsTitle} className="mb-5">
+        <p className="mb-3 text-label leading-relaxed text-ink-3">{copy.snapshotNote}</p>
+        <DataTable
+          caption={holdingsTitle}
+          rows={list.flatMap((account) => account.holdings.map((holding, index) => ({ ...holding, account: account.account, key: `${account.account}:${index}` })))}
+          getRowKey={(row: PensionHolding & { account: string; key: string }) => row.key}
+          columns={[
+            { key: 'account', label: wrapperReviewCopy.account, priority: 'secondary', render: (row: PensionHolding & { account: string }) => row.account },
+            { key: 'name', label: copy.columns.name, render: (row: PensionHolding) => <span className="text-ink">{row.name}</span> },
+            { key: 'kind', label: copy.columns.kind, nowrap: true, render: (row: PensionHolding) => <Badge tone="neutral">{copy.kinds[row.kind] ?? row.kind}</Badge> },
+            {
+              key: 'value',
+              label: copy.columns.value,
+              align: 'right',
+              nowrap: true,
+              render: (row: PensionHolding) => <span className="font-mono">{money(row.valueKrw)}</span>,
+            },
+            {
+              key: 'asOf',
+              label: copy.columns.asOf,
+              nowrap: true,
+              render: (row: PensionHolding) => (
+                <span className="tabular-nums">
+                  {row.valuationSource === 'price'
+                    ? copy.priced
+                    : row.valuationSource === 'cost'
+                      ? copy.atCost(fmtDate(row.asOf))
+                      : fmtDate(row.asOf)}
+                </span>
+              ),
+            },
+            { key: 'cost', label: copy.columns.cost, align: 'right', nowrap: true, render: (row: PensionHolding) => <span className="font-mono">{money(row.costKrw)}</span> },
+          ]}
+        />
+      </Card>
+    </>
+  )
 
   return (
     <>
@@ -47,64 +112,21 @@ export default async function PensionPage() {
         </Card>
       ) : (
         <>
-          <CardRow columns={2}>
-            {accounts.map((account: PensionAccount) => (
-              <Card key={`${account.wrapper}:${account.account}`} title={account.account} action={<Badge tone="info">{copy.wrappers[account.wrapper] ?? account.wrapper}</Badge>}>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <MetricField
-                    label={copy.value}
-                    value={money(account.valueKrw)}
-                    hint={account.snapshotDate ? copy.snapshotAsOf(fmtDate(account.snapshotDate)) : undefined}
-                    valueClassName="text-title"
-                  />
-                  <MetricField label={copy.cost} value={money(account.costKrw)} valueClassName="text-title" />
-                  <MetricField
-                    label={copy.return}
-                    value={<Signed value={account.returnPct} format={(n) => fmtPct(n)} nullText={copy.none} />}
-                    valueClassName="text-title"
-                  />
-                </div>
-              </Card>
-            ))}
-          </CardRow>
-
-          <Card title={copy.holdings} className="mb-5">
-            <p className="mb-3 text-label leading-relaxed text-ink-3">{copy.snapshotNote}</p>
-            <DataTable
-              caption={copy.holdings}
-              rows={accounts.flatMap((account) => account.holdings.map((holding, index) => ({ ...holding, account: account.account, key: `${account.account}:${index}` })))}
-              getRowKey={(row: PensionHolding & { account: string; key: string }) => row.key}
-              columns={[
-                { key: 'account', label: wrapperReviewCopy.account, priority: 'secondary', render: (row: PensionHolding & { account: string }) => row.account },
-                { key: 'name', label: copy.columns.name, render: (row: PensionHolding) => <span className="text-ink">{row.name}</span> },
-                { key: 'kind', label: copy.columns.kind, nowrap: true, render: (row: PensionHolding) => <Badge tone="neutral">{copy.kinds[row.kind] ?? row.kind}</Badge> },
-                {
-                  key: 'value',
-                  label: copy.columns.value,
-                  align: 'right',
-                  nowrap: true,
-                  render: (row: PensionHolding) => <span className="font-mono">{money(row.valueKrw)}</span>,
-                },
-                {
-                  key: 'asOf',
-                  label: copy.columns.asOf,
-                  nowrap: true,
-                  render: (row: PensionHolding) => (
-                    <span className="tabular-nums">
-                      {row.valuationSource === 'price'
-                        ? copy.priced
-                        : row.valuationSource === 'cost'
-                          ? copy.atCost(fmtDate(row.asOf))
-                          : fmtDate(row.asOf)}
-                    </span>
-                  ),
-                },
-                { key: 'cost', label: copy.columns.cost, align: 'right', nowrap: true, render: (row: PensionHolding) => <span className="font-mono">{money(row.costKrw)}</span> },
-              ]}
-            />
-          </Card>
+          {accountSection(accounts, copy.holdings)}
         </>
       )}
+
+      {childAccounts.length ? (
+        <section aria-label={copy.childrenTitle} className="mb-5">
+          <h2 className="mb-1 text-title font-medium text-ink">{copy.childrenTitle}</h2>
+          <p className="mb-3 text-label leading-relaxed text-ink-3">{copy.childrenNote}</p>
+          {[...new Set(childAccounts.map((account) => account.owner))].map((owner) => {
+            const owned = childAccounts.filter((account) => account.owner === owner)
+            const label = owned[0].ownerLabel || owner
+            return <div key={owner}>{accountSection(owned.map((account) => ({ ...account, account: `${label} · ${account.account}` })), copy.childHoldings(label))}</div>
+          })}
+        </section>
+      ) : null}
 
       <Card title={copy.contributions} info={copy.contributionsInfo} className="mb-5">
         {years.length === 0 ? (
