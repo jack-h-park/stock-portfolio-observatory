@@ -2,20 +2,28 @@ import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { FilterBar } from '@/components/FilterBar'
 import { PageHeader } from '@/components/PageHeader'
+import { ScrollOnHash } from '@/components/ScrollOnHash'
 import { StackedBarChart } from '@/components/charts'
 import { Badge, Button, Card, MetricField, MetricHeroCard } from '@/components/ui'
 import {
+  CASH_INFLOW_CURRENCIES,
   CASH_INFLOW_FILTERS,
+  CASH_INFLOW_RANGES,
+  CASH_INFLOW_SOURCES,
   cashInflowCategories,
   getCashInflow,
   getCashInflowRows,
   type CashInflowCategory,
+  type CashInflowCurrency,
   type CashInflowFilter,
+  type CashInflowRange,
+  type CashInflowSource,
   type CashInflowPeriod,
   type CashInflowRow,
 } from '@/lib/adapters/portfolio-db'
 import { fmtNumber, fmtPct } from '@/lib/format'
-import { salarySharePct } from '@/lib/cash-inflow-format'
+import { fractionPct } from '@/lib/cash-inflow-format'
+import { signClass, signTone } from '@/lib/tone'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getLanguage } from '@/lib/i18n-server'
@@ -40,6 +48,11 @@ function first(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value
 }
 
+/** A query value from a fixed list, or the list's default. */
+function pick<T extends string>(value: string | undefined, allowed: readonly T[], fallback: T): T {
+  return allowed.includes(value as T) ? (value as T) : fallback
+}
+
 export default async function CashInflowPage({
   searchParams,
 }: {
@@ -47,8 +60,11 @@ export default async function CashInflowPage({
 }) {
   const params = await searchParams
   const view = first(params.view) === 'year' ? 'year' : 'month'
-  const filterParam = first(params.category)
-  const filter: CashInflowFilter = CASH_INFLOW_FILTERS.includes(filterParam as CashInflowFilter) ? (filterParam as CashInflowFilter) : 'All'
+  const filter = pick<CashInflowFilter>(first(params.category), CASH_INFLOW_FILTERS, 'All')
+  const source = pick<CashInflowSource>(first(params.source), CASH_INFLOW_SOURCES, 'All')
+  const currency = pick<CashInflowCurrency>(first(params.currency), CASH_INFLOW_CURRENCIES, 'All')
+  const range = pick<CashInflowRange>(first(params.range), CASH_INFLOW_RANGES, '12m')
+  const scope = { source, currency, range }
   const detailParam = first(params.detail)
   // A month under the yearly view (or a year under the monthly one) matches no row.
   const detail = detailParam && DETAIL_PATTERN.test(detailParam) && detailParam.length === (view === 'month' ? 7 : 4) ? detailParam : null
@@ -61,31 +77,43 @@ export default async function CashInflowPage({
   const chartDivisor = usd ? 1 : 1000
   const chartRound = (value: number) => (usd ? Math.round((value / chartDivisor) * 100) / 100 : Math.round(value / chartDivisor))
   const copy = getPageCopy('cashInflow', language)
-  const data = getCashInflow(view, currencyPreferences.displayCurrency, undefined, filter)
+  const data = getCashInflow(view, currencyPreferences.displayCurrency, undefined, filter, scope)
   const categories = cashInflowCategories(filter)
   // Under All the unclassified column stays visible, muted, as a to-do.
   const tableCategories: CashInflowCategory[] = filter === 'All' ? [...categories, 'unclassified'] : categories
   const showTotal = categories.length > 1
   // A drill-down into a category the table does not show belongs to another filter.
   const detailCategory = tableCategories.includes(detailCategoryParam as CashInflowCategory) ? (detailCategoryParam as CashInflowCategory) : null
-  const chartPeriods = view === 'month' ? data.periods.slice(-24) : data.periods
+  // Periods arrive limited to the range already.
+  const chartPeriods = data.periods
 
   // The drill-down for a whole period lists what the row's Total counts, so its
   // subtotal matches it; unclassified rows open from their own cell.
   const detailCategories = detailCategory ? [detailCategory] : categories
-  const detailRows = detail ? getCashInflowRows(detail, currencyPreferences.displayCurrency, detailCategories) : []
+  const detailRows = detail ? getCashInflowRows(detail, currencyPreferences.displayCurrency, detailCategories, scope) : []
+  const hasBrokerRows = detailRows.some((r) => r.source === 'dividend')
   const detailLabel = detailCategory ? copy.categories[detailCategory] : copy.filter.options[filter]
 
-  const href = (next: { view?: string; detail?: string | null; detailCategory?: CashInflowCategory | null }) => {
-    const q = new URLSearchParams()
-    q.set('view', next.view ?? view)
-    if (filter !== 'All') q.set('category', filter)
+  // Only non-default values go in the URL, the way FilterBar's chips write them.
+  const scopeParams: Record<string, string> = {
+    view,
+    ...(filter !== 'All' ? { category: filter } : {}),
+    ...(source !== 'All' ? { source } : {}),
+    ...(currency !== 'All' ? { currency } : {}),
+    ...(range !== '12m' ? { range } : {}),
+  }
+  const href = (next: { view?: string; category?: CashInflowFilter; detail?: string | null; detailCategory?: CashInflowCategory | null; anchor?: boolean }) => {
+    const q = new URLSearchParams({ ...scopeParams, view: next.view ?? view })
+    if (next.category) {
+      if (next.category === 'All') q.delete('category')
+      else q.set('category', next.category)
+    }
     if (next.detail) q.set('detail', next.detail)
     if (next.detail && next.detailCategory) q.set('detailCategory', next.detailCategory)
-    return `${BASE}?${q.toString()}`
+    return `${BASE}?${q.toString()}${next.anchor ? '#cash-inflow-detail' : ''}`
   }
-  // Changing the filter closes any open drill-down: its rows belonged to the old selection.
-  const filterParams = { view }
+  // Changing a filter closes any open drill-down: its rows belonged to the old selection.
+  const filterParams = scopeParams
 
   const reasonText = (r: CashInflowRow) => {
     if (r.reasonKind === 'rule') return copy.reasons.rule(r.reason ?? '')
@@ -117,7 +145,8 @@ export default async function CashInflowPage({
     // The period table scrolls sideways on a phone; pinning the panel to the
     // visible width keeps its title, close link and own table on screen.
     return (
-      <div className="sticky left-0 flex max-w-[calc(100vw-4rem)] flex-col gap-2 md:max-w-none">
+      <div id="cash-inflow-detail" key={`${detail}:${detailCategory ?? ''}`} className="sticky left-0 flex max-w-[calc(100vw-4rem)] scroll-mt-24 flex-col gap-2 md:max-w-none">
+        <ScrollOnHash id="cash-inflow-detail" />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-body font-medium text-ink">{copy.detailTitle(detail!, detailLabel, fmtNumber(detailRows.length), money(subtotal, data.currency))}</p>
           <Link href={href({})} scroll={false} className="text-label font-medium text-info hover:underline">
@@ -135,6 +164,14 @@ export default async function CashInflowPage({
             { key: 'account', label: copy.columns.account, priority: 'tertiary' as const },
             { key: 'native', label: copy.columns.native, align: 'right' as const, priority: 'secondary' as const, render: (r: CashInflowRow) => `${fmtNumber(r.native, r.currency === 'KRW' ? 0 : 2)} ${r.currency}` },
             { key: 'amount', label: copy.columns.amount, align: 'right' as const, render: (r: CashInflowRow) => money(r.amount, data.currency) },
+            // Broker rows only: what the dividend paid before withholding, and what was withheld.
+            ...(hasBrokerRows
+              ? [
+                  { key: 'ticker', label: copy.dividendColumns.ticker, priority: 'secondary' as const, render: (r: CashInflowRow) => r.ticker ?? '' },
+                  { key: 'gross', label: copy.dividendColumns.gross, align: 'right' as const, priority: 'secondary' as const, render: (r: CashInflowRow) => (r.gross == null ? '' : `${fmtNumber(r.gross, r.currency === 'KRW' ? 0 : 2)} ${r.currency}`) },
+                  { key: 'withheld', label: copy.dividendColumns.withheld, align: 'right' as const, priority: 'secondary' as const, render: (r: CashInflowRow) => (r.withheld == null ? '' : `${fmtNumber(r.withheld, r.currency === 'KRW' ? 0 : 2)} ${r.currency}`) },
+                ]
+              : []),
             { key: 'reason', label: copy.reasonColumn, render: (r: CashInflowRow) => <span className="text-ink-3">{reasonText(r)}</span> },
           ]}
         />
@@ -166,12 +203,12 @@ export default async function CashInflowPage({
       <FilterBar
         basePath={BASE}
         params={filterParams}
-        groups={[{
-          key: 'category',
-          label: copy.filter.label,
-          options: CASH_INFLOW_FILTERS.map((value) => ({ value, label: copy.filter.options[value] })),
-          selected: filter,
-        }]}
+        groups={[
+          { key: 'category', label: copy.filter.label, options: CASH_INFLOW_FILTERS.map((value) => ({ value, label: copy.filter.options[value] })), selected: filter },
+          { key: 'source', label: copy.scope.source.label, options: CASH_INFLOW_SOURCES.map((value) => ({ value, label: copy.scope.source.options[value] })), selected: source },
+          { key: 'currency', label: copy.scope.currency.label, options: CASH_INFLOW_CURRENCIES.map((value) => ({ value, label: copy.scope.currency.options[value] })), selected: currency },
+          { key: 'range', label: copy.scope.range.label, options: CASH_INFLOW_RANGES.map((value) => ({ value, label: copy.scope.range.options[value] })), selected: range, defaultValue: '12m' },
+        ]}
       />
 
       {!data.hasBankData ? (
@@ -182,21 +219,31 @@ export default async function CashInflowPage({
 
       <CardRow columns={1}>
         <MetricHeroCard
-          title={copy.trailing12m}
-          info={filter === 'All' ? copy.trailing12mInfo : copy.trailing12mFilteredInfo(copy.filter.options[filter])}
+          title={copy.scope.range.options[range]}
+          info={copy.rangeInfo(copy.scope.range.options[range], filter === 'All' ? copy.headlineEyebrow : copy.filter.options[filter])}
           eyebrow={filter === 'All' ? copy.headlineEyebrow : copy.filter.options[filter]}
-          value={money(data.totals.trailing12m, data.currency)}
+          value={money(data.totals.rangeTotal, data.currency)}
         >
-          <KpiBand>
-            {/* Unclassified money is a to-do, not income: no success tone, no average. */}
-            <MetricField label={copy.ytd} value={money(data.totals.ytd, data.currency)} tone={filter === 'unclassified' ? undefined : 'success'} valueClassName="text-title" />
-            {filter === 'unclassified' ? null : (
-              <MetricField label={copy.monthlyAverage} value={money(data.totals.monthlyAverage12m, data.currency)} valueClassName="text-title" />
-            )}
-            {filter === 'All' ? (
-              <MetricField label={copy.salaryShare} value={fmtPct(salarySharePct(data.totals.salaryShare12m), { nullText: copy.notAvailable })} valueClassName="text-title" />
-            ) : null}
-          </KpiBand>
+          {/* Unclassified money is a to-do, not income: no average and no comparison. */}
+          {filter === 'unclassified' ? null : (
+            <KpiBand>
+              <MetricField label={copy.monthlyAverage} value={money(data.totals.monthlyAverage, data.currency)} valueClassName="text-title" />
+              {filter === 'All' ? (
+                <>
+                  <MetricField label={copy.kpi.salary} value={money(data.totals.salary, data.currency)} valueClassName="text-title" />
+                  <MetricField label={copy.kpi.investment} value={money(data.totals.investment, data.currency)} valueClassName="text-title" />
+                  <MetricField label={copy.kpi.investmentShare} value={fmtPct(fractionPct(data.totals.investmentShare), { nullText: copy.notAvailable })} valueClassName="text-title" />
+                </>
+              ) : null}
+              <MetricField
+                label={copy.kpi.change}
+                info={copy.changeInfo}
+                value={fmtPct(fractionPct(data.totals.change), { signed: true, nullText: copy.notAvailable })}
+                tone={data.totals.change == null ? undefined : signTone(data.totals.change)}
+                valueClassName="text-title"
+              />
+            </KpiBand>
+          )}
         </MetricHeroCard>
       </CardRow>
 
@@ -206,7 +253,10 @@ export default async function CashInflowPage({
             data={chartPeriods.map((p) => ({
               period: view === 'month' ? p.period.slice(2) : p.period,
               ...Object.fromEntries(categories.map((c) => [c, chartRound(p[c])])),
+              // A segment click filters to its category and opens its credits.
+              links: Object.fromEntries(categories.map((c) => [c, href({ category: c, detail: p.period, detailCategory: c, anchor: true })])),
             }))}
+            linkKey="links"
             xKey="period"
             series={categories.map((c) => ({ key: c, label: copy.categories[c], color: CATEGORY_COLOR[c] }))}
             height={300}
@@ -215,7 +265,7 @@ export default async function CashInflowPage({
             yAxisLabel={usd ? copy.axisUsd : copy.axisKrw}
             allowDecimals={usd}
           />
-          <p className="mt-2 text-label text-ink-3">{copy.chartNote}</p>
+          <p className="mt-2 text-label text-ink-3">{copy.chartNote} {copy.chartHint}</p>
         </Card>
       </CardRow>
 
@@ -223,6 +273,8 @@ export default async function CashInflowPage({
         <Card title={copy.tableCard}>
           <DataTable
             rows={[...data.periods].reverse()}
+            // One or two amount columns need no 48rem floor; they would only scroll sideways.
+            minWidth={tableCategories.length <= 2 ? '28rem' : undefined}
             getRowKey={(r) => r.period}
             expandedRowKey={detail}
             renderExpanded={detailPanel}
@@ -247,8 +299,23 @@ export default async function CashInflowPage({
                 render: (r: CashInflowPeriod) => amountCell(r, c),
               })),
               ...(showTotal ? [{ key: 'total', label: copy.columns.total, align: 'right' as const, render: (r: CashInflowPeriod) => money(r.total, data.currency) }] : []),
+              // Yearly only: this year's total against the year before's, under the same filter and scope.
+              ...(view === 'year' && filter !== 'unclassified'
+                ? [{
+                    key: 'yoy',
+                    label: copy.yoyColumn,
+                    align: 'right' as const,
+                    render: (r: CashInflowPeriod) => {
+                      const change = r.previousTotal != null && r.previousTotal > 0 ? (r.total - r.previousTotal) / r.previousTotal : null
+                      return <span className={change == null ? 'text-ink-3' : signClass(change)}>{fmtPct(fractionPct(change), { signed: true, nullText: copy.notAvailable })}</span>
+                    },
+                  }]
+                : []),
             ]}
           />
+          {view === 'year' ? (
+            <p className="mt-2 text-label text-ink-3">{copy.yearlyNote(data.periods.find((p) => p.previousThrough)?.previousThrough ?? null)}</p>
+          ) : null}
         </Card>
       </CardRow>
     </>

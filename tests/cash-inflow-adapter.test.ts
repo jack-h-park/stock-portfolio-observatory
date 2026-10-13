@@ -64,10 +64,14 @@ test('periods add salary and net dividends at their own rates; transfers and in-
 
 test('a row with no dated rate still converts, and is counted', async () => {
   const { getCashInflow } = await import('../lib/adapters/portfolio-db')
-  const r = getCashInflow('month', 'KRW', NOW)
-  assert.equal(r.undatedCount, 1) // the undated KRW row is already in KRW, never converted
-  assert.equal(getCashInflow('month', 'USD', NOW).undatedCount, 1) // the undated USD row is not converted in USD
-  assert.ok(r.periods.some((p) => p.period === '2024-01' && p.salary === 1_500_000))
+  // The undated rows are 2024's; the count follows the range like every figure beside it.
+  const all = { range: 'all' } as const
+  assert.equal(getCashInflow('month', 'KRW', NOW, 'All', all).undatedCount, 1) // the undated KRW row is already in KRW, never converted
+  assert.equal(getCashInflow('month', 'USD', NOW, 'All', all).undatedCount, 1) // the undated USD row is not converted in USD
+  assert.equal(getCashInflow('month', 'KRW', NOW).undatedCount, 0)
+  // Periods are limited to the range; the 2024 rows sit outside the default 12 months.
+  const periods = getCashInflow('month', 'KRW', NOW, 'All', all).periods
+  assert.ok(periods.some((p) => p.period === '2024-01' && p.salary === 1_500_000))
 })
 
 test('trailing 12 months covers the current month and the 11 before it', async () => {

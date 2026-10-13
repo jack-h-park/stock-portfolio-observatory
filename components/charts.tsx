@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import {
   Area,
   AreaChart,
@@ -451,17 +452,27 @@ export function StackedBarChart({
   yAxisSuffix = '',
   yAxisLabel,
   allowDecimals = false,
+  linkKey,
 }: {
   data: Record<string, unknown>[]
   xKey: string
   series: { key: string; label: string; color: string }[]
+  /** When set, `data[i][linkKey][seriesKey]` is the href a click on that
+   *  segment opens. The hrefs are built by the page; the chart only navigates. */
+  linkKey?: string
   height?: number
   yAxisPrefix?: string
   yAxisSuffix?: string
   yAxisLabel?: string
   allowDecimals?: boolean
 }) {
+  const router = useRouter()
   const format = (value: number) => `${yAxisPrefix}${value.toLocaleString()}${yAxisSuffix}`
+  const open = (seriesKey: string) => (entry: { payload?: Record<string, unknown> }) => {
+    const links = linkKey ? (entry?.payload?.[linkKey] as Record<string, string> | undefined) : undefined
+    const href = links?.[seriesKey]
+    if (href) router.push(href)
+  }
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
@@ -483,7 +494,16 @@ export function StackedBarChart({
         />
         <Legend wrapperStyle={{ fontSize: 11 }} />
         {series.map((s) => (
-          <Bar key={s.key} dataKey={s.key} stackId="a" fill={s.color} name={s.label} maxBarSize={28} />
+          <Bar
+            key={s.key}
+            dataKey={s.key}
+            stackId="a"
+            fill={s.color}
+            name={s.label}
+            maxBarSize={28}
+            onClick={linkKey ? open(s.key) : undefined}
+            style={linkKey ? { cursor: 'pointer' } : undefined}
+          />
         ))}
       </BarChart>
     </ResponsiveContainer>

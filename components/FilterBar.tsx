@@ -25,13 +25,16 @@ export function FilterBar({
 }: {
   basePath: string
   params: Record<string, string | string[] | undefined>
-  groups: { key: string; label: string; options: { value: string; label: string }[]; selected: string }[]
+  /** `defaultValue` is the value the page uses when the param is absent ("All"
+   *  when omitted). Choosing it drops the param, and it does not count as an
+   *  active filter. */
+  groups: { key: string; label: string; options: { value: string; label: string }[]; selected: string; defaultValue?: string }[]
   /** Adds a debounced text box. Omit for tables with nothing worth searching. */
   search?: { key: string; label: string; placeholder: string; value: string }
   /** e.g. "139 of 139" — rendered beside the chips, not inside the fold. */
   summary?: string
 }) {
-  const active = groups.filter((group) => group.selected !== ALL).length
+  const active = groups.filter((group) => group.selected !== (group.defaultValue ?? ALL)).length
   const chips = (
     <div className="flex flex-col gap-2">
       {groups.map((group) => (
@@ -44,7 +47,7 @@ export function FilterBar({
             return (
               <Link
                 key={option.value}
-                href={withParam(basePath, params, group.key, option.value)}
+                href={withParam(basePath, params, group.key, option.value === group.defaultValue ? null : option.value)}
                 scroll={false}
                 aria-current={current ? 'true' : undefined}
                 className={clsx(
