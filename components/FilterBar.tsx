@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { clsx } from 'clsx'
+import { CommonLabel } from '@/components/LanguageProvider'
 import { Label } from '@/components/ui'
 import { TableSearch } from '@/components/TableSearch'
 import { ALL, withParam } from '@/lib/table-filter'
@@ -91,7 +92,8 @@ export function FilterBar({
       <div className="hidden sm:block">{chips}</div>
       <details className="sm:hidden">
         <summary className="flex min-h-6 cursor-pointer list-none items-center text-caption font-medium text-ink-2">
-          Filters{active ? ` (${active})` : ''}
+          <CommonLabel label="filters" />
+          {active ? ` (${active})` : ''}
         </summary>
         <div className="mt-2">{chips}</div>
       </details>

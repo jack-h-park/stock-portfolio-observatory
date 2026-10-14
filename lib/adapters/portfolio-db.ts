@@ -3245,6 +3245,60 @@ export function getCashInflowRows(period: string, display: DisplayCurrency, cate
   }
 }
 
+export type CashInflowUnclassifiedGroup = {
+  institution: string
+  account: string
+  description: string
+  count: number
+  /** In the display currency, each credit at its own date's rate. */
+  total: number
+  first: string
+  last: string
+  rows: { date: string; native: number; currency: string; amount: number }[]
+}
+
+/**
+ * Unclassified bank credits grouped by where they came from (institution,
+ * account, description), largest total first, within the scope's range, source
+ * and currency: the to-do list a bankInflowRules entry clears. Broker rows are
+ * never unclassified, so the broker source returns nothing.
+ */
+export function getCashInflowUnclassified(display: DisplayCurrency, scope: CashInflowScope = {}, now: Date = new Date()): CashInflowUnclassifiedGroup[] {
+  const conn = db()
+  try {
+    const hasBank = Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'bank_inflows'").get())
+    if (!hasBank || scope.source === 'broker') return []
+    const { year, month } = portfolioYearMonth(now)
+    // All time starts at the earliest month there could be.
+    const window = cashInflowWindow(scope.range ?? '12m', year, month, '0000-01')
+    const currency = scope.currency ?? 'All'
+    const rows = conn
+      .prepare(
+        `select institution, account, coalesce(description, '') as description, date, amount as native, currency,
+           ${datedAmountSql(display, 'amount')} as amount
+         from bank_inflows
+         where category = 'unclassified' and substr(date, 1, 7) between ? and ? and (? = 'All' or currency = ?)
+         order by date`
+      )
+      .all(window.start, window.end, currency, currency) as (CashInflowUnclassifiedGroup['rows'][number] & { institution: string; account: string; description: string })[]
+    const groups = new Map<string, CashInflowUnclassifiedGroup>()
+    for (const r of rows) {
+      // Trimmed, as the suggested rule matches it, so a stray space does not split one sender in two.
+      const description = r.description.trim()
+      const key = JSON.stringify([r.institution, r.account, description])
+      const g = groups.get(key) ?? { institution: r.institution, account: r.account, description, count: 0, total: 0, first: r.date, last: r.date, rows: [] }
+      g.count += 1
+      g.total += r.amount ?? 0
+      g.last = r.date
+      g.rows.push({ date: r.date, native: r.native, currency: r.currency, amount: r.amount })
+      groups.set(key, g)
+    }
+    return [...groups.values()].sort((a, b) => b.total - a.total)
+  } finally {
+    conn.close()
+  }
+}
+
 export type CryptoPremium = {
   generatedAt: string | null
   fx: { rate: number; asOfDate: string } | null

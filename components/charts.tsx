@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -453,6 +454,7 @@ export function StackedBarChart({
   yAxisLabel,
   allowDecimals = false,
   linkKey,
+  toggleable = false,
 }: {
   data: Record<string, unknown>[]
   xKey: string
@@ -465,8 +467,20 @@ export function StackedBarChart({
   yAxisSuffix?: string
   yAxisLabel?: string
   allowDecimals?: boolean
+  /** Clicking a legend item hides or shows that series, in this chart only. */
+  toggleable?: boolean
 }) {
   const router = useRouter()
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set())
+  const toggle = (key: unknown) => {
+    if (typeof key !== 'string') return
+    setHidden((current) => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
   const format = (value: number) => `${yAxisPrefix}${value.toLocaleString()}${yAxisSuffix}`
   const open = (seriesKey: string) => (entry: { payload?: Record<string, unknown> }) => {
     const links = linkKey ? (entry?.payload?.[linkKey] as Record<string, string> | undefined) : undefined
@@ -492,10 +506,14 @@ export function StackedBarChart({
           contentStyle={TOOLTIP_SURFACE}
           formatter={(value: number) => format(value)}
         />
-        <Legend wrapperStyle={{ fontSize: 11 }} />
+        <Legend
+          wrapperStyle={{ fontSize: 11, cursor: toggleable ? 'pointer' : undefined }}
+          onClick={toggleable ? (entry: { dataKey?: unknown }) => toggle(entry.dataKey) : undefined}
+        />
         {series.map((s) => (
           <Bar
             key={s.key}
+            hide={hidden.has(s.key)}
             dataKey={s.key}
             stackId="a"
             fill={s.color}
