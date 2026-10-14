@@ -1,6 +1,7 @@
 {
   "accounts": {
-    "Example Pension IRP": { "wrapper": "irp", "owner": "self" }
+    "Example Pension IRP": { "wrapper": "irp", "owner": "self" },
+    "Example Cash Brokerage": { "wrapper": "taxable", "owner": "self", "cashAccount": true }
   },
   "bankAccounts": [
     { "institution": "chase", "last4": "0000", "kind": "checking", "currency": "USD", "alias": "Chase checking" },

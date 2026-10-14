@@ -64,6 +64,21 @@ export function ownerFor(row, map) {
 
 export const SELF_OWNER = 'self'
 
+/**
+ * The accounts the map marks `"cashAccount": true`: US cash (not margin)
+ * brokerage accounts, where a security bought with unsettled sale proceeds may
+ * not be sold before those proceeds settle. Neither the cash/margin type nor a
+ * settlement date is in any source this app reads, so the map is the only place
+ * it can come from, and `pnpm tax:calendar` reports settlement as unavailable
+ * until at least one account is marked.
+ */
+export function cashAccountLabels(map) {
+  return Object.entries(map?.accounts ?? {})
+    .filter(([, entry]) => entry && typeof entry === 'object' && entry.cashAccount === true)
+    .map(([label]) => label)
+    .sort()
+}
+
 /** A pensionAccounts entry that is closed (`retiredOn`) or has no token is known, but never loaded or shown. */
 export function isActivePensionEntry(entry) {
   return Boolean(entry && typeof entry === 'object' && String(entry.token ?? '').trim() && String(entry.account ?? '').trim() && !entry.retiredOn)

@@ -1486,3 +1486,201 @@ export function buildMonthlySalePlanSet({
     },
   }
 }
+
+/** The first day a lot bought on `acquiredDate` sells as long-term (more than one year held). */
+export function longTermEligibleOn(acquiredDate: string) {
+  return dateOnly(longTermEligibleDate(acquiredDate))
+}
+
+/**
+ * Lots as candidates for a sale on `saleDate`, valued the way each return measures them.
+ *
+ * buildTaxPlan values every lot as of today: the holding period comes from the database (as of
+ * the last refresh), and the won side uses each lot's current rate. A sale on another day needs
+ * three things recomputed, and this does exactly those:
+ *
+ *  - the holding period, from the acquisition date to `saleDate` (longTermEligibleOn);
+ *  - proceeds, at `pricesUsd[ticker]` when given, else the lot's stored price;
+ *  - the won gain Korea taxes, as proceeds at `usdKrwRate` (the sale-date rate) less
+ *    `acquisition_cost_krw` (the cost at the acquisition-date rate). Without that column the
+ *    gain falls back to `cost_basis_krw`, which is at today's rate, and the candidate says so.
+ *
+ * The US gain stays in dollars (`gainNative`), which is how summarizeTaxCandidates reads a
+ * dollar lot. Per-lot tax fields are zero: the sale set is taxed as a whole (estimateSaleSet).
+ * Lots without a price come back with null proceeds, which the aggregate leaves out.
+ */
+export function repriceForSaleDate(
+  lots: TaxPlanningLot[],
+  { saleDate, usdKrwRate, pricesUsd = {} }: { saleDate: string; usdKrwRate: number; pricesUsd?: Record<string, number> }
+): TaxPlanCandidate[] {
+  return lots.map((lot) => {
+    const quantity = Number(lot.open_quantity)
+    const storedUnit = lot.native_market_value != null && quantity > 0 ? Number(lot.native_market_value) / quantity : null
+    const quoted = lot.currency === 'USD' ? pricesUsd[lot.ticker] : undefined
+    const unit = quoted != null && Number.isFinite(Number(quoted)) ? Number(quoted) : storedUnit
+    const proceedsNative = unit == null ? null : unit * quantity
+    const rate = lot.currency === 'KRW' ? 1 : usdKrwRate
+    const proceedsKrw = proceedsNative == null ? null : proceedsNative * rate
+    const gainNative = proceedsNative == null ? null : proceedsNative - Number(lot.native_cost_basis ?? 0)
+    const krCostKrw = Number(lot.acquisition_cost_krw ?? lot.cost_basis_krw ?? 0)
+    const gainKrw = proceedsKrw == null ? null : proceedsKrw - krCostKrw
+    const holdingBucket: 'short' | 'long' = saleDate >= longTermEligibleOn(lot.acquired_date) ? 'long' : 'short'
+    const warnings: string[] = []
+    if (proceedsNative == null) warnings.push('Missing valuation; refresh price snapshot before acting.')
+    if (lot.currency !== 'KRW' && lot.acquisition_cost_krw == null) {
+      warnings.push('No acquisition-date won cost on this lot; the Korea gain uses the cost at the current rate.')
+    }
+    return {
+      ...lot,
+      fx_rate_to_base: rate,
+      native_market_value: proceedsNative,
+      native_unrealized_gl: gainNative,
+      usdKrwRate,
+      proceedsNative,
+      proceedsKrw,
+      gainNative,
+      gainKrw,
+      holdingBucket,
+      usTaxUsd: 0,
+      usTaxKrw: 0,
+      krTaxKrw: 0,
+      estimatedTaxKrw: 0,
+      estimatedAfterTaxKrw: proceedsKrw,
+      warnings,
+    } satisfies TaxPlanCandidate
+  })
+}
+
+/** The tax on one sale set, in the currency each return is filed in. */
+export type SaleSetEstimate = {
+  federalUsd: number
+  niitUsd: number
+  stateUsd: number
+  /** Federal regular tax + NIIT + state, before any foreign tax credit. */
+  usTotalUsd: number
+  /** Korea's tax on the set, before any credit. */
+  krTaxKrw: number
+  /** The cross-border credit the policy's foreignTaxCreditMode allows, in dollars. */
+  krCreditUsd: number
+  /** usTotalUsd + krTaxKrw at the sale-date rate − krCreditUsd. */
+  totalUsd: number
+}
+
+/**
+ * summarizeTaxCandidates for one sale set, with the dollar/won rate pinned to `usdKrwRate`.
+ *
+ * The aggregate converts between the two returns at one planning rate: the policy's
+ * planningUsdKrwRate when set, else the median rate of the candidates (candidateUsdKrwRate). For
+ * a sale on a known day that rate is the sale-date rate, so it is pinned here rather than left
+ * to either shortcut. The engine, the netting, the YTD inputs and the credit modes are all
+ * summarizeTaxCandidates' own; this only reads its result back in dollars.
+ */
+export function estimateSaleSet({
+  candidates,
+  policy,
+  scenario,
+  year,
+  usdKrwRate,
+}: {
+  candidates: TaxPlanCandidate[]
+  policy: TaxPolicy
+  scenario: FilingScenario
+  year: number
+  usdKrwRate: number
+}): SaleSetEstimate {
+  const pinned: TaxPolicy = {
+    ...policy,
+    jurisdictions: policy.jurisdictions.map((item) =>
+      item.code === 'US' ? { ...item, manualAssumptions: { ...item.manualAssumptions, planningUsdKrwRate: usdKrwRate } } : item
+    ),
+  }
+  const aggregate = summarizeTaxCandidates({ candidates, policy: pinned, scenario, year })
+  const usd = (krw: number) => krw / aggregate.usdKrwRate
+  return {
+    federalUsd: usd(aggregate.usFederalShortTermTaxKrw + aggregate.usFederalLongTermTaxKrw),
+    niitUsd: usd(aggregate.usNiitTaxKrw),
+    stateUsd: usd(aggregate.usStateTaxKrw),
+    usTotalUsd: usd(aggregate.usTaxKrw),
+    krTaxKrw: aggregate.krTaxKrw,
+    krCreditUsd: usd(aggregate.estimatedCrossBorderTaxCreditKrw),
+    totalUsd: usd(aggregate.combinedTaxAfterCreditsKrw),
+  }
+}
+
+export type HarvestFrontierStep = {
+  ticker: string
+  /** The ticker's loss lots summed, in dollars. Negative. */
+  lossUsd: number
+  /** Tax removed by adding this ticker's losses to the steps before it. */
+  taxSavedUsd: number
+  /** taxSavedUsd per dollar of loss. */
+  savingPerDollar: number
+  cumulativeLossUsd: number
+  cumulativeSavedUsd: number
+  lotIds: number[]
+}
+
+/**
+ * Loss harvesting as a frontier: which ticker's losses to realize next, and what each saves.
+ *
+ * Greedy on marginal saving per dollar of loss. Each step adds the ticker whose loss lots remove
+ * the most tax per dollar given the steps already taken, so `taxSavedUsd` is that ticker's
+ * marginal saving, not its saving alone, and the steps sum to the saving of taking them all.
+ * Ties go to the larger loss, then the ticker name. `estimateTotalUsd` prices a set of
+ * candidates; the CLI passes estimateSaleSet, a test can pass anything.
+ *
+ * A loss is measured in dollars (`gainNative`), the US measure. A lot can be a dollar loss and a
+ * won gain at once; it still counts here, and the estimator charges whatever Korea takes on it.
+ */
+export function harvestFrontier({
+  candidates,
+  estimateTotalUsd,
+}: {
+  candidates: TaxPlanCandidate[]
+  estimateTotalUsd: (rows: TaxPlanCandidate[]) => number
+}): HarvestFrontierStep[] {
+  const byTicker = new Map<string, TaxPlanCandidate[]>()
+  for (const row of candidates) {
+    if (row.proceedsNative == null || row.gainNative == null || Number(row.gainNative) >= 0) continue
+    const group = byTicker.get(row.ticker)
+    if (group) group.push(row)
+    else byTicker.set(row.ticker, [row])
+  }
+  const lossOf = (rows: TaxPlanCandidate[]) => rows.reduce((sum, row) => sum + Number(row.gainNative), 0)
+  const steps: HarvestFrontierStep[] = []
+  let selected: TaxPlanCandidate[] = []
+  let currentTax = estimateTotalUsd(selected)
+  let cumulativeLossUsd = 0
+  let cumulativeSavedUsd = 0
+  const remaining = new Map(byTicker)
+  while (remaining.size) {
+    let best: { ticker: string; rows: TaxPlanCandidate[]; loss: number; saved: number; tax: number; perDollar: number } | null = null
+    for (const [ticker, rows] of remaining) {
+      const loss = lossOf(rows)
+      const tax = estimateTotalUsd([...selected, ...rows])
+      const saved = currentTax - tax
+      const perDollar = loss < 0 ? saved / Math.abs(loss) : 0
+      const better =
+        !best ||
+        perDollar > best.perDollar + 1e-12 ||
+        (Math.abs(perDollar - best.perDollar) <= 1e-12 && (loss < best.loss || (loss === best.loss && ticker < best.ticker)))
+      if (better) best = { ticker, rows, loss, saved, tax, perDollar }
+    }
+    if (!best) break
+    remaining.delete(best.ticker)
+    selected = [...selected, ...best.rows]
+    currentTax = best.tax
+    cumulativeLossUsd += best.loss
+    cumulativeSavedUsd += best.saved
+    steps.push({
+      ticker: best.ticker,
+      lossUsd: best.loss,
+      taxSavedUsd: best.saved,
+      savingPerDollar: best.perDollar,
+      cumulativeLossUsd,
+      cumulativeSavedUsd,
+      lotIds: best.rows.map((row) => row.id),
+    })
+  }
+  return steps
+}
