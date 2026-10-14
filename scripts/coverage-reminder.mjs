@@ -146,7 +146,7 @@ function supplementaryLine(row) {
  * The message for one summary document, or null when there is nothing to say.
  * Throws when the document cannot be read as a summary this script understands.
  */
-export function coverageMessage(doc) {
+function dueGroups(doc) {
   if (!doc || typeof doc !== 'object') throw new Error('summary is not a JSON object')
   if (Number(doc.schemaVersion) > SCHEMA_VERSION) {
     throw new Error(`summary schemaVersion ${doc.schemaVersion} is newer than ${SCHEMA_VERSION}; update this reader`)
@@ -155,9 +155,46 @@ export function coverageMessage(doc) {
   if (!coverage || !Array.isArray(coverage.rows)) {
     throw new Error('summary has no accountCoverage block — the refresh that writes it predates this reader')
   }
+  return { groups: groupRows(items(coverage.rows).filter((row) => ATTENTION.has(row.status))), supplementary: supplementaryItems(doc) }
+}
 
-  const groups = groupRows(items(coverage.rows).filter((row) => ATTENTION.has(row.status)))
-  const supplementary = supplementaryItems(doc)
+/**
+ * What the weekly reminder would name, as data rather than a message: the same
+ * filter, grouping and order. `pnpm sources:status` reports these as `due`, so
+ * "did my upload arrive?" and the reminder never disagree about what is owed.
+ */
+export function dueItems(doc) {
+  const { groups, supplementary } = dueGroups(doc)
+  return [
+    ...groups.map((group) => ({
+      kind: 'account',
+      brokerage: group.brokerage,
+      accounts: group.accounts,
+      status: group.status,
+      coveredThrough: group.coveredThrough ?? null,
+      lagDays: group.lagDays ?? null,
+      maxLagDays: group.maxLagDays ?? null,
+      downloadFrom: group.downloadFrom ?? null,
+      requiredArtifact: group.requiredArtifact ?? null,
+      method: group.method ?? null,
+      destination: group.destination ?? null,
+      missingDisposals: disposals(group),
+    })),
+    ...supplementary.rows.map((row) => ({
+      kind: 'supplementary',
+      label: row.label,
+      status: row.status,
+      latestDate: row.latestDate ?? null,
+      lagDays: row.lagDays ?? null,
+      maxLagDays: row.maxLagDays ?? null,
+      action: row.action ?? null,
+    })),
+    ...supplementary.failing.map((check) => ({ kind: 'supplementary-check', check: String(check) })),
+  ]
+}
+
+export function coverageMessage(doc) {
+  const { groups, supplementary } = dueGroups(doc)
   const hasSupplementary = supplementary.rows.length > 0 || supplementary.failing.length > 0
   if (groups.length === 0 && !hasSupplementary) return null
 
@@ -204,4 +241,12 @@ async function main() {
   if (message) process.stdout.write(`${message}\n`)
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main()
+// Not a top-level await: lib/cli/sources-status.ts imports dueItems from this
+// file, and a TypeScript importer is compiled to CommonJS, which cannot load a
+// module that awaits at the top.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    process.stdout.write(`⚠️ 계좌 자료 알림을 만들지 못했습니다 — ${error.message}\n`)
+    process.exit(1)
+  })
+}
