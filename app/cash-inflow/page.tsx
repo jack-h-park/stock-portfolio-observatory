@@ -13,6 +13,7 @@ import {
   cashInflowCategories,
   getCashInflow,
   getCashInflowRows,
+  getCashInflowUnclassified,
   type CashInflowCategory,
   type CashInflowCurrency,
   type CashInflowFilter,
@@ -22,7 +23,7 @@ import {
   type CashInflowRow,
 } from '@/lib/adapters/portfolio-db'
 import { fmtNumber, fmtPct } from '@/lib/format'
-import { fractionPct } from '@/lib/cash-inflow-format'
+import { fractionPct, ruleSnippet } from '@/lib/cash-inflow-format'
 import { signClass, signTone } from '@/lib/tone'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
@@ -92,6 +93,7 @@ export default async function CashInflowPage({
   const detailCategories = detailCategory ? [detailCategory] : categories
   const detailRows = detail ? getCashInflowRows(detail, currencyPreferences.displayCurrency, detailCategories, scope) : []
   const hasBrokerRows = detailRows.some((r) => r.source === 'dividend')
+  const unclassifiedGroups = filter === 'unclassified' ? getCashInflowUnclassified(currencyPreferences.displayCurrency, scope) : []
   const detailLabel = detailCategory ? copy.categories[detailCategory] : copy.filter.options[filter]
 
   // Only non-default values go in the URL, the way FilterBar's chips write them.
@@ -189,9 +191,10 @@ export default async function CashInflowPage({
         action={
           <div className="flex flex-wrap items-center gap-2">
             {data.unclassifiedCount > 0 ? (
-              <span title={copy.unclassifiedHint}>
+              // Opens the triage card, keeping the source, currency and range.
+              <Link href={`${href({ category: 'unclassified' })}#cash-inflow-unclassified`} title={copy.unclassifiedHint} className="rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-info/40">
                 <Badge tone="warning">{copy.unclassified(fmtNumber(data.unclassifiedCount))}</Badge>
-              </span>
+              </Link>
             ) : null}
             {data.undatedCount > 0 ? <Badge tone="warning">{copy.undated(fmtNumber(data.undatedCount))}</Badge> : null}
             <Button href={href({ view: 'month' })} variant={view === 'month' ? 'solid' : 'outline'}>{copy.monthly}</Button>
@@ -224,8 +227,13 @@ export default async function CashInflowPage({
           eyebrow={filter === 'All' ? copy.headlineEyebrow : copy.filter.options[filter]}
           value={money(data.totals.rangeTotal, data.currency)}
         >
-          {/* Unclassified money is a to-do, not income: no average and no comparison. */}
-          {filter === 'unclassified' ? null : (
+          {/* Unclassified money is a to-do, not income: no average and no comparison, only how much is left to sort. */}
+          {filter === 'unclassified' ? (
+            <KpiBand>
+              <MetricField label={copy.triage.count} value={fmtNumber(data.unclassifiedCount)} valueClassName="text-title" />
+              <MetricField label={copy.triage.groups} value={fmtNumber(unclassifiedGroups.length)} valueClassName="text-title" />
+            </KpiBand>
+          ) : (
             <KpiBand>
               <MetricField label={copy.monthlyAverage} value={money(data.totals.monthlyAverage, data.currency)} valueClassName="text-title" />
               {filter === 'All' ? (
@@ -257,6 +265,7 @@ export default async function CashInflowPage({
               links: Object.fromEntries(categories.map((c) => [c, href({ category: c, detail: p.period, detailCategory: c, anchor: true })])),
             }))}
             linkKey="links"
+            toggleable
             xKey="period"
             series={categories.map((c) => ({ key: c, label: copy.categories[c], color: CATEGORY_COLOR[c] }))}
             height={300}
@@ -265,7 +274,7 @@ export default async function CashInflowPage({
             yAxisLabel={usd ? copy.axisUsd : copy.axisKrw}
             allowDecimals={usd}
           />
-          <p className="mt-2 text-label text-ink-3">{copy.chartNote} {copy.chartHint}</p>
+          <p className="mt-2 text-label text-ink-3">{copy.chartNote} {copy.chartHint} {copy.legendHint}</p>
         </Card>
       </CardRow>
 
@@ -318,6 +327,38 @@ export default async function CashInflowPage({
           ) : null}
         </Card>
       </CardRow>
+
+      {filter === 'unclassified' ? (
+        <CardRow columns={1}>
+          <Card title={copy.triage.title}>
+            <div id="cash-inflow-unclassified" className="flex scroll-mt-24 flex-col gap-3">
+              <p className="text-label text-ink-3">{copy.triage.note}</p>
+              {unclassifiedGroups.length === 0 ? (
+                <p className="text-body text-ink-3">{copy.triage.none}</p>
+              ) : (
+                unclassifiedGroups.map((g) => (
+                  <details key={`${g.institution}|${g.account}|${g.description}`} className="rounded-md border border-line px-3 py-2">
+                    <summary className="flex cursor-pointer flex-wrap items-baseline justify-between gap-2 text-body">
+                      <span className="font-medium text-ink">{g.description || g.account}</span>
+                      <span className="text-caption text-ink-3">{g.account} · {copy.triage.group(fmtNumber(g.count), money(g.total, data.currency), g.first, g.last)}</span>
+                    </summary>
+                    <ul className="mt-2 flex flex-col gap-1 text-caption text-ink-2">
+                      {g.rows.map((r, i) => (
+                        <li key={i} className="flex justify-between gap-3 tabular-nums">
+                          <span>{r.date}</span>
+                          <span>{`${fmtNumber(r.native, r.currency === 'KRW' ? 0 : 2)} ${r.currency}`} · {money(r.amount, data.currency)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-2 text-micro font-medium text-ink-3">{copy.triage.rule}</p>
+                    <pre className="mt-1 overflow-x-auto rounded-sm bg-surface px-2 py-1 text-micro text-ink-2">{ruleSnippet(g)}</pre>
+                  </details>
+                ))
+              )}
+            </div>
+          </Card>
+        </CardRow>
+      ) : null}
     </>
   )
 }
