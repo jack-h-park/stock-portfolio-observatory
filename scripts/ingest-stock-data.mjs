@@ -3783,8 +3783,17 @@ function usHoldingDays(from, to) {
   // than from the in-transit pool, so it does not need a delivery walked first
   // — and a sale in the receiving account on the transfer date has to find the
   // shares that arrived that morning.
+  //
+  // A split or share exchange goes before all of them. It takes effect at the
+  // open, so the day's trades are already priced and counted in the new shares,
+  // and a restatement walked after a same-day buy restates the buy too. It did,
+  // on TQQQ's 2025-11-20 2-for-1: 10 shares bought that day at the post-split
+  // price took a share of the split, so the factor came out as 306/158, not 2.
+  // Every lot still summed to the right position and kept its own cost, so only
+  // the quantity per acquisition date was wrong, which no total could catch.
   const rank = (r) => {
     const costless = costOf(r) <= 0 && Math.abs(number(r.native_unit_price) ?? 0) <= 0
+    if (r.type === 'STOCK_SPLIT' || r.type === 'CORPORATE_ACTION') return -1
     if (r.type === 'INTERNAL_TRANSFER') return 0.5
     if (r.type === 'SELL' || r.type === 'TRANSFER_OUT') return 1
     if (costless) return 2
