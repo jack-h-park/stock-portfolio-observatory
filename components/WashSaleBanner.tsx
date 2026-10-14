@@ -23,10 +23,7 @@ export function WashSaleBanner({ review, copy }: { review: WashSaleReview; copy:
     <section
       role="alert"
       aria-labelledby="wash-sale-title"
-      className="mb-5 rounded-md border-2 border-danger shadow-card"
-      // Tailwind cannot put an opacity on a colour held in a CSS variable, so
-      // `bg-danger/5` would compile to nothing; color-mix does the same in CSS.
-      style={{ background: 'color-mix(in srgb, var(--accent-danger) 6%, transparent)' }}
+      className="mb-5 rounded-md border-2 border-danger bg-danger/[0.06] shadow-card"
     >
       <header className="border-b border-danger px-4 py-3">
         <h2 id="wash-sale-title" className="text-body-lg font-semibold tracking-tight text-danger">

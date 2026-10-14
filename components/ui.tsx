@@ -91,13 +91,13 @@ export function Card({
 
 const TONE_STYLES = {
   neutral: 'bg-surface text-ink-2 border-line',
-  info: 'border-[color:var(--accent-info)]/30 bg-[color:var(--accent-info)]/10 text-[color:var(--accent-info)]',
+  info: 'border-info/30 bg-info/10 text-info',
   success:
-    'border-[color:var(--accent-success)]/30 bg-[color:var(--accent-success)]/10 text-[color:var(--accent-success)]',
+    'border-success/30 bg-success/10 text-success',
   warning:
-    'border-[color:var(--accent-warning)]/30 bg-[color:var(--accent-warning)]/10 text-[color:var(--accent-warning)]',
+    'border-warning/30 bg-warning/10 text-warning',
   danger:
-    'border-[color:var(--accent-danger)]/30 bg-[color:var(--accent-danger)]/10 text-[color:var(--accent-danger)]',
+    'border-danger/30 bg-danger/10 text-danger',
 } as const
 
 export type Tone = keyof typeof TONE_STYLES
@@ -324,13 +324,13 @@ const BTN_LINK_TONE: Record<Tone, string> = {
 
 const BTN_OUTLINE_TONE: Record<Tone, string> = {
   neutral: 'border-line bg-card text-ink hover:border-ink-3 hover:bg-surface',
-  info: 'border-[color:var(--accent-info)]/30 bg-[color:var(--accent-info)]/10 text-[color:var(--accent-info)] hover:border-[color:var(--accent-info)]',
+  info: 'border-info/30 bg-info/10 text-info hover:border-info',
   success:
-    'border-[color:var(--accent-success)]/30 bg-[color:var(--accent-success)]/10 text-[color:var(--accent-success)] hover:border-[color:var(--accent-success)]',
+    'border-success/30 bg-success/10 text-success hover:border-success',
   warning:
-    'border-[color:var(--accent-warning)]/30 bg-[color:var(--accent-warning)]/10 text-[color:var(--accent-warning)] hover:border-[color:var(--accent-warning)]',
+    'border-warning/30 bg-warning/10 text-warning hover:border-warning',
   danger:
-    'border-[color:var(--accent-danger)]/30 bg-[color:var(--accent-danger)]/10 text-[color:var(--accent-danger)] hover:border-[color:var(--accent-danger)]',
+    'border-danger/30 bg-danger/10 text-danger hover:border-danger',
 }
 
 /**

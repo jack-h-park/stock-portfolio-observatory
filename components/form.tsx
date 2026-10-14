@@ -72,7 +72,7 @@ export function Checkbox({ className, ...rest }: InputHTMLAttributes<HTMLInputEl
     <input
       type="checkbox"
       className={clsx(
-        'h-4 w-4 shrink-0 accent-[color:var(--accent-info)]',
+        'h-4 w-4 shrink-0 accent-info',
         'focus:outline-none focus-visible:ring-2 focus-visible:ring-info/40 focus-visible:ring-offset-1',
         className
       )}

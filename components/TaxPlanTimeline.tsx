@@ -224,11 +224,11 @@ export function TaxPlanTimeline({
             </div>
             <div className="flex items-center gap-4 text-micro text-ink-3">
               <span className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-[color:var(--accent-info)]" />
+                <span className="h-2 w-2 rounded-full bg-info" />
                 {copy.netGain}
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-[color:var(--accent-danger)]" />
+                <span className="h-2 w-2 rounded-full bg-danger" />
                 {copy.netLoss}
               </span>
             </div>
@@ -262,7 +262,7 @@ export function TaxPlanTimeline({
                           aria-label={copy.plannedSalesAria(month.label, money(month.proceedsKrw, 'KRW'))}
                           className={`group relative flex h-[8.5rem] w-[5.1rem] shrink-0 flex-col items-center rounded-md border px-1.5 py-2 text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-info ${
                             selected
-                              ? 'border-info bg-[color:var(--accent-info)]/5 shadow-card'
+                              ? 'border-info bg-info/5 shadow-card'
                               : 'border-transparent hover:border-line hover:bg-surface'
                           }`}
                         >
@@ -278,8 +278,8 @@ export function TaxPlanTimeline({
                             <span
                               className={`block w-5 rounded-t-sm transition-all ${
                                 month.gainKrw >= 0
-                                  ? 'bg-[color:var(--accent-info)]'
-                                  : 'bg-[color:var(--accent-danger)]'
+                                  ? 'bg-info'
+                                  : 'bg-danger'
                               } ${selected ? 'opacity-100' : 'opacity-60 group-hover:opacity-85'}`}
                               style={{ height: `${barHeight}px` }}
                             />
