@@ -18,6 +18,7 @@ import {
   getTopHoldings,
   getTotalAssetsSeries,
   getTransactionTypes,
+  getWashSaleReview,
   withGoldScope,
 } from '@/lib/adapters/portfolio-db'
 import {
@@ -47,6 +48,7 @@ import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow, KpiBand } from '@/components/layout'
 import { AssetViewLink } from '@/components/LanguageSwitcher'
+import { WashSaleBanner } from '@/components/WashSaleBanner'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/')
@@ -257,6 +259,8 @@ export default async function OverviewPage({
         subtitle={copy.subtitle(fmtDateTime(meta.ingested_at), fxLabel)}
         action={overview.failedChecks + operationalIssues > 0 ? <Badge tone="warning">{copy.needsReview(overview.failedChecks + operationalIssues)}</Badge> : <Badge tone="success">{copy.healthy}</Badge>}
       />
+
+      <WashSaleBanner review={getWashSaleReview()} copy={getPageCopy('washSale', language)} />
 
       <CardRow columns="hero">
         <MetricHeroCard

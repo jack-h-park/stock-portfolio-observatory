@@ -40,7 +40,9 @@ import {
   getRefreshRuns,
   getSupplementaryCoverage,
   getValidationChecks,
+  getWashSaleReview,
 } from '@/lib/adapters/portfolio-db'
+import { washSaleLine } from '@/lib/wash-sale'
 
 /**
  * The contract with every consumer.
@@ -100,6 +102,7 @@ const markets = getMarketBreakdown()
 const lastRun = getRefreshRuns(1)[0] ?? null
 const coverage = getAccountCoverage()
 const supplementaryCoverage = getSupplementaryCoverage()
+const washSale = getWashSaleReview()
 
 /**
  * An account label with any account-number-like token cut to its last four.
@@ -361,6 +364,37 @@ const summary = {
     baseMarketValue: m.base_market_value,
     baseUnrealizedGl: m.base_unrealized_gl,
   })),
+
+  // US tickers sold at a loss in the last 30 days. Another buy of one of them, in
+  // ANY account — the trading agent's included, an IRA or a spouse's included —
+  // disallows that loss (IRC §1091). `line` is the one sentence the briefing and
+  // the Telegram message repeat; null when no window is open. Additive, so the
+  // schema version stays: a reader that does not know the field ignores it.
+  washSaleWindows: {
+    measuredOn: washSale.today,
+    transactionsThrough: washSale.transactionsThrough,
+    line: washSaleLine(washSale.windows),
+    windows: washSale.windows.map((w) => ({
+      ticker: w.ticker,
+      blockedThrough: w.blockedThrough,
+      clearFrom: w.clearFrom,
+      daysLeft: w.daysLeft,
+      currency: 'USD',
+      realizedLoss: Math.round(w.loss * 100) / 100,
+      possiblyDisallowed: Math.round(w.possiblyDisallowed * 100) / 100,
+      boughtSinceSale: w.boughtSinceSale,
+      soldIn: [...new Set(w.sales.flatMap((sale) => sale.accounts))].map(maskAccount),
+      buysInWindow: w.sales.flatMap((sale) =>
+        sale.matchedBuys.map((buy) => ({
+          date: buy.date,
+          side: buy.side,
+          account: maskAccount(buy.account),
+          quantity: buy.quantity,
+          reinvested: Boolean(buy.reinvested),
+        })),
+      ),
+    })),
+  },
 
   positions: {
     topGainers: review.topGainers.slice(0, LIST_LIMIT).map(movement),

@@ -1,8 +1,9 @@
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
 import { Badge, Button, Card, EmptyState, InfoTooltip, Label, Signed, TextLink, marketTone } from '@/components/ui'
-import { getOperationalHealth, getOverview, getTaxPlanningLots, getWrapperReview } from '@/lib/adapters/portfolio-db'
+import { getOperationalHealth, getOverview, getTaxPlanningLots, getWashSaleReview, getWrapperReview } from '@/lib/adapters/portfolio-db'
 import { WrapperEstimateNote } from '@/components/WrapperReviewCard'
+import { WashSaleBanner } from '@/components/WashSaleBanner'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { fmtKrw, fmtMoney, fmtNumber, fmtPct } from '@/lib/format'
@@ -157,6 +158,8 @@ export default async function TaxPlanningPage({
           </div>
         }
       />
+
+      <WashSaleBanner review={getWashSaleReview()} copy={getPageCopy('washSale', language)} />
 
       <WrapperEstimateNote rows={wrapperReview} copy={copy.wrapperReview} />
 

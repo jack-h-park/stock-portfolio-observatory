@@ -17,6 +17,7 @@ import treasuryRates from '@/data/treasury-reporting-rates.json'
 import { isActivePensionEntry, loadAccountMap } from '@/scripts/account-map.mjs'
 import { bankAccountGroup, retiredBankAccounts, retiredBrokerageAccounts, type BankAccountEntry } from '@/lib/bank-accounts'
 import { createLotValuer } from '@/scripts/lot-valuation.mjs'
+import { buildWashSaleWindows, type WashSaleBuy, type WashSaleLot, type WashSaleWindow } from '@/lib/wash-sale'
 import {
   GOLD_ETF_TICKERS,
   addGoldBooks,
@@ -5431,4 +5432,97 @@ export function getValidationChecks(): HealthCheck[] {
   } finally {
     conn.close()
   }
+}
+
+export type WashSaleReview = {
+  /** The day the windows were measured against, in the ingest's time zone. */
+  today: string
+  /** Latest US transaction date ingested: a buy after it is invisible here. */
+  transactionsThrough: string | null
+  windows: (WashSaleWindow & {
+    /** Accounts that still hold the ticker. A dividend reinvestment there is a buy. */
+    stillHeldIn: string[]
+  })[]
+}
+
+/**
+ * Open wash-sale windows on US stocks (lib/wash-sale.ts has the rule).
+ *
+ * Losses come from the taxable stock view only: a sale inside an IRA has no
+ * deductible loss to lose. Buys come from EVERY wrapper of the maintainer's own
+ * accounts, because an IRA buy triggers the rule too. A child's account is
+ * another taxpayer and is left out. Crypto never enters: market 'US' only.
+ */
+export function getWashSaleReview(today: string = portfolioToday()): WashSaleReview {
+  const empty: WashSaleReview = { today, transactionsThrough: null, windows: [] }
+  const conn = db()
+  try {
+    const hasTable = (name: string) =>
+      Boolean(conn.prepare("select 1 from sqlite_master where type in ('table', 'view') and name = ?").get(name))
+    if (!hasTable('realized_lots') || !hasTable('transactions')) return empty
+    const columnsOf = (name: string) =>
+      new Set((conn.prepare(`pragma table_info(${name})`).all() as { name: string }[]).map((column) => column.name))
+    const realizedColumns = columnsOf('realized_lots')
+    if (!realizedColumns.has('native_realized_gl')) return empty
+    const notSuperseded = realizedColumns.has('superseded_by') ? ' and superseded_by is null' : ''
+    // Only sales recent enough to have an open window: the 30 days are cheap to
+    // over-fetch, the full history is not.
+    const since = new Date(Date.parse(`${today}T00:00:00Z`) - 31 * 86_400_000).toISOString().slice(0, 10)
+
+    const lots = conn
+      .prepare(
+        `select ticker, sold_date as soldDate, acquired_date as acquiredDate, quantity_sold as quantity,
+                native_realized_gl as realizedGl, account
+           from realized_lots
+          where market = 'US' and ticker is not null and sold_date >= ?${notSuperseded}${selfOnlyAnd(conn, 'realized_lots')}`
+      )
+      .all(since) as WashSaleLot[]
+    if (!lots.some((lot) => lot.realizedGl < 0)) {
+      return { ...empty, transactionsThrough: latestUsTransaction(conn) }
+    }
+
+    const tickers = [...new Set(lots.filter((lot) => lot.realizedGl < 0).map((lot) => lot.ticker))]
+    const marks = tickers.map(() => '?').join(', ')
+    const txTable = allAssetsTable(conn, 'transactions')
+    const txColumns = columnsOf(txTable)
+    const security = txColumns.has('asset_class') ? " and asset_class = 'security'" : ''
+    const drip = txColumns.has('placed_agent') ? "type = 'REINVEST' or placed_agent = 'drip'" : "type = 'REINVEST'"
+    // 61 days back covers the 30-day lookback of the oldest sale fetched above.
+    const buySince = new Date(Date.parse(`${since}T00:00:00Z`) - 31 * 86_400_000).toISOString().slice(0, 10)
+    const buys = (
+      conn
+        .prepare(
+          `select ticker, date, quantity, account, case when ${drip} then 1 else 0 end as reinvested
+             from ${txTable}
+            where market = 'US' and type in ('BUY', 'REINVEST') and coalesce(quantity, 0) > 0
+              and date >= ? and ticker in (${marks})${security}${selfOnlyAnd(conn, txTable)}`
+        )
+        .all(buySince, ...tickers) as (Omit<WashSaleBuy, 'reinvested'> & { reinvested: number })[]
+    ).map((row) => ({ ...row, reinvested: row.reinvested === 1 }))
+
+    const holdingsTable = allAssetsTable(conn, 'holdings')
+    const held = conn
+      .prepare(
+        `select distinct ticker, account from ${holdingsTable}
+          where market = 'US' and quantity > 0 and ticker in (${marks})${selfOnlyAnd(conn, holdingsTable)}
+          order by account`
+      )
+      .all(...tickers) as { ticker: string; account: string }[]
+
+    return {
+      today,
+      transactionsThrough: latestUsTransaction(conn),
+      windows: buildWashSaleWindows({ lots, buys, today }).map((window) => ({
+        ...window,
+        stillHeldIn: held.filter((row) => row.ticker === window.ticker).map((row) => row.account),
+      })),
+    }
+  } finally {
+    conn.close()
+  }
+}
+
+function latestUsTransaction(conn: Database.Database): string | null {
+  const row = conn.prepare("select max(date) as date from transactions where market = 'US'").get() as { date: string | null } | undefined
+  return row?.date ?? null
 }
