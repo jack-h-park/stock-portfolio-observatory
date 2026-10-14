@@ -2,23 +2,37 @@ import type { Config } from 'tailwindcss'
 
 // Tailwind utilities are bound to the jp-theme CSS variables (styles/jp-theme.css,
 // copied from nextjs-react-notion-x) so both projects share one visual language.
+/**
+ * A theme colour that still takes Tailwind's opacity modifier.
+ *
+ * The jp-theme variables hold hex values, and Tailwind 3 cannot split a colour
+ * it only sees as `var(...)` into channels, so `bg-info/10` or
+ * `border-[color:var(--accent-danger)]/30` used to generate no CSS at all.
+ * color-mix applies the alpha in the browser instead, which keeps the CSS
+ * variables as the single source of truth for both themes. Without a modifier
+ * Tailwind substitutes 1 (or its `--tw-*-opacity` variable), so plain `bg-info`
+ * still resolves to the solid colour.
+ */
+const themeColor = (variable: string) =>
+  `color-mix(in srgb, var(${variable}) calc(<alpha-value> * 100%), transparent)`
+
 const config: Config = {
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}', './lib/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        page: 'var(--bg-page)',
-        surface: 'var(--bg-surface)',
-        card: 'var(--bg-card)',
-        ink: 'var(--text-primary)',
-        'ink-2': 'var(--text-secondary)',
-        'ink-3': 'var(--text-tertiary)',
-        line: 'var(--border-default)',
-        'line-subtle': 'var(--border-subtle)',
-        info: 'var(--accent-info)',
-        success: 'var(--accent-success)',
-        warning: 'var(--accent-warning)',
-        danger: 'var(--accent-danger)',
+        page: themeColor('--bg-page'),
+        surface: themeColor('--bg-surface'),
+        card: themeColor('--bg-card'),
+        ink: themeColor('--text-primary'),
+        'ink-2': themeColor('--text-secondary'),
+        'ink-3': themeColor('--text-tertiary'),
+        line: themeColor('--border-default'),
+        'line-subtle': themeColor('--border-subtle'),
+        info: themeColor('--accent-info'),
+        success: themeColor('--accent-success'),
+        warning: themeColor('--accent-warning'),
+        danger: themeColor('--accent-danger'),
       },
       borderRadius: {
         sm: 'var(--radius-sm)',

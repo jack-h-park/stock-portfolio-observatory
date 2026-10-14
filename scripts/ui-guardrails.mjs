@@ -109,23 +109,50 @@ export function findConflicts(source, file = '<source>') {
   return findings
 }
 
+/**
+ * An opacity modifier on an arbitrary colour held in a CSS variable, such as
+ * `bg-[color:var(--accent-danger)]/10`. Tailwind 3 cannot split `var(...)` into
+ * channels, so the class generates no CSS at all and the element silently
+ * falls back to a transparent background and the default gray border. The
+ * named tokens in tailwind.config.ts (`bg-danger/10`) apply the alpha with
+ * color-mix and do work.
+ */
+export function findDeadOpacity(source, file = '<source>') {
+  const findings = []
+  for (const match of source.matchAll(/[\w:-]*\[color:var\(--[\w-]+\)\]\/(?:\d+|\[[^\]]+\])/g)) {
+    const line = source.slice(0, match.index).split('\n').length
+    findings.push({ file, line, cls: match[0] })
+  }
+  return findings
+}
+
 /** Run over the tree only when invoked directly, so importing stays side-effect free. */
 function scanTree() {
-  const all = []
+  const conflicts = []
+  const deadOpacity = []
   for (const root of ROOTS) {
     if (!fs.existsSync(root)) continue
-    for (const file of walk(root)) all.push(...findConflicts(fs.readFileSync(file, 'utf8'), file))
+    for (const file of walk(root)) {
+      const source = fs.readFileSync(file, 'utf8')
+      conflicts.push(...findConflicts(source, file))
+      deadOpacity.push(...findDeadOpacity(source, file))
+    }
   }
-  return all
+  return { conflicts, deadOpacity }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const findings = scanTree()
+  const { conflicts: findings, deadOpacity } = scanTree()
   for (const f of findings) {
     console.log(`${f.file}:${f.line}`)
     console.log(`  ${f.group} set twice at ${f.variant}: ${f.classes.join('  ')}`)
     console.log(`  Tailwind picks by emit order, not by the order written — one of these does nothing.`)
   }
+  for (const f of deadOpacity) {
+    console.log(`${f.file}:${f.line}`)
+    console.log(`  ${f.cls} generates no CSS — use the named token (e.g. bg-danger/10) instead.`)
+  }
   console.log(`\n${findings.length} conflicting utility pair(s)`)
-  process.exit(findings.length === 0 ? 0 : 1)
+  console.log(`${deadOpacity.length} opacity modifier(s) on a var() colour`)
+  process.exit(findings.length + deadOpacity.length === 0 ? 0 : 1)
 }

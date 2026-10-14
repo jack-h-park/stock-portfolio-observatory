@@ -208,7 +208,7 @@ export default async function HealthPage() {
             </div>
 
             {latestRefresh.degradedSteps.length > 0 ? (
-              <div className="rounded-md border border-[color:var(--accent-warning)]/30 bg-[color:var(--accent-warning)]/5 px-3 py-2 text-label leading-relaxed text-ink-2">
+              <div className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-label leading-relaxed text-ink-2">
                 <span className="font-medium text-ink">{copy.degradedLead}</span>{' '}
                 {copy.degradedBody(latestRefresh.degradedSteps)}
               </div>

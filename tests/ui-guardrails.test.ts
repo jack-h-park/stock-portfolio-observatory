@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 
-import { findConflicts } from '../scripts/ui-guardrails.mjs'
+import { findConflicts, findDeadOpacity } from '../scripts/ui-guardrails.mjs'
 
 type Conflict = { group: string; variant: string; classes: string[] }
 
@@ -45,4 +45,16 @@ test('a breakpoint or state variant is not a conflict', () => {
 test('colours and different axes are not mistaken for each other', () => {
   assert.deepEqual(find('<div className="text-ink-3 text-info">'), [])
   assert.deepEqual(find('<div className="p-4 px-2">'), [])
+})
+
+// Tailwind 3 cannot split `var(...)` into channels, so these generate no CSS at
+// all; the Badge tones did exactly this and rendered with no fill and the
+// default gray border.
+test('an opacity modifier on a var() colour is caught', () => {
+  const dead = (source: string) => (findDeadOpacity(source) as Array<{ cls: string }>).map((f) => f.cls)
+  assert.deepEqual(dead('<span className="border-[color:var(--accent-danger)]/30 text-danger">'), [
+    'border-[color:var(--accent-danger)]/30',
+  ])
+  assert.deepEqual(dead("'hover:bg-[color:var(--bg-surface)]/[0.6]'"), ['hover:bg-[color:var(--bg-surface)]/[0.6]'])
+  assert.deepEqual(dead('<span className="bg-danger/10 text-[color:var(--accent-info)]">'), [])
 })

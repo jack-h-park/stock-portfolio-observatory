@@ -118,7 +118,7 @@ export function MasterPlanOverview({
           </h2>
           <p className="mt-2 max-w-[58rem] text-body leading-relaxed text-ink-2">{plan.description}</p>
         </div>
-        <div className="shrink-0 rounded-md border border-[color:var(--accent-success)]/25 bg-[color:var(--accent-success)]/5 px-3 py-2 lg:max-w-[19rem]">
+        <div className="shrink-0 rounded-md border border-success/25 bg-success/5 px-3 py-2 lg:max-w-[19rem]">
           <Label size="micro" className="text-success">{copy.overview.whyThisMatters}</Label>
           <div className="mt-1 text-label leading-relaxed text-ink-2">
             {copy.overview.longTermTreatment(fmtNumber(plan.summary.longTermSalePct, 1))}
@@ -154,14 +154,14 @@ export function MasterPlanOverview({
       </div>
 
       {coverageNeedsReview ? (
-        <div className="mt-3 rounded-md border border-[color:var(--accent-warning)]/30 bg-[color:var(--accent-warning)]/5 px-3 py-2 text-caption leading-relaxed text-ink-2" role="status">
+        <div className="mt-3 rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-caption leading-relaxed text-ink-2" role="status">
           <span className="font-medium text-warning">{copy.overview.reviewInputRange}</span>{' '}
           {copy.overview.coverageWarning}
         </div>
       ) : null}
 
       <div className="mt-3 grid gap-3 lg:grid-cols-3">
-        <div className="border-l-2 border-[color:var(--accent-info)] px-3 py-1">
+        <div className="border-l-2 border-info px-3 py-1">
           <Label size="micro">{copy.overview.lotsStillWaiting}</Label>
           <div className="mt-1 text-caption leading-relaxed text-ink-2">
             <span className="font-medium tabular-nums text-ink">
@@ -169,7 +169,7 @@ export function MasterPlanOverview({
             </span>
           </div>
         </div>
-        <div className="border-l-2 border-[color:var(--accent-success)] px-3 py-1">
+        <div className="border-l-2 border-success px-3 py-1">
           <Label size="micro">{copy.overview.estimatedTermBenefit}</Label>
           <div className="mt-1 text-caption leading-relaxed text-ink-2">
             <span className="font-medium tabular-nums text-success">
@@ -177,7 +177,7 @@ export function MasterPlanOverview({
             </span>
           </div>
         </div>
-        <div className="border-l-2 border-[color:var(--accent-warning)] px-3 py-1">
+        <div className="border-l-2 border-warning px-3 py-1">
           <Label size="micro">{copy.overview.waitingUntil2028}</Label>
           <div className="mt-1 text-caption leading-relaxed text-ink-2">
             <span className={`font-medium tabular-nums ${signClass(waitSavings)}`}>
