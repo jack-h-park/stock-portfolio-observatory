@@ -55,13 +55,27 @@ test('the grouping follows the source, currency and range filters', async () => 
   assert.ok(getCashInflowUnclassified('KRW', { range: 'all' }, NOW).some((g) => g.description === 'OLD SENDER'))
 })
 
-test('the suggested rule is valid JSON with a usable match, defaulting the category to other', async () => {
+test('the suggested rule is valid JSON in the shape the ingest accepts, defaulting the category to other', async () => {
   const { ruleSnippet } = await import('../lib/cash-inflow-format')
+  const shape = await import('../scripts/bank-inflow-rules.mjs')
+  const accepted = (rule: { match: Record<string, string>; category: string }) => {
+    assert.ok(shape.BANK_INFLOW_CATEGORIES.includes(rule.category), rule.category)
+    for (const key of Object.keys(rule.match)) assert.ok([...shape.BANK_INFLOW_MATCH_KEYS, ...shape.BANK_INFLOW_BOUND_KEYS].includes(key), key)
+    assert.ok(shape.BANK_INFLOW_MATCH_KEYS.some((k: string) => typeof rule.match[k] === 'string' && rule.match[k].trim() !== ''))
+  }
   const rule = JSON.parse(ruleSnippet({ institution: 'mg', account: 'mg account', description: 'SENDER A' }))
   assert.deepEqual(rule.match, { institution: 'mg', descriptionIncludes: 'SENDER A' })
   assert.equal(rule.category, 'other')
   assert.match(rule.id, /^other-/)
+  accepted(rule)
+  // Two long descriptions that share a start still get different ids.
+  const long = 'A'.repeat(50)
+  assert.notEqual(
+    JSON.parse(ruleSnippet({ institution: 'mg', account: 'x', description: `${long} ONE` })).id,
+    JSON.parse(ruleSnippet({ institution: 'mg', account: 'x', description: `${long} TWO` })).id
+  )
   // A credit with no description is matched on its account instead.
   const blank = JSON.parse(ruleSnippet({ institution: 'mg', account: 'mg account', description: '  ' }))
   assert.deepEqual(blank.match, { institution: 'mg', accountIncludes: 'mg account' })
+  accepted(blank)
 })

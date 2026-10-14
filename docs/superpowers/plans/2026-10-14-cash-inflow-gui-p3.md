@@ -24,7 +24,7 @@
    - The triage card, with its id as the anchor and its `<details>` groups.
    - The rule snippet as preformatted text.
    - The badge turned into a link.
-3. **Chart.** `StackedBarChart` gains a `toggleable` option, which keeps a set of hidden series. `Legend onClick` toggles a series, `Bar hide` applies it, and the legend items read as buttons.
+3. **Chart.** `StackedBarChart` gains a `toggleable` option, which keeps a set of hidden series. `Legend onClick` toggles a series and `Bar hide` applies it. Recharts legend items are not focusable, so the toggle is a pointer convenience; the Show filter stays the keyboard-reachable way to narrow.
 4. **FilterBar.** It uses `common.filters` through `CommonLabel`.
 5. **Copy (en and ko).**
    - The triage card title and note.
@@ -35,7 +35,6 @@
 6. **Tests.**
    - Adapter: grouping, totals, the range and scope narrowing, and sort order.
    - The rule snippet: it is valid JSON that the ingest's validation would accept.
-   - FilterBar: renders the Korean label under ko.
 7. **Verify.**
    - Run typecheck, lint, test, `ui:guardrails` and build.
    - Check in the browser on a seeded DB: the triage card and its details, the badge link, a legend toggle, and 375px in both languages.

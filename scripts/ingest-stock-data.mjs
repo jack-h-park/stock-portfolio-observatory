@@ -9,6 +9,7 @@ import { portfolioDate, valuePortfolio } from './portfolio-snapshot.mjs'
 import { resolveCryptoFiles, resolveUsHoldingFiles, resolveUsTransactionFiles, robinhoodStrategyLabel } from './source-files.mjs'
 import { DECIDABLE_WRAPPERS, resolveWrapperTreatment } from './wrapper-treatment.mjs'
 import { pensionProductId } from './pension-ids.mjs'
+import { BANK_INFLOW_BOUND_KEYS, BANK_INFLOW_CATEGORIES, BANK_INFLOW_MATCH_KEYS } from './bank-inflow-rules.mjs'
 
 loadLocalEnv()
 
@@ -5122,12 +5123,10 @@ insertMany(db, 'cash_balances', cashRows, ['institution', 'account', 'owner', 'k
 // Classify each bank credit. Order: an own-account move is a transfer; the first
 // bankInflowRules match wins; then the description decides dividend or interest;
 // anything else stays unclassified so the check below can ask for a rule.
-const BANK_INFLOW_CATEGORIES = ['salary', 'dividend', 'interest', 'other', 'transfer']
-const BANK_INFLOW_MATCH_KEYS = ['institution', 'accountIncludes', 'descriptionIncludes', 'counterpartyIncludes', 'currency']
+// The rule shape (categories, text keys, bounds) lives in bank-inflow-rules.mjs.
 // Bounds narrow a rule to a period or an amount range (a run of 조의금 in one week,
 // 1원 account-verification credits). They never stand alone: a rule still needs
-// one of the text keys above, so a bound cannot turn into a catch-all.
-const BANK_INFLOW_BOUND_KEYS = ['dateFrom', 'dateTo', 'amountMin', 'amountMax']
+// one of the text keys, so a bound cannot turn into a catch-all.
 const bankInflowRuleProblems = []
 // Defaults read the whole description, which for 토스뱅크 is "{적요} {메모}" and for
 // 새마을금고 can be a sender's name. Interest must therefore be the word 이자 standing

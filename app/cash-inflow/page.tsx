@@ -337,9 +337,13 @@ export default async function CashInflowPage({
                 <p className="text-body text-ink-3">{copy.triage.none}</p>
               ) : (
                 unclassifiedGroups.map((g) => (
-                  <details key={`${g.institution}|${g.account}|${g.description}`} className="rounded-md border border-line px-3 py-2">
-                    <summary className="flex cursor-pointer flex-wrap items-baseline justify-between gap-2 text-body">
-                      <span className="font-medium text-ink">{g.description || g.account}</span>
+                  <details key={`${g.institution}|${g.account}|${g.description}`} className="group rounded-md border border-line px-3 py-2">
+                    {/* A flex summary loses its disclosure marker, so the chevron says it opens. */}
+                    <summary className="flex cursor-pointer list-none flex-wrap items-baseline justify-between gap-2 text-body">
+                      <span className="flex items-baseline gap-1.5 font-medium text-ink">
+                        <span aria-hidden className="inline-block text-caption text-ink-3 transition-transform group-open:rotate-90">▸</span>
+                        {g.description || g.account}
+                      </span>
                       <span className="text-caption text-ink-3">{g.account} · {copy.triage.group(fmtNumber(g.count), money(g.total, data.currency), g.first, g.last)}</span>
                     </summary>
                     <ul className="mt-2 flex flex-col gap-1 text-caption text-ink-2">

@@ -3283,8 +3283,10 @@ export function getCashInflowUnclassified(display: DisplayCurrency, scope: CashI
       .all(window.start, window.end, currency, currency) as (CashInflowUnclassifiedGroup['rows'][number] & { institution: string; account: string; description: string })[]
     const groups = new Map<string, CashInflowUnclassifiedGroup>()
     for (const r of rows) {
-      const key = JSON.stringify([r.institution, r.account, r.description])
-      const g = groups.get(key) ?? { institution: r.institution, account: r.account, description: r.description, count: 0, total: 0, first: r.date, last: r.date, rows: [] }
+      // Trimmed, as the suggested rule matches it, so a stray space does not split one sender in two.
+      const description = r.description.trim()
+      const key = JSON.stringify([r.institution, r.account, description])
+      const g = groups.get(key) ?? { institution: r.institution, account: r.account, description, count: 0, total: 0, first: r.date, last: r.date, rows: [] }
       g.count += 1
       g.total += r.amount ?? 0
       g.last = r.date

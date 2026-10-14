@@ -17,6 +17,10 @@ export function ruleSnippet(group: { institution: string; account: string; descr
   const match = description
     ? { institution: group.institution, descriptionIncludes: description }
     : { institution: group.institution, accountIncludes: group.account }
-  const slug = (description || group.account).replace(/\s+/g, '-').slice(0, 40)
-  return JSON.stringify({ id: `other-${group.institution}-${slug}`, match, category: 'other', note: '' })
+  const text = description || group.account
+  // A short hash of the whole text keeps two long descriptions with a shared start apart.
+  let hash = 0
+  for (const ch of text) hash = (hash * 31 + ch.codePointAt(0)!) >>> 0
+  const slug = text.replace(/\s+/g, '-').slice(0, 32).replace(/-+$/, '')
+  return JSON.stringify({ id: `other-${group.institution}-${slug}-${hash.toString(36).slice(0, 5)}`, match, category: 'other', note: '' })
 }
