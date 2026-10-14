@@ -9,6 +9,7 @@ import { portfolioDate, valuePortfolio } from './portfolio-snapshot.mjs'
 import { resolveCryptoFiles, resolveUsHoldingFiles, resolveUsTransactionFiles, robinhoodStrategyLabel } from './source-files.mjs'
 import { DECIDABLE_WRAPPERS, resolveWrapperTreatment } from './wrapper-treatment.mjs'
 import { pensionProductId } from './pension-ids.mjs'
+import { buildPathFor, publishBuiltDb, removeAbandonedBuilds, removeDbFiles } from './db-swap.mjs'
 import { BANK_INFLOW_BOUND_KEYS, BANK_INFLOW_CATEGORIES, BANK_INFLOW_MATCH_KEYS } from './bank-inflow-rules.mjs'
 
 loadLocalEnv()
@@ -851,8 +852,18 @@ if (fs.existsSync(dbPath)) {
   } finally {
     previousDb.close()
   }
-  fs.rmSync(dbPath)
 }
+
+// Built beside the live database and renamed over it at the end
+// (scripts/db-swap.mjs): readers never see a missing or half-built file, and an
+// ingest that fails part-way leaves the previous database in place.
+removeAbandonedBuilds(dbPath)
+const buildPath = buildPathFor(dbPath)
+removeDbFiles(buildPath)
+let builtDbPublished = false
+process.on('exit', () => {
+  if (!builtDbPublished) removeDbFiles(buildPath)
+})
 
 const datasets = Object.fromEntries(Object.entries(sources).map(([name, file]) => [name, readTsv(file)]))
 
@@ -905,7 +916,7 @@ if (statementAccounts.size) {
   console.error(`[kr-statements] accounts covered: ${[...statementAccounts].join(', ')}`)
 }
 
-const db = new Database(dbPath)
+const db = new Database(buildPath)
 db.pragma('journal_mode = WAL')
 
 db.exec(`
@@ -7736,7 +7747,12 @@ const report = {
   checks,
 }
 fs.writeFileSync(path.join(outDir, 'validation-report.json'), JSON.stringify(report, null, 2))
+// Fold the WAL into the file before closing, so the build carries no sidecar
+// that the rename would leave behind.
+db.pragma('wal_checkpoint(TRUNCATE)')
 db.close()
+publishBuiltDb(buildPath, dbPath)
+builtDbPublished = true
 
 // Two different questions, deliberately answered by two different counts:
 // `failed` decides the exit code — only an ERROR fails the refresh (which then
