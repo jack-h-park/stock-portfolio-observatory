@@ -78,16 +78,16 @@ test('trailing 12 months covers the current month and the 11 before it', async (
   const { getCashInflow } = await import('../lib/adapters/portfolio-db')
   const r = getCashInflow('month', 'KRW', NOW)
   const all = r.periods.filter((p) => p.period >= '2024-07').reduce((s, p) => s + p.total, 0)
-  assert.equal(r.totals.trailing12m, all)
-  assert.equal(r.totals.ytd, all)
-  assert.equal(r.totals.monthlyAverage12m, all / 12)
+  assert.equal(r.totals.rangeTotal, all)
+  assert.equal(getCashInflow('month', 'KRW', NOW, 'All', { range: 'ytd' }).totals.rangeTotal, all)
+  assert.equal(r.totals.monthlyAverage, all / 12)
   const salary = r.periods.filter((p) => p.period >= '2024-07').reduce((s, p) => s + p.salary, 0)
-  assert.equal(r.totals.salaryShare12m, salary / all)
+  assert.equal(r.totals.salary / r.totals.counted, salary / all)
   // From January 2026 on, March 2025 is out of the window and the 2024 row too.
   const later = getCashInflow('month', 'KRW', new Date('2026-03-15T12:00:00Z'))
-  assert.equal(later.totals.trailing12m, 0)
-  assert.equal(later.totals.salaryShare12m, null)
-  assert.equal(getCashInflow('month', 'KRW', new Date('2026-02-15T12:00:00Z')).totals.trailing12m, all)
+  assert.equal(later.totals.rangeTotal, 0)
+  assert.equal(later.totals.investmentShare, null)
+  assert.equal(getCashInflow('month', 'KRW', new Date('2026-02-15T12:00:00Z')).totals.rangeTotal, all)
 })
 
 test('getCashInflowRows lists the period rows, including unclassified, without excluded types', async () => {
@@ -125,14 +125,14 @@ test('the current month follows the app time zone, not UTC', async () => {
     process.env.STOCK_TIME_ZONE = 'Asia/Seoul'
     const seoul = getCashInflow('month', 'KRW', now)
     // Window 2024-02..2025-01: the January 2024 salary is out (the 1000 KRW row of February stays), and 2025 has no rows yet.
-    assert.equal(seoul.totals.trailing12m, 1000)
-    assert.equal(seoul.totals.ytd, 0)
+    assert.equal(seoul.totals.rangeTotal, 1000)
+    assert.equal(getCashInflow('month', 'KRW', now, 'All', { range: 'ytd' }).totals.rangeTotal, 0)
     process.env.STOCK_TIME_ZONE = 'UTC'
     const utc = getCashInflow('month', 'KRW', now)
     // Window 2024-01..2024-12: the January 2024 salary (1000 USD at 1500) is in.
-    assert.equal(utc.totals.trailing12m, 1_500_000 + 1000)
-    assert.equal(utc.totals.ytd, 1_500_000 + 1000)
-    assert.notEqual(seoul.totals.trailing12m, utc.totals.trailing12m)
+    assert.equal(utc.totals.rangeTotal, 1_500_000 + 1000)
+    assert.equal(getCashInflow('month', 'KRW', now, 'All', { range: 'ytd' }).totals.rangeTotal, 1_500_000 + 1000)
+    assert.notEqual(seoul.totals.rangeTotal, utc.totals.rangeTotal)
   } finally {
     if (before === undefined) delete process.env.STOCK_TIME_ZONE
     else process.env.STOCK_TIME_ZONE = before
