@@ -1,0 +1,100 @@
+import { config } from '@/config'
+import { loadTransactions, reconcile } from '@/lib/rebalance/reconcile'
+import { proposeEngineOnly } from '@/lib/rebalance/propose'
+import { expireStale, listProposals, openProposal, setReconciliation, transition, type ProposalKind } from '@/lib/rebalance/proposal-store'
+
+export const SCHEMA_VERSION = 1
+const KINDS: ProposalKind[] = ['manual', 'trigger', 'monthly']
+const COMMANDS = ['propose', 'reconcile', 'status'] as const
+type Command = (typeof COMMANDS)[number]
+
+type Io = { out: (text: string) => void; err: (text: string) => void }
+type Parsed = { command: Command; kind: ProposalKind; triggers: string[]; today: string | null }
+
+/** Today in the maintainer's calendar (the market dates the ingest stores are Korea time). */
+function seoulToday(now: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(now)
+}
+
+function parse(argv: string[]): Parsed | string {
+  const [command, ...rest] = argv
+  if (!command || !(COMMANDS as readonly string[]).includes(command)) {
+    return `unknown command: ${command ?? '(none)'}; expected one of ${COMMANDS.join(', ')}`
+  }
+  const parsed: Parsed = { command: command as Command, kind: 'manual', triggers: [], today: null }
+  for (let i = 0; i < rest.length; i += 1) {
+    const flag = rest[i]
+    const value = rest[i + 1]
+    if (flag !== '--kind' && flag !== '--trigger' && flag !== '--today') return `unknown option: ${flag}`
+    if (value === undefined || value.startsWith('--')) return `${flag} needs a value`
+    i += 1
+    if (flag === '--kind') {
+      if (!(KINDS as string[]).includes(value)) return `--kind must be one of ${KINDS.join(', ')}`
+      parsed.kind = value as ProposalKind
+    } else if (flag === '--trigger') {
+      parsed.triggers.push(value)
+    } else {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(value))) return '--today must be YYYY-MM-DD'
+      parsed.today = value
+    }
+  }
+  return parsed
+}
+
+/** Runs one command and returns the exit code: 0 ran, 1 not configured or unexpected, 2 usage. */
+export function runRebalanceCli(argv: string[], io: Io, now: Date = new Date()): number {
+  const parsed = parse(argv)
+  if (typeof parsed === 'string') {
+    io.err(`${parsed}\nusage: rebalance-cli <propose|reconcile|status> [--kind manual|trigger|monthly] [--trigger <text>] [--today YYYY-MM-DD]\n`)
+    return 2
+  }
+  const emit = (payload: Record<string, unknown>) =>
+    io.out(`${JSON.stringify({ schemaVersion: SCHEMA_VERSION, ok: payload.ok, command: parsed.command, ...payload })}\n`)
+  const today = parsed.today ?? seoulToday(now)
+  try {
+    if (parsed.command === 'propose') {
+      const result = proposeEngineOnly({ kind: parsed.kind, triggers: parsed.triggers, today, now })
+      if (!result.ok) {
+        emit({ ok: false, reason: result.reason, detail: result.detail, openId: result.openId ?? null })
+        return result.reason === 'not_configured' ? 1 : 0
+      }
+      const p = result.proposal
+      emit({ ok: true, id: p.id, status: p.status, decision: p.targetChange.decision, instructions: p.plan.instructions.length, warnings: p.plan.warnings.length, path: `/rebalance/proposals/${p.id}` })
+      return 0
+    }
+    if (parsed.command === 'reconcile') {
+      const expired = expireStale(now)
+      const reconciled: { id: string; complete: boolean; matched: number; missing: number; unplanned: number }[] = []
+      for (const p of listProposals().filter((item) => item.status === 'executing')) {
+        const result = reconcile(p, loadTransactions(p.createdAt.slice(0, 10), config.stockDbPath), today)
+        setReconciliation(p.id, result, now)
+        if (result.complete) transition(p.id, 'reconciled', 'every executed instruction matched a transaction', now)
+        reconciled.push({ id: p.id, complete: result.complete, matched: result.matched.length, missing: result.missing.length, unplanned: result.unplanned.length })
+      }
+      emit({ ok: true, expired, reconciled })
+      return 0
+    }
+    const open = openProposal()
+    if (!open) {
+      emit({ ok: true, open: null })
+      return 0
+    }
+    emit({
+      ok: true,
+      open: {
+        id: open.id,
+        status: open.status,
+        kind: open.kind,
+        instructions: open.plan.instructions.length,
+        fills: Object.keys(open.fills).length,
+        warnings: open.plan.warnings.length,
+        expiresAt: open.expiresAt,
+        path: `/rebalance/proposals/${open.id}`,
+      },
+    })
+    return 0
+  } catch (error) {
+    emit({ ok: false, reason: 'error', detail: (error as Error).message })
+    return 1
+  }
+}

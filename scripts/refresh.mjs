@@ -308,3 +308,11 @@ if (summary.status !== 'success') {
   console.log('Summary publish failed — consumers will fall back to the previous document or none.')
   process.exitCode = 1
 }
+
+// Match executed rebalance fills to the transactions this refresh just ingested. Best effort and
+// outside `steps`: a failure here is logged and never changes the refresh's exit status.
+console.log('\n== rebalance reconcile ==')
+const reconcileStep = await runStep({ name: 'rebalance-reconcile', args: ['rebalance:reconcile'] })
+if (reconcileStep.status !== 'success') {
+  console.log('Rebalance reconcile failed — proposals keep their previous reconciliation.')
+}
