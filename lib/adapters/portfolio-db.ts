@@ -2957,10 +2957,6 @@ export type CashInflowPeriod = {
   previousThrough: string | null
 }
 export type CashInflowTotals = {
-  trailing12m: number
-  ytd: number
-  monthlyAverage12m: number
-  salaryShare12m: number | null
   /** The selected range, for the selected categories. */
   rangeTotal: number
   /** Calendar months in the range (All time: from the first credit to this month). */
@@ -3135,16 +3131,9 @@ export function getCashInflow(
     const months = cashInflowPeriods(conn, display, 7, categories, scope)
     // The current month is the month in the app's time zone, not UTC's.
     const { year: nowYear, month: nowMonth } = portfolioYearMonth(now)
-    const currentMonth = monthKey(nowYear, nowMonth)
     const sumMonths = (from: string, to: string, pick: (p: CashInflowPeriod) => number) =>
       months.filter((p) => p.period >= from && p.period <= to).reduce((s, p) => s + pick(p), 0)
     const counted = (p: CashInflowPeriod) => p.salary + p.dividend + p.interest + p.other
-
-    // The fixed trailing-12-month figures, kept for existing callers.
-    const t12 = cashInflowWindow('12m', nowYear, nowMonth, null)
-    const trailing12m = sumMonths(t12.start, t12.end, (p) => p.total)
-    const counted12m = sumMonths(t12.start, t12.end, counted)
-    const ytd = sumMonths(`${nowYear}-01`, currentMonth, (p) => p.total)
 
     const window = cashInflowWindow(scope.range ?? '12m', nowYear, nowMonth, months[0]?.period ?? null)
     const rangeTotal = sumMonths(window.start, window.end, (p) => p.total)
@@ -3195,10 +3184,6 @@ export function getCashInflow(
       granularity,
       periods,
       totals: {
-        trailing12m,
-        ytd,
-        monthlyAverage12m: trailing12m / 12,
-        salaryShare12m: counted12m === 0 ? null : sumMonths(t12.start, t12.end, (p) => p.salary) / counted12m,
         rangeTotal,
         rangeMonths: window.months,
         monthlyAverage: rangeTotal / window.months,

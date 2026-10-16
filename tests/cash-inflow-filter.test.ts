@@ -45,10 +45,10 @@ test('a filter sums only its categories; investment is dividends plus interest',
   // The per-category figures are untouched by the filter; only the total narrows.
   assert.equal(march('salary').interest, 2_000)
   const totals = getCashInflow('month', 'KRW', NOW, 'salary').totals
-  assert.equal(totals.trailing12m, 6_000_000)
-  assert.equal(totals.ytd, 6_000_000)
-  // Salary share stays the share of all counted inflow, whatever the filter.
-  assert.equal(totals.salaryShare12m, getCashInflow('month', 'KRW', NOW).totals.salaryShare12m)
+  assert.equal(totals.rangeTotal, 6_000_000)
+  // The counted figures beside the hero are all counted inflow, whatever the filter.
+  assert.equal(totals.counted, getCashInflow('month', 'KRW', NOW).totals.counted)
+  assert.equal(totals.investmentShare, getCashInflow('month', 'KRW', NOW).totals.investmentShare)
 })
 
 test('the rows behind one cell carry why each row has its category', async () => {

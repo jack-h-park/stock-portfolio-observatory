@@ -3,9 +3,6 @@ export function fractionPct(share: number | null | undefined): number | null {
   return share == null ? null : share * 100
 }
 
-/** `salaryShare12m` is a fraction (0-1); `fmtPct` takes a percent number. Null stays null. */
-export const salarySharePct = fractionPct
-
 /**
  * A bankInflowRules entry to paste into the laptop's manual-mappings.json for one
  * group of unclassified credits. It matches the group's institution and
