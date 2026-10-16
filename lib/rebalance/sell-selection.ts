@@ -159,6 +159,23 @@ export function prepareSellContext(args: {
   }
 }
 
+/**
+ * The loss the tax plan could realize today, in KRW: every priced lot with a won loss, except lots of an
+ * instrument (market and ticker) bought within the wash-sale window before `today`, which the sell walk would
+ * refuse to sell at a loss. The loss trigger and the LLM input both read this figure.
+ */
+export function harvestableLossKrw(ctx: SellContext, today: string): number {
+  const washFrom = addDays(today, -WASH_WINDOW_DAYS)
+  const conflicted = new Set(
+    ctx.input.recentBuys.filter((b) => b.date >= washFrom && b.date <= today).map((b) => instrumentKey(b.market, b.ticker))
+  )
+  const lots = ctx.input.lots.filter((lot) => !conflicted.has(instrumentKey(lot.market, lot.ticker)))
+  return buildTaxPlan({ lots, policy: ctx.taxPolicy }).candidates.reduce(
+    (sum, c) => (c.proceedsKrw != null && c.gainKrw != null && c.gainKrw < 0 ? sum + -c.gainKrw : sum),
+    0
+  )
+}
+
 const SCALED_FIELDS = [
   'open_quantity',
   'native_cost_basis',

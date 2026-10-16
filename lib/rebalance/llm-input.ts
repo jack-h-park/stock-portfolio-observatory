@@ -1,4 +1,3 @@
-import { buildTaxPlan } from '@/lib/tax-planning'
 import type { TaxPolicy } from '@/lib/tax-policy'
 import type { RebalanceInput } from '@/lib/adapters/rebalance-input'
 import { sanitizeBenchmarks, type BriefingContext } from '@/lib/adapters/rebalance-context'
@@ -6,7 +5,7 @@ import { accountKey, SLEEVES, type AllocationPolicy, type Sleeve } from './alloc
 import { computeAllocation } from './allocation'
 import type { InstrumentClasses } from './instrument-classes'
 import { classify } from './instrument-classes'
-import { prepareSellContext } from './sell-selection'
+import { harvestableLossKrw, prepareSellContext } from './sell-selection'
 import type { Proposal } from './proposal-store'
 import { loadAccountMap } from '@/scripts/account-map.mjs'
 
@@ -173,11 +172,7 @@ export function buildLlmInput(args: {
 
   // The engine's own context: same deduction assumption, same pinned planning rate.
   const ctx = prepareSellContext({ input, policy, classes, taxPolicy: args.taxPolicy })
-  const plan = buildTaxPlan({ lots: input.lots, policy: ctx.taxPolicy })
-  const harvestableLossKrw = plan.candidates.reduce(
-    (sum, c) => (c.proceedsKrw != null && c.gainKrw != null && c.gainKrw < 0 ? sum + -c.gainKrw : sum),
-    0,
-  )
+  const harvestable = harvestableLossKrw(ctx, input.asOf)
 
   const newest = [...args.past].sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)).slice(0, PAST_DECISIONS)
   const pastDecisions = newest.map((p) => {
@@ -218,7 +213,7 @@ export function buildLlmInput(args: {
       ytdKrTaxableGainKrw: input.ytd.krTaxableGainKrw,
       ytdUsShortUsd: input.ytd.usShortUsd,
       ytdUsLongUsd: input.ytd.usLongUsd,
-      harvestableLossKrw,
+      harvestableLossKrw: harvestable,
     },
     context: {
       macro: context.macro.map((n) => ({ date: n.date, macro: scrub(n.macro).slice(0, MACRO_MAX) })),

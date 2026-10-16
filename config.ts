@@ -49,6 +49,8 @@ export const config = {
   stockInstrumentClassesPath: env('STOCK_INSTRUMENT_CLASSES_PATH', repoPath('data/instrument-classes.json')),
   // One JSON file per rebalance proposal. Host-owned, never pushed.
   stockRebalanceProposalsDir: env('STOCK_REBALANCE_PROPOSALS_DIR', repoPath('data/rebalance-proposals')),
+  // When each rebalance trigger last fired (the 14-day debounce). Host-owned, never pushed.
+  stockRebalanceTriggerStatePath: env('STOCK_REBALANCE_TRIGGER_STATE_PATH', repoPath('data/rebalance-trigger-state.json')),
   stockTaxPlansPath: env('STOCK_TAX_PLANS_PATH', repoPath('data/tax-plans.json')),
   // The gitignored account map (scripts/account-map.mjs). Same variable the ingest
   // reads; the app reads only its pension token list, for the reminder's rows.

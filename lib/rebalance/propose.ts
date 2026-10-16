@@ -68,6 +68,8 @@ export function proposeEngineOnly(args: {
   paths?: ProposePaths
   /** A record of a skipped LLM step (`--no-llm` on a monthly run); null otherwise. */
   llm?: LlmRecord | null
+  /** The id's last part in place of the kind (`rb-<today>-<suffix>`); a trigger proposal names its first trigger's kind. */
+  suffix?: string
 }): ProposeResult {
   const prep = prepare(args.today, args.now, args.paths ?? {})
   if (!prep.ok) return prep
@@ -75,7 +77,7 @@ export function proposeEngineOnly(args: {
   const plan = buildTradePlan({ input, policy, targets: policy.targets, classes, taxPolicy: getTaxPolicyState().policy })
   const proposal = createProposal(
     {
-      id: proposalId(args.kind, args.today),
+      id: proposalId(args.kind, args.today, args.suffix),
       kind: args.kind,
       triggers: args.triggers,
       policyAtCreation: policy,

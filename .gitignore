@@ -57,6 +57,7 @@ data/rebalance-policy.json
 data/allocation-policy.json
 data/instrument-classes.json
 data/rebalance-proposals/
+data/rebalance-trigger-state.json
 # Atomic-write temp files (written then renamed)
 data/*.tmp
 data/historical-fx-rates.json

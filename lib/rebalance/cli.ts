@@ -1,19 +1,26 @@
 import { config } from '@/config'
 import { portfolioToday } from '@/lib/adapters/portfolio-db'
+import { getRebalanceInput } from '@/lib/adapters/rebalance-input'
+import { refreshLockHeld } from '@/lib/cli/common'
+import { getTaxPolicyState } from '@/lib/tax-policy'
+import { getAllocationPolicy } from '@/lib/rebalance/allocation-policy'
+import { getInstrumentClasses } from '@/lib/rebalance/instrument-classes'
 import { loadTransactions, reconcile } from '@/lib/rebalance/reconcile'
 import { KNOWN_RUNNERS, runnerFromConfig, type LlmRunner } from '@/lib/rebalance/llm-runner'
 import { proposeEngineOnly, proposeMonthly, skippedLlm } from '@/lib/rebalance/propose'
-import { expireStale, listProposals, openProposal, setReconciliation, transition, type ProposalKind } from '@/lib/rebalance/proposal-store'
+import { appendTrigger, expireStale, listProposals, openProposal, setReconciliation, transition, type ProposalKind } from '@/lib/rebalance/proposal-store'
+import { dueTriggers, markFired, readTriggerState, writeTriggerState } from '@/lib/rebalance/trigger-state'
+import { detectTriggers, triggerKind } from '@/lib/rebalance/triggers'
 
 export const SCHEMA_VERSION = 1
 const KINDS: ProposalKind[] = ['manual', 'trigger', 'monthly']
-const COMMANDS = ['propose', 'reconcile', 'status'] as const
+const COMMANDS = ['propose', 'reconcile', 'status', 'triggers'] as const
 type Command = (typeof COMMANDS)[number]
 
 type Io = { out: (text: string) => void; err: (text: string) => void }
 type Parsed = { command: Command; kind: ProposalKind; triggers: string[]; today: string | null; noLlm: boolean }
 const USAGE =
-  'usage: rebalance-cli <propose|reconcile|status> [--kind manual|trigger|monthly] [--trigger <text>] [--today YYYY-MM-DD] [--no-llm]'
+  'usage: rebalance-cli <propose|reconcile|status|triggers> [--kind manual|trigger|monthly] [--trigger <text>] [--today YYYY-MM-DD] [--no-llm]'
 
 /** Today in the portfolio calendar (STOCK_TIME_ZONE), the same day the pages use. */
 export function defaultToday(now: Date): string {
@@ -50,8 +57,8 @@ function parse(argv: string[]): Parsed | string {
 }
 
 /**
- * Runs one command and returns the exit code: 0 ran (an LLM fallback to hold and an open-proposal refusal
- * included), 1 could not run (not configured, health errors, unreadable store, unexpected error), 2 usage.
+ * Runs one command and returns the exit code: 0 ran (an LLM fallback to hold, an open-proposal refusal, and a
+ * triggers run skipped for a refresh or blocked by health errors included), 1 could not run (not configured, health errors, unreadable store, unexpected error), 2 usage.
  * `deps.runner` replaces the configured LLM runner (tests).
  */
 export async function runRebalanceCli(argv: string[], io: Io, now: Date = new Date(), deps: { runner?: LlmRunner } = {}): Promise<number> {
@@ -95,6 +102,7 @@ export async function runRebalanceCli(argv: string[], io: Io, now: Date = new Da
       emit({ ok: true, id: p.id, status: p.status, decision: p.targetChange.decision, instructions: p.plan.instructions.length, warnings: p.plan.warnings.length, llm, path: `/rebalance/proposals/${p.id}` })
       return 0
     }
+    if (parsed.command === 'triggers') return runTriggers(today, now, emit)
     if (parsed.command === 'reconcile') {
       const expired = expireStale(now)
       const reconciled: { id: string; complete: boolean; matched: number; missing: number; unfilled: number; unplanned: number }[] = []
@@ -135,4 +143,64 @@ export async function runRebalanceCli(argv: string[], io: Io, now: Date = new Da
     emit({ ok: false, reason: 'error', detail: (error as Error).message })
     return 1
   }
+}
+
+/**
+ * Detects the trigger conditions, keeps the ones the debounce lets through, and acts on them once: appended to
+ * the open proposal, or a new engine-only trigger proposal (never an LLM call). The state records them as fired
+ * only after that write succeeded, so a failed run retries them next time.
+ */
+function runTriggers(today: string, now: Date, emit: (payload: Record<string, unknown>) => void): number {
+  // A refresh is rewriting the database: try again on the next run rather than read it half-written.
+  if (refreshLockHeld()) {
+    emit({ ok: true, skipped: 'refresh_in_progress' })
+    return 0
+  }
+  const policyState = getAllocationPolicy(config.stockAllocationPolicyPath)
+  if (!policyState.policy) {
+    emit({
+      ok: false,
+      reason: 'not_configured',
+      detail: policyState.error ?? 'No allocation policy is configured; copy data/allocation-policy.example.json to data/allocation-policy.json.',
+    })
+    return 1
+  }
+  const policy = policyState.policy
+  const input = getRebalanceInput(today, config.stockDbPath)
+  if (input.healthErrors.length) {
+    emit({ ok: true, blocked: 'health_errors' })
+    return 0
+  }
+  const hits = detectTriggers({
+    input,
+    policy,
+    classes: getInstrumentClasses(config.stockInstrumentClassesPath),
+    taxPolicy: getTaxPolicyState().policy,
+    today,
+  })
+  const state = readTriggerState()
+  const due = dueTriggers(hits, state, today)
+  const keys = due.map((hit) => hit.key)
+  if (!due.length) {
+    emit({ ok: true, due: [] })
+    return 0
+  }
+
+  // A draft past its expiry is not open: the triggers start a new proposal instead.
+  expireStale(now)
+  const open = openProposal()
+  if (open) {
+    for (const hit of due) appendTrigger(open.id, `${hit.key}: ${hit.label}`, now)
+    writeTriggerState(markFired(state, due, today))
+    emit({ ok: true, appendedTo: open.id, due: keys })
+    return 0
+  }
+  const result = proposeEngineOnly({ kind: 'trigger', triggers: keys, today, now, suffix: triggerKind(keys[0]) })
+  if (!result.ok) {
+    emit({ ok: false, reason: result.reason, detail: result.detail, openId: result.openId ?? null })
+    return 1
+  }
+  writeTriggerState(markFired(state, due, today))
+  emit({ ok: true, created: result.proposal.id, due: keys })
+  return 0
 }

@@ -54,6 +54,7 @@
     "rebalance:propose": "tsx scripts/rebalance-cli.mjs propose",
     "rebalance:reconcile": "tsx scripts/rebalance-cli.mjs reconcile",
     "rebalance:status": "tsx scripts/rebalance-cli.mjs status",
+    "rebalance:triggers": "tsx scripts/rebalance-cli.mjs triggers",
     "publish:kr-sheet": "node scripts/publish-sheet.mjs --market KR",
     "publish:us-sheet": "node scripts/publish-sheet.mjs --market US",
     "seed:sample": "node scripts/seed-sample.mjs",
