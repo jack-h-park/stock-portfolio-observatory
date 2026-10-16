@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
 import { SLEEVES, validateAllocationPolicy, type AllocationPolicy } from '../lib/rebalance/allocation-policy'
-import { classesFromSettingsForm, policyFromSettingsForm } from '../lib/rebalance/settings-form'
+import { classesFromSettingsForm, policyFromSettingsForm, policyWriteGuard, summarizeErrors } from '../lib/rebalance/settings-form'
 
 const example = (): AllocationPolicy => {
   const raw = JSON.parse(readFileSync(path.join(__dirname, '..', 'data', 'allocation-policy.example.json'), 'utf8'))
@@ -25,7 +25,7 @@ function boundsForm(targets: Record<string, number>, extra: Record<string, strin
 
 test('parses all six sleeves', () => {
   const form = new FormData()
-  const values = { kr_equity: [10, 80, 30, 4], us_equity: [20, 70, 40, 3], bonds: [0, 20, 10, 2], gold: [0, 15, 5, 1], crypto: [0, 10, 5, 2], cash: [5, 30, 10, 5] }
+  const values: Record<(typeof SLEEVES)[number], number[]> = { kr_equity: [10, 80, 30, 4], us_equity: [20, 70, 40, 3], bonds: [0, 20, 10, 2], gold: [0, 15, 5, 1], crypto: [0, 10, 5, 2], cash: [5, 30, 10, 5] }
   for (const [sleeve, [min, max, target, band]] of Object.entries(values)) {
     form.set(`min_${sleeve}`, String(min))
     form.set(`max_${sleeve}`, String(max))
@@ -37,7 +37,11 @@ test('parses all six sleeves', () => {
   assert.deepEqual(policy.bounds.sleeves.kr_equity, { min: 10, max: 80 })
   assert.deepEqual(policy.targets.us_equity, { target: 40, band: 3 })
   assert.deepEqual(policy.targets.cash, { target: 10, band: 5 })
-  assert.equal(SLEEVES.length, 6)
+  for (const sleeve of SLEEVES) {
+    const [min, max, target, band] = values[sleeve]
+    assert.deepEqual(policy.bounds.sleeves[sleeve], { min, max })
+    assert.deepEqual(policy.targets[sleeve], { target, band })
+  }
   assert.deepEqual(validateAllocationPolicy(policy), [])
 })
 
@@ -147,4 +151,21 @@ test('classesFromSettingsForm sets, clears and rejects', () => {
   const rejected = classesFromSettingsForm(bad, current)
   assert.equal(rejected.errors.length, 1)
   assert.deepEqual(rejected.classes, current)
+})
+
+test('summarizeErrors keeps tickers and messages out of the codes', () => {
+  const { codes, line } = summarizeErrors([
+    'US:SECRET: unknown sleeve',
+    'targets sum to 95, expected 100',
+    'bonds buy list line 3: expected market:ticker@brokerage::account',
+    'gold: target 9 is outside bounds 0-5',
+  ])
+  assert.deepEqual(codes.sort(), ['buy_list_line', 'classes_invalid', 'target_bounds', 'targets_sum'])
+  assert.equal(line, 3)
+  assert.ok(!JSON.stringify(codes).includes('SECRET'))
+})
+
+test('an unreadable saved policy blocks writes', () => {
+  assert.equal(policyWriteGuard({ error: 'invalid allocation policy: x' }), 'policy_unreadable')
+  assert.equal(policyWriteGuard({ error: null }), null)
 })

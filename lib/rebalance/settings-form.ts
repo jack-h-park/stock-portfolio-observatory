@@ -162,7 +162,47 @@ export function classesFromSettingsForm(
     const value = typeof raw === 'string' ? raw.trim() : ''
     if (value === '') delete next[key]
     else if ((SLEEVES as readonly string[]).includes(value)) next[key] = value as Sleeve
-    else errors.push(`${key}: unknown sleeve`)
+    else errors.push(`${key}: unknown sleeve`) // key is data: summarizeErrors keeps it out of URLs
   }
   return errors.length ? { classes: current, errors } : { classes: next, errors }
+}
+
+export const ERROR_CODES = [
+  'targets_sum',
+  'target_bounds',
+  'bounds_invalid',
+  'number_invalid',
+  'account_invalid',
+  'buy_list_line',
+  'classes_invalid',
+  'write_failed',
+  'policy_unreadable',
+] as const
+export type SettingsErrorCode = (typeof ERROR_CODES)[number]
+
+/**
+ * Reduces parser messages to fixed codes (plus the first buy-list line number) so nothing from the form,
+ * such as a ticker, reaches a URL. The full messages stay server-side.
+ */
+export function summarizeErrors(errors: string[]): { codes: SettingsErrorCode[]; line: number | null } {
+  const codes = new Set<SettingsErrorCode>()
+  let line: number | null = null
+  for (const message of errors) {
+    const buy = /buy list line (\d+)/.exec(message)
+    if (buy) {
+      codes.add('buy_list_line')
+      line ??= Number(buy[1])
+    } else if (/sum to/.test(message)) codes.add('targets_sum')
+    else if (/is outside bounds/.test(message)) codes.add('target_bounds')
+    else if (/must be a number/.test(message)) codes.add('number_invalid')
+    else if (/^account \d+:/.test(message)) codes.add('account_invalid')
+    else if (/unknown sleeve/.test(message)) codes.add('classes_invalid')
+    else codes.add('bounds_invalid')
+  }
+  return { codes: Array.from(codes), line }
+}
+
+/** A saved policy that cannot be read must never be silently replaced by a form built from the empty base. */
+export function policyWriteGuard(state: { error: string | null }): SettingsErrorCode | null {
+  return state.error ? 'policy_unreadable' : null
 }

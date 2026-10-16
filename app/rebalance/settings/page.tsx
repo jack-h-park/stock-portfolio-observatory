@@ -10,7 +10,7 @@ import { getRebalanceInput } from '@/lib/adapters/rebalance-input'
 import { getLanguage } from '@/lib/i18n-server'
 import { SLEEVES, accountKey, defaultAccountRule, getAllocationPolicy, type AccountRule, type Sleeve } from '@/lib/rebalance/allocation-policy'
 import { classify, getInstrumentClasses, instrumentKey, type InstrumentClasses } from '@/lib/rebalance/instrument-classes'
-import { emptyAllocationPolicy } from '@/lib/rebalance/settings-form'
+import { ERROR_CODES, emptyAllocationPolicy, type SettingsErrorCode } from '@/lib/rebalance/settings-form'
 import { fmtNumber } from '@/lib/format'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeSection } from '@/lib/page-names'
@@ -38,7 +38,7 @@ const SCALAR_FIELDS = [
   ['harvestThresholdKrw', 'krw'],
 ] as const
 
-type Params = { saved?: string; error?: string; e?: string | string[] }
+type Params = { saved?: string; error?: string; code?: string | string[]; line?: string }
 
 function loadClassesSafely(): InstrumentClasses {
   try {
@@ -55,7 +55,14 @@ export default async function RebalanceSettingsPage({ searchParams }: { searchPa
   const state = getAllocationPolicy()
   const policy = state.policy ?? emptyAllocationPolicy()
   const classes = loadClassesSafely()
-  const messages = params.e === undefined ? [] : Array.isArray(params.e) ? params.e : [params.e]
+  const codes = (params.code === undefined ? [] : Array.isArray(params.code) ? params.code : [params.code]).filter(
+    (code): code is SettingsErrorCode => (ERROR_CODES as readonly string[]).includes(code)
+  )
+  const lineNumber = Number(params.line)
+  const messages = codes.map((code) => {
+    const entry = copy.errors[code]
+    return typeof entry === 'function' ? entry(Number.isInteger(lineNumber) && lineNumber > 0 ? lineNumber : 0) : entry
+  })
 
   let input: ReturnType<typeof getRebalanceInput> | null = null
   if (dbAvailable()) {
@@ -120,7 +127,7 @@ export default async function RebalanceSettingsPage({ searchParams }: { searchPa
           <p className="mt-2 text-label text-ink-3">{copy.errorsNote}</p>
         </Card>
       )}
-      {state.error && <p className="mb-4 text-caption text-warning">{copy.policyInvalid(state.error)}</p>}
+      {state.error && <p className="mb-4 text-caption text-warning">{copy.policyInvalid}</p>}
       {!state.policy && !state.error && <p className="mb-4 text-caption text-ink-3">{copy.policyMissing}</p>}
       {!input && <p className="mb-4 text-caption text-ink-3">{copy.noDatabase}</p>}
 
