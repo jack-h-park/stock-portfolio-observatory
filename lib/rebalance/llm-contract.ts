@@ -29,17 +29,23 @@ export type LlmRecord = {
 const MAX_TEXT = 2000
 const MAX_ITEMS = 10
 const MAX_ECHO = 80
+const MAX_RAW = 200_000
+const MAX_ATTEMPTS = 50
 const SUM_TOLERANCE = 0.05
 const CONFIDENCE = ['low', 'medium', 'high'] as const
 
 /** Finds the first balanced top-level object in `raw` that parses as JSON, tolerating fences and surrounding prose. */
 export function parseLlmJson(raw: string): unknown | null {
+  if (raw.length > MAX_RAW) return null
   let from = 0
-  while (from < raw.length) {
+  let attempts = 0
+  while (from < raw.length && attempts++ < MAX_ATTEMPTS) {
     const start = raw.indexOf('{', from)
     if (start < 0) return null
     const end = balancedEnd(raw, start)
-    if (end > 0) {
+    // Unclosed to end-of-input: no later start can close either, so stop (keeps the scan linear).
+    if (end < 0) return null
+    {
       try {
         return JSON.parse(raw.slice(start, end + 1))
       } catch {
@@ -69,8 +75,14 @@ function balancedEnd(text: string, start: number): number {
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)
+/** Quotes and caps a value for an error string. Only primitives are stringified; containers echo a type tag. */
 const echo = (v: unknown): string => {
-  const s = typeof v === 'string' ? v : (JSON.stringify(v) ?? String(v))
+  let s: string
+  if (typeof v === 'string') s = v
+  else if (Array.isArray(v)) return 'array'
+  else if (v === null) return 'null'
+  else if (typeof v === 'object') return 'object'
+  else s = String(v)
   return JSON.stringify(s.length > MAX_ECHO ? `${s.slice(0, MAX_ECHO)}...` : s)
 }
 
@@ -91,12 +103,19 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-export function validateLlmOutput(
-  value: unknown,
-  policy: AllocationPolicy,
-):
+type ValidationResult =
   | { ok: true; output: LlmOutput; targets: Record<Sleeve, SleeveTarget> }
-  | { ok: false; errors: string[] } {
+  | { ok: false; errors: string[] }
+
+export function validateLlmOutput(value: unknown, policy: AllocationPolicy): ValidationResult {
+  try {
+    return validate(value, policy)
+  } catch {
+    return { ok: false, errors: ['internal: validator failed'] }
+  }
+}
+
+function validate(value: unknown, policy: AllocationPolicy): ValidationResult {
   const errors: string[] = []
 
   const text = (v: unknown, field: string, opts: { required?: boolean } = {}): string => {
@@ -137,8 +156,8 @@ export function validateLlmOutput(
   list(o?.sources, 'outlook.sources').forEach((item, i) => {
     const f = `outlook.sources[${i}]`
     if (!isObject(item)) return void errors.push(`${f}: must be an object`)
-    const url = text(item.url, `${f}.url`, { required: true })
-    if (typeof item.url === 'string' && !isHttpUrl(item.url)) errors.push(`${f}.url: must be an absolute http(s) URL, got ${echo(url)}`)
+    const url = text(typeof item.url === 'string' ? item.url.trim() : item.url, `${f}.url`, { required: true })
+    if (typeof item.url === 'string' && !isHttpUrl(url)) errors.push(`${f}.url: must be an absolute http(s) URL, got ${echo(url)}`)
     const title = text(item.title, `${f}.title`, { required: true })
     const date = text(item.date, `${f}.date`, { required: true })
     if (typeof item.date === 'string' && item.date !== '' && !isIsoDate(item.date)) {
@@ -159,7 +178,8 @@ export function validateLlmOutput(
     if (!isObject(tc?.sleeves)) errors.push('targetChange.sleeves: must be an object')
     else {
       for (const [key, entry] of Object.entries(tc.sleeves)) {
-        const f = `targetChange.sleeves.${key.length > MAX_ECHO ? `${key.slice(0, MAX_ECHO)}...` : key}`
+        const known = (SLEEVES as readonly string[]).includes(key)
+        const f = known ? `targetChange.sleeves.${key}` : `targetChange.sleeves[${echo(key)}]`
         if (!(SLEEVES as readonly string[]).includes(key)) {
           errors.push(`${f}: unknown sleeve, expected one of ${SLEEVES.join(', ')}`)
           continue

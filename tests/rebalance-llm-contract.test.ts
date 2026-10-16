@@ -112,7 +112,7 @@ test('rejects a changed sleeve without a reason', () => {
 
 test('rejects unknown sleeve keys', () => {
   const errors = errorsOf(change({ us_equity: { to: 42, reason: 'a' }, bonds: { to: 8, reason: 'b' }, real_estate: { to: 0, reason: 'c' } }))
-  assert.ok(errors.some((e) => e.includes('targetChange.sleeves.real_estate')))
+  assert.ok(errors.some((e) => e.includes("real_estate")))
 })
 
 test('omitted sleeves stay at current targets; string numbers are rejected', () => {
@@ -155,4 +155,52 @@ test('caps text fields', () => {
 test('errors never echo more than 80 characters of a value', () => {
   const errors = errorsOf({ ...validChange(), outlook: { ...outlook(), confidence: 'z'.repeat(500) } })
   assert.ok(errors.every((e) => !e.includes('z'.repeat(81))))
+})
+
+const deep = (n: number): unknown => {
+  let v: unknown = 'leaf'
+  for (let i = 0; i < n; i++) v = [v]
+  return v
+}
+
+test('the validator never throws on deeply nested values', () => {
+  const d = deep(200_000)
+  for (const bad of [
+    { ...validChange(), outlook: { ...outlook(), confidence: d } },
+    { ...validChange(), targetChange: { decision: d, sleeves: {} } },
+    change({ us_equity: { to: d, reason: 'a' } }),
+    { ...validChange(), ideas: [{ ticker: 't', sleeve: d, why: 'w' }] },
+  ]) {
+    const result = validateLlmOutput(bad, policy())
+    assert.equal(result.ok, false)
+  }
+})
+
+test('parseLlmJson stays fast on pathological braces and caps input size', () => {
+  const t = Date.now()
+  assert.equal(parseLlmJson('{'.repeat(100_000)), null)
+  assert.equal(parseLlmJson('{"a":'.repeat(30_000)), null)
+  assert.equal(parseLlmJson(`{"a":"${'x'.repeat(250_000)}"}`), null)
+  assert.ok(Date.now() - t < 200, `took ${Date.now() - t}ms`)
+})
+
+test('sleeve keys are quoted and capped in errors; __proto__ is just an unknown key', () => {
+  const raw = JSON.parse('{"__proto__":{"to":1,"reason":"x"},"us_equity":{"to":45,"reason":"y"}}')
+  const errors = errorsOf(change(raw))
+  assert.ok(errors.some((e) => e.includes('"__proto__"') && e.includes('unknown sleeve')))
+  const long = errorsOf(change({ ['k'.repeat(500)]: { to: 1, reason: 'x' } }))
+  assert.ok(long.every((e) => !e.includes('k'.repeat(81))))
+})
+
+test('rejects non-finite or negative numbers for to', () => {
+  for (const to of [Infinity, NaN, -3]) {
+    const errors = errorsOf(change({ us_equity: { to, reason: 'a' }, bonds: { to: 8, reason: 'b' } }))
+    assert.ok(errors.some((e) => e.includes('us_equity')), String(to))
+  }
+})
+
+test('source URLs are trimmed and stored trimmed', () => {
+  const value = { ...validChange(), outlook: { ...outlook(), sources: [{ ...source, url: '  https://example.com/a \n' }] } }
+  const result = validateLlmOutput(value, policy())
+  assert.equal(result.ok && result.output.outlook.sources[0].url, 'https://example.com/a')
 })
