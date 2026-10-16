@@ -31,9 +31,10 @@ function num(value: number | null | undefined) {
 
 /**
  * Sums the tax year's realized gains from realized lots: taxable wrapper only
- * (null counts as taxable), superseded rows excluded. KR taxability uses
- * krTaxable without a policy, i.e. the domestic-stock flags off, so only
- * US-market lots feed the KR figure.
+ * (null counts as taxable), superseded rows excluded. The US short/long totals
+ * are worldwide (a US taxpayer): every market's lots, in USD. The KR pool
+ * (krTaxableGainKrw) is limited to lots krTaxable accepts; without a policy
+ * the domestic-stock flags are off, so only US-market lots feed it.
  */
 export function deriveYtdRealized(rows: RealizedLotRow[], year: number, usdKrwRate: number): YtdRealized {
   let krTaxableGainKrw = 0
@@ -46,7 +47,6 @@ export function deriveYtdRealized(rows: RealizedLotRow[], year: number, usdKrwRa
     if (Number(String(row.sold_date).slice(0, 4)) !== year) continue
     lotCount += 1
     if (krTaxable(row)) krTaxableGainKrw += num(row.realized_gl_krw)
-    if (row.market !== 'US') continue
     const usd =
       row.currency === 'USD'
         ? num(row.native_realized_gl)
@@ -81,8 +81,13 @@ export function compareWithPolicy(derived: YtdRealized, policy: TaxPolicy): YtdC
 export function withDerivedYtd(policy: TaxPolicy, derived: YtdRealized): TaxPolicy {
   const copy = structuredClone(policy)
   const set = (code: string, key: string, value: number) => {
-    const target = copy.jurisdictions.find((item) => item.code === code)
-    if (target) target.manualAssumptions[key] = value
+    let target = copy.jurisdictions.find((item) => item.code === code)
+    if (!target) {
+      target = { code, enabled: true, filingCurrency: code === 'US' ? 'USD' : 'KRW', manualAssumptions: {} }
+      copy.jurisdictions.push(target)
+    }
+    if (!target.manualAssumptions || typeof target.manualAssumptions !== 'object') target.manualAssumptions = {}
+    target.manualAssumptions[key] = value
   }
   set('KR', 'ytdRealizedTaxableGainKrw', derived.krTaxableGainKrw)
   set('US', 'ytdRealizedShortGainLossUsd', derived.usShortUsd)

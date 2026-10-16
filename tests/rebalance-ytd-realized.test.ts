@@ -57,6 +57,19 @@ test('KR taxable gain is the KRW gain of US-market lots', () => {
   const out = deriveYtdRealized(rows, 2026, 1400)
   assert.equal(out.krTaxableGainKrw, 2_000_000)
   assert.equal(out.lotCount, 2)
+  // The KR lot is outside the KR pool but still counts in the worldwide US totals.
+  assert.equal(out.usShortUsd, 1000 + 9_000_000 / 1400)
+})
+
+test('US totals are worldwide: KRW-denominated KR and crypto lots convert at the rate', () => {
+  const rows = [
+    row({ market: 'KR', currency: 'KRW', realized_gl_krw: 14_000_000, native_realized_gl: 14_000_000, tax_term: 'short' }),
+    row({ market: 'CRYPTO', currency: 'KRW', realized_gl_krw: -2_800_000, native_realized_gl: null, tax_term: 'long' }),
+  ]
+  const out = deriveYtdRealized(rows, 2026, 1400)
+  assert.equal(out.usShortUsd, 10_000)
+  assert.equal(out.usLongUsd, -2000)
+  assert.equal(out.krTaxableGainKrw, 0)
 })
 
 test('US short and long split by tax_term, measured in USD', () => {
@@ -90,4 +103,24 @@ test('compareWithPolicy reports manual values where present, null where absent',
   const cmp = compareWithPolicy(derived, policy())
   assert.equal(cmp.derived, derived)
   assert.deepEqual(cmp.manual, { krTaxableGainKrw: null, usShortUsd: 5, usLongUsd: null })
+})
+
+test('withDerivedYtd creates a missing jurisdiction or assumptions bag without mutating input', () => {
+  const derived: YtdRealized = { year: 2026, krTaxableGainKrw: 7, usShortUsd: 8, usLongUsd: 9, lotCount: 1 }
+  const input = policy()
+  input.jurisdictions = input.jurisdictions.filter((j) => j.code === 'US')
+  const snapshot = structuredClone(input)
+  const out = withDerivedYtd(input, derived)
+  assert.deepEqual(input, snapshot)
+  const kr = out.jurisdictions.find((j) => j.code === 'KR')!
+  assert.equal(kr.filingCurrency, 'KRW')
+  assert.equal(kr.manualAssumptions.ytdRealizedTaxableGainKrw, 7)
+
+  const empty = { ...policy(), jurisdictions: [] }
+  const out2 = withDerivedYtd(empty, derived)
+  assert.equal(empty.jurisdictions.length, 0)
+  const us = out2.jurisdictions.find((j) => j.code === 'US')!
+  assert.equal(us.filingCurrency, 'USD')
+  assert.equal(us.manualAssumptions.taxInputYear, 2026)
+  assert.equal(us.manualAssumptions.ytdRealizedLongGainLossUsd, 9)
 })
