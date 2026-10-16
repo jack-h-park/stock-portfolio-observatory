@@ -34,7 +34,7 @@ function columnsOf(conn: Database.Database, table: string) {
 
 /** Taxable wrapper and the maintainer's own rows; the scope boundary of every rebalance read. */
 function scope(conn: Database.Database, table: string) {
-  const wrapper = columnsOf(conn, table).has('account_wrapper') ? " and coalesce(account_wrapper, 'taxable') = 'taxable'" : ''
+  const wrapper = columnsOf(conn, table).has('account_wrapper') ? " and account_wrapper = 'taxable'" : ''
   return `${wrapper}${selfOnlyAnd(conn, table)}`
 }
 
@@ -83,14 +83,22 @@ function readCash(conn: Database.Database, usdKrw: number): RebalanceCash[] {
     for (const row of rows) cash.push({ ...row, krw: toKrw(row.currency, row.balance) })
   }
   if (hasTable(conn, 'brokerage_cash')) {
+    // brokerage_cash has no owner column: a child's account is any (institution, account) the
+    // holdings or transactions list under another owner.
+    const childPairs = ['holdings_all', 'transactions_all']
+      .filter((table) => hasTable(conn, table) && columnsOf(conn, table).has('owner'))
+      .map((table) => `select brokerage, account from ${table} where coalesce(owner, 'self') <> 'self'`)
+    const notChild = childPairs.length
+      ? ` and not exists (select 1 from (${childPairs.join(' union ')}) k where k.brokerage = c.institution and k.account = c.account)`
+      : ''
     const rows = conn
       .prepare(
         `select institution as brokerage, account, currency, balance, as_of_date as asOf
            from brokerage_cash c
-          where account_wrapper = 'taxable'
+          where account_wrapper = 'taxable' and asset_class = 'security'${notChild}
             and id = (select id from brokerage_cash l
                        where l.institution = c.institution and l.account = c.account and l.pool = c.pool
-                         and l.currency = c.currency and l.account_wrapper = 'taxable'
+                         and l.currency = c.currency and l.account_wrapper = 'taxable' and l.asset_class = 'security'
                        order by l.as_of_date desc, l.id desc limit 1)
           order by institution, account, pool, currency`
       )

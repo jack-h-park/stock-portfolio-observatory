@@ -37,6 +37,10 @@ h('T-1', 'AAA', 'taxable', 'self', 2_000_000, 'US')
 h('I-1', 'KRX2', 'irp', 'self', 5_000_000)
 h('S-1', 'KRX3', 'isa', 'self', 6_000_000)
 h('C-1', 'KRX4', 'taxable', 'child:kid', 7_000_000)
+db.prepare(
+  `insert into holdings_all (market,currency,base_currency,brokerage,account,ticker,name,account_wrapper,owner,quantity,base_cost,base_market_value,total_cost_krw)
+   values ('KR','KRW','KRW','Invented Broker','N-1','KRX5','KRX5',null,'self',1,1,4_000_000,1)`
+).run() // null wrapper: not taxable
 
 const lot = db.prepare(
   `insert into tax_lots_all (market,currency,base_currency,brokerage,account,ticker,name,account_wrapper,owner,fx_rate_to_base,open_quantity,native_cost_basis,native_market_value,cost_basis_krw,acquired_date,tax_term)
@@ -55,7 +59,10 @@ insert into cash_balances (institution,account,owner,kind,currency,as_of_date,ba
 insert into brokerage_cash (institution,account,pool,currency,as_of_date,balance,source,account_wrapper,asset_class) values
   ('Invented Broker','T-1','usd','USD','2026-09-30',50,'x','taxable','security'),
   ('Invented Broker','T-1','usd','USD','2026-10-13',100,'x','taxable','security'),
-  ('Invented Broker','I-1','krw','KRW','2026-10-13',8_000_000,'x','irp','security');
+  ('Invented Broker','I-1','krw','KRW','2026-10-13',8_000_000,'x','irp','security'),
+  ('Invented Broker','C-1','krw','KRW','2026-10-13',3_000_000,'x','taxable','security'),
+  ('Invented Broker','T-1','gold','KRW','2026-10-13',2_000_000,'x','taxable','gold'),
+  ('Invented Broker','N-1','krw','KRW','2026-10-13',1_000_000,'x','taxable','security');
 insert into validation_checks (name,status,detail,severity) values
   ('ok check','pass','d','error'),('bad error','fail','d','error'),('bad warning','fail','d','warning');
 `)
@@ -73,6 +80,7 @@ t('T-1', 'DDD', '2026-10-01', 'SELL') // not a buy
 t('T-1', 'EEE', '2026-10-01', 'BUY', 'taxable', 'self', 'CRYPTO') // wrong market
 t('T-1', 'FFF', '2026-10-01', 'BUY', 'taxable', 'self', 'US', 0) // no quantity
 t('T-1', 'AAA', '2026-10-10', 'DIVIDEND')
+t('N-1', 'NNN', '2026-10-14', 'BUY', null as unknown as string) // null wrapper: no data-as-of entry, buy still counts
 db.close()
 
 const more = new Database(dbPath)
@@ -108,6 +116,7 @@ test('cash merges cash_balances latest-per-account with brokerage_cash latest-pe
   const rows = input.cash.map((c) => [c.account, c.currency, c.balance, c.krw])
   assert.deepEqual(rows, [
     ['B-1', 'KRW', 500_000, 500_000],
+    ['N-1', 'KRW', 1_000_000, 1_000_000],
     ['T-1', 'USD', 100, 140_000],
   ])
 })
@@ -120,6 +129,7 @@ test('recentBuys covers 30 days back from today', async () => {
       ['AAA', '2026-09-15', 'T-1'],
       ['LOSS', '2026-09-20', 'T-1'],
       ['BBB', '2026-10-01', 'I-1'],
+      ['NNN', '2026-10-14', 'N-1'],
     ]
   )
 })
