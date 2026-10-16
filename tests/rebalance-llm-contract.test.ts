@@ -112,7 +112,7 @@ test('rejects a changed sleeve without a reason', () => {
 
 test('rejects unknown sleeve keys', () => {
   const errors = errorsOf(change({ us_equity: { to: 42, reason: 'a' }, bonds: { to: 8, reason: 'b' }, real_estate: { to: 0, reason: 'c' } }))
-  assert.ok(errors.some((e) => e.includes("real_estate")))
+  assert.ok(errors.some((e) => e.includes('sleeves["real_estate"]')))
 })
 
 test('omitted sleeves stay at current targets; string numbers are rejected', () => {
@@ -203,4 +203,11 @@ test('source URLs are trimmed and stored trimmed', () => {
   const value = { ...validChange(), outlook: { ...outlook(), sources: [{ ...source, url: '  https://example.com/a \n' }] } }
   const result = validateLlmOutput(value, policy())
   assert.equal(result.ok && result.output.outlook.sources[0].url, 'https://example.com/a')
+})
+
+test('parseLlmJson survives a stray unbalanced brace or quote in prose', () => {
+  assert.deepEqual(parseLlmJson('Note {see below. ```json\n{"a":1}\n```'), { a: 1 })
+  assert.deepEqual(parseLlmJson('He said "hi {\n```json\n{"a":1}\n```'), { a: 1 })
+  assert.deepEqual(parseLlmJson('Note {see below. {"a":1}'), { a: 1 })
+  assert.deepEqual(parseLlmJson('He said "hi {\n{"a":1}'), { a: 1 })
 })

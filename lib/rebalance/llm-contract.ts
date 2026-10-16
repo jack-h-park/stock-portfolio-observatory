@@ -31,23 +31,37 @@ const MAX_ITEMS = 10
 const MAX_ECHO = 80
 const MAX_RAW = 200_000
 const MAX_ATTEMPTS = 50
+const MAX_SCAN = 2_000_000
 const SUM_TOLERANCE = 0.05
 const CONFIDENCE = ['low', 'medium', 'high'] as const
 
-/** Finds the first balanced top-level object in `raw` that parses as JSON, tolerating fences and surrounding prose. */
+/**
+ * Finds the first JSON object in `raw`. Fenced blocks (```json, then plain ```) are tried first, each on its own
+ * content; then the raw text is scanned for the first balanced `{...}` that parses. Work is bounded by an input cap,
+ * a candidate-start cap and a total-characters-scanned budget.
+ */
 export function parseLlmJson(raw: string): unknown | null {
   if (raw.length > MAX_RAW) return null
+  const budget = { chars: MAX_SCAN }
+  for (const fence of [/```json[ \t]*\r?\n([\s\S]*?)```/gi, /```[ \t]*\r?\n([\s\S]*?)```/g]) {
+    for (const match of raw.matchAll(fence)) {
+      const found = firstObject(match[1], budget)
+      if (found !== null) return found
+    }
+  }
+  return firstObject(raw, budget)
+}
+
+function firstObject(text: string, budget: { chars: number }): unknown | null {
   let from = 0
   let attempts = 0
-  while (from < raw.length && attempts++ < MAX_ATTEMPTS) {
-    const start = raw.indexOf('{', from)
+  while (from < text.length && attempts++ < MAX_ATTEMPTS && budget.chars > 0) {
+    const start = text.indexOf('{', from)
     if (start < 0) return null
-    const end = balancedEnd(raw, start)
-    // Unclosed to end-of-input: no later start can close either, so stop (keeps the scan linear).
-    if (end < 0) return null
-    {
+    const end = balancedEnd(text, start, budget)
+    if (end >= 0) {
       try {
-        return JSON.parse(raw.slice(start, end + 1))
+        return JSON.parse(text.slice(start, end + 1))
       } catch {
         // not valid JSON from this brace; try the next one
       }
@@ -57,11 +71,12 @@ export function parseLlmJson(raw: string): unknown | null {
   return null
 }
 
-function balancedEnd(text: string, start: number): number {
+function balancedEnd(text: string, start: number, budget: { chars: number }): number {
   let depth = 0
   let inString = false
   let escaped = false
   for (let i = start; i < text.length; i++) {
+    if (--budget.chars < 0) return -1
     const ch = text[i]
     if (inString) {
       if (escaped) escaped = false
