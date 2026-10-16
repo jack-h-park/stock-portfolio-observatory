@@ -681,6 +681,12 @@ All four take `--json` and then print one JSON object (`schemaVersion` 1) with a
 
 The ingest builds the database beside the live file and renames it into place when it finishes (`scripts/db-swap.mjs`), so a reader never opens a half-built database and a failed ingest leaves the previous one in place.
 
+## Rebalancing
+
+The `/rebalance` page and `pnpm rebalance:propose|reconcile|status` turn sleeve targets (KR equity, US equity, bonds, gold, crypto, cash) into a reviewable proposal of lot-level sells and buys with their tax effect. Taxable accounts only; it places no order and is not advice. You place orders at the broker, record the fills, and the refresh reconciles them against ingested transactions. Policy, instrument classes and proposals live in gitignored host-owned files; examples are `data/allocation-policy.example.json` and `data/instrument-classes.example.json`.
+
+See [docs/rebalancing.md](docs/rebalancing.md) for setup order, the status flow, the CLI and warning codes.
+
 ## KR price policy
 
 `data/kr-prices.json` is a read-only external price snapshot generated from the Korea holdings tickers. Run `pnpm fetch:kr-prices && pnpm ingest` to refresh KR market value and unrealized gain/loss without modifying the source spreadsheets.

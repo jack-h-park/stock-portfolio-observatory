@@ -1,6 +1,6 @@
 # Rebalancing workflow — design
 
-Status: proposed, 2026-10-14. Owner: the Observatory maintainer.
+Status: proposed, 2026-10-14. Owner: the Observatory maintainer. Operator guide: [docs/rebalancing.md](../../rebalancing.md).
 
 ## Goal
 
