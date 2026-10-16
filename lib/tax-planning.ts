@@ -348,9 +348,13 @@ function scenarioDescription(key: MultiYearStrategyKey) {
   return 'Split each year across Korea and US market exposure based on available value.'
 }
 
-function krTaxable(lot: TaxPlanningLot, policy: TaxPolicy) {
+/**
+ * Whether a lot's gain falls in Korea's overseas/taxable scope. Without a
+ * policy the domestic-stock flags count as off, so only US-market lots qualify.
+ */
+export function krTaxable(lot: Pick<TaxPlanningLot, 'market'>, policy?: TaxPolicy) {
   if (lot.market === 'US') return true
-  if (lot.market !== 'KR') return false
+  if (lot.market !== 'KR' || !policy) return false
   return (
     assumptionBool(policy, 'KR', 'domesticMajorShareholder', false) ||
     assumptionBool(policy, 'KR', 'domesticListedOffMarketSale', false)
