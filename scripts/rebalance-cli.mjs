@@ -8,7 +8,7 @@
 // A .mjs file in front of the TypeScript for the reason observatory-cli.mjs gives: `.env.local`
 // must be in process.env before @/config is evaluated.
 //
-// usage: tsx scripts/rebalance-cli.mjs <propose|reconcile|status> [--kind manual|trigger|monthly] [--trigger <text>] [--today YYYY-MM-DD]
+// usage: tsx scripts/rebalance-cli.mjs <propose|reconcile|status> [--kind manual|trigger|monthly] [--trigger <text>] [--today YYYY-MM-DD] [--no-llm]
 
 import { loadLocalEnv } from './env.mjs'
 
@@ -16,7 +16,7 @@ loadLocalEnv()
 
 const { runRebalanceCli } = await import('../lib/rebalance/cli.ts')
 
-process.exitCode = runRebalanceCli(
+process.exitCode = await runRebalanceCli(
   process.argv.slice(2),
   { out: (text) => process.stdout.write(text), err: (text) => process.stderr.write(text) },
 )

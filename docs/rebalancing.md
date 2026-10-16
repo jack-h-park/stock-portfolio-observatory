@@ -92,7 +92,7 @@ Everything is stored in the proposal file with an event log. The plan is a funct
 
 | Command | Does |
 |---|---|
-| `propose [--kind manual\|trigger\|monthly] [--trigger <text>] [--today YYYY-MM-DD]` | Expires stale drafts, then creates an engine-only proposal. `--trigger` may repeat. |
+| `propose [--kind manual\|trigger\|monthly] [--trigger <text>] [--today YYYY-MM-DD] [--no-llm]` | Expires stale drafts, then creates a proposal. `--kind monthly` asks the configured LLM runner (`STOCK_REBALANCE_LLM_RUNNER`) for a validated judgment; any LLM failure still creates the proposal with targets held. Other kinds, and `--no-llm`, create an engine-only proposal. `--trigger` may repeat. |
 | `reconcile [--today YYYY-MM-DD]` | Expires stale drafts, then reconciles every `executing` proposal against ingested transactions, moving it to `reconciled` when complete. |
 | `status` | Reports the open proposal, if any. |
 
@@ -100,12 +100,12 @@ Everything is stored in the proposal file with an event log. The plan is a funct
 
 Each command prints one JSON line with `schemaVersion` 1, `ok` and `command`:
 
-- `propose`: `id`, `status`, `decision`, `instructions`, `warnings` and `path` on success. On refusal, `ok` is false with `reason` (`not_configured`, `health_errors` or `open_proposal_exists`), `detail` and `openId`.
+- `propose`: `id`, `status`, `decision`, `instructions`, `warnings`, `llm` and `path` on success. `llm` is null for an engine-only proposal, else `{ status, reason, attempts }`; `status` `failed` with `reason` `runner_unavailable`, `runner_failed`, `timeout` or `invalid_output` means the targets were held. On refusal, `ok` is false with `reason` (`not_configured`, `health_errors` or `open_proposal_exists`), `detail` and `openId`.
 - `reconcile`: `expired`, `reconciled` (per proposal: `complete`, `matched`, `missing`, `unfilled`, `unplanned`) and `failed`.
 - A proposal file that cannot be read stops `propose`, `reconcile` and `status` with `reason` `error`; `detail` names the file (its basename).
 - `status`: `open` is null, or the open proposal's `id`, `status`, `kind`, `instructions`, `fills`, `warnings`, `expiresAt` and `path`.
 
-Exit codes: 0 ran (including a refusal other than `not_configured`), 1 not configured, a reconcile failure or an unexpected error, 2 usage.
+Exit codes: 0 ran (including an LLM fallback to hold and an `open_proposal_exists` refusal), 1 could not run (`not_configured`, `health_errors`, an unreadable store), a reconcile failure or an unexpected error, 2 usage.
 
 ## Reconciliation and refresh
 

@@ -12,7 +12,7 @@ const run = async (argv: string[]) => {
   const { runRebalanceCli } = await import('../lib/rebalance/cli')
   let out = ''
   let err = ''
-  const code = runRebalanceCli(argv, { out: (t) => (out += t), err: (t) => (err += t) }, new Date('2026-10-15T01:00:00Z'))
+  const code = await runRebalanceCli(argv, { out: (t) => (out += t), err: (t) => (err += t) }, new Date('2026-10-15T01:00:00Z'))
   return { code, out, err }
 }
 

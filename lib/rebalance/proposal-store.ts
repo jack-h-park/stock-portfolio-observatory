@@ -4,6 +4,7 @@ import { config } from '@/config'
 import type { RebalanceInput } from '@/lib/adapters/rebalance-input'
 import type { AllocationPolicy, Sleeve } from '@/lib/rebalance/allocation-policy'
 import type { TradePlan } from '@/lib/rebalance/engine'
+import type { LlmIdea, LlmOutlook, LlmRecord } from '@/lib/rebalance/llm-contract'
 
 export type ProposalStatus =
   | 'draft'
@@ -72,8 +73,10 @@ export type Proposal = {
   expiresAt: string
   policyAtCreation: AllocationPolicy
   inputSnapshot: RebalanceInput
-  outlook: unknown | null
-  llm: unknown | null
+  outlook: LlmOutlook | null
+  llm: LlmRecord | null
+  ideas: LlmIdea[]
+  questionsForMaintainer: string[]
   targetChange: TargetChange
   plan: TradePlan
   planSkips: string[]
@@ -113,10 +116,20 @@ export function proposalId(kind: ProposalKind, today: string, suffix?: string): 
   return `rb-${today}-${suffix ?? kind}`
 }
 
+/** Files written before the LLM fields existed read as null and empty lists. */
+function fromFile(text: string): Proposal {
+  const p = JSON.parse(text) as Proposal
+  p.outlook ??= null
+  p.llm ??= null
+  p.ideas ??= []
+  p.questionsForMaintainer ??= []
+  return p
+}
+
 export function getProposal(id: string, dir?: string): Proposal | null {
   const filePath = fileFor(resolveDir(dir), id)
   if (!fs.existsSync(filePath)) return null
-  return JSON.parse(fs.readFileSync(filePath, 'utf8')) as Proposal
+  return fromFile(fs.readFileSync(filePath, 'utf8'))
 }
 
 export function listProposals(dir?: string): Proposal[] {
@@ -126,7 +139,7 @@ export function listProposals(dir?: string): Proposal[] {
   for (const name of fs.readdirSync(d)) {
     if (!name.endsWith('.json')) continue
     try {
-      out.push(JSON.parse(fs.readFileSync(path.join(d, name), 'utf8')) as Proposal)
+      out.push(fromFile(fs.readFileSync(path.join(d, name), 'utf8')))
     } catch (error) {
       // The basename only, and the error's kind rather than its message: a JSON parse message quotes the content.
       throw new Error(`Proposal file unreadable: ${name} (${(error as Error).name ?? 'Error'})`, { cause: error })
@@ -153,11 +166,13 @@ function commit(p: Proposal, events: ProposalEvent[], now: Date, dir: string): P
   return clone(p)
 }
 
-export function createProposal(
-  input: Omit<Proposal, 'schemaVersion' | 'status' | 'createdAt' | 'updatedAt' | 'expiresAt' | 'events' | 'fills' | 'reconciliation'>,
-  now: Date,
-  dir?: string,
-): Proposal {
+type ProposalInput = Omit<
+  Proposal,
+  'schemaVersion' | 'status' | 'createdAt' | 'updatedAt' | 'expiresAt' | 'events' | 'fills' | 'reconciliation' | 'ideas' | 'questionsForMaintainer'
+> &
+  Partial<Pick<Proposal, 'ideas' | 'questionsForMaintainer'>>
+
+export function createProposal(input: ProposalInput, now: Date, dir?: string): Proposal {
   const d = resolveDir(dir)
   const open = openProposal(d)
   if (open) throw new Error(`Proposal ${open.id} is still open (${open.status}); finish or reject it first.`)
@@ -166,6 +181,8 @@ export function createProposal(
   const at = now.toISOString()
   const p: Proposal = {
     ...clone(input),
+    ideas: clone(input.ideas ?? []),
+    questionsForMaintainer: [...(input.questionsForMaintainer ?? [])],
     id,
     schemaVersion: 1,
     status: 'draft',
