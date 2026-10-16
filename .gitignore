@@ -59,6 +59,9 @@ data/instrument-classes.json
 data/rebalance-proposals/
 data/rebalance-trigger-state.json
 data/rebalance-notify-state.json
+# Rebalance cron wrappers: the shared run lock and Discord delivery attempts.
+data/rebalance-cron.lock/
+data/rebalance-discord-attempts.json
 # Atomic-write temp files (written then renamed)
 data/*.tmp
 data/historical-fx-rates.json

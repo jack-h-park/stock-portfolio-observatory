@@ -12,7 +12,9 @@
 #   HERMES_CONTROL_PLANE  the control-plane checkout; without it no Discord thread is opened
 #   HERMES_HOME_OPS       the ops profile home holding the thread ledger (default ~/.hermes/profiles/ops)
 #   REBALANCE_DISCORD_ENV the env file DISCORD_BOT_TOKEN is read from (default the trader profile's .env)
-#   REBALANCE_PNPM, REBALANCE_PYTHON, REBALANCE_LOCK_DIR, REBALANCE_TODAY_DOW/DOM: test seams
+#   REBALANCE_LOCK_WAIT / REBALANCE_LOCK_POLL  seconds monthly and triggers wait for the lock (600 / 5)
+#   REBALANCE_PNPM, REBALANCE_PYTHON, REBALANCE_LOCK_DIR, REBALANCE_DISCORD_ATTEMPTS,
+#   REBALANCE_TODAY_DOW/DOM: test seams
 
 REPO="${OBSERVATORY_REPO:-$HOME/workspace/code/core/jackhpark-stock-observatory}"
 
@@ -27,9 +29,64 @@ export PATH="$PATH:/usr/bin:/bin:/usr/sbin:/sbin"
 unset _d
 
 RB_PNPM="${REBALANCE_PNPM:-pnpm}"
-RB_PYTHON="${REBALANCE_PYTHON:-python3}"
+# send_discord.py runs under the Hermes venv interpreter when there is one, as
+# run-agent-request.sh does: a bare python3 is the system 3.9 on the ops host.
+RB_PYTHON="${REBALANCE_PYTHON:-}"
+if [ -z "$RB_PYTHON" ]; then
+  RB_PYTHON="${HERMES_REAL_HOME:-$HOME}/.hermes/hermes-agent/venv/bin/python"
+  [ -x "$RB_PYTHON" ] || RB_PYTHON="python3"
+fi
 export HERMES_HOME_OPS="${HERMES_HOME_OPS:-$HOME/.hermes/profiles/ops}"
 RB_LEDGER="$HERMES_HOME_OPS/state/rebalance-proposal-threads.json"
+# Discord delivery attempts per event id, and the ids given up on. Wrapper-owned and
+# host-owned like the notify state it sits beside; the CLI never reads it.
+RB_ATTEMPTS_FILE="${REBALANCE_DISCORD_ATTEMPTS:-$REPO/data/rebalance-discord-attempts.json}"
+RB_MAX_ATTEMPTS=6
+
+# One lock for all three jobs, beside the state it protects: each job ends in the
+# notify flow, and two runs interleaving `--mark` writes would lose a receipt. The
+# lock directory holds its owner's pid and only that owner removes it. A lock
+# older than 30 minutes belongs to a run that died without its EXIT trap.
+RB_LOCK="${REBALANCE_LOCK_DIR:-$REPO/data/rebalance-cron.lock}"
+RB_LOCK_OWNED=0
+RB_TMP=""
+
+rb_cleanup() {
+  [ -n "$RB_TMP" ] && rm -rf "$RB_TMP" 2>/dev/null
+  if [ "$RB_LOCK_OWNED" = 1 ] && [ "$(cat "$RB_LOCK/pid" 2>/dev/null)" = "$$" ]; then
+    rm -rf "$RB_LOCK" 2>/dev/null
+  fi
+}
+trap rb_cleanup EXIT
+
+rb_take_lock() {
+  mkdir -p "$(dirname "$RB_LOCK")" 2>/dev/null
+  if ! mkdir "$RB_LOCK" 2>/dev/null; then
+    [ -n "$(find "$RB_LOCK" -maxdepth 0 -mmin +30 2>/dev/null)" ] || return 1
+    rm -rf "$RB_LOCK" 2>/dev/null
+    mkdir "$RB_LOCK" 2>/dev/null || return 1
+  fi
+  echo "$$" > "$RB_LOCK/pid"
+  RB_LOCK_OWNED=1
+}
+
+# `rb_lock nowait`: a held lock means another run is already delivering; exit 0.
+# `rb_lock wait <job>`: monthly and triggers must not lose their run to notify,
+# which fires at the same minute, so they poll; still held after the wait, they
+# say so and exit 1.
+rb_lock() { # nowait | wait <job>
+  rb_take_lock && return 0
+  [ "$1" = wait ] || exit 0
+  local limit="${REBALANCE_LOCK_WAIT:-600}" poll="${REBALANCE_LOCK_POLL:-5}" waited=0 span
+  while [ "$waited" -lt "$limit" ]; do
+    sleep "$poll"
+    waited=$((waited + poll))
+    rb_take_lock && return 0
+  done
+  if [ "$limit" -ge 60 ]; then span="$((limit / 60)) minutes"; else span="$limit seconds"; fi
+  echo "⚠️ Rebalance $2 skipped: another rebalance job held the lock for $span"
+  exit 1
+}
 
 # cd into the repo so the CLI picks up .env.local (the store and state paths live there).
 rb_enter_repo() { # <label>
@@ -38,23 +95,6 @@ rb_enter_repo() { # <label>
     exit 1
   fi
   cd "$REPO" || { echo "⚠️ $1: cannot cd to $REPO"; exit 1; }
-}
-
-# One lock for all three jobs: each of them ends in the notify flow, and two runs
-# interleaving `--mark` writes against the same notify state would lose a receipt.
-# A held lock means another run is doing this work, so exit 0 silently. A lock
-# older than 30 minutes belongs to a run that died without its EXIT trap.
-RB_LOCK="${REBALANCE_LOCK_DIR:-${TMPDIR:-/tmp}/observatory-rebalance-cron.lock}"
-rb_lock() {
-  if ! mkdir "$RB_LOCK" 2>/dev/null; then
-    if [ -n "$(find "$RB_LOCK" -maxdepth 0 -mmin +30 2>/dev/null)" ]; then
-      rm -rf "$RB_LOCK" 2>/dev/null
-      mkdir "$RB_LOCK" 2>/dev/null || exit 0
-    else
-      exit 0
-    fi
-  fi
-  trap 'rm -rf "$RB_LOCK" 2>/dev/null' EXIT
 }
 
 # Runs `pnpm -s <args>` and keeps the last stdout line that looks like JSON; the CLI
@@ -69,7 +109,7 @@ rb_cli() {
 
 # Reads JSON with node (always present: the CLI itself runs on it), so the host
 # needs no jq. Prints the value at a dotted path ("" for null/missing; arrays and
-# objects as JSON). `rb_get "$json" events.0.id`.
+# objects as JSON). `rb_get "$json" llm.status`.
 rb_get() { # <json> <path>
   RB_IN="$1" RB_PATH="$2" node -e '
     let v; try { v = JSON.parse(process.env.RB_IN) } catch { process.exit(3) }
@@ -127,9 +167,58 @@ rb_thread_id() { # <proposal id>
   ' 2>/dev/null
 }
 
+# Parses the notify JSON once. Prints one tab-separated line per event:
+#   index, id, kind, proposalId, telegram pending (0/1), discord pending (0/1), prior Discord attempts
+# and writes the text fields to <dir>/<index>.{telegram,discord,title,prompt} (only the non-null ones),
+# so multi-line text never has to survive a shell split.
+rb_index_events() { # <json> <dir>
+  RB_IN="$1" RB_DIR="$2" RB_ATT="$RB_ATTEMPTS_FILE" node -e '
+    const fs = require("fs"), path = require("path")
+    const events = JSON.parse(process.env.RB_IN).events || []
+    let attempts = {}
+    try { attempts = JSON.parse(fs.readFileSync(process.env.RB_ATT, "utf8")).attempts || {} } catch {}
+    const clean = (s) => String(s).replace(/[\t\n\r]/g, " ")
+    const files = { telegram: "telegram", discord: "discord", threadTitle: "title", threadPrompt: "prompt" }
+    events.forEach((e, i) => {
+      for (const [field, name] of Object.entries(files)) {
+        if (e[field] != null) fs.writeFileSync(path.join(process.env.RB_DIR, `${i}.${name}`), String(e[field]))
+      }
+      const ch = Array.isArray(e.channels) ? e.channels : []
+      const tg = ch.includes("telegram") && e.telegram != null ? 1 : 0
+      process.stdout.write([i, clean(e.id), clean(e.kind), clean(e.proposalId), tg, ch.includes("discord") ? 1 : 0, Number(attempts[e.id]) || 0].join("\t") + "\n")
+    })
+  '
+}
+
+# Applies this run's Discord outcomes (lines "<id>\t<n>|ok|gaveup") to the attempts
+# file, keeping counts only for events still pending; written atomically.
+rb_save_attempts() { # <updates file> <index>
+  RB_UPD="$1" RB_IDX="$2" RB_ATT="$RB_ATTEMPTS_FILE" node -e '
+    const fs = require("fs"), path = require("path")
+    const file = process.env.RB_ATT
+    let s = {}
+    try { s = JSON.parse(fs.readFileSync(file, "utf8")) } catch {}
+    const attempts = {}, gaveUp = s.gaveUp && typeof s.gaveUp === "object" ? s.gaveUp : {}
+    const pending = new Set(process.env.RB_IDX.split("\n").filter(Boolean).map((l) => l.split("\t")[1]))
+    for (const [id, n] of Object.entries(s.attempts || {})) if (pending.has(id)) attempts[id] = n
+    const now = new Date().toISOString()
+    for (const line of fs.readFileSync(process.env.RB_UPD, "utf8").split("\n").filter(Boolean)) {
+      const [id, outcome] = line.split("\t")
+      if (outcome === "ok") delete attempts[id]
+      else if (outcome === "gaveup") { delete attempts[id]; gaveUp[id] = now }
+      else attempts[id] = Number(outcome)
+    }
+    const kept = Object.fromEntries(Object.entries(gaveUp).sort((a, b) => String(b[1]).localeCompare(String(a[1]))).slice(0, 200))
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    const tmp = `${file}.${process.pid}.tmp`
+    fs.writeFileSync(tmp, JSON.stringify({ version: 1, attempts, gaveUp: kept }, null, 2) + "\n")
+    fs.renameSync(tmp, file)
+  ' 2>/dev/null
+}
+
 # The notify flow: list pending events, print and mark the Telegram ones, then
 # deliver the Discord ones. Returns 1 only when the notify command could not run
-# or a Telegram receipt could not be recorded.
+# or a receipt could not be recorded.
 #
 # Order matters for Discord: a proposal's `created` event comes before its status
 # events, so the thread exists in the ledger by the time a status line looks for it.
@@ -139,28 +228,28 @@ rb_notify_flow() {
     echo "⚠️ Rebalance notify could not run (exit $RB_RC) — run: pnpm rebalance:notify"
     return 1
   fi
-  local events="$RB_JSON" n i channels text id
-  n="$(rb_len "$events" events)"
-  [ "$n" -gt 0 ] || return 0
+  RB_TMP="$(mktemp -d "${TMPDIR:-/tmp}/rb-notify.XXXXXX")" || { echo "⚠️ Rebalance notify could not run: no temp dir"; return 1; }
+  local index
+  index="$(rb_index_events "$RB_JSON" "$RB_TMP")" || { echo "⚠️ Rebalance notify could not run: unreadable events"; return 1; }
+  [ -n "$index" ] || return 0
 
+  local i id kind pid tg dc att
   # Telegram: stdout is the delivery, so print first and record after.
-  local tg_ids=""
-  for ((i = 0; i < n; i++)); do
-    channels="$(rb_get "$events" "events.$i.channels")"
-    text="$(rb_get "$events" "events.$i.telegram")"
-    case "$channels" in *'"telegram"'*) ;; *) continue ;; esac
-    [ -n "$text" ] || continue
-    id="$(rb_get "$events" "events.$i.id")"
-    printf '%s\n' "$text"
+  local tg_ids="" printed_created=0
+  while IFS=$'\t' read -r i id kind pid tg dc att; do
+    [ "$tg" = 1 ] || continue
+    printf '%s\n' "$(cat "$RB_TMP/$i.telegram")"
     tg_ids="${tg_ids:+$tg_ids,}$id"
-  done
+    [ "$kind" = created ] && [ "$dc" = 1 ] && printed_created=1
+  done <<<"$index"
   if ! rb_mark "$tg_ids" telegram; then
     echo "⚠️ Rebalance notify: could not record the Telegram receipts; these lines may repeat."
     return 1
   fi
 
-  # Discord: optional at runtime. Without the control plane or the bot token, say so
-  # once and leave the events pending for a run that has them.
+  # Discord is optional at runtime. Without the control plane or the bot token the
+  # events stay pending; the notice rides along with a proposal's created line, so
+  # it is said once per proposal rather than every 30 minutes.
   local token="" reason="" rar=""
   if [ -z "${HERMES_CONTROL_PLANE:-}" ]; then
     reason="control plane not configured"
@@ -173,35 +262,54 @@ rb_notify_flow() {
       reason="trader Discord env missing"
     fi
   fi
+  if [ -n "$reason" ]; then
+    [ "$printed_created" = 1 ] && echo "Discord thread not opened: $reason"
+    return 0
+  fi
 
-  local kind pid title prompt thread unmarked=0
-  for ((i = 0; i < n; i++)); do
-    channels="$(rb_get "$events" "events.$i.channels")"
-    case "$channels" in *'"discord"'*) ;; *) continue ;; esac
-    if [ -n "$reason" ]; then
-      echo "Discord thread not opened: $reason"
-      return 0
-    fi
-    id="$(rb_get "$events" "events.$i.id")"
-    kind="$(rb_get "$events" "events.$i.kind")"
-    pid="$(rb_get "$events" "events.$i.proposalId")"
-    if [ "$kind" = "created" ]; then
-      title="$(rb_get "$events" "events.$i.threadTitle")"
-      prompt="$(rb_get "$events" "events.$i.threadPrompt")"
-      if "$rar" --kind proposal --key "proposal:$pid" --title "$title" --prompt "$prompt" --origin sweep >/dev/null 2>&1; then
+  # Each Discord event is tried at most RB_MAX_ATTEMPTS times across runs, then
+  # marked as given up so it stops being retried, and recorded in the attempts file.
+  local updates="$RB_TMP/updates" n rc thread unmarked=0
+  : > "$updates"
+  while IFS=$'\t' read -r i id kind pid tg dc att; do
+    [ "$dc" = 1 ] || continue
+    n=$((att + 1))
+    if [ "$kind" = created ]; then
+      if "$rar" --kind proposal --key "proposal:$pid" --title "$(cat "$RB_TMP/$i.title" 2>/dev/null)" \
+        --prompt "$(cat "$RB_TMP/$i.prompt" 2>/dev/null)" --origin sweep >/dev/null 2>&1; then
         rb_mark "$id" discord || unmarked=1
+        printf '%s\tok\n' "$id" >> "$updates"
+      else
+        rc=$?
+        if [ "$n" -ge "$RB_MAX_ATTEMPTS" ]; then
+          echo "⚠️ Discord thread for $pid not opened after $RB_MAX_ATTEMPTS attempts (last exit $rc); no more retries. Discuss it on /rebalance/proposals/$pid."
+          rb_mark "$id" discord || unmarked=1
+          printf '%s\tgaveup\n' "$id" >> "$updates"
+        else
+          [ "$n" -eq 1 ] && echo "Discord thread for $pid not opened (exit $rc); will retry"
+          printf '%s\t%s\n' "$id" "$n" >> "$updates"
+        fi
       fi
       continue
     fi
-    text="$(rb_get "$events" "events.$i.discord")"
-    [ -n "$text" ] || continue
+    [ -f "$RB_TMP/$i.discord" ] || continue
+    # Status and reminder lines are cheap: retried silently. One with no thread yet
+    # waits for `created` to open it, and counts as an attempt so it cannot wait forever.
     thread="$(rb_thread_id "$pid")"
-    [ -n "$thread" ] || continue   # no thread yet: stays pending until `created` opens one
-    if printf '%s\n' "$text" | "$RB_PYTHON" "$HERMES_CONTROL_PLANE/gateway/scripts/send_discord.py" \
-      --bot-token "$token" --channel-id "$thread" --usage-unit-key rebalance-notify >/dev/null 2>&1; then
+    if [ -n "$thread" ] && "$RB_PYTHON" "$HERMES_CONTROL_PLANE/gateway/scripts/send_discord.py" \
+      --bot-token "$token" --channel-id "$thread" --usage-unit-key rebalance-notify <"$RB_TMP/$i.discord" >/dev/null 2>&1; then
       rb_mark "$id" discord || unmarked=1
+      printf '%s\tok\n' "$id" >> "$updates"
+    elif [ "$n" -ge "$RB_MAX_ATTEMPTS" ]; then
+      [ -n "$thread" ] && echo "⚠️ Discord status line $id not delivered after $RB_MAX_ATTEMPTS attempts; dropped."
+      rb_mark "$id" discord || unmarked=1
+      printf '%s\tgaveup\n' "$id" >> "$updates"
+    else
+      printf '%s\t%s\n' "$id" "$n" >> "$updates"
     fi
-  done
+  done <<<"$index"
+  rb_save_attempts "$updates" "$index"
+
   if [ "$unmarked" -ne 0 ]; then
     echo "⚠️ Rebalance notify: could not record a Discord receipt; that message may repeat."
     return 1
