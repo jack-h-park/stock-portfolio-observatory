@@ -258,3 +258,43 @@ test('short or embedded ASCII secrets do not over-redact', () => {
   assert.equal(scrubText('via Broker today', ['Broker']), 'via [redacted] today')
   assert.equal(scrubText('계좌 한국증권사 확인', ['한국증권사']), '계좌 [redacted] 확인')
 })
+
+test('account strings only in recentBuys or accountDataAsOf keys are scrubbed from free text', () => {
+  const out = build({
+    input: input({
+      recentBuys: [{ market: 'US', ticker: 'AAA', brokerage: 'Buyonly Broker', account: 'BUY-ACCT', date: '2026-10-01' }],
+      accountDataAsOf: { 'Asof Broker::ASOF-ACCT': '2026-10-01' },
+    }),
+    context: {
+      macro: [{ date: '2026-10-01', macro: 'Buyonly Broker BUY-ACCT and Asof Broker ASOF-ACCT moved.' }],
+      benchmarks: null,
+    },
+  })
+  const text = JSON.stringify(out)
+  for (const secret of ['Buyonly Broker', 'BUY-ACCT', 'Asof Broker', 'ASOF-ACCT']) assert.ok(!text.includes(secret), secret)
+  assert.equal(out.context.macro[0].macro, '[redacted] [redacted] and [redacted] [redacted] moved.')
+})
+
+test('labels, aliases, account numbers and owner names from the account map are scrubbed; a missing or bad map is ignored', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'rb-llm-map-'))
+  const map = path.join(dir, 'accounts.json')
+  writeFileSync(
+    map,
+    JSON.stringify({
+      accounts: { 'Mapped Label': { wrapper: 'taxable', owner: 'child:Testkid' } },
+      bankAccounts: [{ institution: 'x', alias: 'Mapped Alias', accountNumber: '000-111' }],
+      brokerageAccounts: [{ institution: 'y', accountNumber: 'BRK-777', label: 'Broker Label' }],
+      pensionAccounts: [{ token: 't', account: 'Pension Label', owner: 'Penowner', accountNumber: 'PEN-1' }],
+    })
+  )
+  const macro = 'Mapped Label, Mapped Alias, Broker Label, Pension Label, BRK-777, PEN-1, Testkid and Penowner; self stays.'
+  const context = { macro: [{ date: '2026-10-01', macro }], benchmarks: null }
+  const out = build({ context, accountMapPath: map })
+  assert.equal(out.context.macro[0].macro, '[redacted], [redacted], [redacted], [redacted], [redacted], [redacted], [redacted] and [redacted]; self stays.')
+  // Missing file, unreadable JSON and no path all leave the text alone and never throw.
+  const bad = path.join(dir, 'bad.json')
+  writeFileSync(bad, '{not json')
+  for (const accountMapPath of [path.join(dir, 'missing.json'), bad, null, undefined]) {
+    assert.equal(build({ context, accountMapPath }).context.macro[0].macro, macro)
+  }
+})

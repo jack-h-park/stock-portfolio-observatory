@@ -374,7 +374,11 @@ function TargetsTab({ proposal, copy }: { proposal: Proposal; copy: Copy }) {
             <span className="flex items-center gap-2">
               <span className={clsx('text-ink', r.changed && 'font-medium')}>{copy.sleeves[r.sleeve]}</span>
               {r.edited && <Badge tone="info">{copy.targets.edited}</Badge>}
-              {r.llm && <Badge tone="info">{copy.outlook.llmBadge}</Badge>}
+              {r.llm && (
+                <span title={copy.outlook.llmBadgeInfo}>
+                  <Badge tone="info">{copy.outlook.llmBadge}</Badge>
+                </span>
+              )}
             </span>
           ),
         },

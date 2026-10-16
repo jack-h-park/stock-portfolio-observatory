@@ -117,12 +117,21 @@ export function proposalId(kind: ProposalKind, today: string, suffix?: string): 
 }
 
 /** Files written before the LLM fields existed read as null and empty lists. */
+const OUTLOOK_LISTS = ['drivers', 'risks', 'whatWouldChangeMyView', 'sources'] as const
+
+/** An outlook the page can render: an object whose list fields are arrays. Anything else reads as null. */
+function isOutlookShape(value: unknown): boolean {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const o = value as Record<string, unknown>
+  return OUTLOOK_LISTS.every((key) => Array.isArray(o[key]))
+}
+
 function fromFile(text: string): Proposal {
   const p = JSON.parse(text) as Proposal
-  p.outlook ??= null
+  if (!isOutlookShape(p.outlook)) p.outlook = null
   p.llm ??= null
-  p.ideas ??= []
-  p.questionsForMaintainer ??= []
+  if (!Array.isArray(p.ideas)) p.ideas = []
+  if (!Array.isArray(p.questionsForMaintainer)) p.questionsForMaintainer = []
   return p
 }
 

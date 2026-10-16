@@ -66,6 +66,8 @@ export function proposeEngineOnly(args: {
   today: string
   now: Date
   paths?: ProposePaths
+  /** A record of a skipped LLM step (`--no-llm` on a monthly run); null otherwise. */
+  llm?: LlmRecord | null
 }): ProposeResult {
   const prep = prepare(args.today, args.now, args.paths ?? {})
   if (!prep.ok) return prep
@@ -79,7 +81,7 @@ export function proposeEngineOnly(args: {
       policyAtCreation: policy,
       inputSnapshot: input,
       outlook: null,
-      llm: null,
+      llm: args.llm ?? null,
       targetChange: hold(),
       plan,
       planSkips: [],
@@ -92,9 +94,14 @@ export function proposeEngineOnly(args: {
 
 type Judgment = { record: LlmRecord; output: LlmOutput | null; targets: Record<Sleeve, SleeveTarget> | null }
 
-/** Up to two attempts; the second is told what the first got wrong. A throw or timeout ends it at once. */
-async function judge(runner: LlmRunner, prompt: (errors?: string[]) => string, policy: AllocationPolicy, model: string | null, timeoutMs: number): Promise<Judgment> {
-  const record: LlmRecord = { status: 'failed', runner: runner.name, model, attempts: [], reason: null }
+/** The record of an LLM step `--no-llm` skipped on purpose. */
+export const skippedLlm = (): LlmRecord => ({ status: 'skipped', runner: null, model: null, attempts: [], reason: null })
+
+/**
+ * Up to two attempts; the second is told what the first got wrong. A throw or timeout ends it at once. `record` is
+ * filled in place, so a caller that catches an unexpected throw still has the attempts made so far.
+ */
+async function judge(record: LlmRecord, runner: LlmRunner, prompt: (errors?: string[]) => string, policy: AllocationPolicy, model: string | null, timeoutMs: number): Promise<Judgment> {
   let available = false
   try {
     available = runner.available()
@@ -152,6 +159,8 @@ export async function proposeMonthly(args: {
   paths?: ProposePaths
   contextDir?: string
   triggers?: string[]
+  /** The account map whose labels are scrubbed from free text; defaults to config, null skips it (tests). */
+  accountMapPath?: string | null
 }): Promise<ProposeResult> {
   const prep = prepare(args.today, args.now, args.paths ?? {})
   if (!prep.ok) return prep
@@ -162,15 +171,27 @@ export async function proposeMonthly(args: {
   const configured = Number(config.stockRebalanceLlmTimeoutMs)
   const timeoutMs = args.timeoutMs ?? (Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_TIMEOUT_MS)
 
-  const llmInput = buildLlmInput({
-    input,
-    policy,
-    classes,
-    taxPolicy,
-    context: readBriefingContext(args.today, undefined, args.contextDir),
-    past: listProposals(dir),
-  })
-  const { record, output, targets } = await judge(args.runner, (errors) => buildPrompt(llmInput, errors), policy, model, timeoutMs)
+  // Everything from here to the verdict falls back to hold: a throw while reading the context, building the input
+  // or the prompt is recorded as runner_failed, never a failed run.
+  const draft: LlmRecord = { status: 'failed', runner: args.runner.name, model, attempts: [], reason: null }
+  let judgment: Judgment
+  try {
+    const llmInput = buildLlmInput({
+      input,
+      policy,
+      classes,
+      taxPolicy,
+      context: readBriefingContext(args.today, undefined, args.contextDir),
+      past: listProposals(dir),
+      accountMapPath: args.accountMapPath === undefined ? config.stockAccountMapPath : args.accountMapPath,
+    })
+    judgment = await judge(draft, args.runner, (errors) => buildPrompt(llmInput, errors), policy, model, timeoutMs)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    draft.attempts.push({ prompt: '', raw: '', errors: [`input: ${message.slice(0, ERROR_MAX)}`] })
+    judgment = { record: { ...draft, status: 'failed', reason: 'runner_failed' }, output: null, targets: null }
+  }
+  const { record, output, targets } = judgment
 
   const targetChange = output && targets ? targetChangeFrom(output, targets, policy) : hold()
   const plan = buildTradePlan({

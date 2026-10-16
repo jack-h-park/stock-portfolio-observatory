@@ -7,6 +7,8 @@ import test from 'node:test'
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rb-cli-'))
 process.env.STOCK_REBALANCE_PROPOSALS_DIR = path.join(root, 'proposals')
 process.env.STOCK_ALLOCATION_POLICY_PATH = path.join(root, 'none.json')
+// A typo'd runner: the monthly path warns on stderr and falls back to claude.
+process.env.STOCK_REBALANCE_LLM_RUNNER = 'bogus-runner'
 
 const run = async (argv: string[]) => {
   const { runRebalanceCli } = await import('../lib/rebalance/cli')
@@ -59,4 +61,14 @@ test('the default today is the portfolio calendar (STOCK_TIME_ZONE), the same as
     if (previous === undefined) delete process.env.STOCK_TIME_ZONE
     else process.env.STOCK_TIME_ZONE = previous
   }
+})
+
+test('an unknown STOCK_REBALANCE_LLM_RUNNER warns on stderr and leaves stdout JSON unchanged', async () => {
+  const monthly = await run(['propose', '--kind', 'monthly'])
+  assert.equal(monthly.code, 1)
+  assert.equal(monthly.err, 'warning: STOCK_REBALANCE_LLM_RUNNER="bogus-runner" is not one of claude, codex; using claude\n')
+  assert.deepEqual(Object.keys(JSON.parse(monthly.out)), ['schemaVersion', 'ok', 'command', 'reason', 'detail', 'openId'])
+  assert.equal(monthly.out.trim().split('\n').length, 1)
+  // No LLM step, no warning.
+  for (const argv of [['propose'], ['propose', '--kind', 'monthly', '--no-llm']]) assert.equal((await run(argv)).err, '')
 })

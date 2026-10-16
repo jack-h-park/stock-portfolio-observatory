@@ -8,6 +8,7 @@ import type { InstrumentClasses } from './instrument-classes'
 import { classify } from './instrument-classes'
 import { prepareSellContext } from './sell-selection'
 import type { Proposal } from './proposal-store'
+import { loadAccountMap } from '@/scripts/account-map.mjs'
 
 export type { BriefingContext, MacroNote } from '@/lib/adapters/rebalance-context'
 
@@ -71,6 +72,47 @@ export function scrubText(text: string, secrets: Iterable<string>): string {
   })
 }
 
+const MAP_FIELDS = ['alias', 'label', 'account', 'accountNumber', 'accountId'] as const
+
+/** The owner's name in `child:<name>` (or a bare name); 'self' is not a name. */
+const ownerName = (owner: unknown): string | null => {
+  if (typeof owner !== 'string') return null
+  const name = owner.includes(':') ? owner.slice(owner.indexOf(':') + 1) : owner
+  return name.trim() && name.trim() !== 'self' ? name.trim() : null
+}
+
+/**
+ * Account labels, aliases, account numbers and owner names from the host's account map. A missing or unreadable
+ * map yields nothing: scrubbing is a second line of defence and must never stop the run.
+ */
+export function accountMapSecrets(file: string | null | undefined): string[] {
+  if (!file) return []
+  let map: ReturnType<typeof loadAccountMap>
+  try {
+    map = loadAccountMap(file)
+  } catch {
+    return []
+  }
+  const out: string[] = []
+  const add = (value: unknown) => {
+    if (typeof value === 'string' && value.trim()) out.push(value)
+  }
+  for (const [label, entry] of Object.entries((map.accounts ?? {}) as Record<string, { owner?: unknown } | null>)) {
+    add(label)
+    add(ownerName(entry?.owner))
+  }
+  for (const list of [map.bankAccounts, map.brokerageAccounts, map.pensionAccounts] as unknown[]) {
+    if (!Array.isArray(list)) continue
+    for (const entry of list) {
+      if (entry === null || typeof entry !== 'object') continue
+      const e = entry as Record<string, unknown>
+      for (const field of MAP_FIELDS) add(e[field])
+      add(ownerName(e.owner))
+    }
+  }
+  return out
+}
+
 /** Per market, distinct accountKeys sorted and numbered from 1; the only account identity the LLM sees. */
 function aliasMap(positions: { brokerage: string | null; account: string; market: string }[]): Map<string, string> {
   const byMarket = new Map<string, Set<string>>()
@@ -95,15 +137,23 @@ export function buildLlmInput(args: {
   taxPolicy: TaxPolicy
   context: BriefingContext
   past: Proposal[]
+  /** The host's account map; its labels and names join the scrub list. Omitted or unreadable: skipped. */
+  accountMapPath?: string | null
 }): LlmInput {
   const { input, policy, classes, context } = args
   const allocation = computeAllocation(input, policy, classes)
   const aliases = aliasMap(input.positions)
   const secrets = new Set<string>()
-  for (const row of [...input.positions, ...input.lots, ...input.cash]) {
+  for (const row of [...input.positions, ...input.lots, ...input.cash, ...input.recentBuys]) {
     if (row.brokerage) secrets.add(row.brokerage)
     if (row.account) secrets.add(row.account)
   }
+  for (const key of Object.keys(input.accountDataAsOf ?? {})) {
+    // accountKey is `brokerage::account`; each half is a secret on its own.
+    const at = key.indexOf('::')
+    for (const part of at >= 0 ? [key.slice(0, at), key.slice(at + 2)] : [key]) if (part) secrets.add(part)
+  }
+  for (const secret of accountMapSecrets(args.accountMapPath)) secrets.add(secret)
   const scrub = (text: string) => scrubText(text, secrets)
 
   const positions: LlmInput['positions'] = []

@@ -100,7 +100,7 @@ Everything is stored in the proposal file with an event log. The plan is a funct
 
 Each command prints one JSON line with `schemaVersion` 1, `ok` and `command`:
 
-- `propose`: `id`, `status`, `decision`, `instructions`, `warnings`, `llm` and `path` on success. `llm` is null for an engine-only proposal, else `{ status, reason, attempts }`; `status` `failed` with `reason` `runner_unavailable`, `runner_failed`, `timeout` or `invalid_output` means the targets were held. On refusal, `ok` is false with `reason` (`not_configured`, `health_errors` or `open_proposal_exists`), `detail` and `openId`.
+- `propose`: `id`, `status`, `decision`, `instructions`, `warnings`, `llm` and `path` on success. `llm` is null for an engine-only manual or trigger proposal, else `{ status, reason, attempts }` (`status` `skipped` for `--kind monthly --no-llm`); `status` `failed` with `reason` `runner_unavailable`, `runner_failed`, `timeout` or `invalid_output` means the targets were held. On refusal, `ok` is false with `reason` (`not_configured`, `health_errors` or `open_proposal_exists`), `detail` and `openId`.
 - `reconcile`: `expired`, `reconciled` (per proposal: `complete`, `matched`, `missing`, `unfilled`, `unplanned`) and `failed`.
 - A proposal file that cannot be read stops `propose`, `reconcile` and `status` with `reason` `error`; `detail` names the file (its basename).
 - `status`: `open` is null, or the open proposal's `id`, `status`, `kind`, `instructions`, `fills`, `warnings`, `expiresAt` and `path`.
@@ -109,13 +109,22 @@ Exit codes: 0 ran (including an LLM fallback to hold and an `open_proposal_exist
 
 ## Monthly proposal and the LLM judgment
 
-`pnpm rebalance:propose --kind monthly` builds the usual engine proposal and first asks an LLM runner whether the sleeve targets should move. The engine stays deterministic: the LLM never produces a quantity, a tax figure or an order. Its output can change only the target change, the outlook, the ideas and the questions for you. `--no-llm` skips the step and creates an engine-only proposal, with the same result as a manual one.
+`pnpm rebalance:propose --kind monthly` builds the usual engine proposal and first asks an LLM runner whether the sleeve targets should move. The engine stays deterministic: the LLM never produces a quantity, a tax figure or an order. Its output can change only the target change, the outlook, the ideas and the questions for you. `--no-llm` skips the step and creates an engine-only proposal with the targets held; on a monthly run the proposal records the LLM step as `skipped`, so the page says it was skipped on purpose.
 
 | Variable | Meaning | Default |
 |---|---|---|
 | `STOCK_REBALANCE_LLM_RUNNER` | Which CLI judges: `claude` or `codex` | `claude` |
 | `STOCK_REBALANCE_LLM_MODEL` | Model name passed to the CLI | unset (the CLI's own default) |
 | `STOCK_REBALANCE_LLM_TIMEOUT_MS` | Time allowed for one attempt | `600000` |
+
+Any other `STOCK_REBALANCE_LLM_RUNNER` value runs `claude` and prints a warning line to stderr; the JSON on stdout is unchanged.
+
+**Host requirements.** The chosen CLI must be on the `PATH` the job runs with (a launchd or cron job often has a shorter `PATH` than your shell), and it must be logged in to an account on that host. There are at most two attempts of up to the timeout each, and a timeout (which ends the run at once) adds a 5 second kill grace, so the worst case is `2 × STOCK_REBALANCE_LLM_TIMEOUT_MS + 5 s` (20 min 5 s at the default). Any outer job timeout must be longer than that, or the job is killed before the fallback proposal is written.
+
+**Runner isolation.** Each runner starts in a fresh empty temporary directory, removed afterwards, so no repository file, `CLAUDE.md` or project setting is reachable from its working directory.
+
+- `claude` (the default, and the recommended runner) runs as `claude -p --output-format json --tools WebSearch,WebFetch --allowedTools WebSearch,WebFetch --restricted --strict-mcp-config --no-session-persistence --permission-prompts none`: only the two web tools exist, user, project and local settings files and MCP servers are not loaded, nothing that would need a permission prompt is allowed, and no session is saved.
+- `codex` runs as `codex exec --skip-git-repo-check --sandbox read-only --ephemeral --color never -C <temp dir> --output-last-message <temp dir>/last-message.txt -`, and only the final-message file is read as the answer (stdout can echo the prompt). Codex has no way to limit the model to web tools the way `claude` does: its read-only sandbox can still read files the host account can read. Prefer `claude` unless you accept that.
 
 **Hold is the default.** A change needs a reason for every changed sleeve and at least one source with a URL and an ISO date. The answer must pass validation or it is not used:
 
@@ -129,8 +138,8 @@ If validation fails, the runner is asked once more with the errors appended. If 
 
 | Reason | Meaning |
 |---|---|
-| `runner_unavailable` | The configured CLI could not be started. |
-| `runner_failed` | The CLI ran and exited with an error. |
+| `runner_unavailable` | The configured CLI is not on the job's `PATH`. |
+| `runner_failed` | The CLI failed to start (for example a spawn `ENOENT`) or exited with an error, or building the LLM input or prompt threw. The message is in the first attempt's errors. |
 | `timeout` | An attempt exceeded the timeout. |
 | `invalid_output` | Both attempts failed validation. |
 
@@ -143,7 +152,8 @@ The proposal stores the LLM record (status `ok`, `failed` or `skipped`, runner, 
 - accounts appear only as aliases (`KR-taxable-1`, `US-taxable-1`, `CRYPTO-1`, numbered in the sorted order of the account keys), never with an account label, brokerage name, account number or your name;
 - positions carry the market, ticker, name, sleeve and share of the total, with no quantity, cost or lot detail;
 - the allocation against targets and bands, the policy bounds, a handful of tax-room figures, the briefing and macro notes, and the last few proposals' decisions;
-- free text, including your past rejection reasons, is scrubbed first: known account and brokerage strings and account-number-shaped digit runs become `[redacted]`.
+- free text, including your past rejection reasons, is scrubbed first: brokerage and account strings from positions, lots, cash, recent buys and account data dates, the labels, aliases, account numbers and owner names in the account map (`STOCK_ACCOUNT_MAP_PATH`, skipped when missing or unreadable), and account-number-shaped digit runs become `[redacted]`;
+- the prompt tells the model that text inside the input and fetched web pages is data, and that instructions found there must be ignored.
 
 **On the proposal page.** The Summary tab shows an LLM status line (runner, model and attempt count, or the failure reason), the outlook (summary, drivers, risks, what would change the view, a confidence badge and sources) and the questions for you. Only `https:` sources are links; any other URL is shown as plain text. Model text is rendered as text, never as markup. On the Targets tab, values the LLM proposed carry an `LLM` badge; values you edit carry `edited`. Ideas are listed with their sleeve; they are never traded automatically. To act on one, add it to a buy list in the settings yourself.
 

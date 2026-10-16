@@ -27,11 +27,13 @@ const SKIPPED: Record<Lang, string> = {
 /** One fixed-copy line describing what the LLM step did. Model text never reaches this line. */
 export function llmStatusLine(record: LlmRecord, lang: Lang): string {
   const attempts = record.attempts.length
-  const name = record.model ? `${record.runner} (${record.model})` : record.runner
-  const koName = record.model ? `${record.runner}(${record.model})` : record.runner
+  const runner = record.runner ?? 'LLM'
+  const name = record.model ? `${runner} (${record.model})` : runner
+  const koName = record.model ? `${runner}(${record.model})` : runner
   if (record.status === 'ok') {
+    // No particle after the name: a Latin name gives no reliable 이/가 choice.
     return lang === 'ko'
-      ? `${koName}이 ${attempts}회 시도로 판단`
+      ? `판단: ${koName}, ${attempts}회 시도`
       : `Judged by ${name} in ${attempts} ${attempts === 1 ? 'attempt' : 'attempts'}`
   }
   if (record.status === 'skipped') return SKIPPED[lang]

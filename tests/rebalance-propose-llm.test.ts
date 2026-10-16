@@ -19,6 +19,7 @@ process.env.STOCK_ALLOCATION_POLICY_PATH = policyPath
 process.env.STOCK_INSTRUMENT_CLASSES_PATH = classesPath
 process.env.STOCK_REBALANCE_PROPOSALS_DIR = cliProposals
 process.env.STOCK_BRIEFING_ARCHIVE_DIR = archiveDir
+process.env.STOCK_ACCOUNT_MAP_PATH = path.join(root, 'no-account-map.json')
 
 fs.copyFileSync(path.join(__dirname, '..', 'data', 'allocation-policy.example.json'), policyPath)
 fs.writeFileSync(classesPath, JSON.stringify({ 'US:AAA': 'us_equity' }))
@@ -293,8 +294,88 @@ test('--no-llm forces the engine-only proposal and never calls the runner', asyn
   const body = JSON.parse(out)
   assert.equal(body.ok, true)
   assert.equal(body.decision, 'hold')
-  assert.equal(body.llm, null)
+  assert.deepEqual(body.llm, { status: 'skipped', reason: null, attempts: 0 })
   assert.equal(prompts.length, 0)
+  const { getProposal } = await import('../lib/rebalance/proposal-store')
+  assert.deepEqual(getProposal(body.id, cliProposals)?.llm, { status: 'skipped', runner: null, model: null, attempts: [], reason: null })
+})
+
+test('--no-llm on a non-monthly kind keeps llm null', async () => {
+  const { runRebalanceCli } = await import('../lib/rebalance/cli')
+  await clearCliDrafts()
+  let out = ''
+  const code = await runRebalanceCli(['propose', '--kind', 'manual', '--no-llm', '--today', TODAY], { out: (t) => (out += t), err: () => {} }, NOW)
+  assert.equal(code, 0)
+  assert.equal(JSON.parse(out).llm, null)
+})
+
+/** A closed past proposal with no targetChange, newest of all, makes buildLlmInput throw reading past decisions. */
+const writeMalformedPast = (dir: string) => {
+  fs.mkdirSync(dir, { recursive: true })
+  const file = path.join(dir, 'rb-2026-01-01.json')
+  fs.writeFileSync(file, JSON.stringify({ id: 'rb-2026-01-01', status: 'rejected', createdAt: '2026-12-31T00:00:00.000Z', events: [] }))
+  return file
+}
+
+test('a throw while building the LLM input -> hold runner_failed, message in attempts[0]', async () => {
+  const dir = tmpDir()
+  writeMalformedPast(dir)
+  const { runner, prompts } = fakeRunner([CHANGE])
+  const r = await monthly(dir, runner)
+  assert.equal(r.ok, true)
+  if (!r.ok) return
+  assert.equal(prompts.length, 0)
+  assert.deepEqual(r.proposal.targetChange, { decision: 'hold', sleeves: {}, boundsErrors: [] })
+  assert.equal(r.proposal.llm?.status, 'failed')
+  assert.equal(r.proposal.llm?.reason, 'runner_failed')
+  assert.equal(r.proposal.llm?.attempts.length, 1)
+  const [error] = r.proposal.llm!.attempts[0].errors
+  assert.match(error, /^input: /)
+  assert.ok(error.length <= 'input: '.length + 500)
+})
+
+test('a throw while building the LLM input -> CLI exit 0', async () => {
+  const { runRebalanceCli } = await import('../lib/rebalance/cli')
+  await clearCliDrafts()
+  const file = writeMalformedPast(cliProposals)
+  try {
+    const { runner } = fakeRunner([CHANGE])
+    let out = ''
+    const code = await runRebalanceCli(['propose', '--kind', 'monthly', '--today', TODAY], { out: (t) => (out += t), err: () => {} }, NOW, { runner })
+    assert.equal(code, 0)
+    const body = JSON.parse(out)
+    assert.equal(body.ok, true)
+    assert.equal(body.decision, 'hold')
+    assert.deepEqual(body.llm, { status: 'failed', reason: 'runner_failed', attempts: 1 })
+  } finally {
+    fs.rmSync(file)
+    await clearCliDrafts()
+  }
+})
+
+test('a non-object outlook in a stored file reads as null, and non-array ideas/questions as []', async () => {
+  const m = await load()
+  const dir = tmpDir()
+  const first = m.proposeEngineOnly({ kind: 'manual', triggers: ['manual'], today: TODAY, now: NOW, paths: paths(dir) })
+  assert.equal(first.ok, true)
+  if (!first.ok) return
+  const file = path.join(dir, `${first.proposal.id}.json`)
+  const raw = JSON.parse(fs.readFileSync(file, 'utf8'))
+  raw.outlook = 'text'
+  raw.ideas = 'x'
+  raw.questionsForMaintainer = { a: 1 }
+  fs.writeFileSync(file, JSON.stringify(raw))
+  const read = m.getProposal(first.proposal.id, dir)!
+  assert.equal(read.outlook, null)
+  assert.deepEqual(read.ideas, [])
+  assert.deepEqual(read.questionsForMaintainer, [])
+  // An object whose list fields are not arrays is not an outlook either.
+  raw.outlook = { ...outlook, drivers: 'one' }
+  fs.writeFileSync(file, JSON.stringify(raw))
+  assert.equal(m.getProposal(first.proposal.id, dir)!.outlook, null)
+  raw.outlook = outlook
+  fs.writeFileSync(file, JSON.stringify(raw))
+  assert.deepEqual(m.getProposal(first.proposal.id, dir)!.outlook, outlook)
 })
 
 test('an older proposal file without the LLM fields reads as null and empty lists', async () => {

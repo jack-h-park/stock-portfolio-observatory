@@ -20,7 +20,8 @@ export type LlmOutput = {
 export type LlmFailureReason = 'runner_unavailable' | 'runner_failed' | 'timeout' | 'invalid_output'
 export type LlmRecord = {
   status: 'ok' | 'failed' | 'skipped'
-  runner: string
+  /** null only when the step was skipped (`--no-llm`). */
+  runner: string | null
   model: string | null
   attempts: { prompt: string; raw: string; errors: string[] }[]
   reason: LlmFailureReason | null
@@ -36,39 +37,53 @@ const SUM_TOLERANCE = 0.05
 const CONFIDENCE = ['low', 'medium', 'high'] as const
 
 /**
- * Finds the first JSON object in `raw`. Fenced blocks (```json, then plain ```) are tried first, each on its own
- * content; then the raw text is scanned for the first balanced `{...}` that parses. Work is bounded by an input cap,
- * a candidate-start cap and a total-characters-scanned budget.
+ * Finds the answer object in `raw`. Candidates are, in order: the objects in fenced blocks (```json, then plain ```),
+ * then the balanced `{...}` objects in the raw text. The first candidate with a top-level `outlook` key wins, so an
+ * echoed prompt's input JSON cannot be taken for the answer; when none has it, the first parseable candidate is used.
+ * Work is bounded by an input cap, a candidate-start cap and a total-characters-scanned budget.
  */
 export function parseLlmJson(raw: string): unknown | null {
   if (raw.length > MAX_RAW) return null
   const budget = { chars: MAX_SCAN }
+  let first: unknown = undefined
+  const consider = (found: unknown): boolean => {
+    if (first === undefined) first = found
+    return isObject(found) && Object.prototype.hasOwnProperty.call(found, 'outlook')
+  }
   for (const fence of [/```json[ \t]*\r?\n([\s\S]*?)```/gi, /```[ \t]*\r?\n([\s\S]*?)```/g]) {
     for (const match of raw.matchAll(fence)) {
-      const found = firstObject(match[1], budget)
-      if (found !== null) return found
+      for (const found of objectsIn(match[1], budget)) if (consider(found)) return found
     }
   }
-  return firstObject(raw, budget)
+  for (const found of objectsIn(raw, budget)) if (consider(found)) return found
+  return first === undefined ? null : first
 }
 
-function firstObject(text: string, budget: { chars: number }): unknown | null {
+/** Each top-level balanced `{...}` in `text` that parses, in order; a parsed object is skipped over whole. */
+function* objectsIn(text: string, budget: { chars: number }): Generator<unknown> {
   let from = 0
   let attempts = 0
   while (from < text.length && attempts++ < MAX_ATTEMPTS && budget.chars > 0) {
     const start = text.indexOf('{', from)
-    if (start < 0) return null
+    if (start < 0) return
     const end = balancedEnd(text, start, budget)
     if (end >= 0) {
+      let parsed: unknown
+      let ok = false
       try {
-        return JSON.parse(text.slice(start, end + 1))
+        parsed = JSON.parse(text.slice(start, end + 1))
+        ok = true
       } catch {
         // not valid JSON from this brace; try the next one
+      }
+      if (ok) {
+        yield parsed
+        from = end + 1
+        continue
       }
     }
     from = start + 1
   }
-  return null
 }
 
 function balancedEnd(text: string, start: number, budget: { chars: number }): number {

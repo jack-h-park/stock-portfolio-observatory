@@ -1,8 +1,8 @@
 import { config } from '@/config'
 import { portfolioToday } from '@/lib/adapters/portfolio-db'
 import { loadTransactions, reconcile } from '@/lib/rebalance/reconcile'
-import { runnerFromConfig, type LlmRunner } from '@/lib/rebalance/llm-runner'
-import { proposeEngineOnly, proposeMonthly } from '@/lib/rebalance/propose'
+import { KNOWN_RUNNERS, runnerFromConfig, type LlmRunner } from '@/lib/rebalance/llm-runner'
+import { proposeEngineOnly, proposeMonthly, skippedLlm } from '@/lib/rebalance/propose'
 import { expireStale, listProposals, openProposal, setReconciliation, transition, type ProposalKind } from '@/lib/rebalance/proposal-store'
 
 export const SCHEMA_VERSION = 1
@@ -65,15 +65,27 @@ export async function runRebalanceCli(argv: string[], io: Io, now: Date = new Da
   const today = parsed.today ?? defaultToday(now)
   try {
     if (parsed.command === 'propose') {
+      const useLlm = parsed.kind === 'monthly' && !parsed.noLlm
+      const configured = config.stockRebalanceLlmRunner
+      if (useLlm && !(KNOWN_RUNNERS as readonly string[]).includes(configured)) {
+        // stderr only: stdout stays the one JSON line the job parses.
+        io.err(`warning: STOCK_REBALANCE_LLM_RUNNER=${JSON.stringify(configured.slice(0, 40))} is not one of ${KNOWN_RUNNERS.join(', ')}; using claude\n`)
+      }
       const result =
-        parsed.kind === 'monthly' && !parsed.noLlm
+        useLlm
           ? await proposeMonthly({
               today,
               now,
               runner: deps.runner ?? runnerFromConfig(),
               triggers: parsed.triggers.length ? parsed.triggers : undefined,
             })
-          : proposeEngineOnly({ kind: parsed.kind, triggers: parsed.triggers, today, now })
+          : proposeEngineOnly({
+              kind: parsed.kind,
+              triggers: parsed.triggers,
+              today,
+              now,
+              llm: parsed.kind === 'monthly' ? skippedLlm() : null,
+            })
       if (!result.ok) {
         emit({ ok: false, reason: result.reason, detail: result.detail, openId: result.openId ?? null })
         return result.reason === 'open_proposal_exists' ? 0 : 1

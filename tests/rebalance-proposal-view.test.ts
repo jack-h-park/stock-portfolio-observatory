@@ -15,8 +15,9 @@ test('safeSourceHref allows only https', () => {
 test('llmStatusLine for ok, en and ko', () => {
   assert.equal(llmStatusLine(rec({}), 'en'), 'Judged by claude (model-x) in 1 attempt')
   assert.equal(llmStatusLine(rec({ attempts: [{ prompt: '', raw: '', errors: [] }, { prompt: '', raw: '', errors: ['x'] }] }), 'en'), 'Judged by claude (model-x) in 2 attempts')
-  assert.equal(llmStatusLine(rec({}), 'ko'), 'claude(model-x)이 1회 시도로 판단')
+  assert.equal(llmStatusLine(rec({}), 'ko'), '판단: claude(model-x), 1회 시도')
   assert.equal(llmStatusLine(rec({ model: null }), 'en'), 'Judged by claude in 1 attempt')
+  assert.equal(llmStatusLine(rec({ model: null, attempts: [] }), 'ko'), '판단: claude, 0회 시도')
 })
 
 test('llmStatusLine for failures and skips uses fixed copy', () => {

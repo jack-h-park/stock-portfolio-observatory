@@ -211,3 +211,15 @@ test('parseLlmJson survives a stray unbalanced brace or quote in prose', () => {
   assert.deepEqual(parseLlmJson('Note {see below. {"a":1}'), { a: 1 })
   assert.deepEqual(parseLlmJson('He said "hi {\n{"a":1}'), { a: 1 })
 })
+
+test('parseLlmJson prefers an object with an outlook key over an earlier one', () => {
+  // An echoed prompt puts the input JSON first; the answer is the object that has `outlook`.
+  const echoed = 'Input:\n{"asOf":"2026-10-16","positions":[]}\nanswer:\n{"outlook":{"summary":"s"},"targetChange":{}}'
+  assert.deepEqual(parseLlmJson(echoed), { outlook: { summary: 's' }, targetChange: {} })
+  // Across a fence and the raw text: the raw object with outlook wins over a fenced one without it.
+  assert.deepEqual(parseLlmJson('```json\n{"a":1}\n```\n{"outlook":null}'), { outlook: null })
+  // No candidate has outlook: the first parseable object, as before.
+  assert.deepEqual(parseLlmJson('{"a":1} then {"b":2}'), { a: 1 })
+  // A nested outlook key does not count; only a top-level one does.
+  assert.deepEqual(parseLlmJson('{"x":{"outlook":1}} {"outlook":2}'), { outlook: 2 })
+})
