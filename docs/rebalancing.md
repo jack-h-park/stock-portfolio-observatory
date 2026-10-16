@@ -55,7 +55,7 @@ Do these in order on the host that serves the app. Settings are at `/rebalance/s
 5. **Targets.** Set a target and band for each of the six sleeves. They must sum to 100 and stay inside the bounds.
 6. **Create a proposal.** On `/rebalance`, create a manual proposal (or run `pnpm rebalance:propose`).
 
-Creating a proposal is refused when no policy is configured, when an error-severity data check is failing, or when another proposal is still open. Only one proposal is open at a time.
+Creating a proposal is refused when no policy is configured, when an error-severity data check is failing, or when another proposal is still open. Only one proposal is open at a time: one in `draft`, `targets_approved`, `plan_approved` or `executing`. A `reconciled` proposal waiting for you to close it does not hold the slot, so a forgotten close never blocks the next monthly or trigger proposal.
 
 ## Status flow
 
@@ -72,7 +72,7 @@ draft -> expired (not approved within 7 days)
 - The first recorded fill moves `plan_approved` to `executing`.
 - `executing` becomes `reconciled` only when every buy and sell has a fill record and every executed fill has a matching transaction. You then close it.
 - You may reject a proposal until the plan is approved, with a reason. Rejecting after targets were approved keeps those targets.
-- A closed, rejected or expired proposal frees the slot for the next one.
+- A reconciled, closed, rejected or expired proposal frees the slot for the next one. A reconciled one can still be closed afterwards.
 
 ## The proposal page
 
@@ -119,7 +119,7 @@ Exit codes: 0 ran (including an LLM fallback to hold and an `open_proposal_exist
 
 Any other `STOCK_REBALANCE_LLM_RUNNER` value runs `claude` and prints a warning line to stderr; the JSON on stdout is unchanged.
 
-**Host requirements.** The chosen CLI must be on the `PATH` the job runs with (a launchd or cron job often has a shorter `PATH` than your shell), and it must be logged in to an account on that host. There are at most two attempts of up to the timeout each, and a timeout (which ends the run at once) adds a 5 second kill grace, so the worst case is `2 × STOCK_REBALANCE_LLM_TIMEOUT_MS + 5 s` (20 min 5 s at the default). Any outer job timeout must be longer than that, or the job is killed before the fallback proposal is written.
+**Host requirements.** The chosen CLI must be on the `PATH` the job runs with (a launchd or cron job often has a shorter `PATH` than your shell), and it must be logged in to an account on that host. There are at most two attempts of up to the timeout each, and a timeout (which ends the run at once) adds a 5 second kill grace, so the worst case is `2 × STOCK_REBALANCE_LLM_TIMEOUT_MS + 5 s` (20 min 5 s at the default). Any outer job timeout must be longer than that, or the job is killed before the fallback proposal is written. The scheduled monthly job enforces this itself; see "The monthly time budget" under "Operations".
 
 **Runner isolation.** Each runner starts in a fresh empty temporary directory, removed afterwards, so no repository file, `CLAUDE.md` or project setting is reachable from its working directory.
 
@@ -206,31 +206,39 @@ Cron ORs the day-of-month and day-of-week fields when both are set, so `30 9 1-7
 **The notify flow.** `pnpm -s rebalance:notify` lists the events not yet sent on each channel. The very first run writes a seeded state and reports nothing.
 
 1. Telegram: each event's fixed line is printed, then the events are marked with `pnpm -s rebalance:notify --mark <ids> --channel telegram`. The lines carry proposal ids, counts and page paths, never account labels or amounts.
-2. Discord, `created`: `$HERMES_CONTROL_PLANE/gateway/scripts/run-agent-request.sh --kind proposal --key proposal:<id> --title … --prompt … --origin sweep` opens (or reuses) the proposal's thread, and the trader agent writes the opening. The event is marked for Discord only when that call exits 0. The first failure prints `Discord thread for <id> not opened (exit <n>); will retry`; later failures are silent.
-3. Discord, status and reminder lines: the thread id is read from the control plane's ledger, `$HERMES_HOME_OPS/state/rebalance-proposal-threads.json`, and the line is posted with `send_discord.py --usage-unit-key rebalance-notify`, under `~/.hermes/hermes-agent/venv/bin/python` when it exists, else `python3` (the same choice `run-agent-request.sh` makes). Failures, and a proposal with no thread yet, retry silently.
+2. Discord, `created`: `<control plane>/gateway/scripts/run-agent-request.sh --kind proposal --key proposal:<id> --title … --prompt … --origin sweep` opens (or reuses) the proposal's thread, and the trader agent writes the opening. The event is marked for Discord only when that call exits 0. The first failure prints `Discord thread for <id> not opened (exit <n>); will retry`; later failures are silent.
+   The `created` receipt means the thread exists, not that its opening message was posted: the control plane composes the opening in the background after the call returns, and a failure there shows up only in `$HERMES_HOME_OPS/logs/handoff-bg.log`. After the first proposal thread opens, check that log (and the thread) once.
+3. Discord, status and reminder lines: the thread id is read from the control plane's ledger, `$HERMES_HOME_OPS/state/rebalance-proposal-threads.json`, and the line is posted with `send_discord.py --usage-unit-key rebalance-notify`, under `~/.hermes/hermes-agent/venv/bin/python` when it exists, else `python3` (the same choice `run-agent-request.sh` makes). Failures, and a proposal with no thread yet, retry silently; a line that still fails on its sixth attempt in a thread that exists prints one `not delivered after 6 attempts; dropped` line.
 4. Every Discord event is tried at most 6 times, one try per run. After the sixth failure it is marked sent on Discord so it stops retrying, recorded as given up, and a thread that never opened gets one final line. Attempt counts and give-ups live in `data/rebalance-discord-attempts.json` (override `REBALANCE_DISCORD_ATTEMPTS`), a wrapper-owned file beside the notify state; the CLI does not read it, and removing it only resets the counts.
-5. Without `HERMES_CONTROL_PLANE`, or without `DISCORD_BOT_TOKEN` in the trader profile's `.env`, the Discord events stay pending. `Discord thread not opened: <reason>` is printed only in a run that printed a proposal's `created` line, so once per proposal.
+5. Without `HERMES_CONTROL_PLANE_ROOT` (or `HERMES_CONTROL_PLANE`), or without `DISCORD_BOT_TOKEN` in the trader profile's `.env`, the Discord events stay pending. `Discord thread not opened: <reason>` is printed only in a run that printed a proposal's `created` line, so once per proposal.
 
-A receipt that cannot be recorded (`--mark` fails) prints one line and exits 1, since the event would otherwise repeat.
+A receipt that cannot be recorded (`--mark` fails) prints one line and exits 1, since the event would otherwise repeat. So does an attempts file that cannot be written (`could not record Discord attempts`), since the 6-attempt cap would otherwise never be reached.
 
-**The lock.** All three jobs share one lock, `data/rebalance-cron.lock/` beside the state it protects (override `REBALANCE_LOCK_DIR`), so overlapping runs never interleave notify-state writes. It holds its owner's pid and only the owner removes it. `rebalance-notify` exits 0 silently when it is held. `rebalance-monthly` and `rebalance-triggers` wait for it, polling every 5 seconds for up to 10 minutes (`REBALANCE_LOCK_POLL`, `REBALANCE_LOCK_WAIT`), because the monthly job and the notify job fire at the same 09:30 on the first Monday; still held after that, they print one line and exit 1. A lock older than 30 minutes is treated as left by a dead run and taken over.
+The Discord channel is the control plane's: an ops-level `notify gate_discord` override, or `GATE_NOTIFY_DISCORD_CHAT_ID` in the trader `.env`, redirects the proposal threads along with everything else that route serves.
 
-**The LLM timeout and the lock.** The monthly run holds the lock through up to two LLM attempts, each limited by `STOCK_REBALANCE_LLM_TIMEOUT_MS` (default 600000, 10 minutes). Keep two timeouts plus the time to build and write the proposal under the 30-minute stale limit. With the default that is about 20 minutes plus a little. A longer timeout lets a notify run take the lock over while the monthly run is still working. Notify-state writes are atomic, so nothing is corrupted, but the two runs can then interleave their receipts.
+**The lock.** All three jobs share one lock, `data/rebalance-cron.lock/` beside the state it protects (override `REBALANCE_LOCK_DIR`), so overlapping runs never interleave notify-state writes. It holds its owner's pid and only the owner removes it. `rebalance-notify` exits 0 silently when it is held. `rebalance-monthly` and `rebalance-triggers` wait for it, polling every 5 seconds for up to 2 minutes (`REBALANCE_LOCK_POLL`, `REBALANCE_LOCK_WAIT`), because the monthly job and the notify job fire at the same 09:30 on the first Monday and notify holds it for seconds; still held after that, they print one line and exit 1. A lock whose owner pid is still alive is held however old it is, so a long monthly LLM step is never taken over. A lock older than 30 minutes whose owner is gone (or that has no pid) is treated as left by a dead run and taken over.
 
-Environment:
+**The monthly time budget.** Hermes kills a `--no-agent` script after the trader profile's `cron.script_timeout_seconds`, which the control plane's `configure-live-trader.sh` sets to 1800. The monthly run can spend the lock wait plus two LLM attempts of `STOCK_REBALANCE_LLM_TIMEOUT_MS` each (default 600000), which at the defaults would leave nothing for writing the proposal and the notify flow. So before proposing, the wrapper takes `REBALANCE_SCRIPT_BUDGET_S` (default 1800, and it must match the Hermes setting), subtracts the time already spent and 180 seconds of reserve, and halves the rest. If that is shorter than the configured timeout (read from the environment, else the repo's `.env.local` or `.env`), it runs the CLI with `STOCK_REBALANCE_LLM_TIMEOUT_MS` lowered to it. If it is under 120 seconds, it runs `--kind monthly --no-llm` and prints one line saying the LLM step was skipped for time. Raising the Hermes script timeout means raising `REBALANCE_SCRIPT_BUDGET_S` with it; lowering it without that lets Hermes kill the run mid-LLM, before the fallback proposal is written.
+
+Environment. Set these in `~/.hermes/profiles/trader/.env`: Hermes reloads that file before each `--no-agent` run, so it is the environment the wrappers see.
 
 | Variable | Default | Used for |
 |---|---|---|
 | `OBSERVATORY_REPO` | `~/workspace/code/core/jackhpark-stock-observatory` | The checkout the CLI runs in. The wrapper `cd`s there so `.env.local` applies. |
-| `HERMES_CONTROL_PLANE` | none | The control-plane checkout. Unset means no Discord delivery. |
+| `HERMES_CONTROL_PLANE_ROOT` | none | The control-plane (`hermes-control-plane`) checkout, under the fleet's name for it. Unset means no Discord delivery; no path is assumed. The wrapper exports it as `HERMES_ROOT` to `run-agent-request.sh`. |
+| `HERMES_CONTROL_PLANE` | none | An alias for `HERMES_CONTROL_PLANE_ROOT`; wins when both are set. |
 | `HERMES_HOME_OPS` | `~/.hermes/profiles/ops` | The ops profile home that holds the thread ledger; passed on to `run-agent-request.sh`. |
+| `STOCK_OBSERVATORY_BASE_URL` | none | Read by the control plane's `run-agent-request.sh`, not by the wrappers: it links each thread to `<url>/rebalance/proposals/<id>`. Unset means no link line. |
+| `REBALANCE_SCRIPT_BUDGET_S` | `1800` | The Hermes script timeout the monthly run must fit in; see "The monthly time budget". |
+
+Each wrapper exports `CRON_JOB_NAME` (`rebalance-monthly`, `rebalance-triggers`, `rebalance-notify`) so the control plane's helpers attribute their usage to the job.
 
 The trigger and notify state files are host-owned like the others: `data/rebalance-trigger-state.json` (`STOCK_REBALANCE_TRIGGER_STATE_PATH`) and `data/rebalance-notify-state.json` (`STOCK_REBALANCE_NOTIFY_STATE_PATH`).
 
 **Enablement checklist.** Before resuming anything:
 
 1. Deploy the control plane with the `proposal` kind in `run-agent-request.sh`. Without it, every thread call fails and each proposal gives up after 6 runs.
-2. Set `HERMES_CONTROL_PLANE` (and `HERMES_HOME_OPS` if the ops profile is not at its default) in the environment the trader profile's cron jobs run with.
+2. Set `HERMES_CONTROL_PLANE_ROOT` (and `HERMES_HOME_OPS` if the ops profile is not at its default) in `~/.hermes/profiles/trader/.env`, with `STOCK_OBSERVATORY_BASE_URL` for the thread's page link.
 3. Confirm `DISCORD_BOT_TOKEN` is in `~/.hermes/profiles/trader/.env`, and that the bot can create threads and post in them (Create Public Threads, Send Messages in Threads) in the trader channel.
 4. Re-run `install-cron.sh` so the installed wrappers and `rebalance-lib.sh` match the repo.
 

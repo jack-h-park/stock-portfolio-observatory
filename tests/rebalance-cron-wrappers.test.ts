@@ -33,6 +33,7 @@ const FAKE_PNPM = `#!/usr/bin/env bash
 shift
 script="$1"; shift
 echo "$script $*" >> "$FAKE_PNPM_LOG"
+[ "$script" = rebalance:propose ] && echo "\${STOCK_REBALANCE_LLM_TIMEOUT_MS:-unset}" > "$FAKE_PNPM_LOG.timeout"
 [ -n "\${FAKE_STEAL_LOCK:-}" ] && [ -d "$FAKE_STEAL_LOCK" ] && echo 999999 > "$FAKE_STEAL_LOCK/pid"
 case "$script" in
   rebalance:propose)  printf '%s\\n' "$FAKE_PROPOSE_JSON"; exit "\${FAKE_PROPOSE_RC:-0}" ;;
@@ -52,6 +53,7 @@ exit 9
 const FAKE_RAR = `#!/usr/bin/env bash
 for a in "$@"; do printf '%s\\n' "$a" >> "$FAKE_RAR_LOG"; done
 echo "--end--" >> "$FAKE_RAR_LOG"
+echo "\${HERMES_ROOT:-unset}" >> "$FAKE_RAR_LOG.root"
 [ "\${HERMES_HOME_OPS:-}" = "$EXPECT_HERMES_HOME_OPS" ] || { echo "HERMES_HOME_OPS not passed" >&2; exit 7; }
 exit "\${FAKE_RAR_RC:-0}"
 `
@@ -277,9 +279,13 @@ test('notify: a held lock (under the repo data/) → exit 0 silently, no wait', 
   assert.ok(Date.now() - started < 5000)
 })
 
-test('a stale lock is taken over; the lock is released by its owner only', opts, () => {
+/** A pid that has exited: a short-lived child, already reaped. */
+const deadPid = () => spawnSync('true').pid as number
+
+test('a stale lock whose owner is dead is taken over; the lock is released by its owner only', opts, () => {
   const f = fixture({ FAKE_NOTIFY_JSON: notifyJson([event({ channels: ['telegram'] })]) })
   holdLock(f)
+  fs.writeFileSync(path.join(f.lock, 'pid'), `${deadPid()}\n`)
   const old = new Date(Date.now() - 31 * 60_000)
   fs.utimesSync(f.lock, old, old)
   const stale = run(f, 'rebalance-notify-cron.sh')
@@ -291,6 +297,69 @@ test('a stale lock is taken over; the lock is released by its owner only', opts,
   stolen.env.FAKE_STEAL_LOCK = stolen.lock
   assert.equal(run(stolen, 'rebalance-notify-cron.sh').code, 0)
   assert.equal(read(path.join(stolen.lock, 'pid')).trim(), '999999', 'a lock another run took over is not removed')
+})
+
+test('an old lock whose owner is still alive is held, not taken over', opts, () => {
+  const f = fixture({ FAKE_NOTIFY_JSON: notifyJson([event({ channels: ['telegram'] })]) })
+  holdLock(f) // this test process: alive
+  const old = new Date(Date.now() - 120 * 60_000)
+  fs.utimesSync(f.lock, old, old)
+  const r = run(f, 'rebalance-notify-cron.sh')
+  assert.equal(r.code, 0)
+  assert.equal(r.out, '')
+  assert.equal(read(f.pnpmLog), '')
+  assert.equal(read(path.join(f.lock, 'pid')).trim(), String(process.pid))
+
+  const m = fixture({ FAKE_PROPOSE_JSON: created })
+  holdLock(m)
+  fs.utimesSync(m.lock, old, old)
+  const rm = run(m, 'rebalance-monthly-cron.sh')
+  assert.equal(rm.code, 1)
+  assert.match(rm.lines[0], /held the lock/)
+})
+
+test('monthly and triggers wait 120 seconds for the lock by default', opts, () => {
+  const lib = fs.readFileSync(path.join(DEPLOY, 'rebalance-lib.sh'), 'utf8')
+  assert.match(lib, /REBALANCE_LOCK_WAIT:-120\}/)
+})
+
+// --- monthly time budget ---------------------------------------------------------------------------------
+
+const timeoutSeen = (f: Fixture) => read(`${f.pnpmLog}.timeout`).trim()
+
+test('monthly budget: the default budget leaves the configured LLM timeout alone', opts, () => {
+  const f = fixture({ FAKE_PROPOSE_JSON: created, STOCK_REBALANCE_LLM_TIMEOUT_MS: '600000' })
+  const r = run(f, 'rebalance-monthly-cron.sh')
+  assert.equal(r.code, 0, r.err)
+  assert.equal(r.out, '')
+  assert.equal(timeoutSeen(f), '600000')
+  assert.ok(calls(f).includes('rebalance:propose --kind monthly'))
+})
+
+test('monthly budget: a tight budget lowers the LLM timeout to half of what is left after the reserve', opts, () => {
+  const f = fixture({ FAKE_PROPOSE_JSON: created, STOCK_REBALANCE_LLM_TIMEOUT_MS: '600000', REBALANCE_SCRIPT_BUDGET_S: '1000' })
+  const r = run(f, 'rebalance-monthly-cron.sh')
+  assert.equal(r.code, 0, r.err)
+  assert.equal(r.out, '')
+  const ms = Number(timeoutSeen(f))
+  assert.ok(ms <= 410_000 && ms >= 405_000, String(ms))
+  assert.ok(calls(f).includes('rebalance:propose --kind monthly'))
+})
+
+test('monthly budget: the configured timeout is also read from the repo .env.local', opts, () => {
+  const f = fixture({ FAKE_PROPOSE_JSON: created, REBALANCE_SCRIPT_BUDGET_S: '1000' })
+  write(path.join(f.repo, '.env.local'), 'STOCK_REBALANCE_LLM_TIMEOUT_MS=300000\n')
+  run(f, 'rebalance-monthly-cron.sh')
+  assert.equal(timeoutSeen(f), 'unset', 'already within budget: not overridden')
+})
+
+test('monthly budget: under 120 s per attempt → --no-llm and one line saying so', opts, () => {
+  const f = fixture({ FAKE_PROPOSE_JSON: created, STOCK_REBALANCE_LLM_TIMEOUT_MS: '600000', REBALANCE_SCRIPT_BUDGET_S: '400' })
+  const r = run(f, 'rebalance-monthly-cron.sh')
+  assert.equal(r.code, 0, r.err)
+  assert.ok(calls(f).includes('rebalance:propose --kind monthly --no-llm'), calls(f).join('|'))
+  assert.equal(r.lines.length, 1)
+  assert.match(r.lines[0], /LLM step skipped for time/)
 })
 
 // --- triggers --------------------------------------------------------------------------------------------
@@ -382,6 +451,34 @@ test('notify: control plane absent → the notice comes with the created line on
   const r2 = run(again, 'rebalance-notify-cron.sh')
   assert.equal(r2.code, 0)
   assert.equal(r2.out, '')
+})
+
+test('notify: HERMES_CONTROL_PLANE_ROOT (the fleet spelling) is accepted; HERMES_ROOT is exported to the call', opts, () => {
+  const f = fixture({ FAKE_NOTIFY_JSON: notifyJson([event({ channels: ['discord'], telegram: null })]) }, { controlPlane: false })
+  const cp = path.join(f.root, 'control-plane')
+  f.env.HERMES_CONTROL_PLANE_ROOT = cp
+  const r = run(f, 'rebalance-notify-cron.sh')
+  assert.equal(r.code, 0, r.err)
+  assert.equal(rarCalls(f), 1)
+  assert.equal(read(`${f.rarLog}.root`).trim(), cp)
+})
+
+test('notify: HERMES_CONTROL_PLANE wins over HERMES_CONTROL_PLANE_ROOT', opts, () => {
+  const f = fixture({ FAKE_NOTIFY_JSON: notifyJson([event({ channels: ['discord'], telegram: null })]) })
+  f.env.HERMES_CONTROL_PLANE_ROOT = path.join(f.root, 'nowhere')
+  const r = run(f, 'rebalance-notify-cron.sh')
+  assert.equal(r.code, 0, r.err)
+  assert.equal(read(`${f.rarLog}.root`).trim(), path.join(f.root, 'control-plane'))
+})
+
+test('notify: Discord attempts that cannot be recorded → one line, exit 1', opts, () => {
+  const f = fixture({ FAKE_NOTIFY_JSON: notifyJson([event({ channels: ['discord'], telegram: null })]), FAKE_RAR_RC: '1' })
+  const blocker = path.join(f.root, 'not-a-dir')
+  write(blocker, 'x')
+  f.env.REBALANCE_DISCORD_ATTEMPTS = path.join(blocker, 'attempts.json')
+  const r = run(f, 'rebalance-notify-cron.sh')
+  assert.equal(r.code, 1)
+  assert.equal(r.lines.at(-1), '⚠️ Rebalance notify: could not record Discord attempts; retries may exceed the cap.')
 })
 
 test('notify: trader Discord env missing → notice with the created line, discord pending', opts, () => {

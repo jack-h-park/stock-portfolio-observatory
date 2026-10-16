@@ -12,14 +12,25 @@
 # (exit 0); not configured, or a crash, prints one line and exits 1. Then it runs the
 # notify flow, which announces a created proposal and opens its Discord thread.
 #
-# It waits up to 10 minutes for the shared lock (rebalance-notify fires at the same
-# minute); still held, it prints one line and exits 1.
+# It waits up to 2 minutes for the shared lock (rebalance-notify fires at the same
+# minute and holds it for seconds); still held, it prints one line and exits 1.
+#
+# Time budget. Hermes kills a --no-agent script after the trader profile's
+# cron.script_timeout_seconds (1800, set by the control plane's configure-live-trader.sh);
+# REBALANCE_SCRIPT_BUDGET_S must match it. The LLM step can take two attempts of
+# STOCK_REBALANCE_LLM_TIMEOUT_MS each, so before proposing the wrapper lowers that
+# timeout to half of what is left after 180 s of reserve (for the proposal write and the
+# notify flow), and skips the LLM step with --no-llm, saying so in one line, when that
+# would leave under 120 s per attempt.
 #
 # Installed into ~/.hermes/profiles/trader/scripts/ by deploy/hermes/install-cron.sh,
 # together with rebalance-lib.sh, which it sources.
 
 set -uo pipefail
+export CRON_JOB_NAME=rebalance-monthly
 
+# The guard reads the host clock (`date`), so the host's timezone must be the one
+# Hermes schedules this job in; otherwise "Monday" and "day 1-7" disagree with the cron.
 DOW="${REBALANCE_TODAY_DOW:-$(date +%u)}"
 DOM="${REBALANCE_TODAY_DOM:-$(date +%d)}"
 if [ "${REBALANCE_FORCE_MONTHLY:-}" != "1" ]; then
@@ -38,7 +49,21 @@ rb_lock wait monthly
 # already announced; seeding after the proposal would swallow its announcement.
 rb_cli rebalance:notify
 
-rb_cli rebalance:propose --kind monthly
+# Fit the LLM step into what is left of the Hermes script timeout.
+BUDGET="${REBALANCE_SCRIPT_BUDGET_S:-1800}"
+CONFIGURED_MS="$(rb_env_value STOCK_REBALANCE_LLM_TIMEOUT_MS)"
+case "$CONFIGURED_MS" in ''|*[!0-9]*) CONFIGURED_MS=600000 ;; esac
+[ "$CONFIGURED_MS" -gt 0 ] || CONFIGURED_MS=600000
+PER_ATTEMPT_S=$(( (BUDGET - SECONDS - 180) / 2 ))
+NO_LLM=()
+if [ "$PER_ATTEMPT_S" -lt 120 ]; then
+  NO_LLM=(--no-llm)
+  echo "🗓️ Monthly rebalance: LLM step skipped for time ($((BUDGET - SECONDS)) s left of the ${BUDGET} s script budget); the proposal is engine-only."
+elif [ $((PER_ATTEMPT_S * 1000)) -lt "$CONFIGURED_MS" ]; then
+  export STOCK_REBALANCE_LLM_TIMEOUT_MS=$((PER_ATTEMPT_S * 1000))
+fi
+
+rb_cli rebalance:propose --kind monthly ${NO_LLM[@]+"${NO_LLM[@]}"}
 if ! rb_is_json "$RB_JSON"; then
   echo "⚠️ Monthly rebalance could not run (exit $RB_RC) — run: pnpm rebalance:propose --kind monthly"
   exit 1

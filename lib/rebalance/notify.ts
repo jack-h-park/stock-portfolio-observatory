@@ -43,7 +43,9 @@ function threadPrompt(p: Proposal): string {
     for (const item of items) n[item] = (n[item] ?? 0) + 1
     return Object.entries(n).map(([k, v]) => `${k} ${v}`).join(', ') || 'none'
   }
+  // A sleeve entry without both ends (a partial or hand-edited record) is left out rather than printed as "undefined%".
   const sleeves = Object.entries(p.targetChange.sleeves)
+    .filter(([, c]) => Number.isFinite(c?.from) && Number.isFinite(c?.to))
     .map(([sleeve, c]) => `${sleeve} ${c?.from}% -> ${c?.to}%`)
     .join('; ')
   const tax = Math.round(p.plan.taxSummary.estimatedTaxKrw / 10_000) * 10_000

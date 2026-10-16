@@ -88,6 +88,11 @@ export type Proposal = {
 const EXPIRY_DAYS = 7
 const DAY_MS = 86_400_000
 const CLOSED_STATUSES: ProposalStatus[] = ['rejected', 'expired', 'closed']
+/**
+ * The statuses that hold the one open slot. `reconciled` is not among them: its trades are done and matched, and only
+ * the close is left, so a forgotten close must not block every later monthly or trigger proposal.
+ */
+export const OPEN_STATUSES: readonly ProposalStatus[] = ['draft', 'targets_approved', 'plan_approved', 'executing']
 const QTY_SLACK = 1.0001
 
 function clone<T>(value: T): T {
@@ -159,7 +164,7 @@ export function listProposals(dir?: string): Proposal[] {
 }
 
 export function openProposal(dir?: string): Proposal | null {
-  return listProposals(dir).find((p) => !CLOSED_STATUSES.includes(p.status)) ?? null
+  return listProposals(dir).find((p) => OPEN_STATUSES.includes(p.status)) ?? null
 }
 
 function load(id: string, dir: string): Proposal {

@@ -8,7 +8,7 @@
 # silence. Then it runs the notify flow, which announces a created proposal and
 # opens its Discord thread in the same run.
 #
-# It waits up to 10 minutes for the shared lock (notify may hold it); still held,
+# It waits up to 2 minutes for the shared lock (notify may hold it); still held,
 # it prints one line and exits 1.
 #
 # Exit 1 only when the triggers command could not run (not configured, crashed).
@@ -18,6 +18,7 @@
 # together with rebalance-lib.sh, which it sources.
 
 set -uo pipefail
+export CRON_JOB_NAME=rebalance-triggers
 # shellcheck source=rebalance-lib.sh
 . "$(dirname "$0")/rebalance-lib.sh" || { echo "⚠️ Rebalance triggers: rebalance-lib.sh not found beside $0"; exit 1; }
 

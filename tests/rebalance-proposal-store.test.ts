@@ -94,6 +94,21 @@ test('transition table: allowed ones succeed, others throw', () => {
   assert.throws(() => transition('rb-2026-11', 'plan_approved', '', T0, d2))
 })
 
+test('a reconciled proposal awaiting its close does not block a new one', () => {
+  const dir = tmp()
+  createProposal(base('hold'), T0, dir)
+  transition('rb-2026-11', 'plan_approved', '', T0, dir)
+  transition('rb-2026-11', 'executing', '', T0, dir)
+  assert.equal(openProposal(dir)?.id, 'rb-2026-11', 'executing is open')
+  transition('rb-2026-11', 'reconciled', '', T0, dir)
+  assert.equal(openProposal(dir), null)
+  const next = createProposal(base('hold', 'rb-2026-12'), at(30), dir)
+  assert.equal(next.status, 'draft')
+  assert.equal(openProposal(dir)?.id, 'rb-2026-12')
+  // The reconciled one can still be closed.
+  assert.equal(transition('rb-2026-11', 'closed', '', at(31), dir).status, 'closed')
+})
+
 test('draft may expire; targets_approved may not', () => {
   const dir = tmp()
   createProposal(base(), T0, dir)

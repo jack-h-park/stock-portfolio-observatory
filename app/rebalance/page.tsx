@@ -42,7 +42,9 @@ function PositionLink({ row }: { row: ReviewPosition }) {
   )
 }
 
-const CLOSED: ProposalStatus[] = ['rejected', 'expired', 'closed']
+// Matches OPEN_STATUSES in lib/rebalance/proposal-store.ts: a reconciled proposal awaiting its close is listed with
+// the past ones (its page still closes it) and does not hold the open slot.
+const OPEN: ProposalStatus[] = ['draft', 'targets_approved', 'plan_approved', 'executing']
 
 
 const SLEEVE_TONE = { below: 'warning', within: 'success', above: 'warning' } as const
@@ -93,7 +95,7 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
   const proposalCopy = getPageCopy('rebalanceProposal', language)
   const allocationState = loadAllocation()
   const proposals = loadProposals()
-  const openProposal = proposals?.find((p) => !CLOSED.includes(p.status)) ?? null
+  const openProposal = proposals?.find((p) => OPEN.includes(p.status)) ?? null
   const pastProposals = proposals?.filter((p) => p !== openProposal) ?? []
   const errorMessage = isProposalErrorCode(params.error) ? proposalCopy.errors[params.error] : null
   const ac = copy.allocation

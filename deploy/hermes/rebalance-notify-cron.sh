@@ -9,7 +9,7 @@
 #     status and reminder lines are posted into that thread with send_discord.py.
 #     Each is marked only after the control plane accepted it, so a failure retries
 #     on the next run.
-# Without HERMES_CONTROL_PLANE or the trader profile's DISCORD_BOT_TOKEN it leaves the
+# Without HERMES_CONTROL_PLANE_ROOT (or HERMES_CONTROL_PLANE) or the trader profile's DISCORD_BOT_TOKEN it leaves the
 # Discord side pending, and says "Discord thread not opened: …" with the proposal's
 # created line, so once per proposal. A thread that will not open is reported on its
 # first failure and given up after 6 attempts; status lines retry silently, same cap.
@@ -23,6 +23,7 @@
 # together with rebalance-lib.sh, which it sources.
 
 set -uo pipefail
+export CRON_JOB_NAME=rebalance-notify
 # shellcheck source=rebalance-lib.sh
 . "$(dirname "$0")/rebalance-lib.sh" || { echo "⚠️ Rebalance notify: rebalance-lib.sh not found beside $0"; exit 1; }
 

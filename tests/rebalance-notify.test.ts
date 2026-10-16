@@ -194,3 +194,14 @@ test('--mark records ids per channel and drops unknown proposals', async () => {
   assert.equal(await runRebalanceCli(['notify', '--mark', 'a:b:c'], { out: () => {}, err: (t) => (err += t) }, T0), 2)
   assert.match(err, /--channel/)
 })
+
+test('threadPrompt skips a sleeve change missing from or to (no "undefined%")', async () => {
+  const { pendingEvents } = await import('../lib/rebalance/notify')
+  const p = proposal({
+    targetChange: { decision: 'change', sleeves: { us_equity: { from: 40, to: 45, reason: 'r' }, kr_equity: undefined, bonds: { from: null, to: 10, reason: 'r' } }, boundsErrors: [] } as never,
+  })
+  const e = pendingEvents([p], { version: 1, seeded: true, announced: {} }, T0).find((x) => x.kind === 'created')
+  assert.ok(e?.threadPrompt)
+  assert.match(e.threadPrompt, /Decision: change \(us_equity 40% -> 45%\)\./)
+  assert.doesNotMatch(e.threadPrompt, /undefined|null%/)
+})

@@ -7,12 +7,16 @@
 # install-cron.sh copies this file next to the wrappers in the trader profile's
 # scripts directory; each wrapper sources it from its own directory.
 #
-# Environment (all optional):
+# Environment (all optional). Hermes reloads ~/.hermes/profiles/trader/.env before each
+# --no-agent run, so that file is where these are set on the ops host:
 #   OBSERVATORY_REPO      the checkout to run in (default ~/workspace/code/core/jackhpark-stock-observatory)
-#   HERMES_CONTROL_PLANE  the control-plane checkout; without it no Discord thread is opened
+#   HERMES_CONTROL_PLANE_ROOT  the control-plane checkout (the fleet's spelling); HERMES_CONTROL_PLANE is
+#                         an alias that wins when set. Neither set: no Discord thread is opened. No default
+#                         path is assumed.
 #   HERMES_HOME_OPS       the ops profile home holding the thread ledger (default ~/.hermes/profiles/ops)
 #   REBALANCE_DISCORD_ENV the env file DISCORD_BOT_TOKEN is read from (default the trader profile's .env)
-#   REBALANCE_LOCK_WAIT / REBALANCE_LOCK_POLL  seconds monthly and triggers wait for the lock (600 / 5)
+#   REBALANCE_LOCK_WAIT / REBALANCE_LOCK_POLL  seconds monthly and triggers wait for the lock (120 / 5)
+#   REBALANCE_SCRIPT_BUDGET_S  the Hermes script timeout the monthly run must finish within (1800)
 #   REBALANCE_PNPM, REBALANCE_PYTHON, REBALANCE_LOCK_DIR, REBALANCE_DISCORD_ATTEMPTS,
 #   REBALANCE_TODAY_DOW/DOM: test seams
 
@@ -45,8 +49,10 @@ RB_MAX_ATTEMPTS=6
 
 # One lock for all three jobs, beside the state it protects: each job ends in the
 # notify flow, and two runs interleaving `--mark` writes would lose a receipt. The
-# lock directory holds its owner's pid and only that owner removes it. A lock
-# older than 30 minutes belongs to a run that died without its EXIT trap.
+# lock directory holds its owner's pid and only that owner removes it. A lock whose
+# owner is still alive is held however old it is; one whose owner is gone (or that
+# has no pid) and is older than 30 minutes belongs to a run that died without its
+# EXIT trap, and is taken over.
 RB_LOCK="${REBALANCE_LOCK_DIR:-$REPO/data/rebalance-cron.lock}"
 RB_LOCK_OWNED=0
 RB_TMP=""
@@ -62,6 +68,10 @@ trap rb_cleanup EXIT
 rb_take_lock() {
   mkdir -p "$(dirname "$RB_LOCK")" 2>/dev/null
   if ! mkdir "$RB_LOCK" 2>/dev/null; then
+    local owner
+    owner="$(cat "$RB_LOCK/pid" 2>/dev/null)"
+    owner="${owner//[^0-9]/}"
+    [ -n "$owner" ] && kill -0 "$owner" 2>/dev/null && return 1
     [ -n "$(find "$RB_LOCK" -maxdepth 0 -mmin +30 2>/dev/null)" ] || return 1
     rm -rf "$RB_LOCK" 2>/dev/null
     mkdir "$RB_LOCK" 2>/dev/null || return 1
@@ -77,7 +87,7 @@ rb_take_lock() {
 rb_lock() { # nowait | wait <job>
   rb_take_lock && return 0
   [ "$1" = wait ] || exit 0
-  local limit="${REBALANCE_LOCK_WAIT:-600}" poll="${REBALANCE_LOCK_POLL:-5}" waited=0 span
+  local limit="${REBALANCE_LOCK_WAIT:-120}" poll="${REBALANCE_LOCK_POLL:-5}" waited=0 span
   while [ "$waited" -lt "$limit" ]; do
     sleep "$poll"
     waited=$((waited + poll))
@@ -129,6 +139,27 @@ rb_len() { # <json> <path>
     for (const k of process.env.RB_PATH.split(".")) v = v == null ? undefined : v[k]
     process.stdout.write(String(Array.isArray(v) ? v.length : 0))
   ' 2>/dev/null || echo 0
+}
+
+# The value of KEY: the environment first, then the repo's .env.local and .env (the
+# order scripts/env.mjs loads them in, the environment winning). Only that one line is
+# read; the files are never sourced. Prints "" when unset.
+rb_env_value() { # <key>
+  local key="$1" file line
+  if [ -n "${!key:-}" ]; then
+    printf '%s' "${!key}"
+    return
+  fi
+  for file in "$REPO/.env.local" "$REPO/.env"; do
+    [ -r "$file" ] || continue
+    line="$(grep -E "^[[:space:]]*${key}=" "$file" | tail -1)"
+    [ -n "$line" ] || continue
+    line="${line#*=}"
+    line="${line%\"}"; line="${line#\"}"
+    line="${line%\'}"; line="${line#\'}"
+    printf '%s' "$line"
+    return
+  done
 }
 
 # Marks events sent on a channel. A mark that fails means the event repeats next run.
@@ -250,14 +281,15 @@ rb_notify_flow() {
   # Discord is optional at runtime. Without the control plane or the bot token the
   # events stay pending; the notice rides along with a proposal's created line, so
   # it is said once per proposal rather than every 30 minutes.
-  local token="" reason="" rar=""
-  if [ -z "${HERMES_CONTROL_PLANE:-}" ]; then
+  # HERMES_CONTROL_PLANE (the alias) wins over HERMES_CONTROL_PLANE_ROOT (the fleet spelling).
+  local token="" reason="" rar="" cp="${HERMES_CONTROL_PLANE:-${HERMES_CONTROL_PLANE_ROOT:-}}"
+  if [ -z "$cp" ]; then
     reason="control plane not configured"
   else
-    rar="$HERMES_CONTROL_PLANE/gateway/scripts/run-agent-request.sh"
+    rar="$cp/gateway/scripts/run-agent-request.sh"
     token="$(rb_discord_token)"
     if [ ! -x "$rar" ]; then
-      reason="control plane not found at HERMES_CONTROL_PLANE"
+      reason="control plane not found at the configured path"
     elif [ -z "$token" ]; then
       reason="trader Discord env missing"
     fi
@@ -266,6 +298,9 @@ rb_notify_flow() {
     [ "$printed_created" = 1 ] && echo "Discord thread not opened: $reason"
     return 0
   fi
+  # run-agent-request.sh finds its siblings (run-handoff.sh, the thread status helper)
+  # through HERMES_ROOT; point it at the same checkout rather than at its own default.
+  export HERMES_ROOT="$cp"
 
   # Each Discord event is tried at most RB_MAX_ATTEMPTS times across runs, then
   # marked as given up so it stops being retried, and recorded in the attempts file.
@@ -296,7 +331,7 @@ rb_notify_flow() {
     # Status and reminder lines are cheap: retried silently. One with no thread yet
     # waits for `created` to open it, and counts as an attempt so it cannot wait forever.
     thread="$(rb_thread_id "$pid")"
-    if [ -n "$thread" ] && "$RB_PYTHON" "$HERMES_CONTROL_PLANE/gateway/scripts/send_discord.py" \
+    if [ -n "$thread" ] && "$RB_PYTHON" "$cp/gateway/scripts/send_discord.py" \
       --bot-token "$token" --channel-id "$thread" --usage-unit-key rebalance-notify <"$RB_TMP/$i.discord" >/dev/null 2>&1; then
       rb_mark "$id" discord || unmarked=1
       printf '%s\tok\n' "$id" >> "$updates"
@@ -308,7 +343,10 @@ rb_notify_flow() {
       printf '%s\t%s\n' "$id" "$n" >> "$updates"
     fi
   done <<<"$index"
-  rb_save_attempts "$updates" "$index"
+  if ! rb_save_attempts "$updates" "$index"; then
+    echo "⚠️ Rebalance notify: could not record Discord attempts; retries may exceed the cap."
+    return 1
+  fi
 
   if [ "$unmarked" -ne 0 ]; then
     echo "⚠️ Rebalance notify: could not record a Discord receipt; that message may repeat."
