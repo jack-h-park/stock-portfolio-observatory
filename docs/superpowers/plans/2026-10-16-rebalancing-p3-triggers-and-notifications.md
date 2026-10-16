@@ -198,7 +198,7 @@ Steps:
 
 ### Task 4: Control plane — `proposal` kind for the trader agent (repo `hermes-control-plane`)
 
-**Repo:** `~/workspace/ai-assets/jackhpark-hermes-control-plane`. Work in a NEW worktree under its `.claude/worktrees/`, branched from `origin/main`. The main checkout carries another session's uncommitted work; never touch it.
+**Repo:** `hermes-control-plane` (the control plane's checkout on the host). Work in a NEW worktree under its `.claude/worktrees/`, branched from `origin/main`. The main checkout carries another session's uncommitted work; never touch it.
 
 **Files:**
 - Modify: `gateway/scripts/run-handoff.sh` (profile whitelist: add `trader`), `gateway/scripts/run-agent-request.sh`
