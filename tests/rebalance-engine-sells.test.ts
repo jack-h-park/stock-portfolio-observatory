@@ -301,7 +301,7 @@ test('whole-share rounding leaves the remainder unsold', () => {
       policy: allocationPolicy({}, { [accountKey('BrokerA', 'acct-1')]: { lotMethod: 'fifo', fractional: true, managedBy: null, excludedCash: false } }),
     })
   )
-  assert.equal(fractional[0].quantity, 4.545454)
+  near(fractional[0].quantity, 4.545454, 1e-9)
 })
 
 test('wash-sale: a loss lot with a buy 10 days ago is blocked and warned', () => {
@@ -367,6 +367,80 @@ test('position over cap is reduced first even if its sleeve is within band', () 
   near(p.moves[0].amountKrw, -500_000)
 })
 
+test('a cap on a managed-only instrument in a within-band sleeve sells nothing and warns', () => {
+  const lots = [
+    lot({ id: 1, ticker: 'QQQ', qty: 20, price: 100, cost: 50, account: 'acct-2' }),
+    lot({ id: 2, ticker: 'RRR', qty: 10, price: 100, cost: 150 }),
+  ]
+  const p = plan(lots, 7_000_000, {
+    t: targets(),
+    policy: allocationPolicy(
+      { positionCapPct: 15 },
+      { [accountKey('BrokerA', 'acct-2')]: { lotMethod: 'fifo', fractional: false, managedBy: 'agent', excludedCash: false } }
+    ),
+  })
+  assert.deepEqual(p.instructions, [])
+  assert.deepEqual(p.moves, [])
+  assert.ok(p.warnings.some((w) => w.code === 'no_sellable_lots' && w.ticker === 'QQQ' && w.message.includes('position cap')))
+})
+
+test('a cap on a wash-blocked instrument does not spill into other holdings', () => {
+  const lots = [
+    lot({ id: 1, ticker: 'QQQ', qty: 20, price: 100, cost: 150 }),
+    lot({ id: 2, ticker: 'RRR', qty: 10, price: 100, cost: 50 }),
+  ]
+  const p = plan(lots, 7_000_000, {
+    t: targets(),
+    policy: allocationPolicy({ positionCapPct: 15 }),
+    over: { recentBuys: [{ market: 'US', ticker: 'QQQ', brokerage: 'BrokerA', account: 'acct-1', date: '2026-10-10' }] },
+  })
+  assert.deepEqual(p.instructions, [])
+  assert.ok(p.warnings.some((w) => w.code === 'wash_sale_block' && w.ticker === 'QQQ'))
+  assert.ok(p.warnings.some((w) => w.code === 'no_sellable_lots' && w.ticker === 'QQQ'))
+})
+
+test('a cap sale counts toward the band reduction of its sleeve', () => {
+  // US at 55% (band edge 50%): 500k to sell. QQQ is 30% against a 25% cap: 500k excess, which covers it.
+  const lots = [
+    lot({ id: 1, ticker: 'QQQ', qty: 30, price: 100, cost: 50 }),
+    lot({ id: 2, ticker: 'RRR', qty: 25, price: 100, cost: 150 }),
+  ]
+  const p = plan(lots, 4_500_000, { policy: allocationPolicy({ positionCapPct: 25 }) })
+  assert.deepEqual(sells(p).map((i) => [i.ticker, i.quantity]), [['QQQ', 5]])
+  near(p.moves[0].amountKrw, -500_000)
+})
+
+test('a top-ranked unit too dear for one share is passed over', () => {
+  // AAA (loss, ranked first) is one share worth 600k against a 500k reduction.
+  const lots = [
+    lot({ id: 1, ticker: 'AAA', qty: 1, price: 600, cost: 700 }),
+    lot({ id: 2, ticker: 'BBB', qty: 49, price: 100, cost: 50 }),
+  ]
+  const p = plan(lots, 4_500_000)
+  assert.deepEqual(sells(p).map((i) => [i.ticker, i.quantity]), [['BBB', 5]])
+})
+
+test('a unit too dear for one share mid-walk is passed over', () => {
+  // AAA (largest loss) sells in full for 400k; BBB (next loss) is one 600k share against the 100k left.
+  const lots = [
+    lot({ id: 1, ticker: 'AAA', qty: 2, price: 200, cost: 300 }),
+    lot({ id: 2, ticker: 'BBB', qty: 1, price: 600, cost: 650 }),
+    lot({ id: 3, ticker: 'CCC', qty: 45, price: 100, cost: 50 }),
+  ]
+  const p = plan(lots, 4_500_000)
+  assert.deepEqual(sells(p).map((i) => [i.ticker, i.quantity]), [
+    ['AAA', 2],
+    ['CCC', 1],
+  ])
+})
+
+test('a remainder too small for a whole share is warned', () => {
+  const lots = [lot({ id: 1, ticker: 'HHH', qty: 10, price: 550, cost: 500 })]
+  const p = plan(lots, 4_500_000)
+  assert.deepEqual(p.instructions, [])
+  assert.ok(p.warnings.some((w) => w.code === 'no_sellable_lots' && w.message.includes('too small for a whole share')))
+})
+
 test('a sleeve to reduce with no sellable lots warns', () => {
   const gold: RebalancePosition = {
     brokerage: 'BrokerA',
@@ -397,6 +471,13 @@ test('a stale account carries the note and the warning', () => {
   const p = plan(lots, 4_500_000, { over: { accountDataAsOf: { [accountKey('BrokerA', 'acct-1')]: '2026-08-01' } } })
   assert.deepEqual(sells(p)[0].notes, ['stale data: check quantity in the broker app'])
   assert.ok(p.warnings.some((w) => w.code === 'stale_account' && w.account === 'acct-1'))
+})
+
+test('an account with no data date counts as stale', () => {
+  const lots = [lot({ id: 1, ticker: 'AAA', qty: 55, price: 100, cost: 50 })]
+  const p = plan(lots, 4_500_000, { over: { accountDataAsOf: {} } })
+  assert.deepEqual(sells(p)[0].notes, ['stale data: check quantity in the broker app'])
+  assert.ok(p.warnings.some((w) => w.code === 'stale_account' && w.account === 'acct-1' && w.message.includes('unknown')))
 })
 
 test('skip leaves an instruction out and selection moves on', () => {
