@@ -8,7 +8,7 @@ The rebalancer turns the portfolio's sleeve targets into lot-level sell and buy 
 - It is not investment or tax advice. The figures are the Observatory's own estimates under the policy you configured.
 - Only taxable accounts owned by you are in scope. IRP, pension savings and ISA accounts, and child accounts, are never in an allocation, a total or a plan.
 - Nothing guesses a sleeve. A security without a classification is reported and left out of the totals.
-- Phase status: this guide covers the deterministic engine and the review pages (P0 and P1). Every proposal today is engine-only: it holds the targets and plans trades against them. The LLM step that proposes target changes (P2) and chat notifications (P3) are later phases and are not described here as working.
+- Phase status: this guide covers the deterministic engine and the review pages (P0 and P1). A manual or triggered proposal is engine-only: it holds the targets and plans trades against them. A monthly proposal adds the LLM judgment (P2), described below. Chat notifications (P3) are a later phase and are not described here as working.
 
 ## Sleeves
 
@@ -107,6 +107,46 @@ Each command prints one JSON line with `schemaVersion` 1, `ok` and `command`:
 
 Exit codes: 0 ran (including an LLM fallback to hold and an `open_proposal_exists` refusal), 1 could not run (`not_configured`, `health_errors`, an unreadable store), a reconcile failure or an unexpected error, 2 usage.
 
+## Monthly proposal and the LLM judgment
+
+`pnpm rebalance:propose --kind monthly` builds the usual engine proposal and first asks an LLM runner whether the sleeve targets should move. The engine stays deterministic: the LLM never produces a quantity, a tax figure or an order. Its output can change only the target change, the outlook, the ideas and the questions for you. `--no-llm` skips the step and creates an engine-only proposal, with the same result as a manual one.
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `STOCK_REBALANCE_LLM_RUNNER` | Which CLI judges: `claude` or `codex` | `claude` |
+| `STOCK_REBALANCE_LLM_MODEL` | Model name passed to the CLI | unset (the CLI's own default) |
+| `STOCK_REBALANCE_LLM_TIMEOUT_MS` | Time allowed for one attempt | `600000` |
+
+**Hold is the default.** A change needs a reason for every changed sleeve and at least one source with a URL and an ISO date. The answer must pass validation or it is not used:
+
+- it is valid against the output schema and names only known sleeves;
+- the targets sum to 100 within 0.05;
+- each target is inside the sleeve's bounds;
+- each target moves at most `maxTargetShiftPctPerCycle` from the current policy target;
+- bands are never changed by the LLM.
+
+If validation fails, the runner is asked once more with the errors appended. If the second attempt also fails, or the runner is missing, exits with an error or times out, the proposal is still created, with the targets held and a fixed reason code on the LLM record:
+
+| Reason | Meaning |
+|---|---|
+| `runner_unavailable` | The configured CLI could not be started. |
+| `runner_failed` | The CLI ran and exited with an error. |
+| `timeout` | An attempt exceeded the timeout. |
+| `invalid_output` | Both attempts failed validation. |
+
+The proposal stores the LLM record (status `ok`, `failed` or `skipped`, runner, model, and each attempt's prompt, raw answer and errors) so a judgment can be audited later.
+
+**Exit codes.** The CLI exits 1 only when the job could not run at all: no policy, failing error-severity health checks, or an unreadable proposal store. A hold, and an LLM failure that fell back to hold, exit 0; the JSON line says what happened.
+
+**What the LLM sees.** The prompt is built from a reduced copy of the data:
+
+- accounts appear only as aliases (`KR-taxable-1`, `US-taxable-1`, `CRYPTO-1`, numbered in the sorted order of the account keys), never with an account label, brokerage name, account number or your name;
+- positions carry the market, ticker, name, sleeve and share of the total, with no quantity, cost or lot detail;
+- the allocation against targets and bands, the policy bounds, a handful of tax-room figures, the briefing and macro notes, and the last few proposals' decisions;
+- free text, including your past rejection reasons, is scrubbed first: known account and brokerage strings and account-number-shaped digit runs become `[redacted]`.
+
+**On the proposal page.** The Summary tab shows an LLM status line (runner, model and attempt count, or the failure reason), the outlook (summary, drivers, risks, what would change the view, a confidence badge and sources) and the questions for you. Only `https:` sources are links; any other URL is shown as plain text. Model text is rendered as text, never as markup. On the Targets tab, values the LLM proposed carry an `LLM` badge; values you edit carry `edited`. Ideas are listed with their sleeve; they are never traded automatically. To act on one, add it to a buy list in the settings yourself.
+
 ## Reconciliation and refresh
 
 `pnpm refresh` ends with a rebalance reconcile step. It matches executed fills to the transactions the refresh just ingested: same account, market, ticker and side, a date within 3 days of the fill, and a quantity within 1% or one unit. Transfers are not matched, because the ingest has no record of a bank move at this grain, and they do not block completion.
@@ -137,4 +177,4 @@ Warnings travel with the plan and appear on the Summary and Plan tabs.
 
 - **Lot method per broker.** Each account defaults to `fifo`. Which method a broker actually applies on a sale (first-in-first-out, specific lot or average cost) is a fact about the broker, not something the Observatory can read. Confirm it at each broker and set it on the account before trusting which lots a sell names. Until then, treat the lot choice as a suggestion to verify at order time.
 - **Pension and ISA tax treatment** stays undecided on purpose; nothing here picks a value.
-- **The LLM step (P2)** that proposes target changes with reasons, and **chat notifications (P3)** that announce a proposal and ask for a decision, are later phases. The data model has room for them; they are not built.
+- **Chat notifications (P3)** that announce a proposal and ask for a decision are a later phase. The data model has room for them; they are not built.

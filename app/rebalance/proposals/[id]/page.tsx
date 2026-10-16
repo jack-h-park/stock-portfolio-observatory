@@ -25,6 +25,7 @@ import {
   isProposalErrorCode,
 } from '@/lib/rebalance/proposal-actions'
 import { getProposal, type Proposal } from '@/lib/rebalance/proposal-store'
+import { llmStatusLine, safeSourceHref } from '@/lib/rebalance/proposal-view'
 import { getPageCopy } from '@/lib/ui-copy'
 import {
   approvePlan,
@@ -141,6 +142,91 @@ function Banner({ tone, children }: { tone: 'success' | 'warning'; children: Rea
   )
 }
 
+function BulletList({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) return null
+  return (
+    <div className="mt-3">
+      <h3 className="text-label font-medium text-ink">{title}</h3>
+      <ul className="mt-1 list-disc space-y-0.5 pl-5 text-caption text-ink-2">
+        {items.map((item, i) => (
+          <li key={i}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function OutlookSection({ proposal, copy, language }: { proposal: Proposal; copy: Copy; language: 'en' | 'ko' }) {
+  const { outlook, llm, ideas, questionsForMaintainer: questions } = proposal
+  if (!outlook && !llm && ideas.length === 0 && questions.length === 0) return null
+  const tone = { low: 'warning', medium: 'neutral', high: 'success' } as const
+  return (
+    <>
+      {llm && (
+        <p className={clsx('mb-3 text-caption', llm.status === 'ok' ? 'text-ink-3' : 'text-warning')}>
+          <span className="font-medium">{copy.outlook.llmTitle}</span> · {llmStatusLine(llm, language)}
+        </p>
+      )}
+      {outlook && (
+        <Card title={copy.outlook.title} className="mb-5">
+          <p className="whitespace-pre-line text-caption leading-relaxed text-ink-2">{outlook.summary}</p>
+          <p className="mt-3 flex items-center gap-2 text-label text-ink-3">
+            {copy.outlook.confidence}
+            <Badge tone={tone[outlook.confidence] ?? 'neutral'}>{copy.outlook.levels[outlook.confidence] ?? outlook.confidence}</Badge>
+          </p>
+          <BulletList title={copy.outlook.drivers} items={outlook.drivers} />
+          <BulletList title={copy.outlook.risks} items={outlook.risks} />
+          <BulletList title={copy.outlook.wouldChange} items={outlook.whatWouldChangeMyView} />
+          {outlook.sources.length > 0 && (
+            <div className="mt-3">
+              <h3 className="text-label font-medium text-ink">{copy.outlook.sources}</h3>
+              <ul className="mt-1 space-y-0.5 text-caption text-ink-2">
+                {outlook.sources.map((source, i) => {
+                  const href = safeSourceHref(source.url)
+                  return (
+                    <li key={i}>
+                      {href ? (
+                        <a href={href} target="_blank" rel="noopener noreferrer" className="text-info underline hover:no-underline">
+                          {source.title}
+                        </a>
+                      ) : (
+                        <span>
+                          {source.title} <span className="break-all text-ink-3">({source.url})</span>
+                        </span>
+                      )}{' '}
+                      <span className="text-ink-3">· {source.date}</span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+        </Card>
+      )}
+      {ideas.length > 0 && (
+        <Card title={copy.outlook.ideasTitle} className="mb-5">
+          <ul className="space-y-1 text-caption text-ink-2">
+            {ideas.map((idea, i) => (
+              <li key={i}>
+                <span className="font-medium text-ink">{idea.ticker}</span> <Badge>{copy.sleeves[idea.sleeve] ?? idea.sleeve}</Badge> {idea.why}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+      {questions.length > 0 && (
+        <Card title={copy.outlook.questionsTitle} className="mb-5">
+          <ul className="list-disc space-y-0.5 pl-5 text-caption text-ink-2">
+            {questions.map((q, i) => (
+              <li key={i}>{q}</li>
+            ))}
+          </ul>
+        </Card>
+      )}
+    </>
+  )
+}
+
 function SummaryTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy; language: 'en' | 'ko' }) {
   const tax = proposal.plan.taxSummary
   const snapshot = proposal.inputSnapshot
@@ -170,25 +256,9 @@ function SummaryTab({ proposal, copy, language }: { proposal: Proposal; copy: Co
     }
   }
 
-  const outlook = proposal.outlook
-  const outlookText =
-    typeof outlook === 'string'
-      ? outlook
-      : outlook && typeof outlook === 'object' && typeof (outlook as { summary?: unknown }).summary === 'string'
-        ? (outlook as { summary: string }).summary
-        : null
-
   return (
     <>
-      {outlook != null && (
-        <Card title={copy.outlook.title} className="mb-5">
-          {outlookText ? (
-            <p className="whitespace-pre-line text-caption leading-relaxed text-ink-2">{outlookText}</p>
-          ) : (
-            <pre className="overflow-x-auto whitespace-pre-wrap text-label text-ink-2">{JSON.stringify(outlook, null, 2)}</pre>
-          )}
-        </Card>
-      )}
+      <OutlookSection proposal={proposal} copy={copy} language={language} />
 
       <Card title={copy.figures.title} info={copy.figures.info} className="mb-5">
         <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line-subtle bg-line-subtle md:grid-cols-4">
@@ -273,6 +343,7 @@ function TargetsTab({ proposal, copy }: { proposal: Proposal; copy: Copy }) {
   const policy = state.policy
   const editable = proposal.status === 'draft' && policy !== null && !state.error
   const change = proposal.targetChange
+  const llmProposed = proposal.llm?.status === 'ok'
   const rows = SLEEVES.map((sleeve) => {
     const proposed = change.sleeves[sleeve]
     const current = policy?.targets[sleeve].target ?? proposal.policyAtCreation.targets[sleeve].target
@@ -283,6 +354,7 @@ function TargetsTab({ proposal, copy }: { proposal: Proposal; copy: Copy }) {
       to: proposed?.to ?? current,
       reason: proposed?.reason ?? '',
       edited: proposed?.editedBy === 'maintainer',
+      llm: llmProposed && change.decision === 'change' && proposed != null && proposed.editedBy !== 'maintainer',
       changed: proposed != null && proposed.to !== proposed.from,
       bounds: `${fmtNumber(bounds.min, 1)}–${fmtNumber(bounds.max, 1)}%`,
     }
@@ -302,6 +374,7 @@ function TargetsTab({ proposal, copy }: { proposal: Proposal; copy: Copy }) {
             <span className="flex items-center gap-2">
               <span className={clsx('text-ink', r.changed && 'font-medium')}>{copy.sleeves[r.sleeve]}</span>
               {r.edited && <Badge tone="info">{copy.targets.edited}</Badge>}
+              {r.llm && <Badge tone="info">{copy.outlook.llmBadge}</Badge>}
             </span>
           ),
         },
