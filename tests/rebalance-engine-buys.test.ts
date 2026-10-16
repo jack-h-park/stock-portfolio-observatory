@@ -60,6 +60,7 @@ const classes: InstrumentClasses = {
   'US:CCC': 'us_equity',
   'US:NEW': 'us_equity',
   'US:BND': 'bonds',
+  'KR:KRX1': 'kr_equity',
 }
 
 type LotSpec = { id: number; ticker: string; qty: number; price: number; cost: number; account?: string }
@@ -174,7 +175,10 @@ test('buy amount is split equally across preferred instruments and rounded down 
   assert.equal(buys[0].tier, null)
   assert.equal(buys[0].gainKrw, null)
   assert.deepEqual(of(p, 'transfer'), [])
-  near(p.moves.find((m) => m.sleeve === 'us_equity')?.amountKrw ?? NaN, 700_000)
+  const move = p.moves.find((m) => m.sleeve === 'us_equity')
+  near(move?.amountKrw ?? NaN, 600_000)
+  near(move?.intendedAmountKrw ?? NaN, 700_000)
+  near(move?.toPct ?? NaN, 39)
 })
 
 test('a fractional account buys fractional shares', () => {
@@ -342,4 +346,133 @@ test('same input twice yields deep-equal plans with buys and transfers', () => {
   const run = () =>
     plan(underLots(), [cash(400_000), cash(6_300_000, 'KRW', 'acct-2')], { policy: allocationPolicy({ preferred: BOTH }) })
   assert.deepEqual(run(), run())
+})
+
+/** Every non-cash sleeve's move is the net of its emitted buys and sells (10,000,000 KRW total). */
+const assertMovesMatchInstructions = (p: TradePlan) => {
+  for (const sleeve of SLEEVES) {
+    if (sleeve === 'cash') continue
+    const net = p.instructions
+      .filter((i) => i.sleeve === sleeve && i.kind !== 'transfer')
+      .reduce((sum, i) => sum + (i.kind === 'buy' ? i.estimatedKrw : -i.estimatedKrw), 0)
+    const move = p.moves.find((m) => m.sleeve === sleeve)
+    if (!move) {
+      assert.equal(net, 0, `${sleeve} trades without a move`)
+      continue
+    }
+    near(move.amountKrw, net)
+    near(move.toPct, move.fromPct + (net / 10_000_000) * 100)
+  }
+}
+const usMove = (p: TradePlan) => p.moves.find((m) => m.sleeve === 'us_equity')
+
+test('moves equal the net instructions under the turnover cap', () => {
+  const p = plan([lot({ id: 1, ticker: 'AAA', qty: 60, price: 100, cost: 50 })], [cash(4_000_000, 'KRW')], {
+    t: targets({ us_equity: { target: 45, band: 5 } }),
+    policy: allocationPolicy({ bounds: { maxTurnoverPctPerProposal: 5 } }),
+  })
+  assertMovesMatchInstructions(p)
+  near(usMove(p)?.amountKrw ?? NaN, -500_000)
+  near(usMove(p)?.intendedAmountKrw ?? NaN, -1_000_000)
+  const w = p.warnings.find((x) => x.code === 'turnover_capped')
+  assert.ok(w?.message.includes('from 1000000 to 500000 KRW'), w?.message)
+})
+
+test('moves equal the net instructions under the cash floor', () => {
+  const p = plan(underLots(), [cash(6_700_000)], { policy: allocationPolicy({ preferred: BOTH, cashMin: 65 }) })
+  assertMovesMatchInstructions(p)
+  near(usMove(p)?.amountKrw ?? NaN, 100_000)
+  near(usMove(p)?.intendedAmountKrw ?? NaN, 700_000)
+})
+
+test('moves equal the net instructions when a cap sell is dropped below minTradeKrw', () => {
+  // The 500,000 cap sale of AAA is below a 600,000 minimum; the sleeve still buys its band move.
+  const lots = [lot({ id: 1, ticker: 'AAA', qty: 25, price: 100, cost: 50 }), lot({ id: 2, ticker: 'BBB', qty: 5, price: 100, cost: 50 })]
+  const p = plan(lots, [cash(7_000_000)], {
+    policy: allocationPolicy({ preferred: BOTH, bounds: { positionCapPct: 20, minTradeKrw: 600_000 } }),
+  })
+  assertMovesMatchInstructions(p)
+  assert.deepEqual(of(p, 'sell'), [])
+  assert.deepEqual(of(p, 'buy').map((b) => [b.ticker, b.quantity]), [['BBB', 10]])
+  near(usMove(p)?.amountKrw ?? NaN, 1_000_000)
+  assert.ok(p.warnings.find((w) => w.code === 'below_min_trade')?.message.includes(`sell:${ACCT1}:US:AAA`))
+  // In a sleeve within its band, the dropped cap sale leaves no move at all.
+  const within = plan(lots, [cash(7_000_000)], {
+    t: targets(),
+    policy: allocationPolicy({ preferred: BOTH, bounds: { positionCapPct: 20, minTradeKrw: 600_000 } }),
+  })
+  assert.deepEqual(within.instructions, [])
+  assert.deepEqual(within.moves, [])
+})
+
+test('moves equal the net instructions when a buy is blocked', () => {
+  const p = plan(underLots(), [cash(6_700_000)], {
+    policy: allocationPolicy({ preferred: BOTH }),
+    over: { washSaleBlockedBuys: [{ ticker: 'AAA', blockedThrough: '2026-10-20' }] },
+  })
+  assertMovesMatchInstructions(p)
+  near(usMove(p)?.amountKrw ?? NaN, 300_000)
+  near(usMove(p)?.intendedAmountKrw ?? NaN, 700_000)
+})
+
+test('an account short of both USD and KRW gets a transfer warning for each currency', () => {
+  const krx: RebalancePosition = {
+    brokerage: 'BrokerA',
+    account: 'acct-1',
+    market: 'KR',
+    currency: 'KRW',
+    ticker: 'KRX1',
+    name: 'KRX1',
+    asset_class: 'stock',
+    quantity: 10,
+    valueKrw: 500_000,
+    costKrw: 400_000,
+    dataAsOf: AS_OF,
+  }
+  const lots = underLots()
+  const p = plan(lots, [cash(6_200_000)], {
+    t: targets({ us_equity: { target: 45, band: 5 }, kr_equity: { target: 20, band: 5 } }),
+    policy: allocationPolicy({ preferred: { us_equity: [pref('AAA', 'acct-2')], kr_equity: [pref('KRX1', 'acct-2', 'KR')] } }),
+    over: { positions: [...positionsFrom(lots), krx] },
+  })
+  assert.deepEqual(of(p, 'transfer').map((t) => [t.id, t.estimatedKrw]), [
+    [`transfer:${ACCT2}:KRW`, 1_000_000],
+    [`transfer:${ACCT2}:USD`, 700_000],
+  ])
+  const needed = p.warnings.filter((w) => w.code === 'transfer_needed' && w.account === 'acct-2')
+  assert.deepEqual(needed.map((w) => w.currency).sort(), ['KRW', 'USD'])
+})
+
+test('a preferred instrument in a managed account is refused with managed_account', () => {
+  const p = plan(underLots(), [cash(6_700_000)], {
+    policy: allocationPolicy({
+      preferred: { us_equity: [pref('AAA', 'acct-2')] },
+      accounts: { [ACCT2]: { lotMethod: 'fifo', fractional: false, managedBy: 'agent', excludedCash: false } },
+    }),
+  })
+  assert.deepEqual(of(p, 'buy'), [])
+  assert.ok(p.warnings.some((w) => w.code === 'managed_account' && w.ticker === 'AAA' && w.account === 'acct-2'))
+  assert.ok(!p.warnings.some((w) => w.code === 'no_buy_list'))
+})
+
+test('stale-account warnings follow (brokerage, account), not the account label alone', () => {
+  // BrokerA/acct-1 is stale and its only instruction, a 500,000 cap sale, is dropped below the minimum.
+  // BrokerB/acct-1, a different account with the same label, is fresh and buys.
+  const bbb = { ...lot({ id: 2, ticker: 'BBB', qty: 5, price: 100, cost: 50 }), brokerage: 'BrokerB' }
+  const lots = [lot({ id: 1, ticker: 'AAA', qty: 25, price: 100, cost: 50 }), bbb]
+  const run = (minTradeKrw: number) =>
+    plan(lots, [{ ...cash(7_000_000), brokerage: 'BrokerB' }], {
+      policy: allocationPolicy({
+        preferred: { us_equity: [{ ...pref('BBB'), brokerage: 'BrokerB' }] },
+        bounds: { positionCapPct: 20, minTradeKrw },
+      }),
+      over: { accountDataAsOf: { [ACCT1]: '2026-01-01', [accountKey('BrokerB', 'acct-1')]: AS_OF } },
+    })
+  const dropped = run(600_000)
+  assert.deepEqual(dropped.instructions.map((i) => [i.kind, i.brokerage, i.ticker]), [['buy', 'BrokerB', 'BBB']])
+  assert.deepEqual(dropped.instructions[0].notes, [])
+  assert.ok(!dropped.warnings.some((w) => w.code === 'stale_account'))
+  const kept = run(100_000)
+  const stale = kept.warnings.filter((w) => w.code === 'stale_account')
+  assert.deepEqual(stale.map((w) => [w.brokerage, w.account]), [['BrokerA', 'acct-1']])
 })

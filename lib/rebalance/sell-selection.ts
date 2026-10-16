@@ -37,9 +37,12 @@ function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to.slice(0, 10)}T00:00:00Z`) - Date.parse(`${from.slice(0, 10)}T00:00:00Z`)) / DAY_MS)
 }
 
-/** One warning per code, account and ticker; a warning with neither is told apart by its message. */
+/**
+ * One warning per code, account (by brokerage and account), ticker and currency; a warning with
+ * neither account nor ticker is told apart by its message.
+ */
 export const warningKey = (w: EngineWarning) =>
-  `${w.code}|${w.account ?? ''}|${w.ticker ?? ''}|${w.account || w.ticker ? '' : w.message}`
+  `${w.code}|${w.account ? accountKey(w.brokerage ?? null, w.account) : ''}|${w.ticker ?? ''}|${w.currency ?? ''}|${w.account || w.ticker ? '' : w.message}`
 
 const roundQty = (value: number) => Math.round(value * 1e8) / 1e8
 
@@ -287,12 +290,12 @@ export function selectSells(
   /** Whether a lot cannot sell (no price, or about to turn long-term), warning once if so. */
   const lotBlocked = (h: Holding, lot: TaxPlanningLot): boolean => {
     if (lot.native_market_value == null) {
-      warn({ code: 'unpriced', ticker: h.ticker, account: h.account, message: `${h.ticker} has no current price, so it is not sold` })
+      warn({ code: 'unpriced', ticker: h.ticker, brokerage: h.brokerage, account: h.account, message: `${h.ticker} has no current price, so it is not sold` })
       return true
     }
     const c = lotCandidate(lot, left(lot))
     if (!c || c.proceedsKrw == null) {
-      warn({ code: 'unpriced', ticker: h.ticker, account: h.account, message: `${h.ticker} has no current value, so it is not sold` })
+      warn({ code: 'unpriced', ticker: h.ticker, brokerage: h.brokerage, account: h.account, message: `${h.ticker} has no current value, so it is not sold` })
       return true
     }
     const eligible = longTermEligibleOn(lot.acquired_date)
@@ -300,6 +303,7 @@ export function selectSells(
       warn({
         code: 'near_long_term',
         ticker: h.ticker,
+        brokerage: h.brokerage,
         account: h.account,
         message: `${h.ticker} lot ${lot.id} turns long-term on ${eligible}; held`,
       })
@@ -315,6 +319,7 @@ export function selectSells(
     warn({
       code: 'wash_sale_block',
       ticker: h.ticker,
+      brokerage: h.brokerage,
       account: h.account,
       message: `${h.ticker} was bought on ${buy.date}, within ${WASH_WINDOW_DAYS} days; its loss is not sold`,
     })
@@ -492,19 +497,29 @@ export function selectSells(
 
   const instructions = aggregateSells(picks, holdings, ctx)
   for (const instruction of instructions) {
-    const staleness = staleAccount(ctx, accountKey(instruction.brokerage, instruction.account))
-    if (staleness) {
-      warn({
-        code: 'stale_account',
-        account: instruction.account,
-        message:
-          staleness === 'unknown'
-            ? `${instruction.account}: data date is unknown`
-            : `${instruction.account}: data is more than ${policy.bounds.staleDataDays} days old`,
-      })
-    }
+    const stale = staleWarning(ctx, instruction.brokerage, instruction.account)
+    if (stale) warn(stale)
   }
   return { instructions, warnings, picks, soldKrw, capSoldKrw, krDeductionRemainingKrw: deductionLeft }
+}
+
+/** The stale_account warning for an account, or null when its data is fresh. */
+export function staleWarning(
+  ctx: Pick<SellContext, 'input' | 'policy'>,
+  brokerage: string | null,
+  account: string
+): EngineWarning | null {
+  const staleness = staleAccount(ctx, accountKey(brokerage, account))
+  if (!staleness) return null
+  return {
+    code: 'stale_account',
+    brokerage,
+    account,
+    message:
+      staleness === 'unknown'
+        ? `${account}: data date is unknown`
+        : `${account}: data is more than ${ctx.policy.bounds.staleDataDays} days old`,
+  }
 }
 
 /** 'unknown' when the account has no data date (as risky as old data), 'old' past staleDataDays, else null. */

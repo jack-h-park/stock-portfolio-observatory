@@ -33,8 +33,8 @@ const fundingKey = (brokerage: string | null, account: string, currency: string)
  * price, and the engine does not buy it.
  */
 export function buyPrice(input: RebalanceInput, pref: PreferredInstrument): { priceKrw: number; currency: string } | null {
-  const own = (p: { brokerage: string | null; account: string }) =>
-    p.brokerage === pref.brokerage && p.account === pref.account ? 0 : 1
+  const buyKey = accountKey(pref.brokerage, pref.account)
+  const own = (p: { brokerage: string | null; account: string }) => (accountKey(p.brokerage, p.account) === buyKey ? 0 : 1)
   const positions = input.positions
     .filter((p) => p.market === pref.market && p.ticker === pref.ticker && p.valueKrw != null && p.valueKrw > 0 && p.quantity > 0)
     .sort((a, b) => own(a) - own(b))
@@ -121,8 +121,9 @@ export function planBuys(args: {
       const rule = policy.accounts[accountKey(pref.brokerage, pref.account)] ?? defaultAccountRule(pref.market)
       if (rule.managedBy) {
         warnings.push({
-          code: 'no_buy_list',
+          code: 'managed_account',
           ticker: pref.ticker,
+          brokerage: pref.brokerage,
           account: pref.account,
           message: `${pref.ticker} on the ${sleeve} buy list is in an account managed by ${rule.managedBy}, so it is not bought`,
         })
@@ -133,6 +134,7 @@ export function planBuys(args: {
         warnings.push({
           code: 'wash_sale_block',
           ticker: pref.ticker,
+          brokerage: pref.brokerage,
           account: pref.account,
           message: `${pref.ticker} cannot be bought through ${block.blockedThrough}: a loss on it was realized within the wash-sale window`,
         })
@@ -143,6 +145,7 @@ export function planBuys(args: {
         warnings.push({
           code: 'no_buy_price',
           ticker: pref.ticker,
+          brokerage: pref.brokerage,
           account: pref.account,
           message: `${pref.ticker} is not held anywhere, so it has no price to buy at`,
         })
@@ -219,7 +222,9 @@ export function planBuys(args: {
       const cut = sized(buy, roundDown(onHand / buy.priceKrw, buy.decimals))
       warnings.push({
         code: 'transfer_needed',
+        brokerage,
         account,
+        currency: buy.currency,
         message: `${account}: the ${buy.currency} transfer is skipped, so its buys are cut to the cash on hand`,
       })
       if (tooSmall(cut)) {
@@ -237,18 +242,9 @@ export function planBuys(args: {
     funded.push(buy)
   }
 
+  // Stale buys carry the note; the engine raises the stale_account warning per account.
   const buyInstructions = funded.map((b): Instruction => {
     const stale = staleAccount({ input, policy }, accountKey(b.pref.brokerage, b.pref.account))
-    if (stale) {
-      warnings.push({
-        code: 'stale_account',
-        account: b.pref.account,
-        message:
-          stale === 'unknown'
-            ? `${b.pref.account}: data date is unknown`
-            : `${b.pref.account}: data is more than ${policy.bounds.staleDataDays} days old`,
-      })
-    }
     return {
       id: b.id,
       kind: 'buy',
@@ -294,7 +290,9 @@ export function planBuys(args: {
     })
     warnings.push({
       code: 'transfer_needed',
+      brokerage: t.brokerage,
       account: t.account,
+      currency: t.currency,
       message: `${t.account} needs ${Math.round(t.krw)} KRW more of ${t.currency} cash for its buys`,
     })
   }
