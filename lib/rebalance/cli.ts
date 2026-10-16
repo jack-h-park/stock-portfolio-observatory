@@ -9,18 +9,19 @@ import { loadTransactions, reconcile } from '@/lib/rebalance/reconcile'
 import { KNOWN_RUNNERS, runnerFromConfig, type LlmRunner } from '@/lib/rebalance/llm-runner'
 import { proposeEngineOnly, proposeMonthly, skippedLlm } from '@/lib/rebalance/propose'
 import { appendTrigger, expireStale, listProposals, openProposal, setReconciliation, transition, type ProposalKind } from '@/lib/rebalance/proposal-store'
+import { markSent, pendingEvents, readNotifyState, seedState, writeNotifyState, type NotifyChannel } from '@/lib/rebalance/notify'
 import { dueTriggers, markFired, readTriggerState, writeTriggerState } from '@/lib/rebalance/trigger-state'
 import { detectTriggers, triggerKind } from '@/lib/rebalance/triggers'
 
 export const SCHEMA_VERSION = 1
 const KINDS: ProposalKind[] = ['manual', 'trigger', 'monthly']
-const COMMANDS = ['propose', 'reconcile', 'status', 'triggers'] as const
+const COMMANDS = ['propose', 'reconcile', 'status', 'triggers', 'notify'] as const
 type Command = (typeof COMMANDS)[number]
 
 type Io = { out: (text: string) => void; err: (text: string) => void }
-type Parsed = { command: Command; kind: ProposalKind; triggers: string[]; today: string | null; noLlm: boolean }
+type Parsed = { command: Command; kind: ProposalKind; triggers: string[]; today: string | null; noLlm: boolean; mark: string[]; channel: NotifyChannel | null }
 const USAGE =
-  'usage: rebalance-cli <propose|reconcile|status|triggers> [--kind manual|trigger|monthly] [--trigger <text>] [--today YYYY-MM-DD] [--no-llm]'
+  'usage: rebalance-cli <propose|reconcile|status|triggers|notify> [--kind manual|trigger|monthly] [--trigger <text>] [--today YYYY-MM-DD] [--no-llm] [--mark <eventId>[,<eventId>] --channel telegram|discord]'
 
 /** Today in the portfolio calendar (STOCK_TIME_ZONE), the same day the pages use. */
 export function defaultToday(now: Date): string {
@@ -32,7 +33,7 @@ function parse(argv: string[]): Parsed | string {
   if (!command || !(COMMANDS as readonly string[]).includes(command)) {
     return `unknown command: ${command ?? '(none)'}; expected one of ${COMMANDS.join(', ')}`
   }
-  const parsed: Parsed = { command: command as Command, kind: 'manual', triggers: [], today: null, noLlm: false }
+  const parsed: Parsed = { command: command as Command, kind: 'manual', triggers: [], today: null, noLlm: false, mark: [], channel: null }
   for (let i = 0; i < rest.length; i += 1) {
     const flag = rest[i]
     const value = rest[i + 1]
@@ -40,7 +41,7 @@ function parse(argv: string[]): Parsed | string {
       parsed.noLlm = true
       continue
     }
-    if (flag !== '--kind' && flag !== '--trigger' && flag !== '--today') return `unknown option: ${flag}`
+    if (!['--kind', '--trigger', '--today', '--mark', '--channel'].includes(flag)) return `unknown option: ${flag}`
     if (value === undefined || value.startsWith('--')) return `${flag} needs a value`
     i += 1
     if (flag === '--kind') {
@@ -48,6 +49,11 @@ function parse(argv: string[]): Parsed | string {
       parsed.kind = value as ProposalKind
     } else if (flag === '--trigger') {
       parsed.triggers.push(value)
+    } else if (flag === '--mark') {
+      parsed.mark.push(...value.split(',').filter(Boolean))
+    } else if (flag === '--channel') {
+      if (value !== 'telegram' && value !== 'discord') return '--channel must be telegram or discord'
+      parsed.channel = value
     } else {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(value))) return '--today must be YYYY-MM-DD'
       parsed.today = value
@@ -65,6 +71,10 @@ export async function runRebalanceCli(argv: string[], io: Io, now: Date = new Da
   const parsed = parse(argv)
   if (typeof parsed === 'string') {
     io.err(`${parsed}\n${USAGE}\n`)
+    return 2
+  }
+  if (parsed.command === 'notify' && parsed.mark.length > 0 && !parsed.channel) {
+    io.err(`--mark needs --channel\n${USAGE}\n`)
     return 2
   }
   const emit = (payload: Record<string, unknown>) =>
@@ -103,6 +113,7 @@ export async function runRebalanceCli(argv: string[], io: Io, now: Date = new Da
       return 0
     }
     if (parsed.command === 'triggers') return runTriggers(today, now, emit)
+    if (parsed.command === 'notify') return runNotify(parsed, now, emit)
     if (parsed.command === 'reconcile') {
       const expired = expireStale(now)
       const reconciled: { id: string; complete: boolean; matched: number; missing: number; unfilled: number; unplanned: number }[] = []
@@ -202,5 +213,26 @@ function runTriggers(today: string, now: Date, emit: (payload: Record<string, un
   }
   writeTriggerState(markFired(state, due, today))
   emit({ ok: true, created: result.proposal.id, due: keys })
+  return 0
+}
+
+/**
+ * Lists the notification events not yet sent. Read-only, except that the first run (no state file) writes a
+ * seeded state and reports nothing, so existing proposals are not announced. `--mark` records ids as sent.
+ */
+function runNotify(parsed: Parsed, now: Date, emit: (payload: Record<string, unknown>) => void): number {
+  const proposals = listProposals()
+  const state = readNotifyState()
+  if (!state) {
+    writeNotifyState(seedState(proposals, now))
+    emit({ ok: true, events: [], seeded: true })
+    return 0
+  }
+  if (parsed.mark.length > 0 && parsed.channel) {
+    writeNotifyState(markSent(state, parsed.mark, parsed.channel, now, proposals))
+    emit({ ok: true, marked: parsed.mark, channel: parsed.channel })
+    return 0
+  }
+  emit({ ok: true, events: pendingEvents(proposals, state, now) })
   return 0
 }
