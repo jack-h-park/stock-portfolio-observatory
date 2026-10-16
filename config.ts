@@ -47,6 +47,8 @@ export const config = {
   stockAllocationPolicyPath: env('STOCK_ALLOCATION_POLICY_PATH', repoPath('data/allocation-policy.json')),
   // Maps each security to its sleeve (`MARKET:TICKER` -> sleeve). Host-owned, never pushed.
   stockInstrumentClassesPath: env('STOCK_INSTRUMENT_CLASSES_PATH', repoPath('data/instrument-classes.json')),
+  // One JSON file per rebalance proposal. Host-owned, never pushed.
+  stockRebalanceProposalsDir: env('STOCK_REBALANCE_PROPOSALS_DIR', repoPath('data/rebalance-proposals')),
   stockTaxPlansPath: env('STOCK_TAX_PLANS_PATH', repoPath('data/tax-plans.json')),
   // The gitignored account map (scripts/account-map.mjs). Same variable the ingest
   // reads; the app reads only its pension token list, for the reminder's rows.
