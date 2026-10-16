@@ -326,7 +326,42 @@ test('no preferred instrument for an underweight sleeve warns and buys nothing',
 test('a preferred instrument held nowhere has no price and is not bought', () => {
   const p = plan(underLots(), [cash(6_700_000)], { policy: allocationPolicy({ preferred: { us_equity: [pref('NEW'), pref('AAA')] } }) })
   assert.deepEqual(of(p, 'buy').map((b) => [b.ticker, b.quantity]), [['AAA', 3]])
-  assert.ok(p.warnings.some((w) => w.code === 'no_buy_price' && w.ticker === 'NEW'))
+  const w = p.warnings.find((x) => x.code === 'no_buy_price' && x.ticker === 'NEW')
+  assert.ok(w)
+  assert.match(w.message, /not held anywhere/)
+})
+
+test('a preferred instrument that is held but unpriced says it has no current price', () => {
+  const lots = underLots()
+  const heldUnpriced: RebalancePosition = {
+    brokerage: 'BrokerA',
+    account: 'acct-2',
+    market: 'US',
+    currency: 'USD',
+    ticker: 'NEW',
+    name: 'NEW',
+    asset_class: 'stock',
+    quantity: 4,
+    valueKrw: null,
+    costKrw: 400_000,
+    dataAsOf: AS_OF,
+  }
+  const base = input(lots, [cash(6_700_000)])
+  const p = plan(lots, [cash(6_700_000)], {
+    policy: allocationPolicy({ preferred: { us_equity: [pref('NEW'), pref('AAA')] } }),
+    over: { positions: [...base.positions, heldUnpriced] },
+  })
+  const w = p.warnings.find((x) => x.code === 'no_buy_price' && x.ticker === 'NEW')
+  assert.ok(w)
+  assert.match(w.message, /has no current price/)
+  assert.doesNotMatch(w.message, /not held anywhere/)
+})
+
+test('KRW amounts in warning messages carry thousands separators', () => {
+  const p = plan(underLots(), [cash(6_700_000)], { policy: allocationPolicy({ preferred: BOTH, cashMin: 65 }) })
+  const w = p.warnings.find((x) => x.message.startsWith('buys scaled from'))
+  assert.ok(w, JSON.stringify(p.warnings))
+  assert.match(w.message, /from 700,000 to 200,000 KRW/)
 })
 
 test('cap sells in an underweight sleeve are netted into its buys of other instruments', () => {
@@ -375,7 +410,7 @@ test('moves equal the net instructions under the turnover cap', () => {
   near(usMove(p)?.amountKrw ?? NaN, -500_000)
   near(usMove(p)?.intendedAmountKrw ?? NaN, -1_000_000)
   const w = p.warnings.find((x) => x.code === 'turnover_capped')
-  assert.ok(w?.message.includes('from 1000000 to 500000 KRW'), w?.message)
+  assert.ok(w?.message.includes('from 1,000,000 to 500,000 KRW'), w?.message)
 })
 
 test('moves equal the net instructions under the cash floor', () => {

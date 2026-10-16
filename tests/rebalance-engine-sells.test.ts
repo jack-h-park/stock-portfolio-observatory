@@ -551,3 +551,23 @@ test('a whole-share average account splits the sold shares across lots in whole 
   ])
   assert.ok(s[0].lots.every((l) => Number.isInteger(l.quantity)))
 })
+
+test('the planning rate is pinned when the input has none, so plan tax and ytd tax share it', () => {
+  // A US long-term gain: 10 shares sold at 300 USD on a 200 USD cost, with the lot's own rate at 2,000.
+  const lots = [
+    { ...lot({ id: 1, ticker: 'AAA', qty: 20, price: 300, cost: 200 }), fx_rate_to_base: 2000 },
+    lot({ id: 2, ticker: 'BBB', qty: 10, price: 100, cost: 100 }),
+  ]
+  const noRate = plan(lots, 4_500_000, { over: { usdKrwRate: 0 } })
+  const fallback = plan(lots, 4_500_000, { over: { usdKrwRate: 1350 } })
+  assert.equal(noRate.taxSummary.estimatedTaxKrw, fallback.taxSummary.estimatedTaxKrw)
+  assert.equal(noRate.taxSummary.yearTotalTaxKrw, fallback.taxSummary.yearTotalTaxKrw)
+})
+
+test('sell-side warning amounts use thousands separators', () => {
+  const lots = [lot({ id: 1, ticker: 'AAA', qty: 60, price: 100, cost: 50 })]
+  const p = plan(lots, 4_000_000, { policy: allocationPolicy({ maxTurnoverPctPerProposal: 5 }) })
+  const w = p.warnings.find((x) => x.code === 'turnover_capped')
+  assert.ok(w, JSON.stringify(p.warnings))
+  assert.match(w.message, /from 1,000,000 to 500,000 KRW/)
+})

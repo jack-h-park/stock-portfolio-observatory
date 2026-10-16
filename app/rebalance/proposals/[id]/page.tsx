@@ -387,13 +387,16 @@ function MovesTable({ moves, copy }: { moves: SleeveMove[]; copy: Copy }) {
         },
         { key: 'amountKrw', label: copy.plan.planDoes, align: 'right', render: (r: SleeveMove) => <Signed value={r.amountKrw} format={krw} /> },
         {
-          key: 'shortfall',
-          label: copy.plan.shortfall,
+          key: 'gap',
+          label: copy.plan.gap,
           align: 'right',
           render: (r: SleeveMove) => {
             if (r.intendedAmountKrw == null) return <span className="text-ink-3">—</span>
-            const gap = Math.abs(r.intendedAmountKrw - r.amountKrw)
-            return gap >= 1 ? <Badge tone="warning">{fmtKrw(gap)}</Badge> : <span className="text-ink-3">—</span>
+            // What the plan does minus what the band asked: positive is more bought (or less sold)
+            // than the band needed, negative is less.
+            const gap = r.amountKrw - r.intendedAmountKrw
+            if (Math.abs(gap) < 1) return <span className="text-ink-3">—</span>
+            return <Badge tone="warning">{`${gap > 0 ? '+' : '−'}${fmtKrw(Math.abs(gap))}`}</Badge>
           },
         },
       ]}
@@ -621,11 +624,11 @@ function FillsTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy
                         <>
                           <label className="text-label text-ink-3">
                             <span className="block">{copy.fills.quantity}</span>
-                            <Input size="sm" type="number" step="any" name="quantity" defaultValue={fill?.quantity ?? ''} className="w-24 text-right" />
+                            <Input size="sm" type="number" step="any" name="quantity" aria-label={copy.fills.quantity} defaultValue={fill?.quantity ?? ''} className="w-24 text-right" />
                           </label>
                           <label className="text-label text-ink-3">
                             <span className="block">{copy.fills.price} ({i.currency})</span>
-                            <Input size="sm" type="number" step="any" name="price" defaultValue={fill?.price ?? ''} className="w-28 text-right" />
+                            <Input size="sm" type="number" step="any" name="price" aria-label={copy.fills.price} defaultValue={fill?.price ?? ''} className="w-28 text-right" />
                           </label>
                         </>
                       )}
@@ -635,7 +638,7 @@ function FillsTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy
                       </label>
                       <label className="min-w-[12rem] flex-1 text-label text-ink-3">
                         <span className="block">{copy.fills.note}</span>
-                        <Input size="sm" type="text" name="note" maxLength={500} defaultValue={fill?.note ?? ''} className="w-full" />
+                        <Input size="sm" type="text" name="note" aria-label={copy.fills.note} maxLength={500} defaultValue={fill?.note ?? ''} className="w-full" />
                       </label>
                       <SubmitButton>{copy.fills.save}</SubmitButton>
                     </form>
@@ -718,6 +721,7 @@ export default async function RebalanceProposalPage({
   return (
     <>
       <PageHeader
+        autoRefresh={false}
         eyebrow={routeSection('/rebalance', language)}
         title={`${copy.title} ${proposal.id}`}
         emphasis={copy.emphasis}

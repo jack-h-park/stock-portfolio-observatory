@@ -9,7 +9,7 @@ import {
 } from './allocation-policy'
 import type { EngineWarning, Instruction, SleeveMove } from './engine'
 import { instrumentKey } from './instrument-classes'
-import { KRW_EPS, STALE_NOTE, staleAccount, type CapExcess } from './sell-selection'
+import { fmtKrwAmount, KRW_EPS, STALE_NOTE, staleAccount, type CapExcess } from './sell-selection'
 
 export function buyInstructionId(brokerage: string | null, account: string, market: string, ticker: string) {
   return `buy:${accountKey(brokerage, account)}:${market}:${ticker}`
@@ -24,6 +24,10 @@ const roundDown = (q: number, decimals: number) => {
   const scale = 10 ** decimals
   return Math.floor(q * scale + 1e-6) / scale
 }
+/** Whether any account holds the instrument, priced or not. */
+const heldAnywhere = (input: RebalanceInput, pref: PreferredInstrument) =>
+  input.positions.some((p) => p.market === pref.market && p.ticker === pref.ticker && p.quantity > 0) ||
+  input.lots.some((l) => l.market === pref.market && l.ticker === pref.ticker && l.open_quantity > 0)
 const fundingKey = (brokerage: string | null, account: string, currency: string) =>
   `${accountKey(brokerage, account)}|${currency}`
 
@@ -147,7 +151,9 @@ export function planBuys(args: {
           ticker: pref.ticker,
           brokerage: pref.brokerage,
           account: pref.account,
-          message: `${pref.ticker} is not held anywhere, so it has no price to buy at`,
+          message: heldAnywhere(input, pref)
+            ? `${pref.ticker} has no current price, so it has no price to buy at`
+            : `${pref.ticker} is not held anywhere, so it has no price to buy at`,
         })
         continue
       }
@@ -178,7 +184,7 @@ export function planBuys(args: {
     for (const t of targets.values()) t.amountKrw *= f
     warnings.push({
       code: 'cash_floor',
-      message: `buys scaled from ${Math.round(buysKrw)} to ${Math.round(Math.max(budget, 0))} KRW to keep cash at the ${policy.bounds.sleeves.cash?.min ?? 0}% floor`,
+      message: `buys scaled from ${fmtKrwAmount(buysKrw)} to ${fmtKrwAmount(Math.max(budget, 0))} KRW to keep cash at the ${policy.bounds.sleeves.cash?.min ?? 0}% floor`,
     })
   }
 
@@ -293,7 +299,7 @@ export function planBuys(args: {
       brokerage: t.brokerage,
       account: t.account,
       currency: t.currency,
-      message: `${t.account} needs ${Math.round(t.krw)} KRW more of ${t.currency} cash for its buys`,
+      message: `${t.account} needs ${fmtKrwAmount(t.krw)} KRW more of ${t.currency} cash for its buys`,
     })
   }
 

@@ -7,6 +7,7 @@ import type { InstrumentClasses } from './instrument-classes'
 import { planBuys } from './buy-funding'
 import {
   computeCapExcess,
+  fmtKrwAmount,
   KRW_EPS,
   prepareSellContext,
   selectSells,
@@ -320,7 +321,7 @@ export function buildTradePlan(args: {
       : [
           {
             code: 'turnover_capped',
-            message: `sells cut from ${Math.round(scaledFromKrw)} to ${Math.round(sellsKrw)} KRW by the ${policy.bounds.maxTurnoverPctPerProposal}% turnover cap`,
+            message: `sells cut from ${fmtKrwAmount(scaledFromKrw)} to ${fmtKrwAmount(sellsKrw)} KRW by the ${policy.bounds.maxTurnoverPctPerProposal}% turnover cap`,
           },
         ]
 
@@ -329,7 +330,7 @@ export function buildTradePlan(args: {
     ? [
         {
           code: 'below_min_trade',
-          message: `left out, below the ${minTradeKrw} KRW minimum trade or under one tradable unit: ${dropped.join(', ')}`,
+          message: `left out, below the ${fmtKrwAmount(minTradeKrw)} KRW minimum trade or under one tradable unit: ${dropped.join(', ')}`,
         },
       ]
     : []

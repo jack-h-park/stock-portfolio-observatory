@@ -1,6 +1,7 @@
 import type { RebalanceInput } from '@/lib/adapters/rebalance-input'
 import {
   buildTaxPlan,
+  FALLBACK_USD_KRW_RATE,
   krTaxable,
   longTermEligibleOn,
   usGainUsd,
@@ -125,6 +126,9 @@ export type SellSelection = {
   krDeductionRemainingKrw: number
 }
 
+/** A KRW amount for a warning message: rounded, with thousands separators. */
+export const fmtKrwAmount = (value: number) => Math.round(value).toLocaleString('en-US')
+
 export function prepareSellContext(args: {
   input: RebalanceInput
   policy: AllocationPolicy
@@ -135,11 +139,13 @@ export function prepareSellContext(args: {
   const taxPolicy = withDerivedYtd(args.taxPolicy, args.input.ytd)
   // One planning rate for every lot, so a lot's figures do not depend on which other lots are
   // evaluated with it (buildTaxPlan otherwise takes the median rate of the lots it is given).
-  if (!(assumptionNumber(taxPolicy, 'US', 'planningUsdKrwRate', 0) > 0) && args.input.usdKrwRate > 0) {
+  // Pinned unconditionally: an input without a rate takes the shared fallback, so the plan's tax and
+  // the year-to-date tax are computed at the same rate rather than one at a median of the lots.
+  if (!(assumptionNumber(taxPolicy, 'US', 'planningUsdKrwRate', 0) > 0)) {
     const us = taxPolicy.jurisdictions.find((j) => j.code === 'US')
-    if (us) us.manualAssumptions.planningUsdKrwRate = args.input.usdKrwRate
+    if (us) us.manualAssumptions.planningUsdKrwRate = args.input.usdKrwRate > 0 ? args.input.usdKrwRate : FALLBACK_USD_KRW_RATE
   }
-  const usdKrwRate = assumptionNumber(taxPolicy, 'US', 'planningUsdKrwRate', args.input.usdKrwRate)
+  const usdKrwRate = assumptionNumber(taxPolicy, 'US', 'planningUsdKrwRate', FALLBACK_USD_KRW_RATE)
   const krDeductionKrw = assumptionNumber(taxPolicy, 'KR', 'stockBasicDeductionKrw', 2_500_000)
   return {
     input: args.input,
@@ -497,7 +503,7 @@ export function selectSells(
         warn({
           code: 'no_sellable_lots',
           ticker: cap.ticker,
-          message: `${cap.ticker} is ${Math.round(cap.excessKrw)} KRW over the ${policy.bounds.positionCapPct}% position cap; sellable lots cover ${Math.round(result.sold)} KRW`,
+          message: `${cap.ticker} is ${fmtKrwAmount(cap.excessKrw)} KRW over the ${policy.bounds.positionCapPct}% position cap; sellable lots cover ${fmtKrwAmount(result.sold)} KRW`,
         })
       }
     }
@@ -513,10 +519,10 @@ export function selectSells(
         warn({
           code: 'no_sellable_lots',
           message: rest.roundedOut
-            ? `${sleeve}: ${Math.round(uncovered)} KRW of the reduction is left unsold, too small for a whole share of the sellable lots`
+            ? `${sleeve}: ${fmtKrwAmount(uncovered)} KRW of the reduction is left unsold, too small for a whole share of the sellable lots`
             : rest.sold + capSold > 0
-              ? `${sleeve}: sellable lots cover ${Math.round(rest.sold + capSold)} of the ${Math.round(bandNeed)} KRW reduction`
-              : `${sleeve}: no sellable lots for a ${Math.round(bandNeed)} KRW reduction`,
+              ? `${sleeve}: sellable lots cover ${fmtKrwAmount(rest.sold + capSold)} of the ${fmtKrwAmount(bandNeed)} KRW reduction`
+              : `${sleeve}: no sellable lots for a ${fmtKrwAmount(bandNeed)} KRW reduction`,
         })
       }
     }

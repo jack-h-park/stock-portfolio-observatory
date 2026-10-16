@@ -420,6 +420,9 @@ function usGainKrw(row: TaxPlanCandidate) {
   return Number(row.gainKrw ?? 0)
 }
 
+/** The USD/KRW rate used when neither the policy nor the lots supply one. */
+export const FALLBACK_USD_KRW_RATE = 1_350
+
 // The planning USD/KRW rate from the lots themselves, before they are candidates: the same rule
 // as candidateUsdKrwRate, whose proceedsKrw / proceedsNative is a USD lot's FX rate.
 function lotsUsdKrwRate(lots: TaxPlanningLot[], policy: TaxPolicy) {
@@ -430,7 +433,7 @@ function lotsUsdKrwRate(lots: TaxPlanningLot[], policy: TaxPolicy) {
     .map((lot) => Number(lot.fx_rate_to_base ?? 0) || (lot.native_cost_basis > 0 ? lot.cost_basis_krw / lot.native_cost_basis : 0))
     .filter((rate) => Number.isFinite(rate) && rate > 0)
     .sort((a, b) => a - b)
-  if (!rates.length) return 1_350
+  if (!rates.length) return FALLBACK_USD_KRW_RATE
   const middle = Math.floor(rates.length / 2)
   return rates.length % 2 ? rates[middle] : (rates[middle - 1] + rates[middle]) / 2
 }
@@ -467,7 +470,7 @@ function candidateUsdKrwRate(candidates: TaxPlanCandidate[], policy: TaxPolicy) 
     .map((row) => Number(row.proceedsKrw) / Number(row.proceedsNative))
     .filter((rate) => Number.isFinite(rate) && rate > 0)
     .sort((a, b) => a - b)
-  if (!rates.length) return 1_350
+  if (!rates.length) return FALLBACK_USD_KRW_RATE
   const middle = Math.floor(rates.length / 2)
   return rates.length % 2 ? rates[middle] : (rates[middle - 1] + rates[middle]) / 2
 }
