@@ -1,0 +1,5 @@
+{
+  "US:AAA": "us_equity",
+  "KR:KRX1": "kr_equity",
+  "KR:KRBOND1": "bonds"
+}
