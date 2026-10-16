@@ -403,7 +403,7 @@ function netCapitalGainBuckets(netShortGain: number, netLongGain: number) {
 // planning rate less acquisition_cost_usd, its won cost at the acquisition-date rate, so the
 // exchange-rate move since purchase lands on the US side as it does in reality. Without that
 // column (an older database) the KRW gain at the planning rate stands in.
-function usGainUsd(row: TaxPlanCandidate, usdKrwRate: number) {
+export function usGainUsd(row: TaxPlanCandidate, usdKrwRate: number) {
   if (row.currency === 'USD' && row.gainNative != null) return Number(row.gainNative)
   if (row.acquisition_cost_usd != null && row.proceedsKrw != null) {
     return Number(row.proceedsKrw) / usdKrwRate - Number(row.acquisition_cost_usd)
