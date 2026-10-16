@@ -4,15 +4,21 @@ import type { RebalanceInput } from '@/lib/adapters/rebalance-input'
 import type { AllocationPolicy, Sleeve, SleeveTarget } from './allocation-policy'
 import { computeAllocation, type Allocation } from './allocation'
 import type { InstrumentClasses } from './instrument-classes'
+import { planBuys } from './buy-funding'
 import {
   computeCapExcess,
+  KRW_EPS,
   prepareSellContext,
   selectSells,
   sellAmounts,
   warningKey,
+  type CapExcess,
   type SellContext,
   type SellPick,
+  type SellSelection,
 } from './sell-selection'
+
+export { buyInstructionId, buyPrice, planBuys, transferInstructionId, type BuyPlan } from './buy-funding'
 
 export {
   computeCapExcess,
@@ -76,6 +82,8 @@ export type EngineWarningCode =
   | 'below_min_trade'
   | 'cash_floor'
   | 'no_sellable_lots'
+  | 'no_buy_price'
+  | 'no_buy_list'
 export type EngineWarning = { code: EngineWarningCode; message: string; ticker?: string; account?: string }
 /** amountKrw < 0 reduces the sleeve. */
 export type SleeveMove = { sleeve: Sleeve; fromPct: number; toPct: number; amountKrw: number }
@@ -184,13 +192,53 @@ function allocationWarnings(allocation: Allocation): EngineWarning[] {
   return out
 }
 
+/**
+ * Re-runs selection with every sleeve's reduction scaled so the sells total stays within
+ * maxTurnoverPctPerProposal. The scale applies to what the first pass actually sold (band and cap
+ * parts alike), so one pass is enough: rounding only sells less.
+ */
+function capTurnover(
+  ctx: SellContext,
+  amounts: Partial<Record<Sleeve, number>>,
+  capExcess: CapExcess[],
+  first: SellSelection,
+  totalKrw: number,
+  capPct: number
+): { selection: SellSelection; warning: EngineWarning | null } {
+  const soldKrw = Object.values(first.soldKrw).reduce<number>((sum, v) => sum + (v ?? 0), 0)
+  const capKrw = (capPct / 100) * totalKrw
+  if (!(capPct > 0) || !(totalKrw > 0) || soldKrw <= capKrw + KRW_EPS) return { selection: first, warning: null }
+  const f = capKrw / soldKrw
+  const scaled: Partial<Record<Sleeve, number>> = {}
+  for (const [sleeve, sold] of Object.entries(first.soldKrw) as [Sleeve, number][]) {
+    const band = Math.min(amounts[sleeve] ?? 0, sold)
+    if (band > 0) scaled[sleeve] = band * f
+  }
+  const soldOf = (c: CapExcess) =>
+    first.instructions
+      .filter((i) => i.sleeve === c.sleeve && i.market === c.market && i.ticker === c.ticker)
+      .reduce((sum, i) => sum + i.estimatedKrw, 0)
+  const scaledCap = capExcess.map((c) => ({
+    ...c,
+    excessKrw: c.excessKrw * f,
+    sellableKrw: Math.min(c.sellableKrw, soldOf(c)) * f,
+  }))
+  return {
+    selection: selectSells(ctx, scaled, scaledCap),
+    warning: {
+      code: 'turnover_capped',
+      message: `sells scaled from ${Math.round(soldKrw)} to ${Math.round(capKrw)} KRW (${capPct}% turnover cap)`,
+    },
+  }
+}
+
 export function buildTradePlan(args: {
   input: RebalanceInput
   policy: AllocationPolicy
   targets: Record<Sleeve, SleeveTarget>
   classes: InstrumentClasses
   taxPolicy: TaxPolicy
-  /** Instruction ids to leave out. */
+  /** Instruction ids to leave out; the plan is recomputed without them. */
   skip?: string[]
 }): TradePlan {
   const { input, policy, targets, classes } = args
@@ -199,11 +247,57 @@ export function buildTradePlan(args: {
   const capExcess = computeCapExcess(allocation, policy)
   const amounts = sellAmounts(bandMoves)
   const ctx = prepareSellContext({ input, policy, classes, taxPolicy: args.taxPolicy, skip: args.skip })
-  const selection = selectSells(ctx, amounts, capExcess)
+  const { selection, warning: turnoverWarning } = capTurnover(
+    ctx,
+    amounts,
+    capExcess,
+    selectSells(ctx, amounts, capExcess),
+    allocation.totalKrw,
+    policy.bounds.maxTurnoverPctPerProposal
+  )
 
+  // Sells below the minimum trade are dropped, with their lots.
+  const minTradeKrw = policy.bounds.minTradeKrw
+  const droppedSells = selection.instructions.filter((i) => i.estimatedKrw < minTradeKrw).map((i) => i.id)
+  const sells = selection.instructions.filter((i) => !droppedSells.includes(i.id))
+  const picks = selection.picks.filter((p) => !droppedSells.includes(p.instructionId))
+
+  const cashRow = allocation.sleeves.find((r) => r.sleeve === 'cash')
+  const buyPlan = planBuys({
+    input,
+    policy,
+    moves: bandMoves,
+    sells,
+    capExcess,
+    skip: ctx.skip,
+    cashSleeveKrw: cashRow?.valueKrw ?? 0,
+    totalKrw: allocation.totalKrw,
+  })
+  // A skipped transfer never appears: planBuys cuts the buys it would have funded instead.
+  const instructions = [...sells, ...buyPlan.buys, ...buyPlan.transfers]
+
+  const dropped = [...droppedSells, ...buyPlan.droppedIds]
+  const minWarning: EngineWarning[] = dropped.length
+    ? [
+        {
+          code: 'below_min_trade',
+          message: `left out, below the ${minTradeKrw} KRW minimum trade or under one tradable unit: ${dropped.join(', ')}`,
+        },
+      ]
+    : []
+
+  // A stale-account warning stays only while that account still has an instruction.
+  const accounts = new Set(instructions.map((i) => i.account))
   const warnings: EngineWarning[] = []
   const seen = new Set<string>()
-  for (const w of [...allocationWarnings(allocation), ...selection.warnings]) {
+  for (const w of [
+    ...allocationWarnings(allocation),
+    ...selection.warnings,
+    ...(turnoverWarning ? [turnoverWarning] : []),
+    ...minWarning,
+    ...buyPlan.warnings,
+  ]) {
+    if (w.code === 'stale_account' && w.account && !accounts.has(w.account)) continue
     const key = warningKey(w)
     if (seen.has(key)) continue
     seen.add(key)
@@ -212,9 +306,8 @@ export function buildTradePlan(args: {
 
   return {
     moves: movesWithCap(allocation, bandMoves, selection.capSoldKrw),
-    instructions: selection.instructions,
+    instructions,
     warnings,
-    taxSummary: summarize(ctx, selection.picks, allocation.totalKrw),
+    taxSummary: summarize(ctx, picks, allocation.totalKrw),
   }
 }
-

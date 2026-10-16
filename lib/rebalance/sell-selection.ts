@@ -508,7 +508,7 @@ export function selectSells(
 }
 
 /** 'unknown' when the account has no data date (as risky as old data), 'old' past staleDataDays, else null. */
-function staleAccount(ctx: SellContext, key: string): 'unknown' | 'old' | null {
+export function staleAccount(ctx: Pick<SellContext, 'input' | 'policy'>, key: string): 'unknown' | 'old' | null {
   const asOf = ctx.input.accountDataAsOf[key]
   if (!asOf) return 'unknown'
   return daysBetween(asOf, ctx.input.asOf) > ctx.policy.bounds.staleDataDays ? 'old' : null
