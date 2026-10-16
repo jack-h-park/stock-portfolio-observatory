@@ -201,3 +201,13 @@ test('files are written atomically', () => {
   assert.deepEqual(names, ['rb-2026-11.json'])
   assert.ok(fs.readFileSync(path.join(dir, names[0]), 'utf8').endsWith('}\n'))
 })
+
+test('listProposals names an unreadable file by its basename, without its content', () => {
+  const bad = fs.mkdtempSync(path.join(os.tmpdir(), 'rb-store-bad-'))
+  fs.writeFileSync(path.join(bad, 'rb-2026-10-15-manual.json'), '{"secret-ish": 12345')
+  assert.throws(
+    () => listProposals(bad),
+    (error: Error) =>
+      error.message.includes('rb-2026-10-15-manual.json') && !error.message.includes(bad) && !error.message.includes('12345')
+  )
+})

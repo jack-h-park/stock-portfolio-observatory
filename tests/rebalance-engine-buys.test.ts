@@ -59,7 +59,7 @@ const classes: InstrumentClasses = {
   'US:BBB': 'us_equity',
   'US:CCC': 'us_equity',
   'US:NEW': 'us_equity',
-  'US:BND': 'bonds',
+  'US:BDZ': 'bonds',
   'KR:KRX1': 'kr_equity',
 }
 
@@ -193,14 +193,14 @@ test('a fractional account buys fractional shares', () => {
 })
 
 test('a buy is funded from the same account\'s sale proceeds', () => {
-  // AAA 6,000,000 (60%) sells 1,000,000 to reach 50%; BND 200,000 (2%) buys 300,000 to reach 5%. No USD cash.
-  const lots = [lot({ id: 1, ticker: 'AAA', qty: 60, price: 100, cost: 50 }), lot({ id: 2, ticker: 'BND', qty: 2, price: 100, cost: 100 })]
+  // AAA 6,000,000 (60%) sells 1,000,000 to reach 50%; BDZ 200,000 (2%) buys 300,000 to reach 5%. No USD cash.
+  const lots = [lot({ id: 1, ticker: 'AAA', qty: 60, price: 100, cost: 50 }), lot({ id: 2, ticker: 'BDZ', qty: 2, price: 100, cost: 100 })]
   const p = plan(lots, [cash(3_800_000, 'KRW')], {
     t: targets({ us_equity: { target: 45, band: 5 }, bonds: { target: 10, band: 5 } }),
-    policy: allocationPolicy({ preferred: { bonds: [pref('BND')] } }),
+    policy: allocationPolicy({ preferred: { bonds: [pref('BDZ')] } }),
   })
   assert.equal(of(p, 'sell')[0].estimatedKrw, 1_000_000)
-  assert.deepEqual(of(p, 'buy').map((b) => [b.ticker, b.quantity]), [['BND', 3]])
+  assert.deepEqual(of(p, 'buy').map((b) => [b.ticker, b.quantity]), [['BDZ', 3]])
   assert.deepEqual(of(p, 'transfer'), [])
   assert.ok(!p.warnings.some((w) => w.code === 'transfer_needed'))
 })

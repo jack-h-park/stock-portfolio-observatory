@@ -9,6 +9,7 @@ import type { Instruction, TradePlan } from '../lib/rebalance/engine'
 import { createProposal, getProposal, transition, type TargetChange } from '../lib/rebalance/proposal-store'
 import {
   approvedTargets,
+  approveProposalPlan,
   approveProposalTargets,
   describeInstruction,
   parseFillForm,
@@ -282,4 +283,48 @@ test('recomputeProposalPlan: in targets_approved it plans against the approved t
   assert.deepEqual(p.planSkips, ['buy:x'])
   transition(id, 'plan_approved', 'ok', T0, paths.proposals)
   assert.equal(!recomputeProposalPlan(id, [], T0, paths, taxPolicy()).ok, true)
+})
+
+function setupHold(instructions: Instruction[]) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rb-actions-'))
+  const proposals = path.join(dir, 'proposals')
+  const p = createProposal(
+    {
+      id: 'rb-2026-10-15-manual',
+      kind: 'manual',
+      triggers: [],
+      policyAtCreation: example(),
+      inputSnapshot: snapshot(),
+      outlook: null,
+      llm: null,
+      targetChange: { decision: 'hold', sleeves: {}, boundsErrors: [] },
+      plan: { moves: [], instructions, warnings: [], taxSummary: {} } as unknown as TradePlan,
+      planSkips: [],
+    },
+    T0,
+    proposals,
+  )
+  return { id: p.id, paths: { proposals } }
+}
+
+test('approveProposalPlan: a plan with no buy or sell is refused as empty_plan and stays in draft', () => {
+  for (const instructions of [[], [ins(TRANSFER, 'transfer', 0)]]) {
+    const { id, paths } = setupHold(instructions)
+    const out = approveProposalPlan(id, T0, paths)
+    assert.deepEqual(out, { ok: false, code: 'empty_plan', detail: undefined })
+    assert.equal(getProposal(id, paths.proposals)!.status, 'draft')
+  }
+})
+
+test('approveProposalPlan: a plan with a sell is approved', () => {
+  const { id, paths } = setupHold([ins(SELL, 'sell', 10)])
+  const out = approveProposalPlan(id, T0, paths)
+  assert.equal(out.ok, true)
+  assert.equal(getProposal(id, paths.proposals)!.status, 'plan_approved')
+})
+
+test('approveProposalPlan: a change proposal still in draft is the wrong status', () => {
+  const { id, paths } = setup()
+  assert.equal(approveProposalPlan(id, T0, paths).ok, false)
+  assert.equal(getProposal(id, paths.proposals)!.status, 'draft')
 })

@@ -19,7 +19,7 @@ import { dbAvailable, portfolioToday } from '@/lib/adapters/portfolio-db'
 import { getRebalanceInput } from '@/lib/adapters/rebalance-input'
 import { getAllocationPolicy } from '@/lib/rebalance/allocation-policy'
 import { computeAllocation, type Allocation, type SleeveRow } from '@/lib/rebalance/allocation'
-import { getInstrumentClasses } from '@/lib/rebalance/instrument-classes'
+import { getInstrumentClasses, type InstrumentClasses } from '@/lib/rebalance/instrument-classes'
 import { listProposals, type Proposal, type ProposalStatus } from '@/lib/rebalance/proposal-store'
 import { isProposalErrorCode, PROPOSAL_STATUS_TONE } from '@/lib/rebalance/proposal-actions'
 import { fmtDateShort } from '@/lib/format'
@@ -48,14 +48,21 @@ const CLOSED: ProposalStatus[] = ['rejected', 'expired', 'closed']
 const SLEEVE_TONE = { below: 'warning', within: 'success', above: 'warning' } as const
 
 /** The allocation by sleeve, or why there is none. Never throws: the market-gap view below must still render. */
-function loadAllocation(): { state: 'ok'; allocation: Allocation } | { state: 'missing' | 'invalid' | 'no_data' } {
+function loadAllocation(): { state: 'ok'; allocation: Allocation } | { state: 'missing' | 'invalid' | 'classes_unreadable' | 'no_data' } {
   const policyState = getAllocationPolicy()
   if (policyState.error) return { state: 'invalid' }
   if (!policyState.policy) return { state: 'missing' }
+  let classes: InstrumentClasses
+  try {
+    classes = getInstrumentClasses()
+  } catch (error) {
+    console.error('[rebalance] instrument classes:', error)
+    return { state: 'classes_unreadable' }
+  }
   if (!dbAvailable()) return { state: 'no_data' }
   try {
     const input = getRebalanceInput(portfolioToday())
-    return { state: 'ok', allocation: computeAllocation(input, policyState.policy, getInstrumentClasses()) }
+    return { state: 'ok', allocation: computeAllocation(input, policyState.policy, classes) }
   } catch (error) {
     console.error('[rebalance] allocation:', error)
     return { state: 'no_data' }
@@ -144,6 +151,11 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
           ) : allocationState.state === 'invalid' ? (
             <EmptyState>
               <span className="block text-warning">{ac.policyInvalid}</span>
+              <TextLink href="/rebalance/settings">{ac.configure}</TextLink>
+            </EmptyState>
+          ) : allocationState.state === 'classes_unreadable' ? (
+            <EmptyState>
+              <span className="block text-warning">{proposalCopy.classesUnreadable}</span>
               <TextLink href="/rebalance/settings">{ac.configure}</TextLink>
             </EmptyState>
           ) : (

@@ -1227,13 +1227,13 @@ export function getDepositsSeries(dates: string[]): ReturnType<typeof depositsSe
 }
 
 /** Today in the ingest's time zone, the same calendar the snapshot dates use (scripts/portfolio-snapshot.mjs). */
-export function portfolioToday() {
+export function portfolioToday(at: Date = new Date()) {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: process.env.STOCK_TIME_ZONE || 'America/Los_Angeles',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(new Date())
+  }).format(at)
 }
 
 /** Year and month (1-12) of `at` in the ingest's time zone. */

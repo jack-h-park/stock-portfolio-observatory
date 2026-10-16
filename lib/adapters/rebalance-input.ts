@@ -122,15 +122,39 @@ function readRecentBuys(conn: Database.Database, today: string): RecentBuy[] {
     .all(since, today) as RecentBuy[]
 }
 
+/**
+ * Per account, the later of its latest holdings date (holdings_all, scoped as positions are) and
+ * its latest transaction date. An account held with no transactions still has a date; an account
+ * with neither has none (counted as stale by the engine).
+ */
 function readAccountDataAsOf(conn: Database.Database): Record<string, string | null> {
-  const table = allAssetsTable(conn, 'transactions')
-  const rows = conn
-    .prepare(
-      `select brokerage, account, max(date) as latest from ${table}
-        where 1 = 1${scope(conn, table)} group by brokerage, account`
-    )
-    .all() as { brokerage: string | null; account: string; latest: string | null }[]
-  return Object.fromEntries(rows.map((row) => [accountKey(row.brokerage, row.account), row.latest]))
+  const latest: Record<string, string | null> = {}
+  const merge = (rows: { brokerage: string | null; account: string; latest: string | null }[]) => {
+    for (const row of rows) {
+      const key = accountKey(row.brokerage, row.account)
+      const current = latest[key] ?? null
+      latest[key] = row.latest != null && (current == null || row.latest > current) ? row.latest : current
+    }
+  }
+  const holdings = allAssetsTable(conn, 'holdings')
+  merge(
+    conn
+      .prepare(
+        `select brokerage, account, max(as_of_date) as latest from ${holdings}
+          where 1 = 1${scope(conn, holdings)} group by brokerage, account`
+      )
+      .all() as { brokerage: string | null; account: string; latest: string | null }[]
+  )
+  const transactions = allAssetsTable(conn, 'transactions')
+  merge(
+    conn
+      .prepare(
+        `select brokerage, account, max(date) as latest from ${transactions}
+          where 1 = 1${scope(conn, transactions)} group by brokerage, account`
+      )
+      .all() as { brokerage: string | null; account: string; latest: string | null }[]
+  )
+  return Object.fromEntries(Object.keys(latest).sort().map((key) => [key, latest[key]]))
 }
 
 function readRealizedLots(conn: Database.Database): RealizedLotRow[] {
@@ -138,10 +162,12 @@ function readRealizedLots(conn: Database.Database): RealizedLotRow[] {
   const columns = columnsOf(conn, table)
   const superseded = columns.has('superseded_by') ? 'superseded_by' : 'null as superseded_by'
   const wrapper = columns.has('account_wrapper') ? 'account_wrapper' : "'taxable' as account_wrapper"
+  const proceeds = columns.has('proceeds_krw') ? 'proceeds_krw' : 'null as proceeds_krw'
+  const costUsd = columns.has('acquisition_cost_usd') ? 'acquisition_cost_usd' : 'null as acquisition_cost_usd'
   return conn
     .prepare(
       `select market, sold_date, tax_term, realized_gl_krw, native_realized_gl, currency,
-              ${wrapper}, ${superseded}
+              ${wrapper}, ${superseded}, ${proceeds}, ${costUsd}
          from ${table} where sold_date is not null${selfOnlyAnd(conn, table)}`
     )
     .all() as RealizedLotRow[]

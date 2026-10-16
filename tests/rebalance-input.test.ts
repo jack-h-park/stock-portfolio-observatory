@@ -30,13 +30,15 @@ const hold = db.prepare(
   `insert into holdings_all (market,currency,base_currency,brokerage,account,ticker,name,account_wrapper,owner,quantity,base_cost,base_market_value,total_cost_krw,as_of_date)
    values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
 )
-const h = (account: string, ticker: string, wrapper: string, owner: string, value: number, market = 'KR') =>
-  hold.run(market, market === 'US' ? 'USD' : 'KRW', 'KRW', 'Invented Broker', account, ticker, ticker, wrapper, owner, 10, value / 2, value, value / 2, '2026-10-14')
+const h = (account: string, ticker: string, wrapper: string, owner: string, value: number, market = 'KR', asOf = '2026-10-14') =>
+  hold.run(market, market === 'US' ? 'USD' : 'KRW', 'KRW', 'Invented Broker', account, ticker, ticker, wrapper, owner, 10, value / 2, value, value / 2, asOf)
 h('T-1', 'KRX1', 'taxable', 'self', 1_000_000)
 h('T-1', 'AAA', 'taxable', 'self', 2_000_000, 'US')
 h('I-1', 'KRX2', 'irp', 'self', 5_000_000)
 h('S-1', 'KRX3', 'isa', 'self', 6_000_000)
 h('C-1', 'KRX4', 'taxable', 'child:kid', 7_000_000)
+h('H-1', 'KRX6', 'taxable', 'self', 300_000) // holdings, no transactions
+h('X-1', 'KRX7', 'taxable', 'self', 200_000, 'KR', '2026-09-01') // older holdings, newer transaction
 db.prepare(
   `insert into holdings_all (market,currency,base_currency,brokerage,account,ticker,name,account_wrapper,owner,quantity,base_cost,base_market_value,total_cost_krw)
    values ('KR','KRW','KRW','Invented Broker','N-1','KRX5','KRX5',null,'self',1,1,4_000_000,1)`
@@ -81,6 +83,8 @@ t('T-1', 'EEE', '2026-10-01', 'BUY', 'taxable', 'self', 'CRYPTO') // wrong marke
 t('T-1', 'FFF', '2026-10-01', 'BUY', 'taxable', 'self', 'US', 0) // no quantity
 t('T-1', 'AAA', '2026-10-10', 'DIVIDEND')
 t('N-1', 'NNN', '2026-10-14', 'BUY', null as unknown as string) // null wrapper: no data-as-of entry, buy still counts
+t('X-1', 'KRX7', '2026-10-02', 'SELL', 'taxable', 'self', 'KR')
+t('C-1', 'KRX4', '2026-10-14', 'SELL', 'taxable', 'child:kid', 'KR') // child: no data-as-of entry
 db.close()
 
 const more = new Database(dbPath)
@@ -104,7 +108,7 @@ const load = async () => (await import('../lib/adapters/rebalance-input')).getRe
 
 test('positions are taxable, self-owned holdings_all rows only', async () => {
   const input = await load()
-  assert.deepEqual(input.positions.map((p) => p.ticker).sort(), ['AAA', 'KRX1'])
+  assert.deepEqual(input.positions.map((p) => p.ticker).sort(), ['AAA', 'KRX1', 'KRX6', 'KRX7'])
   assert.equal(input.positions.find((p) => p.ticker === 'KRX1')!.valueKrw, 1_000_000)
   assert.equal(input.positions.find((p) => p.ticker === 'KRX1')!.costKrw, 500_000)
   assert.deepEqual(input.lots.map((l) => l.ticker), ['KRX1'])
@@ -134,9 +138,13 @@ test('recentBuys covers 30 days back from today', async () => {
   )
 })
 
-test('accountDataAsOf is the max transaction date per account', async () => {
+test('accountDataAsOf is the later of the latest holdings date and the latest transaction date', async () => {
   const input = await load()
-  assert.deepEqual(input.accountDataAsOf, { 'Invented Broker::T-1': '2026-10-10' })
+  assert.deepEqual(input.accountDataAsOf, {
+    'Invented Broker::H-1': '2026-10-14', // holdings only
+    'Invented Broker::T-1': '2026-10-14', // holdings 10-14 beat the 10-10 transaction
+    'Invented Broker::X-1': '2026-10-02', // the 10-02 transaction beats the 09-01 holdings
+  })
 })
 
 test('healthErrors lists failing error-severity checks', async () => {
@@ -156,4 +164,42 @@ test('ytd sums the calendar year of today from taxable self lots; open wash wind
   assert.equal(input.ytd.usShortUsd, -100)
   assert.equal(input.ytd.usLongUsd, 200)
   assert.deepEqual(input.washSaleBlockedBuys.map((w) => w.ticker), ['LOSS'])
+})
+
+test('engine: an account held with no transactions and a fresh holdings date is not stale', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { buildTradePlan } = await import('../lib/rebalance/engine')
+  const { SLEEVES } = await import('../lib/rebalance/allocation-policy')
+  const loaded = await load()
+  const position = loaded.positions.find((p) => p.account === 'H-1')!
+  const raw = JSON.parse(readFileSync(path.join(__dirname, '..', 'data', 'allocation-policy.example.json'), 'utf8'))
+  delete raw._comment
+  raw.bounds.positionCapPct = 100
+  raw.bounds.maxTurnoverPctPerProposal = 0
+  const targets = Object.fromEntries(SLEEVES.map((s) => [s, { target: 0, band: 100 }])) as Record<(typeof SLEEVES)[number], { target: number; band: number }>
+  targets.kr_equity = { target: 0, band: 5 }
+  const p = buildTradePlan({
+    input: {
+      ...loaded,
+      positions: [position],
+      cash: [{ brokerage: 'Invented Broker', account: 'H-1', currency: 'KRW', balance: 700_000, krw: 700_000, asOf: '2026-10-14' }],
+      lots: [
+        {
+          id: 99, market: 'KR', currency: 'KRW', brokerage: 'Invented Broker', account: 'H-1', ticker: 'KRX6', name: 'KRX6',
+          acquired_date: '2025-01-02', fx_rate_to_base: 1, open_quantity: 10, native_cost_basis: 150_000,
+          native_market_value: 300_000, native_unrealized_gl: 150_000, cost_basis_krw: 150_000, acquisition_cost_krw: 150_000,
+          acquisition_cost_usd: null, holding_days: 600, tax_term: 'long', account_wrapper: 'taxable',
+        },
+      ],
+      recentBuys: [],
+    },
+    policy: raw,
+    targets,
+    classes: { 'KR:KRX6': 'kr_equity' },
+    taxPolicy: JSON.parse(readFileSync(path.join(__dirname, '..', 'data', 'tax-policy.example.json'), 'utf8')),
+  })
+  const sell = p.instructions.find((i) => i.kind === 'sell' && i.account === 'H-1')
+  assert.ok(sell, JSON.stringify([p.moves, p.warnings]))
+  assert.deepEqual(sell.notes, [])
+  assert.ok(!p.warnings.some((w) => w.code === 'stale_account'))
 })

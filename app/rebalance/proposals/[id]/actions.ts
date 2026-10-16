@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { getProposal, recordFill, transition, type Proposal } from '@/lib/rebalance/proposal-store'
 import {
+  approveProposalPlan,
   approveProposalTargets,
   parseFillForm,
   parseRejectReason,
@@ -72,14 +73,7 @@ export async function recomputePlan(formData: FormData) {
 
 export async function approvePlan(formData: FormData) {
   const p = loadProposal(formData)
-  const allowed = p.status === 'targets_approved' || (p.status === 'draft' && p.targetChange.decision === 'hold')
-  if (!allowed) fail(p.id, 'plan', 'wrong_status')
-  try {
-    transition(p.id, 'plan_approved', 'plan approved by the maintainer', new Date())
-  } catch (error) {
-    fail(p.id, 'plan', 'wrong_status', error)
-  }
-  done(p.id, 'fills', 'plan_approved')
+  finish(p.id, 'plan', approveProposalPlan(p.id, new Date()), 'fills', 'plan_approved')
 }
 
 export async function rejectProposal(formData: FormData) {

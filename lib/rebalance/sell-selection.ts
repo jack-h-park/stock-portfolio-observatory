@@ -379,12 +379,47 @@ export function selectSells(
     return proceeds > 0 ? Math.max(gain, usGainKrwAtRate(c)) / proceeds : 0 // gain/proceeds ascending
   }
 
+  const decimalsFor = (h: Holding) => (h.rule.fractional ? (h.market === 'CRYPTO' ? 8 : 6) : 0)
+  const roundDown = (q: number, decimals: number) => {
+    const scale = 10 ** decimals
+    return Math.floor(q * scale + 1e-6) / scale
+  }
+
+  /**
+   * Splits a unit's (already rounded) quantity across its lots in the account's tradable increment:
+   * each lot gets its pro-rata share rounded down, and the increments left over go to the lots with
+   * the largest remainders (oldest first on a tie), so a whole-share account never shows a
+   * fractional lot quantity.
+   */
+  const splitQuantity = (unit: Unit, quantity: number): number[] => {
+    if (unit.parts.length === 1) return [Math.min(quantity, unit.parts[0].quantity)]
+    const f = unit.quantity > 0 ? quantity / unit.quantity : 0
+    const scale = 10 ** decimalsFor(unit.holding)
+    const capacity = unit.parts.map((p) => Math.floor(p.quantity * scale + 1e-6))
+    const ideal = unit.parts.map((p) => p.quantity * f * scale)
+    const steps = ideal.map((x, i) => Math.min(Math.floor(x + 1e-6), capacity[i]))
+    let leftover = Math.round(quantity * scale) - steps.reduce((sum, n) => sum + n, 0)
+    const order = ideal
+      .map((x, i) => ({ i, remainder: x - Math.floor(x + 1e-6) }))
+      .sort((a, b) => b.remainder - a.remainder || a.i - b.i)
+    while (leftover > 0) {
+      const next = order.find(({ i }) => steps[i] < capacity[i])
+      if (!next) break
+      steps[next.i] += 1
+      leftover -= 1
+      order.splice(order.indexOf(next), 1)
+      if (!order.length) order.push(...ideal.map((_, i) => ({ i, remainder: 0 })))
+    }
+    return steps.map((n) => roundQty(n / scale))
+  }
+
   const picks: SellPick[] = []
   const take = (unit: Unit, quantity: number, tier: Tier): number => {
-    const f = unit.quantity > 0 ? quantity / unit.quantity : 0
+    const full = unit.quantity > 0 && quantity >= unit.quantity
+    const split = full ? unit.parts.map((p) => p.quantity) : splitQuantity(unit, quantity)
     let proceeds = 0
-    for (const part of unit.parts) {
-      const q = f === 1 ? part.quantity : roundQty(part.quantity * f)
+    for (const [index, part] of unit.parts.entries()) {
+      const q = split[index]
       if (q <= 0) continue
       const candidate = lotCandidate(part.lot, q)
       if (!candidate) continue
@@ -396,12 +431,6 @@ export function selectSells(
       if (krTaxable(candidate, taxPolicy) && gain > 0) deductionLeft = Math.max(deductionLeft - gain, 0)
     }
     return proceeds
-  }
-
-  const decimalsFor = (h: Holding) => (h.rule.fractional ? (h.market === 'CRYPTO' ? 8 : 6) : 0)
-  const roundDown = (q: number, decimals: number) => {
-    const scale = 10 ** decimals
-    return Math.floor(q * scale + 1e-6) / scale
   }
 
   /** Sells up to `need` from the sleeve's holdings that pass `filter`. */

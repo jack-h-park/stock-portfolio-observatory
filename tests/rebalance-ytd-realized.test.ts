@@ -124,3 +124,26 @@ test('withDerivedYtd creates a missing jurisdiction or assumptions bag without m
   assert.equal(us.manualAssumptions.taxInputYear, 2026)
   assert.equal(us.manualAssumptions.ytdRealizedLongGainLossUsd, 9)
 })
+
+test('a non-USD lot with a USD acquisition cost: US gain = proceeds_krw / rate - acquisition_cost_usd', () => {
+  // Proceeds 2,100,000 KRW at 1,400 = 1,500 USD, less a 1,200 USD cost: 300 USD (the KRW gain / rate would say 500).
+  const out = deriveYtdRealized(
+    [row({ market: 'KR', currency: 'KRW', realized_gl_krw: 700_000, native_realized_gl: 700_000, proceeds_krw: 2_100_000, acquisition_cost_usd: 1_200 })],
+    2026,
+    1400
+  )
+  assert.equal(out.usShortUsd, 300)
+})
+
+test('a non-USD lot without a USD acquisition cost falls back to realized_gl_krw / rate', () => {
+  const out = deriveYtdRealized(
+    [
+      row({ market: 'KR', currency: 'KRW', realized_gl_krw: 700_000, native_realized_gl: 700_000, proceeds_krw: 2_100_000, acquisition_cost_usd: null }),
+      row({ market: 'KR', currency: 'KRW', tax_term: 'long', realized_gl_krw: 140_000, native_realized_gl: 140_000 }),
+    ],
+    2026,
+    1400
+  )
+  assert.equal(out.usShortUsd, 500)
+  assert.equal(out.usLongUsd, 100)
+})

@@ -1,4 +1,5 @@
 import { config } from '@/config'
+import { portfolioToday } from '@/lib/adapters/portfolio-db'
 import { loadTransactions, reconcile } from '@/lib/rebalance/reconcile'
 import { proposeEngineOnly } from '@/lib/rebalance/propose'
 import { expireStale, listProposals, openProposal, setReconciliation, transition, type ProposalKind } from '@/lib/rebalance/proposal-store'
@@ -11,9 +12,9 @@ type Command = (typeof COMMANDS)[number]
 type Io = { out: (text: string) => void; err: (text: string) => void }
 type Parsed = { command: Command; kind: ProposalKind; triggers: string[]; today: string | null }
 
-/** Today in the maintainer's calendar (the market dates the ingest stores are Korea time). */
-function seoulToday(now: Date): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(now)
+/** Today in the portfolio calendar (STOCK_TIME_ZONE), the same day the pages use. */
+export function defaultToday(now: Date): string {
+  return portfolioToday(now)
 }
 
 function parse(argv: string[]): Parsed | string {
@@ -50,7 +51,7 @@ export function runRebalanceCli(argv: string[], io: Io, now: Date = new Date()):
   }
   const emit = (payload: Record<string, unknown>) =>
     io.out(`${JSON.stringify({ schemaVersion: SCHEMA_VERSION, ok: payload.ok, command: parsed.command, ...payload })}\n`)
-  const today = parsed.today ?? seoulToday(now)
+  const today = parsed.today ?? defaultToday(now)
   try {
     if (parsed.command === 'propose') {
       const result = proposeEngineOnly({ kind: parsed.kind, triggers: parsed.triggers, today, now })

@@ -73,19 +73,22 @@ function policyFor(proposal: Proposal): AllocationPolicy {
   return getAllocationPolicy().policy ?? proposal.policyAtCreation
 }
 
+/** The instrument classes, or null when the file cannot be read (the page then says so). */
 function loadClasses() {
   try {
     return getInstrumentClasses()
-  } catch {
-    return {}
+  } catch (error) {
+    console.error('[rebalance-proposal] instrument classes:', error)
+    return null
   }
 }
 
-function Figure({ label, children }: { label: string; children: React.ReactNode }) {
+function Figure({ label, children, sub }: { label: string; children: React.ReactNode; sub?: React.ReactNode }) {
   return (
     <div className="bg-card px-3 py-3">
       <Label size="micro">{label}</Label>
       <div className="mt-1 text-title font-medium tabular-nums text-ink">{children}</div>
+      {sub != null && <div className="mt-0.5 text-label tabular-nums text-ink-3">{sub}</div>}
     </div>
   )
 }
@@ -150,10 +153,10 @@ function SummaryTab({ proposal, copy, language }: { proposal: Proposal; copy: Co
 
   // Drift: the same rules (current policy, current classes) over the snapshot and over today's data.
   let drift: { sleeve: Sleeve; then: number; now: number }[] | null = null
-  if (dbAvailable()) {
+  const classes = loadClasses()
+  if (classes && dbAvailable()) {
     try {
       const policy = policyFor(proposal)
-      const classes = loadClasses()
       const then = computeAllocation(snapshot, policy, classes)
       const now = computeAllocation(getRebalanceInput(portfolioToday()), policy, classes)
       drift = SLEEVES.map((sleeve) => ({
@@ -190,7 +193,12 @@ function SummaryTab({ proposal, copy, language }: { proposal: Proposal; copy: Co
       <Card title={copy.figures.title} info={copy.figures.info} className="mb-5">
         <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line-subtle bg-line-subtle md:grid-cols-4">
           <Figure label={copy.figures.turnover}>{fmtPct(tax.turnoverPct)}</Figure>
-          <Figure label={copy.figures.estimatedTax}>{fmtKrw(tax.estimatedTaxKrw)}</Figure>
+          <Figure
+            label={copy.figures.estimatedTax}
+            sub={`${copy.figures.yearTotalTax} ${tax.yearTotalTaxKrw == null ? '—' : fmtKrw(tax.yearTotalTaxKrw)}`}
+          >
+            {tax.estimatedTaxKrw < 0 ? `${fmtKrw(tax.estimatedTaxKrw)} ${copy.figures.taxReduction}` : fmtKrw(tax.estimatedTaxKrw)}
+          </Figure>
           <Figure label={copy.figures.harvestedLoss}>{fmtKrw(tax.harvestedLossKrw)}</Figure>
           <Figure label={copy.figures.krGain}>{fmtKrw(tax.krGainKrw)}</Figure>
           <Figure label={copy.figures.krDeductionUsed}>{fmtKrw(tax.krDeductionUsedKrw)}</Figure>
@@ -227,7 +235,12 @@ function SummaryTab({ proposal, copy, language }: { proposal: Proposal; copy: Co
       </CardRow>
 
       <Card title={copy.drift.title} info={copy.drift.info} className="mb-5">
-        {drift === null ? (
+        {classes === null ? (
+          <EmptyState>
+            <span className="block text-warning">{copy.classesUnreadable}</span>
+            <TextLink href="/rebalance/settings">{copy.openSettings}</TextLink>
+          </EmptyState>
+        ) : drift === null ? (
           <EmptyState>{copy.drift.unavailable}</EmptyState>
         ) : (
           <>

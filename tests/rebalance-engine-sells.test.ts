@@ -37,7 +37,7 @@ const targets = (over: Partial<Record<Sleeve, SleeveTarget>> = {}): Record<Sleev
   Object.fromEntries(SLEEVES.map((s) => [s, over[s] ?? { target: 0, band: 100 }])) as Record<Sleeve, SleeveTarget>
 
 const classes: InstrumentClasses = Object.fromEntries(
-  ['AAA', 'BBB', 'CCC', 'DDD', 'EEE', 'FFF', 'GGG', 'HHH', 'III', 'JJJ', 'KKK', 'LLL', 'MMM', 'NNN', 'OOO', 'PPP', 'QQQ', 'RRR'].map(
+  ['AAA', 'BBB', 'CCC', 'DDD', 'EEE', 'FFF', 'GGG', 'HHH', 'III', 'JJJ', 'KKK', 'LLL', 'MMM', 'NNN', 'OOO', 'PPP', 'QQZ', 'RRR'].map(
     (t) => [`US:${t}`, 'us_equity' as Sleeve]
   ).concat([['KR:KRX1', 'kr_equity']])
 )
@@ -355,13 +355,13 @@ test('engine skips unpriced lots and warns', () => {
 })
 
 test('position over cap is reduced first even if its sleeve is within band', () => {
-  // QQQ is 20% of 10M against a 15% cap: 500k excess. RRR is a loss lot, which would otherwise go first.
+  // QQZ is 20% of 10M against a 15% cap: 500k excess. RRR is a loss lot, which would otherwise go first.
   const lots = [
-    lot({ id: 1, ticker: 'QQQ', qty: 20, price: 100, cost: 50 }),
+    lot({ id: 1, ticker: 'QQZ', qty: 20, price: 100, cost: 50 }),
     lot({ id: 2, ticker: 'RRR', qty: 10, price: 100, cost: 150 }),
   ]
   const p = plan(lots, 7_000_000, { t: targets(), policy: allocationPolicy({ positionCapPct: 15 }) })
-  assert.deepEqual(sells(p).map((i) => [i.ticker, i.quantity]), [['QQQ', 5]])
+  assert.deepEqual(sells(p).map((i) => [i.ticker, i.quantity]), [['QQZ', 5]])
   assert.equal(p.moves.length, 1)
   assert.equal(p.moves[0].sleeve, 'us_equity')
   near(p.moves[0].amountKrw, -500_000)
@@ -369,7 +369,7 @@ test('position over cap is reduced first even if its sleeve is within band', () 
 
 test('a cap on a managed-only instrument in a within-band sleeve sells nothing and warns', () => {
   const lots = [
-    lot({ id: 1, ticker: 'QQQ', qty: 20, price: 100, cost: 50, account: 'acct-2' }),
+    lot({ id: 1, ticker: 'QQZ', qty: 20, price: 100, cost: 50, account: 'acct-2' }),
     lot({ id: 2, ticker: 'RRR', qty: 10, price: 100, cost: 150 }),
   ]
   const p = plan(lots, 7_000_000, {
@@ -381,32 +381,32 @@ test('a cap on a managed-only instrument in a within-band sleeve sells nothing a
   })
   assert.deepEqual(p.instructions, [])
   assert.deepEqual(p.moves, [])
-  assert.ok(p.warnings.some((w) => w.code === 'no_sellable_lots' && w.ticker === 'QQQ' && w.message.includes('position cap')))
+  assert.ok(p.warnings.some((w) => w.code === 'no_sellable_lots' && w.ticker === 'QQZ' && w.message.includes('position cap')))
 })
 
 test('a cap on a wash-blocked instrument does not spill into other holdings', () => {
   const lots = [
-    lot({ id: 1, ticker: 'QQQ', qty: 20, price: 100, cost: 150 }),
+    lot({ id: 1, ticker: 'QQZ', qty: 20, price: 100, cost: 150 }),
     lot({ id: 2, ticker: 'RRR', qty: 10, price: 100, cost: 50 }),
   ]
   const p = plan(lots, 7_000_000, {
     t: targets(),
     policy: allocationPolicy({ positionCapPct: 15 }),
-    over: { recentBuys: [{ market: 'US', ticker: 'QQQ', brokerage: 'BrokerA', account: 'acct-1', date: '2026-10-10' }] },
+    over: { recentBuys: [{ market: 'US', ticker: 'QQZ', brokerage: 'BrokerA', account: 'acct-1', date: '2026-10-10' }] },
   })
   assert.deepEqual(p.instructions, [])
-  assert.ok(p.warnings.some((w) => w.code === 'wash_sale_block' && w.ticker === 'QQQ'))
-  assert.ok(p.warnings.some((w) => w.code === 'no_sellable_lots' && w.ticker === 'QQQ'))
+  assert.ok(p.warnings.some((w) => w.code === 'wash_sale_block' && w.ticker === 'QQZ'))
+  assert.ok(p.warnings.some((w) => w.code === 'no_sellable_lots' && w.ticker === 'QQZ'))
 })
 
 test('a cap sale counts toward the band reduction of its sleeve', () => {
-  // US at 55% (band edge 50%): 500k to sell. QQQ is 30% against a 25% cap: 500k excess, which covers it.
+  // US at 55% (band edge 50%): 500k to sell. QQZ is 30% against a 25% cap: 500k excess, which covers it.
   const lots = [
-    lot({ id: 1, ticker: 'QQQ', qty: 30, price: 100, cost: 50 }),
+    lot({ id: 1, ticker: 'QQZ', qty: 30, price: 100, cost: 50 }),
     lot({ id: 2, ticker: 'RRR', qty: 25, price: 100, cost: 150 }),
   ]
   const p = plan(lots, 4_500_000, { policy: allocationPolicy({ positionCapPct: 25 }) })
-  assert.deepEqual(sells(p).map((i) => [i.ticker, i.quantity]), [['QQQ', 5]])
+  assert.deepEqual(sells(p).map((i) => [i.ticker, i.quantity]), [['QQZ', 5]])
   near(p.moves[0].amountKrw, -500_000)
 })
 
@@ -504,4 +504,50 @@ test('same input twice yields deep-equal plans', () => {
     lot({ id: 4, ticker: 'DDD', qty: 25, price: 100, cost: 100 }),
   ]
   assert.deepEqual(plan(lots, 4_500_000), plan(lots, 4_500_000))
+})
+
+/** YTD KR gain of 4,000,000: tax(ytd only) = (4,000,000 - 2,500,000) x 22% = 330,000. */
+const YTD_KR_GAIN = { ytd: { year: 2026, krTaxableGainKrw: 4_000_000, usShortUsd: 0, usLongUsd: 0, lotCount: 1 } }
+
+test('estimatedTaxKrw is the plan\'s incremental tax: a loss sale against ytd gains is negative', () => {
+  // BBB sells 2 shares at a 50 USD loss each: -100,000 KRW. Year total = (3,900,000 - 2,500,000) x 22% = 308,000.
+  const lots = [
+    lot({ id: 1, ticker: 'AAA', qty: 10, price: 300, cost: 200 }),
+    lot({ id: 2, ticker: 'BBB', qty: 10, price: 250, cost: 300 }),
+  ]
+  const p = plan(lots, 4_500_000, { over: YTD_KR_GAIN })
+  assert.deepEqual(sells(p).map((i) => [i.ticker, i.quantity]), [['BBB', 2]])
+  near(p.taxSummary.yearTotalTaxKrw, 308_000)
+  near(p.taxSummary.estimatedTaxKrw, 308_000 - 330_000)
+  assert.ok(p.taxSummary.estimatedTaxKrw <= 0)
+})
+
+test('a plan with no sells has no tax effect; the year total is the ytd tax', () => {
+  const lots = [lot({ id: 1, ticker: 'AAA', qty: 55, price: 100, cost: 50 })]
+  const p = plan(lots, 4_500_000, { t: targets(), over: YTD_KR_GAIN })
+  assert.deepEqual(sells(p), [])
+  near(p.taxSummary.estimatedTaxKrw, 0)
+  near(p.taxSummary.yearTotalTaxKrw, 330_000)
+})
+
+test('a whole-share average account splits the sold shares across lots in whole shares', () => {
+  // KR at 55% of 10M against 45 ± 5: 5 shares of 100,000 to sell from lots of 15 and 40.
+  // Pro rata that is 1.36 and 3.64; largest remainder gives 1 and 4.
+  const key = accountKey('BrokerA', 'acct-1')
+  const lots = [
+    lot({ id: 1, ticker: 'KRX1', market: 'KR', qty: 15, price: 100_000, cost: 50_000, acquired: '2024-02-01' }),
+    lot({ id: 2, ticker: 'KRX1', market: 'KR', qty: 40, price: 100_000, cost: 60_000, acquired: '2024-05-01' }),
+  ]
+  const p = plan(lots, 4_500_000, {
+    t: targets({ kr_equity: { target: 45, band: 5 } }),
+    policy: allocationPolicy({}, { [key]: { lotMethod: 'average', fractional: false, managedBy: null, excludedCash: false } }),
+  })
+  const s = sells(p)
+  assert.equal(s.length, 1)
+  assert.equal(s[0].quantity, 5)
+  assert.deepEqual(s[0].lots.map((l) => [l.lotId, l.quantity]), [
+    [1, 1],
+    [2, 4],
+  ])
+  assert.ok(s[0].lots.every((l) => Number.isInteger(l.quantity)))
 })

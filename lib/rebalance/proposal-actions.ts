@@ -50,6 +50,8 @@ export const PROPOSAL_ERROR_CODES = [
   'write_failed',
   'action_failed',
   'text_too_long',
+  // The plan has no buy or sell; approving it would leave a proposal with nothing to fill or reconcile.
+  'empty_plan',
   // The policy file now holds the approved targets, but the plan or status did not follow; approving again finishes it.
   'targets_saved_not_advanced',
   // The target edits are saved, but the plan was not rebuilt against them; recompute or save again.
@@ -367,6 +369,24 @@ export function saveProposalTargetEdits(
     return { ok: true, proposal: setPlan(p.id, plan, p.planSkips, now, paths.proposals) }
   } catch (error) {
     return failed('targets_saved_plan_stale', error)
+  }
+}
+
+/**
+ * Approves the plan: from targets_approved, or from draft for a hold proposal. A plan with no buy
+ * or sell is refused (`empty_plan`): it could never reach reconciled, so it would hold the only
+ * open slot until rejected.
+ */
+export function approveProposalPlan(id: string, now: Date, paths: ProposalPaths = {}): StepOutcome {
+  const p = loadFor(id, paths)
+  if (!p) return failed('not_found')
+  const allowed = p.status === 'targets_approved' || (p.status === 'draft' && p.targetChange.decision === 'hold')
+  if (!allowed) return failed('wrong_status')
+  if (!p.plan.instructions.some((i) => i.kind === 'buy' || i.kind === 'sell')) return failed('empty_plan')
+  try {
+    return { ok: true, proposal: transition(p.id, 'plan_approved', 'plan approved by the maintainer', now, paths.proposals) }
+  } catch (error) {
+    return failed('wrong_status', error)
   }
 }
 

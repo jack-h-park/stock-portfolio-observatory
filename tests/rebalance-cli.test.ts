@@ -44,3 +44,19 @@ test('reconcile with nothing executing exits 0', async () => {
   assert.equal(r.code, 0)
   assert.deepEqual(JSON.parse(r.out), { schemaVersion: 1, ok: true, command: 'reconcile', expired: [], reconciled: [], failed: [] })
 })
+
+test('the default today is the portfolio calendar (STOCK_TIME_ZONE), the same as the UI', async () => {
+  const { defaultToday } = await import('../lib/rebalance/cli')
+  const { portfolioToday } = await import('../lib/adapters/portfolio-db')
+  const previous = process.env.STOCK_TIME_ZONE
+  process.env.STOCK_TIME_ZONE = 'America/Los_Angeles'
+  try {
+    // 20:00 UTC is already the 16th in Seoul but still the 15th in Los Angeles.
+    const at = new Date('2026-10-15T20:00:00Z')
+    assert.equal(defaultToday(at), '2026-10-15')
+    assert.equal(defaultToday(at), portfolioToday(at))
+  } finally {
+    if (previous === undefined) delete process.env.STOCK_TIME_ZONE
+    else process.env.STOCK_TIME_ZONE = previous
+  }
+})

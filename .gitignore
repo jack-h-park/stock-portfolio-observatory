@@ -57,6 +57,8 @@ data/rebalance-policy.json
 data/allocation-policy.json
 data/instrument-classes.json
 data/rebalance-proposals/
+# Atomic-write temp files (written then renamed)
+data/*.tmp
 data/historical-fx-rates.json
 data/historical-prices.json
 # Parsed broker certificates: every trade, with amounts. Never commit.

@@ -10,6 +10,9 @@ export type RealizedLotRow = {
   currency: string
   account_wrapper: string | null
   superseded_by: number | null
+  /** Optional: absent in older databases. With acquisition_cost_usd, gives a non-USD lot's US gain. */
+  proceeds_krw?: number | null
+  acquisition_cost_usd?: number | null
 }
 
 export type YtdRealized = {
@@ -47,12 +50,16 @@ export function deriveYtdRealized(rows: RealizedLotRow[], year: number, usdKrwRa
     if (Number(String(row.sold_date).slice(0, 4)) !== year) continue
     lotCount += 1
     if (krTaxable(row)) krTaxableGainKrw += num(row.realized_gl_krw)
+    // The planner's convention (tax-planning usGainUsd): a non-USD lot with a USD acquisition cost
+    // is measured as its proceeds in USD less that cost; otherwise the KRW gain at the rate.
     const usd =
       row.currency === 'USD'
         ? num(row.native_realized_gl)
-        : usdKrwRate > 0
-          ? num(row.realized_gl_krw) / usdKrwRate
-          : 0
+        : !(usdKrwRate > 0)
+          ? 0
+          : row.acquisition_cost_usd != null && row.proceeds_krw != null
+            ? num(row.proceeds_krw) / usdKrwRate - num(row.acquisition_cost_usd)
+            : num(row.realized_gl_krw) / usdKrwRate
     if (/long/i.test(row.tax_term ?? '')) usLongUsd += usd
     else usShortUsd += usd
   }

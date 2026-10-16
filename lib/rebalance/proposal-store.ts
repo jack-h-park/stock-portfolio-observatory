@@ -125,7 +125,12 @@ export function listProposals(dir?: string): Proposal[] {
   const out: Proposal[] = []
   for (const name of fs.readdirSync(d)) {
     if (!name.endsWith('.json')) continue
-    out.push(JSON.parse(fs.readFileSync(path.join(d, name), 'utf8')) as Proposal)
+    try {
+      out.push(JSON.parse(fs.readFileSync(path.join(d, name), 'utf8')) as Proposal)
+    } catch (error) {
+      // The basename only, and the error's kind rather than its message: a JSON parse message quotes the content.
+      throw new Error(`Proposal file unreadable: ${name} (${(error as Error).name ?? 'Error'})`, { cause: error })
+    }
   }
   // Newest first; the id breaks ties so '-2' follows its base id.
   return out.sort((a, b) => (a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1))

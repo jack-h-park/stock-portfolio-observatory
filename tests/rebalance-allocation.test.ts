@@ -60,7 +60,7 @@ test('instrument classes round-trip and a missing file is empty', () => {
 
 test('gold and crypto classify without a mapping', () => {
   assert.equal(classify({ market: 'KR', ticker: 'G1', asset_class: 'gold' }, {}), 'gold')
-  assert.equal(classify({ market: 'CRYPTO', ticker: 'BTC', asset_class: 'crypto' }, {}), 'crypto')
+  assert.equal(classify({ market: 'CRYPTO', ticker: 'CRY1', asset_class: 'crypto' }, {}), 'crypto')
   assert.equal(classify({ market: 'US', ticker: 'AAA', asset_class: 'stock' }, classes), 'us_equity')
   assert.equal(classify({ market: 'US', ticker: 'ZZZ', asset_class: 'stock' }, classes), null)
 })

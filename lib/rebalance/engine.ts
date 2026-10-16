@@ -108,7 +108,10 @@ export type TaxSummary = {
   usShortUsd: number
   usLongUsd: number
   harvestedLossKrw: number
+  /** The plan's incremental tax: tax(YTD + plan) − tax(YTD only). Negative when the plan reduces the year's tax. */
   estimatedTaxKrw: number
+  /** The year's total estimated tax with the plan: tax(YTD + plan). */
+  yearTotalTaxKrw: number
   turnoverPct: number
 }
 export type TradePlan = {
@@ -152,14 +155,18 @@ function summarize(ctx: SellContext, picks: SellPick[], totalKrw: number): TaxSu
   const sumUsd = (bucket: 'short' | 'long') =>
     candidates.filter((c) => c.holdingBucket === bucket).reduce((sum, c) => sum + usGainUsd(c, ctx.usdKrwRate), 0)
   const proceeds = candidates.reduce((sum, c) => sum + Number(c.proceedsKrw ?? 0), 0)
-  const estimatedTaxKrw = candidates.length
-    ? summarizeTaxCandidates({
-        candidates,
-        policy: ctx.taxPolicy,
-        scenario: ctx.taxPolicy.activeScenario,
-        year: Number(ctx.input.asOf.slice(0, 4)),
-      }).combinedTaxAfterCreditsKrw
-    : 0
+  // The aggregate includes the year's realized gains (YTD), so the plan's own effect is the
+  // difference between the year with the plan and the year without it. Both sides run the same
+  // aggregate; the YTD-only side simply has no candidates.
+  const yearTax = (rows: typeof candidates) =>
+    summarizeTaxCandidates({
+      candidates: rows,
+      policy: ctx.taxPolicy,
+      scenario: ctx.taxPolicy.activeScenario,
+      year: Number(ctx.input.asOf.slice(0, 4)),
+    }).combinedTaxAfterCreditsKrw
+  const yearTotalTaxKrw = yearTax(candidates)
+  const estimatedTaxKrw = yearTotalTaxKrw - yearTax([])
   return {
     krGainKrw,
     krDeductionUsedKrw: used,
@@ -168,6 +175,7 @@ function summarize(ctx: SellContext, picks: SellPick[], totalKrw: number): TaxSu
     usLongUsd: sumUsd('long'),
     harvestedLossKrw: -candidates.reduce((sum, c) => sum + Math.min(Number(c.gainKrw ?? 0), 0), 0),
     estimatedTaxKrw,
+    yearTotalTaxKrw,
     turnoverPct: totalKrw > 0 ? (proceeds / totalKrw) * 100 : 0,
   }
 }
