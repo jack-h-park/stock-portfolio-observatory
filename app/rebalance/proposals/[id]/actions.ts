@@ -2,35 +2,18 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { getProposal, recordFill, transition, type Proposal } from '@/lib/rebalance/proposal-store'
 import {
-  applyTargets,
-  checkTargetsAgainstBounds,
-  getAllocationPolicy,
-  saveAllocationPolicy,
-  type AllocationPolicy,
-  type Sleeve,
-  type SleeveTarget,
-} from '@/lib/rebalance/allocation-policy'
-import { buildTradePlan } from '@/lib/rebalance/engine'
-import { getInstrumentClasses } from '@/lib/rebalance/instrument-classes'
-import {
-  editTargets,
-  getProposal,
-  recordFill,
-  setPlan,
-  transition,
-  type Proposal,
-} from '@/lib/rebalance/proposal-store'
-import {
-  approvedTargets,
+  approveProposalTargets,
   parseFillForm,
+  parseRejectReason,
   parseSkipForm,
-  parseTargetEditForm,
+  recomputeProposalPlan,
+  saveProposalTargetEdits,
   type ProposalDoneCode,
   type ProposalErrorCode,
+  type StepOutcome,
 } from '@/lib/rebalance/proposal-actions'
-import { policyWriteGuard } from '@/lib/rebalance/settings-form'
-import { getTaxPolicyState } from '@/lib/tax-policy'
 
 type Tab = 'summary' | 'targets' | 'plan' | 'fills'
 
@@ -65,87 +48,26 @@ function loadProposal(formData: FormData): Proposal {
   return proposal
 }
 
-/** The current policy, refusing an unreadable or missing one. */
-function currentPolicy(id: string, tab: Tab): AllocationPolicy {
-  const state = getAllocationPolicy()
-  if (policyWriteGuard(state)) fail(id, tab, 'policy_unreadable', state.error)
-  if (!state.policy) fail(id, tab, 'not_configured')
-  return state.policy
-}
-
-function boundsCode(errors: string[]): ProposalErrorCode {
-  return errors.some((e) => /is outside bounds/.test(e)) ? 'target_bounds' : 'target_shift'
-}
-
-/** The plan from the proposal's frozen input snapshot, today's tax policy and the given targets and skips. */
-function rebuild(p: Proposal, policy: AllocationPolicy, targets: Record<Sleeve, SleeveTarget>, skips: string[]) {
-  return buildTradePlan({
-    input: p.inputSnapshot,
-    policy,
-    targets,
-    classes: getInstrumentClasses(),
-    taxPolicy: getTaxPolicyState().policy,
-    skip: skips,
-  })
+function finish(id: string, tab: Tab, outcome: StepOutcome, doneTab: Tab, code: ProposalDoneCode): never {
+  if (!outcome.ok) fail(id, tab, outcome.code, outcome.detail ?? outcome.code)
+  done(id, doneTab, code)
 }
 
 export async function saveTargetEdits(formData: FormData) {
   const p = loadProposal(formData)
-  if (p.status !== 'draft' || p.targetChange.decision !== 'change') fail(p.id, 'targets', 'wrong_status')
-  const policy = currentPolicy(p.id, 'targets')
-  const parsed = parseTargetEditForm(formData, policy, p.targetChange)
-  if ('error' in parsed) fail(p.id, 'targets', parsed.error)
-  try {
-    editTargets(p.id, parsed.sleeves, new Date())
-  } catch (error) {
-    fail(p.id, 'targets', 'action_failed', error)
-  }
-  done(p.id, 'targets', 'targets_saved')
+  finish(p.id, 'targets', saveProposalTargetEdits(p.id, formData, new Date()), 'targets', 'targets_saved')
 }
 
-/**
- * Writes the approved targets into the policy (history by `proposal:<id>`), rebuilds the plan against
- * them from the proposal's snapshot, then moves the proposal to targets_approved.
- */
+/** Rebuilds the plan against the approved targets, writes them to the policy, then advances the proposal. */
 export async function approveTargets(formData: FormData) {
   const p = loadProposal(formData)
-  if (p.status !== 'draft' || p.targetChange.decision !== 'change') fail(p.id, 'targets', 'wrong_status')
-  const policy = currentPolicy(p.id, 'targets')
-  const targets = approvedTargets(policy, p.targetChange)
-  const errors = checkTargetsAgainstBounds(policy, targets, { enforceShift: true })
-  if (errors.length) fail(p.id, 'targets', boundsCode(errors), errors)
-  const now = new Date()
-  const next = applyTargets(policy, targets, `proposal:${p.id}`, now.toISOString())
-  try {
-    saveAllocationPolicy(next)
-  } catch (error) {
-    // validateAllocationPolicy refuses targets that do not sum to 100.
-    fail(p.id, 'targets', /sum to/.test(String(error)) ? 'targets_sum' : 'write_failed', error)
-  }
-  try {
-    setPlan(p.id, rebuild(p, next, targets, p.planSkips), p.planSkips, now)
-    transition(p.id, 'targets_approved', 'targets approved by the maintainer', now)
-  } catch (error) {
-    fail(p.id, 'targets', 'action_failed', error)
-  }
-  done(p.id, 'plan', 'targets_approved')
+  finish(p.id, 'targets', approveProposalTargets(p.id, new Date()), 'plan', 'targets_approved')
 }
 
 /** Rebuilds the plan with the checked instructions left out. */
 export async function recomputePlan(formData: FormData) {
   const p = loadProposal(formData)
-  if (p.status !== 'draft' && p.status !== 'targets_approved') fail(p.id, 'plan', 'wrong_status')
-  const policy = currentPolicy(p.id, 'plan')
-  // Once targets are approved they are the policy's; a draft change plans against the proposed ones.
-  const targets =
-    p.status === 'draft' && p.targetChange.decision === 'change' ? approvedTargets(policy, p.targetChange) : policy.targets
-  const skips = parseSkipForm(formData)
-  try {
-    setPlan(p.id, rebuild(p, policy, targets, skips), skips, new Date())
-  } catch (error) {
-    fail(p.id, 'plan', 'action_failed', error)
-  }
-  done(p.id, 'plan', 'recomputed')
+  finish(p.id, 'plan', recomputeProposalPlan(p.id, parseSkipForm(formData), new Date()), 'plan', 'recomputed')
 }
 
 export async function approvePlan(formData: FormData) {
@@ -164,10 +86,10 @@ export async function rejectProposal(formData: FormData) {
   const p = loadProposal(formData)
   const tab = (String(formData.get('tab') ?? '') || 'summary') as Tab
   const safeTab: Tab = ['summary', 'targets', 'plan', 'fills'].includes(tab) ? tab : 'summary'
-  const reason = String(formData.get('reason') ?? '').trim()
-  if (!reason) fail(p.id, safeTab, 'reason_required')
+  const parsed = parseRejectReason(formData)
+  if ('error' in parsed) fail(p.id, safeTab, parsed.error)
   try {
-    transition(p.id, 'rejected', reason, new Date())
+    transition(p.id, 'rejected', parsed.reason, new Date())
   } catch (error) {
     fail(p.id, safeTab, 'wrong_status', error)
   }

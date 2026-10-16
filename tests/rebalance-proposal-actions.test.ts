@@ -1,11 +1,25 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import fs, { readFileSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import type { AllocationPolicy } from '../lib/rebalance/allocation-policy'
+import type { RebalanceInput } from '../lib/adapters/rebalance-input'
+import { getAllocationPolicy, type AllocationPolicy } from '../lib/rebalance/allocation-policy'
 import type { Instruction, TradePlan } from '../lib/rebalance/engine'
-import type { TargetChange } from '../lib/rebalance/proposal-store'
-import { approvedTargets, parseFillForm, parseSkipForm, parseTargetEditForm } from '../lib/rebalance/proposal-actions'
+import { createProposal, getProposal, transition, type TargetChange } from '../lib/rebalance/proposal-store'
+import {
+  approvedTargets,
+  approveProposalTargets,
+  describeInstruction,
+  parseFillForm,
+  parseRejectReason,
+  parseSkipForm,
+  parseTargetEditForm,
+  policyChangedSince,
+  recomputeProposalPlan,
+  saveProposalTargetEdits,
+} from '../lib/rebalance/proposal-actions'
+import type { TaxPolicy } from '../lib/tax-policy'
 
 const example = (): AllocationPolicy => {
   const raw = JSON.parse(readFileSync(path.join(__dirname, '..', 'data', 'allocation-policy.example.json'), 'utf8'))
@@ -126,4 +140,146 @@ test('approvedTargets overlays the proposed sleeves on the policy targets', () =
 test('parseSkipForm: collects every skipped id once', () => {
   assert.deepEqual(parseSkipForm(form({ skip: [SELL, TRANSFER, SELL, ' '] })), [SELL, TRANSFER])
   assert.deepEqual(parseSkipForm(form({})), [])
+})
+
+test('free text is capped at 500 characters', () => {
+  const long = 'x'.repeat(501)
+  assert.deepEqual(parseFillForm(form({ instructionId: SELL, status: 'skipped', note: long }), plan()), { error: 'text_too_long' })
+  assert.deepEqual(parseTargetEditForm(targetForm({}, { bonds: long }), example(), current()), { error: 'text_too_long' })
+  assert.deepEqual(parseRejectReason(form({ reason: long })), { error: 'text_too_long' })
+  assert.deepEqual(parseRejectReason(form({ reason: '  ' })), { error: 'reason_required' })
+  assert.deepEqual(parseRejectReason(form({ reason: ' no ' })), { reason: 'no' })
+})
+
+test('describeInstruction names side, security and account, from the plan or from the id', () => {
+  const side = (k: string) => k.toUpperCase()
+  assert.equal(describeInstruction(SELL, plan().instructions, side), 'SELL US:AAA · BrokerA · acct-1')
+  assert.equal(describeInstruction('buy:BrokerB::acct-2:KR:KRX1', [], side), 'BUY KR:KRX1 · BrokerB · acct-2')
+  assert.equal(describeInstruction('transfer:BrokerB::acct-2:USD', [], side), 'TRANSFER USD · BrokerB · acct-2')
+  assert.equal(describeInstruction('odd-id', [], side), 'odd-id')
+})
+
+test('policyChangedSince reports a history head newer than the proposal', () => {
+  const policy = example()
+  assert.equal(policyChangedSince(policy, '2026-10-01T00:00:00Z'), null)
+  policy.history = [{ at: '2026-10-02T00:00:00Z', by: 'maintainer', changes: {} }]
+  assert.equal(policyChangedSince(policy, '2026-10-01T00:00:00Z'), '2026-10-02T00:00:00Z')
+  assert.equal(policyChangedSince(policy, '2026-10-03T00:00:00Z'), null)
+})
+
+// ---- File-writing steps, against temp paths --------------------------------------------------------
+
+const T0 = new Date('2026-10-15T00:00:00Z')
+const taxPolicy = (): TaxPolicy => JSON.parse(readFileSync(path.join(__dirname, '..', 'data', 'tax-policy.example.json'), 'utf8')) as TaxPolicy
+
+// Cash only: every other sleeve is below its band, cash is above it, so the cash move shows which targets planned it.
+const snapshot = (): RebalanceInput => ({
+  asOf: '2026-10-15',
+  usdKrwRate: 1000,
+  positions: [],
+  cash: [{ brokerage: 'BrokerA', account: 'acct-1', currency: 'KRW', balance: 10_000_000, krw: 10_000_000, asOf: '2026-10-15' }],
+  lots: [],
+  recentBuys: [],
+  washSaleBlockedBuys: [],
+  accountDataAsOf: {},
+  ytd: { year: 2026, krTaxableGainKrw: 0, usShortUsd: 0, usLongUsd: 0, lotCount: 0 },
+  healthErrors: [],
+})
+
+function setup(change: TargetChange['sleeves'] = { cash: { from: 10, to: 12, reason: 'r' }, kr_equity: { from: 30, to: 28, reason: 'r' } }) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rb-actions-'))
+  const paths = { policy: path.join(dir, 'policy.json'), classes: path.join(dir, 'classes.json'), proposals: path.join(dir, 'proposals') }
+  fs.writeFileSync(paths.policy, JSON.stringify(example(), null, 2))
+  fs.writeFileSync(paths.classes, JSON.stringify({ 'KR:KRX1': 'kr_equity' }))
+  const p = createProposal(
+    {
+      id: 'rb-2026-10-15-manual',
+      kind: 'manual',
+      triggers: [],
+      policyAtCreation: example(),
+      inputSnapshot: snapshot(),
+      outlook: null,
+      llm: null,
+      targetChange: { decision: 'change', sleeves: change, boundsErrors: [] },
+      plan: { moves: [], instructions: [], warnings: [], taxSummary: {} } as unknown as TradePlan,
+      planSkips: [],
+    },
+    T0,
+    paths.proposals,
+  )
+  return { id: p.id, paths }
+}
+
+const cashIntended = (planned: TradePlan) => planned.moves.find((m) => m.sleeve === 'cash')?.intendedAmountKrw
+
+test('approveProposalTargets: writes the policy, rebuilds the plan against the approved targets, advances', () => {
+  const { id, paths } = setup()
+  const out = approveProposalTargets(id, T0, paths, taxPolicy())
+  assert.equal(out.ok, true)
+  const policy = getAllocationPolicy(paths.policy).policy!
+  assert.equal(policy.targets.cash.target, 12)
+  assert.equal(policy.targets.kr_equity.target, 28)
+  assert.deepEqual(policy.history.at(-1), { at: T0.toISOString(), by: `proposal:${id}`, changes: { kr_equity: [30, 28], cash: [10, 12] } })
+  const p = getProposal(id, paths.proposals)!
+  assert.equal(p.status, 'targets_approved')
+  // Cash at 100% moves to the approved upper edge, 12 + 5 = 17%.
+  assert.equal(Math.round(cashIntended(p.plan)!), -8_300_000)
+})
+
+test('approveProposalTargets: a rebuild failure changes no file', () => {
+  const { id, paths } = setup()
+  fs.writeFileSync(paths.classes, JSON.stringify({ 'KR:KRX1': 'not_a_sleeve' }))
+  const policyBefore = fs.readFileSync(paths.policy)
+  const proposalBefore = fs.readFileSync(path.join(paths.proposals, `${id}.json`))
+  const out = approveProposalTargets(id, T0, paths, taxPolicy())
+  assert.equal(out.ok, false)
+  assert.equal(!out.ok && out.code, 'action_failed')
+  assert.deepEqual(fs.readFileSync(paths.policy), policyBefore)
+  assert.deepEqual(fs.readFileSync(path.join(paths.proposals, `${id}.json`)), proposalBefore)
+  assert.equal(getProposal(id, paths.proposals)!.status, 'draft')
+})
+
+test('approveProposalTargets: after the policy is saved but the proposal cannot be written, a retry completes the step', { skip: process.getuid?.() === 0 }, () => {
+  const { id, paths } = setup()
+  fs.chmodSync(paths.proposals, 0o555)
+  let out
+  try {
+    out = approveProposalTargets(id, T0, paths, taxPolicy())
+  } finally {
+    fs.chmodSync(paths.proposals, 0o755)
+  }
+  assert.equal(!out.ok && out.code, 'targets_saved_not_advanced')
+  assert.equal(getAllocationPolicy(paths.policy).policy!.targets.cash.target, 12)
+  assert.equal(getProposal(id, paths.proposals)!.status, 'draft')
+  const retry = approveProposalTargets(id, new Date(T0.getTime() + 1000), paths, taxPolicy())
+  assert.equal(retry.ok, true)
+  assert.equal(getProposal(id, paths.proposals)!.status, 'targets_approved')
+  // The second run changes no target, so it adds no second history entry.
+  assert.equal(getAllocationPolicy(paths.policy).policy!.history.filter((h) => h.by === `proposal:${id}`).length, 1)
+})
+
+test('saveProposalTargetEdits: saves the edits and rebuilds the plan against them', () => {
+  const { id, paths } = setup()
+  const out = saveProposalTargetEdits(id, targetForm({ cash: '14', kr_equity: '26' }), T0, paths, taxPolicy())
+  assert.equal(out.ok, true)
+  const p = getProposal(id, paths.proposals)!
+  assert.equal(p.targetChange.sleeves.cash?.to, 14)
+  assert.equal(p.targetChange.sleeves.cash?.editedBy, 'maintainer')
+  assert.equal(Math.round(cashIntended(p.plan)!), -8_100_000)
+  // The policy is not touched by an edit.
+  assert.equal(getAllocationPolicy(paths.policy).policy!.targets.cash.target, 10)
+})
+
+test('recomputeProposalPlan: in targets_approved it plans against the approved targets, not what the policy holds now', () => {
+  const { id, paths } = setup()
+  assert.equal(approveProposalTargets(id, T0, paths, taxPolicy()).ok, true)
+  // The policy is edited afterwards (cash back to 10, KR to 30).
+  fs.writeFileSync(paths.policy, JSON.stringify(example(), null, 2))
+  const out = recomputeProposalPlan(id, ['buy:x'], T0, paths, taxPolicy())
+  assert.equal(out.ok, true)
+  const p = getProposal(id, paths.proposals)!
+  assert.equal(Math.round(cashIntended(p.plan)!), -8_300_000)
+  assert.deepEqual(p.planSkips, ['buy:x'])
+  transition(id, 'plan_approved', 'ok', T0, paths.proposals)
+  assert.equal(!recomputeProposalPlan(id, [], T0, paths, taxPolicy()).ok, true)
 })

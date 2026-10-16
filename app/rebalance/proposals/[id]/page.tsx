@@ -19,7 +19,9 @@ import type { EngineWarning, Instruction, SleeveMove } from '@/lib/rebalance/eng
 import { getInstrumentClasses } from '@/lib/rebalance/instrument-classes'
 import {
   PROPOSAL_STATUS_TONE,
+  describeInstruction,
   isProposalDoneCode,
+  policyChangedSince,
   isProposalErrorCode,
 } from '@/lib/rebalance/proposal-actions'
 import { getProposal, type Proposal } from '@/lib/rebalance/proposal-store'
@@ -308,7 +310,7 @@ function TargetsTab({ proposal, copy }: { proposal: Proposal; copy: Copy }) {
           label: copy.targets.reason,
           render: (r: Row) =>
             editable ? (
-              <Input size="sm" type="text" name={`reason_${r.sleeve}`} defaultValue={r.reason} aria-label={`${copy.sleeves[r.sleeve]} ${copy.targets.reason}`} className="w-full min-w-[12rem]" />
+              <Input size="sm" type="text" name={`reason_${r.sleeve}`} maxLength={500} defaultValue={r.reason} aria-label={`${copy.sleeves[r.sleeve]} ${copy.targets.reason}`} className="w-full min-w-[12rem]" />
             ) : (
               <span className="text-ink-2">{r.reason}</span>
             ),
@@ -323,8 +325,8 @@ function TargetsTab({ proposal, copy }: { proposal: Proposal; copy: Copy }) {
         <div className="mb-4 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-label text-warning">
           <div className="font-medium">{copy.targets.boundsErrors}</div>
           <ul className="mt-1 list-disc pl-5">
-            {change.boundsErrors.map((e) => (
-              <li key={e}>{e}</li>
+            {change.boundsErrors.map((e, index) => (
+              <li key={index}>{e}</li>
             ))}
           </ul>
         </div>
@@ -401,13 +403,17 @@ function KindBadge({ kind, copy }: { kind: Instruction['kind']; copy: Copy }) {
   return <Badge tone={kind === 'sell' ? 'warning' : kind === 'buy' ? 'info' : 'neutral'}>{copy.kindsOfInstruction[kind]}</Badge>
 }
 
-function PlanTab({ proposal, copy }: { proposal: Proposal; copy: Copy }) {
+function PlanTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy; language: 'en' | 'ko' }) {
   const editable = proposal.status === 'draft' || proposal.status === 'targets_approved'
   const canApprove = proposal.status === 'targets_approved' || (proposal.status === 'draft' && proposal.targetChange.decision === 'hold')
   const instructions = proposal.plan.instructions
   const present = new Set(instructions.map((i) => i.id))
   const skippedOut = proposal.planSkips.filter((id) => !present.has(id))
   const groups = groupByAccount(instructions)
+  const describe = (id: string) => describeInstruction(id, instructions, (k) => copy.kindsOfInstruction[k])
+  // A hold proposal plans against the policy's targets as they are now; say so when they moved after creation.
+  const livePolicy = proposal.targetChange.decision === 'hold' && editable ? getAllocationPolicy().policy : null
+  const changedAt = livePolicy ? policyChangedSince(livePolicy, proposal.createdAt) : null
 
   const columns = [
     ...(editable
@@ -440,8 +446,8 @@ function PlanTab({ proposal, copy }: { proposal: Proposal; copy: Copy }) {
           <details className="text-label">
             <summary className="cursor-pointer text-ink-2">{copy.plan.lotCount(r.lots.length)}</summary>
             <ul className="mt-1 space-y-0.5 tabular-nums text-ink-3">
-              {r.lots.map((lot) => (
-                <li key={lot.lotId}>
+              {r.lots.map((lot, index) => (
+                <li key={index}>
                   #{lot.lotId} × {fmtQuantity(lot.quantity)} · {copy.tiers[lot.tier]}
                   {lot.gainKrw != null && <> · {fmtKrw(lot.gainKrw)}</>}
                 </li>
@@ -493,10 +499,10 @@ function PlanTab({ proposal, copy }: { proposal: Proposal; copy: Copy }) {
           <div className="text-caption font-medium text-ink">{copy.plan.skippedTitle}</div>
           <p className="text-label text-ink-3">{copy.plan.skippedNote}</p>
           <ul className="mt-1 space-y-1">
-            {skippedOut.map((id) => (
-              <li key={id} className="flex items-center gap-2 text-label">
-                <Checkbox name="skip" value={id} defaultChecked aria-label={`${copy.plan.skip} ${id}`} />
-                <span className="font-mono text-ink-2">{id}</span>
+            {skippedOut.map((id, index) => (
+              <li key={index} className="flex items-center gap-2 text-label">
+                <Checkbox name="skip" value={id} defaultChecked aria-label={`${copy.plan.skip} ${describe(id)}`} />
+                <span className="text-ink-2">{describe(id)}</span>
               </li>
             ))}
           </ul>
@@ -512,6 +518,11 @@ function PlanTab({ proposal, copy }: { proposal: Proposal; copy: Copy }) {
       </Card>
 
       <Card title={copy.plan.instructionsTitle} info={copy.plan.instructionsInfo} className="mb-5">
+        {changedAt && (
+          <p className="mb-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-label text-warning">
+            {copy.plan.policyChanged(fmtDateTime(changedAt, language))}
+          </p>
+        )}
         {editable ? (
           <form action={recomputePlan} className="space-y-4">
             <input type="hidden" name="proposalId" value={proposal.id} />
@@ -542,6 +553,7 @@ function FillsTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy
   const instructions = proposal.plan.instructions
   const rec = proposal.reconciliation
   const today = portfolioToday()
+  const describe = (id: string) => describeInstruction(id, instructions, (k) => copy.kindsOfInstruction[k])
 
   return (
     <>
@@ -610,7 +622,7 @@ function FillsTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy
                       </label>
                       <label className="min-w-[12rem] flex-1 text-label text-ink-3">
                         <span className="block">{copy.fills.note}</span>
-                        <Input size="sm" type="text" name="note" defaultValue={fill?.note ?? ''} className="w-full" />
+                        <Input size="sm" type="text" name="note" maxLength={500} defaultValue={fill?.note ?? ''} className="w-full" />
                       </label>
                       <SubmitButton>{copy.fills.save}</SubmitButton>
                     </form>
@@ -633,14 +645,14 @@ function FillsTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy
         ) : (
           <div className="space-y-3 text-label">
             <p className="text-ink-3">{copy.reconciliation.at(fmtDateTime(rec.at, language))}</p>
-            <ReconList title={copy.reconciliation.matched} items={rec.matched.map((m) => `${m.instructionId} · ${m.txDate}`)} />
-            <ReconList title={copy.reconciliation.missing} items={rec.missing.map((m) => `${m.instructionId} · ${copy.reconciliation.days(m.daysSinceFill)}`)} warn />
+            <ReconList title={copy.reconciliation.matched} items={rec.matched.map((m) => `${describe(m.instructionId)} · ${m.txDate}`)} />
+            <ReconList title={copy.reconciliation.missing} items={rec.missing.map((m) => `${describe(m.instructionId)} · ${copy.reconciliation.days(m.daysSinceFill)}`)} warn />
             <ReconList
               title={copy.reconciliation.unplanned}
               items={rec.unplanned.map((u) => `${u.type} ${u.market}:${u.ticker} × ${fmtQuantity(u.quantity)} · ${accountLabel(u.brokerage, u.account)} · ${u.date}`)}
               warn
             />
-            <ReconList title={copy.reconciliation.unfilled} items={rec.unfilled ?? []} warn />
+            <ReconList title={copy.reconciliation.unfilled} items={(rec.unfilled ?? []).map(describe)} warn />
           </div>
         )}
       </Card>
@@ -655,9 +667,9 @@ function ReconList({ title, items, warn }: { title: string; items: string[]; war
       <div className={clsx('font-medium', warn ? 'text-warning' : 'text-ink')}>
         {title} ({items.length})
       </div>
-      <ul className="mt-1 space-y-0.5 font-mono text-ink-2">
-        {items.map((item) => (
-          <li key={item}>{item}</li>
+      <ul className="mt-1 space-y-0.5 text-ink-2">
+        {items.map((item, index) => (
+          <li key={index}>{item}</li>
         ))}
       </ul>
     </div>
@@ -687,6 +699,8 @@ export default async function RebalanceProposalPage({
   const nextKey =
     proposal.status === 'draft' ? (hold ? 'draft_hold' : 'draft_change') : (proposal.status as Exclude<typeof proposal.status, 'draft'>)
   const base = `/rebalance/proposals/${encodeURIComponent(proposal.id)}`
+  // Approving targets wrote them to the policy; rejecting afterwards leaves them there.
+  const targetsWritten = proposal.status === 'targets_approved' || (proposal.status === 'plan_approved' && !hold)
 
   return (
     <>
@@ -738,8 +752,9 @@ export default async function RebalanceProposalPage({
                 <input type="hidden" name="tab" value={tab} />
                 <label className="block text-label text-ink-3">
                   <span className="mb-1 block">{copy.statusCard.rejectLabel}</span>
-                  <Input size="sm" type="text" name="reason" required placeholder={copy.statusCard.rejectPlaceholder} className="w-full" />
+                  <Input size="sm" type="text" name="reason" required maxLength={500} placeholder={copy.statusCard.rejectPlaceholder} className="w-full" />
                 </label>
+                {targetsWritten && <p className="text-label text-warning">{copy.statusCard.rejectKeepsTargets}</p>}
                 <SubmitButton>{copy.statusCard.reject}</SubmitButton>
               </form>
             )}
@@ -765,7 +780,7 @@ export default async function RebalanceProposalPage({
 
       {tab === 'summary' && <SummaryTab proposal={proposal} copy={copy} language={language} />}
       {tab === 'targets' && <TargetsTab proposal={proposal} copy={copy} />}
-      {tab === 'plan' && <PlanTab proposal={proposal} copy={copy} />}
+      {tab === 'plan' && <PlanTab proposal={proposal} copy={copy} language={language} />}
       {tab === 'fills' && <FillsTab proposal={proposal} copy={copy} language={language} />}
     </>
   )

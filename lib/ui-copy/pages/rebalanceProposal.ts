@@ -62,6 +62,9 @@ export const rebalanceProposal = defineCopy({
       targets_sum: 'Targets must sum to 100.',
       write_failed: 'The policy file could not be written.',
       action_failed: 'The action failed and nothing was changed. The server log has the detail.',
+      text_too_long: 'A reason or note is too long. Keep it to 500 characters.',
+      targets_saved_not_advanced: 'The allocation policy already holds the new targets, but the plan and status were not updated. Approve the targets again to complete the step.',
+      targets_saved_plan_stale: 'The target edits are saved, but the plan was not rebuilt against them. Save the edits again or recompute the plan.',
     },
     errorTitle: 'Not done',
     statusCard: {
@@ -85,6 +88,7 @@ export const rebalanceProposal = defineCopy({
       rejectLabel: 'Reason for rejecting',
       rejectPlaceholder: 'Why this proposal will not be carried out',
       reject: 'Reject proposal',
+      rejectKeepsTargets: 'The approved targets are already in the allocation policy. Rejecting does not undo them; change them in the rebalancing settings if needed.',
       close: 'Close proposal',
     },
     outlook: { title: 'Outlook' },
@@ -187,6 +191,7 @@ export const rebalanceProposal = defineCopy({
       recompute: 'Recompute',
       approve: 'Approve plan',
       approveNote: 'After approval the plan is fixed; record fills as you place the orders.',
+      policyChanged: (when: string) => `The allocation policy’s targets changed on ${when}, after this proposal was created. Recompute plans against the targets as they are now.`,
     },
     fills: {
       title: 'Fills',
@@ -280,6 +285,9 @@ export const rebalanceProposal = defineCopy({
       targets_sum: '목표의 합은 100이어야 합니다.',
       write_failed: '정책 파일을 저장하지 못했습니다.',
       action_failed: '작업이 실패해 아무것도 바뀌지 않았습니다. 자세한 내용은 서버 로그에 있습니다.',
+      text_too_long: '사유나 메모가 너무 깁니다. 500자 이내로 줄여 주세요.',
+      targets_saved_not_advanced: '자산 배분 정책에는 새 목표가 이미 저장되었지만, 매매안과 상태는 바뀌지 않았습니다. 목표를 다시 승인하면 이 단계가 마무리됩니다.',
+      targets_saved_plan_stale: '목표 수정은 저장했지만 그 목표로 매매안을 다시 만들지 못했습니다. 수정을 다시 저장하거나 매매안을 다시 계산하세요.',
     },
     errorTitle: '처리하지 못했습니다',
     statusCard: {
@@ -303,6 +311,7 @@ export const rebalanceProposal = defineCopy({
       rejectLabel: '거부 사유',
       rejectPlaceholder: '이 제안을 실행하지 않는 이유',
       reject: '제안 거부',
+      rejectKeepsTargets: '승인한 목표는 이미 자산 배분 정책에 저장되어 있습니다. 거부해도 되돌려지지 않으니, 필요하면 리밸런싱 설정에서 바꾸세요.',
       close: '제안 종료',
     },
     outlook: { title: '전망' },
@@ -405,6 +414,7 @@ export const rebalanceProposal = defineCopy({
       recompute: '다시 계산',
       approve: '매매안 승인',
       approveNote: '승인하면 매매안이 고정됩니다. 주문할 때마다 체결을 기록하세요.',
+      policyChanged: (when: string) => `이 제안을 만든 뒤 ${when}에 자산 배분 정책의 목표가 바뀌었습니다. 다시 계산하면 지금의 목표로 매매안을 만듭니다.`,
     },
     fills: {
       title: '체결',
