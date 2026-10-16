@@ -96,3 +96,16 @@ test('one tx cannot match two instructions', () => {
   assert.equal(r.missing.length, 1)
   assert.equal(r.complete, false)
 })
+
+test('a plan with an unfilled buy or sell is not complete', () => {
+  const p = proposal(
+    [ins('sell:a:US:AAA', 'sell', 'AAA', 100), ins('buy:a:US:BBB', 'buy', 'BBB', 10)],
+    { 'sell:a:US:AAA': fill('sell:a:US:AAA', 100, '2026-10-12') }
+  )
+  const r = reconcile(p, [tx('AAA', 'SELL', '2026-10-12', 100)], TODAY, new Date('2026-10-20T00:00:00Z'))
+  assert.equal(r.matched.length, 1)
+  assert.deepEqual(r.missing, [])
+  assert.deepEqual(r.unfilled, ['buy:a:US:BBB'])
+  assert.equal(r.complete, false)
+  assert.equal(r.at, '2026-10-20T00:00:00.000Z')
+})

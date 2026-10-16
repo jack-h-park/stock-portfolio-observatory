@@ -64,15 +64,20 @@ export function runRebalanceCli(argv: string[], io: Io, now: Date = new Date()):
     }
     if (parsed.command === 'reconcile') {
       const expired = expireStale(now)
-      const reconciled: { id: string; complete: boolean; matched: number; missing: number; unplanned: number }[] = []
+      const reconciled: { id: string; complete: boolean; matched: number; missing: number; unfilled: number; unplanned: number }[] = []
+      const failed: { id: string; error: string }[] = []
       for (const p of listProposals().filter((item) => item.status === 'executing')) {
-        const result = reconcile(p, loadTransactions(p.createdAt.slice(0, 10), config.stockDbPath), today)
-        setReconciliation(p.id, result, now)
-        if (result.complete) transition(p.id, 'reconciled', 'every executed instruction matched a transaction', now)
-        reconciled.push({ id: p.id, complete: result.complete, matched: result.matched.length, missing: result.missing.length, unplanned: result.unplanned.length })
+        try {
+          const result = reconcile(p, loadTransactions(p.createdAt.slice(0, 10), config.stockDbPath), today, now)
+          setReconciliation(p.id, result, now)
+          if (result.complete) transition(p.id, 'reconciled', 'every instruction filled and every executed fill matched a transaction', now)
+          reconciled.push({ id: p.id, complete: result.complete, matched: result.matched.length, missing: result.missing.length, unfilled: result.unfilled?.length ?? 0, unplanned: result.unplanned.length })
+        } catch (error) {
+          failed.push({ id: p.id, error: (error as Error).message })
+        }
       }
-      emit({ ok: true, expired, reconciled })
-      return 0
+      emit({ ok: failed.length === 0, expired, reconciled, failed })
+      return failed.length ? 1 : 0
     }
     const open = openProposal()
     if (!open) {

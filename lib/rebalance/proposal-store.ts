@@ -58,6 +58,8 @@ export type ReconciliationResult = {
     quantity: number
   }[]
   complete: boolean
+  /** Buy and sell instruction ids with no fill record yet (executed or skipped). */
+  unfilled?: string[]
 }
 export type Proposal = {
   schemaVersion: 1

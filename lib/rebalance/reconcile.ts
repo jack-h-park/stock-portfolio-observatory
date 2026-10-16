@@ -34,18 +34,24 @@ function quantityMatches(planned: number, actual: number): boolean {
 /**
  * Compares a proposal's executed fills with the ingested transactions. Transfers are never matched
  * (the ingest has no record of a bank move at this grain) and do not count against `complete`.
+ * `complete` also needs every buy and sell to have a fill record, so a half-filled plan stays open.
  */
-export function reconcile(p: Proposal, txs: TxRow[], today: string): ReconciliationResult {
+export function reconcile(p: Proposal, txs: TxRow[], today: string, now: Date = new Date()): ReconciliationResult {
   const since = dayNumber(p.createdAt)
   const candidates = txs.filter((t) => tradeSide(t.type) !== null && dayNumber(t.date) >= since)
   const used = new Set<number>()
   const matched: ReconciliationResult['matched'] = []
   const missing: ReconciliationResult['missing'] = []
+  const unfilled: string[] = []
 
   for (const instruction of p.plan.instructions) {
     if (instruction.kind === 'transfer') continue
     const fill = p.fills[instruction.id]
-    if (!fill || fill.status !== 'executed' || fill.date === null || fill.quantity === null) continue
+    if (!fill) {
+      unfilled.push(instruction.id)
+      continue
+    }
+    if (fill.status !== 'executed' || fill.date === null || fill.quantity === null) continue
     const fillDay = dayNumber(fill.date)
     let best = -1
     let bestGap = Infinity
@@ -71,7 +77,7 @@ export function reconcile(p: Proposal, txs: TxRow[], today: string): Reconciliat
 
   const planAccounts = new Set(p.plan.instructions.map((i) => accountKey(i.brokerage, i.account)))
   const unplanned = candidates.filter((t, index) => !used.has(index) && planAccounts.has(accountKey(t.brokerage, t.account)))
-  return { at: new Date().toISOString(), matched, missing, unplanned, complete: missing.length === 0 }
+  return { at: now.toISOString(), matched, missing, unplanned, complete: missing.length === 0 && unfilled.length === 0, unfilled }
 }
 
 /** The maintainer's own BUY/SELL rows dated on or after `sinceDate`. */
