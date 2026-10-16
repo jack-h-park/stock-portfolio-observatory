@@ -53,6 +53,11 @@ export const config = {
   // The gitignored account map (scripts/account-map.mjs). Same variable the ingest
   // reads; the app reads only its pension token list, for the reminder's rows.
   stockAccountMapPath: env('STOCK_ACCOUNT_MAP_PATH', repoPath('data/accounts.local.json')),
+  // The CLI that writes the rebalancer's judgment: 'claude' (default) or 'codex'. The model is
+  // optional; empty means the CLI's own default. The timeout is per attempt, in milliseconds.
+  stockRebalanceLlmRunner: env('STOCK_REBALANCE_LLM_RUNNER', 'claude'),
+  stockRebalanceLlmModel: env('STOCK_REBALANCE_LLM_MODEL', ''),
+  stockRebalanceLlmTimeoutMs: env('STOCK_REBALANCE_LLM_TIMEOUT_MS', '600000'),
 }
 
 export type AppConfig = typeof config
