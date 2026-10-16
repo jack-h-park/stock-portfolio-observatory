@@ -47,17 +47,27 @@ const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
  * separators or decimals are kept.
  */
 export function scrubText(text: string, secrets: Iterable<string>): string {
-  const list = [...new Set([...secrets].map((s) => s.trim()).filter(Boolean))].sort((a, b) => b.length - a.length)
+  const list = [...new Set([...secrets].map((s) => s.trim()).filter((s) => s.length >= 3))].sort((a, b) => b.length - a.length)
   let out = text
-  if (list.length) out = out.replace(new RegExp(list.map(escapeRe).join('|'), 'gi'), '[redacted]')
-  out = out.replace(/(?<!\d)\d{3}-\d{2,}-\d+/g, '[redacted]')
-  return out.replace(/\d{6,}/g, (match, offset: number, whole: string) => {
+  if (list.length) {
+    // Plain ASCII secrets match whole tokens, so a short one cannot mangle a word or a date;
+    // anything else (punctuation, Korean) is matched as a substring.
+    const pattern = list
+      .map((s) => (/^[A-Za-z0-9 ]+$/.test(s) ? `(?<![A-Za-z0-9])${escapeRe(s)}(?![A-Za-z0-9])` : escapeRe(s)))
+      .join('|')
+    out = out.replace(new RegExp(pattern, 'gi'), '[redacted]')
+  }
+  // A full ISO date is its own token; otherwise digit groups joined by single spaces or dashes form one chain.
+  return out.replace(/(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)|\d+(?:[ -]\d+)*/g, (match, offset: number, whole: string) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(match)) return match
     const before = whole[offset - 1]
     const after = whole[offset + match.length]
     const next = whole[offset + match.length + 1]
     const decimalAfter = (after === '.' || after === ',') && next !== undefined && /\d/.test(next)
     const decimalBefore = (before === '.' || before === ',') && offset >= 2 && /\d/.test(whole[offset - 2])
-    return decimalAfter || decimalBefore ? match : '[redacted]'
+    if (decimalAfter || decimalBefore) return match
+    const digits = match.replace(/\D/g, '').length
+    return digits >= 8 || /^\d{6,}$/.test(match) || /^\d{3}-\d{2,}-\d+$/.test(match) ? '[redacted]' : match
   })
 }
 

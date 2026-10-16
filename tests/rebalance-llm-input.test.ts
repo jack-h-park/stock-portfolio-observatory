@@ -5,7 +5,7 @@ import path from 'node:path'
 import test from 'node:test'
 import type { RebalanceInput } from '../lib/adapters/rebalance-input'
 import { readBriefingContext, sanitizeBenchmarks } from '../lib/adapters/rebalance-context'
-import { buildLlmInput } from '../lib/rebalance/llm-input'
+import { buildLlmInput, scrubText } from '../lib/rebalance/llm-input'
 import type { AllocationPolicy } from '../lib/rebalance/allocation-policy'
 import type { RebalancePosition } from '../lib/rebalance/allocation'
 import type { InstrumentClasses } from '../lib/rebalance/instrument-classes'
@@ -240,4 +240,21 @@ test('the newest of two rejected events wins; unpriced lots add no harvestable l
   assert.equal(build({ past }).pastDecisions[0].rejectedReason, 'second')
   const unpriced = lot({ id: 2, ticker: 'KRX1', native_market_value: null, native_unrealized_gl: null })
   assert.equal(build({ input: input({ lots: [lot({}), unpriced] }) }).tax.harvestableLossKrw, 300)
+})
+
+test('digit groups split by spaces or dashes are redacted, dates and figures survive', () => {
+  for (const leak of ['1234 5678 9012', '1234-5678-9012', '123 456 789012']) {
+    const out = scrubText(`acct ${leak} end`, [])
+    assert.ok(!/\d{3}/.test(out.replace('end', '')), `${leak} -> ${out}`)
+  }
+  const kept = scrubText('on 2026-10-01 and 2026-10-02 the index hit 2,450.5 at 1350 in 2026, up 12345678.5', [])
+  assert.equal(kept, 'on 2026-10-01 and 2026-10-02 the index hit 2,450.5 at 1350 in 2026, up 12345678.5')
+})
+
+test('short or embedded ASCII secrets do not over-redact', () => {
+  assert.equal(scrubText('The market was a bit flat', ['a', '12']), 'The market was a bit flat')
+  assert.equal(scrubText('closed 2026-10-12', ['12']), 'closed 2026-10-12')
+  assert.equal(scrubText('the Broker1234 rally', ['Broker']), 'the Broker1234 rally')
+  assert.equal(scrubText('via Broker today', ['Broker']), 'via [redacted] today')
+  assert.equal(scrubText('계좌 한국증권사 확인', ['한국증권사']), '계좌 [redacted] 확인')
 })
