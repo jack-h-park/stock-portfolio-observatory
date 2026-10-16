@@ -7,7 +7,8 @@ import { config } from '@/config'
 import { datedAmountSql, NET_DIVIDEND_SQL, type DisplayCurrency } from '@/lib/adapters/income-fx'
 import { buildTaxPlan, summarizeTaxCandidates, type TaxPlanningLot } from '@/lib/tax-planning'
 import { allocateTax, buildInvestmentEpisodes, mergeAssetEvents, type AssetEvent, type ClosedLot, type DividendRow, type InflowEvent, type OpenLot } from '@/lib/asset-events'
-import { getRebalancePolicy } from '@/lib/rebalance-policy'
+import { getRebalancePolicy, marketTargetsFor } from '@/lib/rebalance-policy'
+import { deriveUsTargetPct, getAllocationPolicy } from '@/lib/rebalance/allocation-policy'
 import { getTaxPolicyState, usTaxableWrappers, wrapperTreatment, type TaxPolicy, type WrapperTreatment } from '@/lib/tax-policy'
 import { ASSET_CLASSES, depositsSeries, summarizeNetWorth, totalAssetsSeries, type AsOfNote, type CashBalanceRow, type NetWorth, type TotalAssetsSeries } from '@/lib/net-worth'
 import type { PensionContributionYear } from '@/lib/pension'
@@ -591,6 +592,8 @@ export type RebalanceReview = {
     baseCurrency: 'KRW'
     marketTargets: { market: string; targetPct: number }[]
     positionCapPct: number
+    /** Where the KR/US split comes from: the allocation policy's equity targets, or the standalone split file. */
+    marketSplitSource: 'allocation_policy' | 'market_split'
   }
   totals: {
     base_market_value: number
@@ -3405,8 +3408,12 @@ export function getCryptoPremium(): CryptoPremium {
 export function getRebalanceReview(): RebalanceReview {
   const conn = db()
   try {
-    const { marketTargets } = getRebalancePolicy()
-    const positionCapPct = 15
+    // With an allocation policy, its position cap and its KR/US equity split take over from the
+    // standalone market-split file and the old fixed 15% cap.
+    const allocation = getAllocationPolicy().policy
+    const derivedUs = allocation ? deriveUsTargetPct(allocation) : null
+    const marketTargets = derivedUs != null ? marketTargetsFor(derivedUs) : getRebalancePolicy().marketTargets
+    const positionCapPct = allocation ? allocation.bounds.positionCapPct : 15
     const totals = conn
       .prepare(
         `select
@@ -3508,6 +3515,7 @@ export function getRebalanceReview(): RebalanceReview {
         baseCurrency: 'KRW',
         marketTargets,
         positionCapPct,
+        marketSplitSource: derivedUs != null ? 'allocation_policy' : 'market_split',
       },
       totals,
       marketGaps,
