@@ -4,6 +4,7 @@ import { sidebar } from '@/lib/ui-copy/pages/sidebar'
 import { dataMap } from '@/lib/ui-copy/pages/dataMap'
 import { review } from '@/lib/ui-copy/pages/review'
 import { rebalance } from '@/lib/ui-copy/pages/rebalance'
+import { rebalanceSettings } from '@/lib/ui-copy/pages/rebalanceSettings'
 import { dataOps } from '@/lib/ui-copy/pages/dataOps'
 import { holdings } from '@/lib/ui-copy/pages/holdings'
 import { income } from '@/lib/ui-copy/pages/income'
@@ -32,6 +33,7 @@ export const PAGE_COPY = {
   dataMap,
   review,
   rebalance,
+  rebalanceSettings,
   dataOps,
   holdings,
   income,
