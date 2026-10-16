@@ -1,7 +1,7 @@
 import { buildTaxPlan } from '@/lib/tax-planning'
 import type { TaxPolicy } from '@/lib/tax-policy'
 import type { RebalanceInput } from '@/lib/adapters/rebalance-input'
-import type { BriefingContext } from '@/lib/adapters/rebalance-context'
+import { sanitizeBenchmarks, type BriefingContext } from '@/lib/adapters/rebalance-context'
 import { accountKey, SLEEVES, type AllocationPolicy, type Sleeve } from './allocation-policy'
 import { computeAllocation } from './allocation'
 import type { InstrumentClasses } from './instrument-classes'
@@ -36,6 +36,30 @@ export type LlmInput = {
 
 const NAME_MAX = 80
 const PAST_DECISIONS = 3
+const REASON_MAX = 500
+const MACRO_MAX = 2000
+
+const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * Free text that reaches the model: known account and brokerage strings (case-insensitive, longest
+ * first) and account-number-shaped digit runs become [redacted]. Years, ISO dates and figures with
+ * separators or decimals are kept.
+ */
+export function scrubText(text: string, secrets: Iterable<string>): string {
+  const list = [...new Set([...secrets].map((s) => s.trim()).filter(Boolean))].sort((a, b) => b.length - a.length)
+  let out = text
+  if (list.length) out = out.replace(new RegExp(list.map(escapeRe).join('|'), 'gi'), '[redacted]')
+  out = out.replace(/(?<!\d)\d{3}-\d{2,}-\d+/g, '[redacted]')
+  return out.replace(/\d{6,}/g, (match, offset: number, whole: string) => {
+    const before = whole[offset - 1]
+    const after = whole[offset + match.length]
+    const next = whole[offset + match.length + 1]
+    const decimalAfter = (after === '.' || after === ',') && next !== undefined && /\d/.test(next)
+    const decimalBefore = (before === '.' || before === ',') && offset >= 2 && /\d/.test(whole[offset - 2])
+    return decimalAfter || decimalBefore ? match : '[redacted]'
+  })
+}
 
 /** Per market, distinct accountKeys sorted and numbered from 1; the only account identity the LLM sees. */
 function aliasMap(positions: { brokerage: string | null; account: string; market: string }[]): Map<string, string> {
@@ -65,6 +89,12 @@ export function buildLlmInput(args: {
   const { input, policy, classes, context } = args
   const allocation = computeAllocation(input, policy, classes)
   const aliases = aliasMap(input.positions)
+  const secrets = new Set<string>()
+  for (const row of [...input.positions, ...input.lots, ...input.cash]) {
+    if (row.brokerage) secrets.add(row.brokerage)
+    if (row.account) secrets.add(row.account)
+  }
+  const scrub = (text: string) => scrubText(text, secrets)
 
   const positions: LlmInput['positions'] = []
   for (const p of input.positions) {
@@ -75,7 +105,7 @@ export function buildLlmInput(args: {
       alias: aliases.get(`${p.market}|${accountKey(p.brokerage, p.account)}`) as string,
       market: p.market,
       ticker: p.ticker,
-      name: String(p.name ?? '').slice(0, NAME_MAX),
+      name: scrub(String(p.name ?? '')).slice(0, NAME_MAX),
       sleeve,
       pctOfTotal: allocation.totalKrw > 0 ? (value / allocation.totalKrw) * 100 : 0,
     })
@@ -105,7 +135,7 @@ export function buildLlmInput(args: {
       status: p.status,
       decision: p.targetChange.decision,
       sleeves,
-      rejectedReason: rejected ? rejected.detail : null,
+      rejectedReason: rejected ? scrub(String(rejected.detail ?? '')).slice(0, REASON_MAX) : null,
       editedByMaintainer: edited,
     }
   })
@@ -130,7 +160,10 @@ export function buildLlmInput(args: {
       ytdUsLongUsd: input.ytd.usLongUsd,
       harvestableLossKrw,
     },
-    context,
+    context: {
+      macro: context.macro.map((n) => ({ date: n.date, macro: scrub(n.macro).slice(0, MACRO_MAX) })),
+      benchmarks: sanitizeBenchmarks(context.benchmarks),
+    },
     pastDecisions,
   }
 }
