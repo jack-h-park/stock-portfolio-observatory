@@ -8,7 +8,7 @@ The rebalancer turns the portfolio's sleeve targets into lot-level sell and buy 
 - It is not investment or tax advice. The figures are the Observatory's own estimates under the policy you configured.
 - Only taxable accounts owned by you are in scope. IRP, pension savings and ISA accounts, and child accounts, are never in an allocation, a total or a plan.
 - Nothing guesses a sleeve. A security without a classification is reported and left out of the totals.
-- Phase status: this guide covers the deterministic engine and the review pages (P0 and P1). A manual or triggered proposal is engine-only: it holds the targets and plans trades against them. A monthly proposal adds the LLM judgment (P2), described below. Chat notifications (P3) are a later phase and are not described here as working.
+- Phase status: this guide covers the deterministic engine and the review pages (P0 and P1). A manual or triggered proposal is engine-only: it holds the targets and plans trades against them. A monthly proposal adds the LLM judgment (P2), described below. Scheduled triggers and chat notifications (P3) run as Hermes cron jobs; see "Operations". They are installed paused, so nothing runs until each job is resumed.
 
 ## Sleeves
 
@@ -183,8 +183,47 @@ Warnings travel with the plan and appear on the Summary and Plan tabs.
 | `managed_account` | A buy-list instrument is in an account marked as managed by someone else, so it is not bought. |
 | `transfer_needed` | An account lacks the cash for its buys; the plan includes a transfer instruction, or, if you skipped it, cuts the buys to the cash on hand. |
 
+## Operations
+
+Three Hermes cron jobs under the `trader` profile run the rebalance workflow on the ops host. `deploy/hermes/install-cron.sh` declares them in its JOBS table and creates each one **paused**: installing is not enabling. Enable a job with `cron resume <name>`:
+
+```
+~/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main --profile trader cron resume rebalance-notify
+```
+
+Each wrapper is a `--no-agent --script` entrypoint. Hermes delivers its stdout to Telegram, silence means there is nothing to say, and the exit code is 1 only when the job could not run (not configured, the CLI crashed). Findings exit 0. The installer copies the wrappers and `rebalance-lib.sh`, which they source, into the trader profile's scripts directory; re-run it after changing either.
+
+| Job | Schedule | Runs | Prints |
+|---|---|---|---|
+| `rebalance-monthly` | `30 9 1-7 * 1` | `pnpm -s rebalance:propose --kind monthly`, then the notify flow | One line: the proposal was created (id, decision, instruction count, LLM status), or another proposal is still open. `not_configured` or a crash prints one line and exits 1. |
+| `rebalance-triggers` | `15 10 * * *` | `pnpm -s rebalance:triggers`, then the notify flow | At most one line: a trigger proposal was created, triggers were added to the open proposal, or the run was held because the data has health errors. Nothing due, or a refresh in progress, is silent. |
+| `rebalance-notify` | `*/30 * * * *` | The notify flow | The Telegram line of each pending event. |
+
+Cron ORs the day-of-month and day-of-week fields when both are set, so `30 9 1-7 * 1` fires on days 1 to 7 and on every Monday. The monthly wrapper exits 0 silently unless today is both a Monday and day 7 or earlier, so it proposes once, on the first Monday of the month, after the 08:00 briefing. `REBALANCE_FORCE_MONTHLY=1` skips that check for a manual run. The monthly job is the only one that calls an LLM; trigger proposals are engine-only.
+
+**The notify flow.** `pnpm -s rebalance:notify` lists the events not yet sent on each channel. The very first run writes a seeded state and reports nothing, so proposals that already exist are not announced.
+
+1. Telegram: each event's fixed line is printed, then the events are marked with `pnpm -s rebalance:notify --mark <ids> --channel telegram`. The lines carry proposal ids, counts and page paths, never account labels or amounts.
+2. Discord, `created`: `$HERMES_CONTROL_PLANE/gateway/scripts/run-agent-request.sh --kind proposal --key proposal:<id> --title … --prompt … --origin sweep` opens (or reuses) the proposal's thread, and the trader agent writes the opening. The event is marked for Discord only when that call exits 0.
+3. Discord, status and reminder lines: the thread id is read from the control plane's ledger, `$HERMES_HOME_OPS/state/rebalance-proposal-threads.json`, and the line is posted with `send_discord.py --usage-unit-key rebalance-notify`. A proposal with no thread yet keeps its lines pending.
+4. Without `HERMES_CONTROL_PLANE`, or without `DISCORD_BOT_TOKEN` in the trader profile's `.env`, the run prints one line, `Discord thread not opened: <reason>`, and leaves the Discord events pending until a run that has both. While the reason persists, the line repeats on each run that has a Discord event pending.
+
+A Discord failure is not an error: the event stays pending and the next run retries it. A receipt that cannot be recorded prints one line and exits 1, since the event would otherwise repeat.
+
+All three jobs take one lock (a directory under `$TMPDIR`, treated as stale after 30 minutes), so overlapping runs never interleave notify-state writes. A run that finds the lock held exits 0 silently.
+
+Environment:
+
+| Variable | Default | Used for |
+|---|---|---|
+| `OBSERVATORY_REPO` | `~/workspace/code/core/jackhpark-stock-observatory` | The checkout the CLI runs in. The wrapper `cd`s there so `.env.local` applies. |
+| `HERMES_CONTROL_PLANE` | none | The control-plane checkout. Unset means no Discord delivery. |
+| `HERMES_HOME_OPS` | `~/.hermes/profiles/ops` | The ops profile home that holds the thread ledger; passed on to `run-agent-request.sh`. |
+
+The trigger and notify state files are host-owned like the others: `data/rebalance-trigger-state.json` (`STOCK_REBALANCE_TRIGGER_STATE_PATH`) and `data/rebalance-notify-state.json` (`STOCK_REBALANCE_NOTIFY_STATE_PATH`).
+
 ## What stays open
 
 - **Lot method per broker.** Each account defaults to `fifo`. Which method a broker actually applies on a sale (first-in-first-out, specific lot or average cost) is a fact about the broker, not something the Observatory can read. Confirm it at each broker and set it on the account before trusting which lots a sell names. Until then, treat the lot choice as a suggestion to verify at order time.
 - **Pension and ISA tax treatment** stays undecided on purpose; nothing here picks a value.
-- **Chat notifications (P3)** that announce a proposal and ask for a decision are a later phase. The data model has room for them; they are not built.
+- **Enabling the jobs.** The three rebalance jobs are declared and installed paused (see "Operations"). Whether and when to resume each one is an operator decision.

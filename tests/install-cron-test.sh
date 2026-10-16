@@ -12,7 +12,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALLER="$HERE/../deploy/hermes/install-cron.sh"
-JOBS=(observatory-health observatory-refresh observatory-coverage)
+JOBS=(observatory-health observatory-refresh observatory-coverage rebalance-monthly rebalance-triggers rebalance-notify)
 FAIL=0
 ACCOUNT="$(id -un)"   # expanded up front: a substitution inside a check's arguments would clobber $?
 
@@ -102,6 +102,16 @@ new_home; ARGS=(local); set_role ops
 run_installer env
 grep '^cron create' "$FAKE_LOG" | grep -- '--name observatory-refresh' | grep -Fq -- '0 */6 * * *'
 check "observatory-refresh is created on the six-hourly schedule" $?
+
+# the rebalance jobs carry their schedules, and the helper they source is installed beside them
+grep '^cron create' "$FAKE_LOG" | grep -- '--name rebalance-monthly' | grep -Fq -- '30 9 1-7 * 1'
+check "rebalance-monthly is created on the first-week Monday schedule" $?
+grep '^cron create' "$FAKE_LOG" | grep -- '--name rebalance-triggers' | grep -Fq -- '15 10 * * *'
+check "rebalance-triggers is created daily at 10:15" $?
+grep '^cron create' "$FAKE_LOG" | grep -- '--name rebalance-notify' | grep -Fq -- '*/30 * * * *'
+check "rebalance-notify is created every 30 minutes" $?
+[[ -f "$TEST_HOME/.hermes/profiles/trader/scripts/rebalance-lib.sh" ]]
+check "rebalance-lib.sh is installed beside the wrappers" $?
 
 # 4. no chat id in the tree
 ! grep -rEq 'telegram:-?[0-9]{6,}' "$INSTALLER"; check "installer carries no chat id" $?
