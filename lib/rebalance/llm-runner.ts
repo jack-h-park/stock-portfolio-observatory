@@ -88,8 +88,11 @@ export function claudeRunner(spawnFn: typeof spawn = spawn): LlmRunner {
         throw new Error('claude output was not valid JSON')
       }
       const obj = parsed !== null && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {}
+      if (obj.is_error === true) throw new Error('claude reported an error')
       if (typeof obj.result !== 'string') throw new Error('claude output had no string "result" field')
-      return { raw: obj.result, model: typeof obj.model === 'string' ? obj.model : model }
+      const usage = obj.modelUsage !== null && typeof obj.modelUsage === 'object' ? Object.keys(obj.modelUsage) : []
+      const reported = typeof obj.model === 'string' ? obj.model : (usage[0] ?? model)
+      return { raw: obj.result, model: reported }
     },
   }
 }

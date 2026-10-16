@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
-import test from 'node:test'
+import test, { mock } from 'node:test'
 import type { spawn } from 'node:child_process'
 import { buildPrompt } from '../lib/rebalance/llm-prompt'
 import { claudeRunner, codexRunner, LlmTimeoutError, runnerFromConfig } from '../lib/rebalance/llm-runner'
+import { MAX_ITEMS, MAX_TEXT } from '../lib/rebalance/llm-contract'
+import { SLEEVES } from '../lib/rebalance/allocation-policy'
 import type { LlmInput } from '../lib/rebalance/llm-input'
 
 type Script = { stdout?: string; stderr?: string; code?: number | null; hang?: boolean }
@@ -131,4 +133,57 @@ test('runnerFromConfig picks by env', () => {
   assert.equal(runnerFromConfig(base).name, 'claude')
   assert.equal(runnerFromConfig({ ...base, stockRebalanceLlmRunner: 'codex' }).name, 'codex')
   assert.equal(runnerFromConfig({ ...base, stockRebalanceLlmRunner: 'bogus' }).name, 'claude')
+})
+
+test('prompt states the validator limits and sleeve keys', () => {
+  const p = buildPrompt(input())
+  assert.ok(p.includes(`at most ${MAX_ITEMS} items`))
+  assert.ok(p.includes(`at most ${MAX_TEXT} characters`))
+  assert.match(p, /no string field may be empty/)
+  assert.ok(p.includes(SLEEVES.join(', ')))
+  assert.match(p, /maxTargetShiftPctPerCycle percentage points, per sleeve/)
+  for (const field of ['outlook.sources', 'ideas', 'questionsForMaintainer']) assert.ok(p.includes(field))
+})
+
+test('claude runner takes model from modelUsage when .model is absent', async () => {
+  const { fn } = fakeSpawn({ stdout: JSON.stringify({ result: 'x', modelUsage: { 'claude-y': {} } }) })
+  const out = await claudeRunner(fn).run('P', { model: null, timeoutMs: 1000 })
+  assert.equal(out.model, 'claude-y')
+})
+
+test('claude runner throws when is_error is true', async () => {
+  const { fn } = fakeSpawn({ stdout: JSON.stringify({ is_error: true, result: 'boom' }) })
+  await assert.rejects(claudeRunner(fn).run('P', { model: null, timeoutMs: 1000 }), /claude reported an error/)
+})
+
+test('timeout escalates to SIGKILL after the 5s grace', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] })
+  try {
+    const calls: Call[] = []
+    const fn = ((cmd: string, args: string[]) => {
+      const child = new EventEmitter() as EventEmitter & { stdin: PassThrough; stdout: PassThrough; stderr: PassThrough; kill: (s?: string) => boolean }
+      child.stdin = new PassThrough()
+      child.stdout = new PassThrough()
+      child.stderr = new PassThrough()
+      const call: Call = { cmd, args, opts: {}, stdin: '', signals: [] }
+      calls.push(call)
+      child.kill = (signal) => {
+        call.signals.push(signal)
+        if (signal === 'SIGKILL') child.emit('close', null, 'SIGKILL')
+        return true
+      }
+      return child
+    }) as unknown as typeof spawn
+    const p = claudeRunner(fn).run('P', { model: null, timeoutMs: 100 })
+    const settled = assert.rejects(p, LlmTimeoutError)
+    mock.timers.tick(100)
+    assert.deepEqual(calls[0].signals, ['SIGTERM'])
+    mock.timers.tick(4999)
+    assert.deepEqual(calls[0].signals, ['SIGTERM'])
+    mock.timers.tick(1)
+    assert.deepEqual(calls[0].signals, ['SIGTERM', 'SIGKILL'])
+    await settled
+  } finally {
+    mock.timers.reset()
+  }
 })

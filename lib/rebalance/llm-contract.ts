@@ -26,8 +26,8 @@ export type LlmRecord = {
   reason: LlmFailureReason | null
 }
 
-const MAX_TEXT = 2000
-const MAX_ITEMS = 10
+export const MAX_TEXT = 2000
+export const MAX_ITEMS = 10
 const MAX_ECHO = 80
 const MAX_RAW = 200_000
 const MAX_ATTEMPTS = 50
