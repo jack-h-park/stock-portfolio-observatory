@@ -7,7 +7,8 @@ import { config } from '@/config'
 import { datedAmountSql, NET_DIVIDEND_SQL, type DisplayCurrency } from '@/lib/adapters/income-fx'
 import { buildTaxPlan, summarizeTaxCandidates, type TaxPlanningLot } from '@/lib/tax-planning'
 import { allocateTax, buildInvestmentEpisodes, mergeAssetEvents, type AssetEvent, type ClosedLot, type DividendRow, type InflowEvent, type OpenLot } from '@/lib/asset-events'
-import { getRebalancePolicy } from '@/lib/rebalance-policy'
+import { getRebalancePolicy, marketTargetsFor } from '@/lib/rebalance-policy'
+import { deriveUsTargetPct, getAllocationPolicy } from '@/lib/rebalance/allocation-policy'
 import { getTaxPolicyState, usTaxableWrappers, wrapperTreatment, type TaxPolicy, type WrapperTreatment } from '@/lib/tax-policy'
 import { ASSET_CLASSES, depositsSeries, summarizeNetWorth, totalAssetsSeries, type AsOfNote, type CashBalanceRow, type NetWorth, type TotalAssetsSeries } from '@/lib/net-worth'
 import type { PensionContributionYear } from '@/lib/pension'
@@ -57,13 +58,13 @@ const GOLD_ROW_SQL = "asset_class = 'gold'"
 const SELF_OWNER_SQL = "coalesce(owner, 'self') = 'self'"
 
 /** `and <self only>` when `table` has an owner column, '' for a database older than it. */
-function selfOnlyAnd(conn: Database.Database, table: string) {
+export function selfOnlyAnd(conn: Database.Database, table: string) {
   const has = (conn.prepare(`pragma table_info(${table})`).all() as { name: string }[]).some((column) => column.name === 'owner')
   return has ? ` and ${SELF_OWNER_SQL}` : ''
 }
 
 /** The unfiltered table behind a stock-only view, or the plain table in a database older than the views. */
-function allAssetsTable(conn: Database.Database, name: 'holdings' | 'tax_lots' | 'transactions' | 'dividends' | 'realized_lots') {
+export function allAssetsTable(conn: Database.Database, name: 'holdings' | 'tax_lots' | 'transactions' | 'dividends' | 'realized_lots') {
   const found = conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(`${name}_all`)
   return found ? `${name}_all` : name
 }
@@ -591,6 +592,8 @@ export type RebalanceReview = {
     baseCurrency: 'KRW'
     marketTargets: { market: string; targetPct: number }[]
     positionCapPct: number
+    /** Where the KR/US split comes from: the allocation policy's equity targets, or the standalone split file. */
+    marketSplitSource: 'allocation_policy' | 'market_split'
   }
   totals: {
     base_market_value: number
@@ -760,8 +763,8 @@ export type ReconciliationReview = {
   }[]
 }
 
-function db() {
-  return new Database(config.stockDbPath, { readonly: true, fileMustExist: true })
+function db(dbPath: string = config.stockDbPath) {
+  return new Database(dbPath, { readonly: true, fileMustExist: true })
 }
 
 export function dbAvailable() {
@@ -1224,13 +1227,13 @@ export function getDepositsSeries(dates: string[]): ReturnType<typeof depositsSe
 }
 
 /** Today in the ingest's time zone, the same calendar the snapshot dates use (scripts/portfolio-snapshot.mjs). */
-export function portfolioToday() {
+export function portfolioToday(at: Date = new Date()) {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: process.env.STOCK_TIME_ZONE || 'America/Los_Angeles',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(new Date())
+  }).format(at)
 }
 
 /** Year and month (1-12) of `at` in the ingest's time zone. */
@@ -3390,8 +3393,12 @@ export function getCryptoPremium(): CryptoPremium {
 export function getRebalanceReview(): RebalanceReview {
   const conn = db()
   try {
-    const { marketTargets } = getRebalancePolicy()
-    const positionCapPct = 15
+    // With an allocation policy, its position cap and its KR/US equity split take over from the
+    // standalone market-split file and the old fixed 15% cap.
+    const allocation = getAllocationPolicy().policy
+    const derivedUs = allocation ? deriveUsTargetPct(allocation) : null
+    const marketTargets = derivedUs != null ? marketTargetsFor(derivedUs) : getRebalancePolicy().marketTargets
+    const positionCapPct = allocation ? allocation.bounds.positionCapPct : 15
     const totals = conn
       .prepare(
         `select
@@ -3493,6 +3500,7 @@ export function getRebalanceReview(): RebalanceReview {
         baseCurrency: 'KRW',
         marketTargets,
         positionCapPct,
+        marketSplitSource: derivedUs != null ? 'allocation_policy' : 'market_split',
       },
       totals,
       marketGaps,
@@ -4751,9 +4759,9 @@ export function getTaxPlanningLots(
   policy: TaxPolicy = getTaxPolicyState().policy,
   // Every security lot whatever its wrapper, for a reader that values lots the
   // tax estimate leaves out (the asset events list). The tax planner never sets it.
-  { allWrappers = false }: { allWrappers?: boolean } = {}
+  { allWrappers = false, dbPath, selfOnly = false }: { allWrappers?: boolean; dbPath?: string; selfOnly?: boolean } = {}
 ): TaxPlanningLot[] {
-  const conn = db()
+  const conn = db(dbPath)
   try {
     const wrappers = ['taxable', ...usTaxableWrappers(policy)]
     const lotsTable = allAssetsTable(conn, 'tax_lots')
@@ -4761,11 +4769,13 @@ export function getTaxPlanningLots(
     // A database older than the *_all tables has only the stock rows, and is
     // read as it always was.
     const scoped = lotsTable === 'tax_lots_all'
+    // selfOnly keeps a child's account out; the rebalancer sets it, the tax planner does not.
+    const owned = (alias: string) => (selfOnly && scoped ? ` and coalesce(${alias}.owner, 'self') = 'self'` : '')
     const rowFilter = (alias: string) =>
       scoped && allWrappers
-        ? `${alias}.asset_class = 'security'`
+        ? `${alias}.asset_class = 'security'${owned(alias)}`
         : scoped
-        ? `(${alias}.account_wrapper in (${wrappers.map(() => '?').join(', ')}) and ${alias}.asset_class = 'security')`
+        ? `(${alias}.account_wrapper in (${wrappers.map(() => '?').join(', ')}) and ${alias}.asset_class = 'security'${owned(alias)})`
         : alias === 'h'
           ? `${alias}.${STOCK_WRAPPER_SQL}`
           : '1 = 1'
@@ -5438,9 +5448,9 @@ export type WashSaleReview = {
  * accounts, because an IRA buy triggers the rule too. A child's account is
  * another taxpayer and is left out. Crypto never enters: market 'US' only.
  */
-export function getWashSaleReview(today: string = portfolioToday()): WashSaleReview {
+export function getWashSaleReview(today: string = portfolioToday(), dbPath?: string): WashSaleReview {
   const empty: WashSaleReview = { today, transactionsThrough: null, windows: [] }
-  const conn = db()
+  const conn = db(dbPath)
   try {
     const hasTable = (name: string) =>
       Boolean(conn.prepare("select 1 from sqlite_master where type in ('table', 'view') and name = ?").get(name))

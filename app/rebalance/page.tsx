@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, MetricField, MetricHeroCard, Signed, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, MetricHeroCard, Signed, TextLink, marketTone } from '@/components/ui'
 import { getOperationalHealth, getRebalanceReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
 import { fmtNumber, fmtPct } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
@@ -15,7 +15,15 @@ import { CardRow, KpiBand } from '@/components/layout'
 import { Field } from '@/components/form'
 import { SubmitButton } from '@/components/SubmitButton'
 import { getRebalancePolicy } from '@/lib/rebalance-policy'
-import { saveRebalanceTargets } from './actions'
+import { dbAvailable, portfolioToday } from '@/lib/adapters/portfolio-db'
+import { getRebalanceInput } from '@/lib/adapters/rebalance-input'
+import { getAllocationPolicy } from '@/lib/rebalance/allocation-policy'
+import { computeAllocation, type Allocation, type SleeveRow } from '@/lib/rebalance/allocation'
+import { getInstrumentClasses, type InstrumentClasses } from '@/lib/rebalance/instrument-classes'
+import { listProposals, type Proposal, type ProposalStatus } from '@/lib/rebalance/proposal-store'
+import { isProposalErrorCode, PROPOSAL_STATUS_TONE } from '@/lib/rebalance/proposal-actions'
+import { fmtDateShort } from '@/lib/format'
+import { createManualProposal, saveRebalanceTargets } from './actions'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/rebalance')
@@ -34,8 +42,45 @@ function PositionLink({ row }: { row: ReviewPosition }) {
   )
 }
 
+// Matches OPEN_STATUSES in lib/rebalance/proposal-store.ts: a reconciled proposal awaiting its close is listed with
+// the past ones (its page still closes it) and does not hold the open slot.
+const OPEN: ProposalStatus[] = ['draft', 'targets_approved', 'plan_approved', 'executing']
 
-export default async function RebalancePage({ searchParams }: { searchParams: Promise<{ target?: string }> }) {
+
+const SLEEVE_TONE = { below: 'warning', within: 'success', above: 'warning' } as const
+
+/** The allocation by sleeve, or why there is none. Never throws: the market-gap view below must still render. */
+function loadAllocation(): { state: 'ok'; allocation: Allocation } | { state: 'missing' | 'invalid' | 'classes_unreadable' | 'no_data' } {
+  const policyState = getAllocationPolicy()
+  if (policyState.error) return { state: 'invalid' }
+  if (!policyState.policy) return { state: 'missing' }
+  let classes: InstrumentClasses
+  try {
+    classes = getInstrumentClasses()
+  } catch (error) {
+    console.error('[rebalance] instrument classes:', error)
+    return { state: 'classes_unreadable' }
+  }
+  if (!dbAvailable()) return { state: 'no_data' }
+  try {
+    const input = getRebalanceInput(portfolioToday())
+    return { state: 'ok', allocation: computeAllocation(input, policyState.policy, classes) }
+  } catch (error) {
+    console.error('[rebalance] allocation:', error)
+    return { state: 'no_data' }
+  }
+}
+
+function loadProposals(): Proposal[] | null {
+  try {
+    return listProposals()
+  } catch (error) {
+    console.error('[rebalance] proposals:', error)
+    return null
+  }
+}
+
+export default async function RebalancePage({ searchParams }: { searchParams: Promise<{ target?: string; error?: string }> }) {
   const params = await searchParams
   const language = await getLanguage()
   const money = createMoneyFormatter(await getCurrencyPreferences())
@@ -47,6 +92,14 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
   const operational = getOperationalHealth()
   const freshnessIssues = operational.staleItems.length
   const largestGap = rebalance.marketGaps.reduce((max, row) => Math.max(max, Math.abs(row.gapPct)), 0)
+  const proposalCopy = getPageCopy('rebalanceProposal', language)
+  const allocationState = loadAllocation()
+  const proposals = loadProposals()
+  const openProposal = proposals?.find((p) => OPEN.includes(p.status)) ?? null
+  const pastProposals = proposals?.filter((p) => p !== openProposal) ?? []
+  const errorMessage = isProposalErrorCode(params.error) ? proposalCopy.errors[params.error] : null
+  const ac = copy.allocation
+  const pc = copy.proposals
 
   return (
     <>
@@ -55,8 +108,121 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
         title={copy.title}
         emphasis={copy.emphasis}
         subtitle={copy.subtitle(rebalance.policy.marketTargets.map((row) => `${row.market} ${fmtNumber(row.targetPct)}%`).join(' / '), fmtNumber(rebalance.policy.positionCapPct))}
-        action={freshnessIssues ? <Badge tone="warning">{copy.freshnessIssues(freshnessIssues)}</Badge> : <Badge tone="success">{copy.inputsReady}</Badge>}
+        action={
+          <div className="flex items-center gap-2">
+            {freshnessIssues ? <Badge tone="warning">{copy.freshnessIssues(freshnessIssues)}</Badge> : <Badge tone="success">{copy.inputsReady}</Badge>}
+            <TextLink href="/rebalance/settings">{copy.settingsLink}</TextLink>
+          </div>
+        }
       />
+
+      {errorMessage && (
+        <Card title={proposalCopy.errorTitle} accent className="mb-5">
+          <p className="text-caption text-warning">{errorMessage}</p>
+        </Card>
+      )}
+
+      <CardRow>
+        <Card
+          title={ac.title}
+          info={ac.info}
+          action={
+            allocationState.state === 'ok' && allocationState.allocation.unclassified.length > 0 ? (
+              <Badge tone="warning">{ac.unclassified(allocationState.allocation.unclassified.length)}</Badge>
+            ) : undefined
+          }
+        >
+          {allocationState.state === 'ok' ? (
+            <DataTable
+              minWidth="28rem"
+              rows={allocationState.allocation.sleeves}
+              getRowKey={(r: SleeveRow) => r.sleeve}
+              columns={[
+                { key: 'sleeve', label: ac.sleeve, render: (r: SleeveRow) => <span className="font-medium text-ink">{proposalCopy.sleeves[r.sleeve]}</span> },
+                { key: 'pct', label: ac.current, align: 'right', render: (r: SleeveRow) => fmtPct(r.pct) },
+                { key: 'target', label: ac.target, align: 'right', render: (r: SleeveRow) => fmtPct(r.target) },
+                { key: 'band', label: ac.band, align: 'right', render: (r: SleeveRow) => `${fmtNumber(Math.max(0, r.lower), 1)}–${fmtNumber(Math.min(100, r.upper), 1)}%` },
+                { key: 'status', label: ac.status, render: (r: SleeveRow) => <Badge tone={SLEEVE_TONE[r.status]}>{ac.statuses[r.status]}</Badge> },
+              ]}
+            />
+          ) : allocationState.state === 'missing' ? (
+            <EmptyState>
+              <span className="block">{ac.notConfigured}</span>
+              <TextLink href="/rebalance/settings">{ac.configure}</TextLink>
+            </EmptyState>
+          ) : allocationState.state === 'invalid' ? (
+            <EmptyState>
+              <span className="block text-warning">{ac.policyInvalid}</span>
+              <TextLink href="/rebalance/settings">{ac.configure}</TextLink>
+            </EmptyState>
+          ) : allocationState.state === 'classes_unreadable' ? (
+            <EmptyState>
+              <span className="block text-warning">{proposalCopy.classesUnreadable}</span>
+              <TextLink href="/rebalance/settings">{ac.configure}</TextLink>
+            </EmptyState>
+          ) : (
+            <EmptyState>{ac.noData}</EmptyState>
+          )}
+        </Card>
+
+        <Card title={pc.title} info={pc.info} accent>
+          <div className="space-y-4">
+            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{proposalCopy.disclaimer}</div>
+            {proposals === null ? (
+              <EmptyState>{pc.unreadable}</EmptyState>
+            ) : openProposal ? (
+              <div className="rounded-md border border-line-subtle px-3 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-label text-ink-3">{pc.open}</span>
+                    <Link href={`/rebalance/proposals/${encodeURIComponent(openProposal.id)}`} className="font-mono text-caption font-medium text-info hover:underline">
+                      {openProposal.id}
+                    </Link>
+                  </div>
+                  <Badge tone={PROPOSAL_STATUS_TONE[openProposal.status]}>{proposalCopy.statuses[openProposal.status]}</Badge>
+                </div>
+                <dl className="mt-2 grid grid-cols-3 gap-2 text-label">
+                  <div><dt className="text-ink-3">{pc.kind}</dt><dd className="text-ink">{proposalCopy.kinds[openProposal.kind]}</dd></div>
+                  <div><dt className="text-ink-3">{pc.created}</dt><dd className="tabular-nums text-ink">{fmtDateShort(openProposal.createdAt, language)}</dd></div>
+                  <div><dt className="text-ink-3">{pc.expires}</dt><dd className="tabular-nums text-ink">{fmtDateShort(openProposal.expiresAt, language)}</dd></div>
+                </dl>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-caption text-ink-3">{pc.none}</p>
+                {allocationState.state === 'ok' && (
+                  <form action={createManualProposal} className="space-y-1">
+                    <SubmitButton variant="solid">{pc.create}</SubmitButton>
+                    <p className="text-label text-ink-3">{pc.createNote}</p>
+                  </form>
+                )}
+              </div>
+            )}
+            {proposals !== null && (
+              <div>
+                <div className="mb-1 text-label font-medium text-ink-2">{pc.past}</div>
+                {pastProposals.length === 0 ? (
+                  <p className="text-label text-ink-3">{pc.noPast}</p>
+                ) : (
+                  <ul className="divide-y divide-line-subtle">
+                    {pastProposals.slice(0, 12).map((p) => (
+                      <li key={p.id} className="flex items-center justify-between gap-3 py-1.5 text-label">
+                        <Link href={`/rebalance/proposals/${encodeURIComponent(p.id)}`} className="font-mono font-medium text-info hover:underline">
+                          {p.id}
+                        </Link>
+                        <span className="flex items-center gap-2">
+                          <span className="tabular-nums text-ink-3">{fmtDateShort(p.createdAt, language)}</span>
+                          <Badge tone={PROPOSAL_STATUS_TONE[p.status]}>{proposalCopy.statuses[p.status]}</Badge>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+        </Card>
+      </CardRow>
 
       <CardRow columns="hero">
         <MetricHeroCard
@@ -133,6 +299,16 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
         </Card>
 
         <Card title={editor.title}>
+          {rebalance.policy.marketSplitSource === 'allocation_policy' ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3 text-caption text-ink-2">
+                <span>{editor.usLabel}</span>
+                <Badge tone="neutral">{fmtNumber(rebalance.policy.marketTargets.find((t) => t.market === 'US')?.targetPct ?? 0, 1)}%</Badge>
+              </div>
+              <p className="text-label leading-relaxed text-ink-3">{editor.derivedNote}</p>
+              <TextLink href="/rebalance/settings">{copy.settingsLink}</TextLink>
+            </div>
+          ) : (
           <form action={saveRebalanceTargets} className="space-y-4">
             <Field label={editor.usLabel} name="usTargetPct" defaultValue={targetPolicy.usTargetPct} suffix="%" />
             <div className="flex items-center justify-between gap-3 text-caption text-ink-2">
@@ -148,6 +324,7 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
               {params.target === 'invalid' && <Badge tone="warning">{editor.invalid}</Badge>}
             </div>
           </form>
+          )}
         </Card>
       </CardRow>
 

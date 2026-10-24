@@ -7,6 +7,7 @@ export function PageHeader({
   eyebrow,
   emphasis,
   action,
+  autoRefresh = true,
 }: {
   title: string
   subtitle?: ReactNode
@@ -16,6 +17,8 @@ export function PageHeader({
    *  e.g. title="Pipeline Overview" emphasis="Overview". */
   emphasis?: string
   action?: ReactNode
+  /** Off on pages with a form to fill in, where a refresh every 30 seconds would reload it mid-entry. */
+  autoRefresh?: boolean
 }) {
   const head = emphasis && title.endsWith(emphasis) ? title.slice(0, title.length - emphasis.length) : title
   const showEmph = Boolean(emphasis && title.endsWith(emphasis))
@@ -32,7 +35,7 @@ export function PageHeader({
       </div>
       <div className="flex shrink-0 items-center gap-3">
         {action}
-        <AutoRefresh seconds={30} />
+        {autoRefresh ? <AutoRefresh seconds={30} /> : null}
       </div>
     </header>
   )

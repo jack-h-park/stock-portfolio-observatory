@@ -42,10 +42,26 @@ export const config = {
   // KR/US target split, edited in the app on /rebalance. Like tax-policy.json it is
   // owned by the host that serves the app and is never pushed.
   stockRebalancePolicyPath: env('STOCK_REBALANCE_POLICY_PATH', repoPath('data/rebalance-policy.json')),
+  // Sleeve targets, bounds and preferred instruments for the tax-aware rebalancer. Host-owned like
+  // rebalance-policy.json: edited on the host that serves the app and never pushed.
+  stockAllocationPolicyPath: env('STOCK_ALLOCATION_POLICY_PATH', repoPath('data/allocation-policy.json')),
+  // Maps each security to its sleeve (`MARKET:TICKER` -> sleeve). Host-owned, never pushed.
+  stockInstrumentClassesPath: env('STOCK_INSTRUMENT_CLASSES_PATH', repoPath('data/instrument-classes.json')),
+  // One JSON file per rebalance proposal. Host-owned, never pushed.
+  stockRebalanceProposalsDir: env('STOCK_REBALANCE_PROPOSALS_DIR', repoPath('data/rebalance-proposals')),
+  // When each rebalance trigger last fired (the 14-day debounce). Host-owned, never pushed.
+  stockRebalanceTriggerStatePath: env('STOCK_REBALANCE_TRIGGER_STATE_PATH', repoPath('data/rebalance-trigger-state.json')),
+  // Which rebalance notification events were sent on which channel. Host-owned, never pushed.
+  stockRebalanceNotifyStatePath: env('STOCK_REBALANCE_NOTIFY_STATE_PATH', repoPath('data/rebalance-notify-state.json')),
   stockTaxPlansPath: env('STOCK_TAX_PLANS_PATH', repoPath('data/tax-plans.json')),
   // The gitignored account map (scripts/account-map.mjs). Same variable the ingest
   // reads; the app reads only its pension token list, for the reminder's rows.
   stockAccountMapPath: env('STOCK_ACCOUNT_MAP_PATH', repoPath('data/accounts.local.json')),
+  // The CLI that writes the rebalancer's judgment: 'claude' (default) or 'codex'. The model is
+  // optional; empty means the CLI's own default. The timeout is per attempt, in milliseconds.
+  stockRebalanceLlmRunner: env('STOCK_REBALANCE_LLM_RUNNER', 'claude'),
+  stockRebalanceLlmModel: env('STOCK_REBALANCE_LLM_MODEL', ''),
+  stockRebalanceLlmTimeoutMs: env('STOCK_REBALANCE_LLM_TIMEOUT_MS', '600000'),
 }
 
 export type AppConfig = typeof config

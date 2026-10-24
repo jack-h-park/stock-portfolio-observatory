@@ -1,0 +1,31 @@
+{
+  "_comment": "Placeholder values for illustration only, not a recommendation. Copy to allocation-policy.json (gitignored) and edit on the host that serves the app.",
+  "version": 1,
+  "bounds": {
+    "sleeves": {
+      "kr_equity": { "min": 0, "max": 100 },
+      "us_equity": { "min": 0, "max": 100 },
+      "bonds": { "min": 0, "max": 100 },
+      "gold": { "min": 0, "max": 100 },
+      "crypto": { "min": 0, "max": 100 },
+      "cash": { "min": 0, "max": 100 }
+    },
+    "positionCapPct": 15,
+    "maxTargetShiftPctPerCycle": 5,
+    "maxTurnoverPctPerProposal": 10,
+    "minTradeKrw": 100000,
+    "staleDataDays": 35,
+    "harvestThresholdKrw": 1000000
+  },
+  "targets": {
+    "kr_equity": { "target": 30, "band": 5 },
+    "us_equity": { "target": 45, "band": 5 },
+    "bonds": { "target": 5, "band": 5 },
+    "gold": { "target": 5, "band": 5 },
+    "crypto": { "target": 5, "band": 5 },
+    "cash": { "target": 10, "band": 5 }
+  },
+  "preferredInstruments": {},
+  "accounts": {},
+  "history": []
+}

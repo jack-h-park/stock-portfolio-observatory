@@ -5,6 +5,12 @@
 #
 #   observatory-refresh  every 6 hours — pnpm refresh (FX, prices, evidence, ingest)
 #   observatory-health   daily 09:00    — reads the summary the refresh publishes
+#   observatory-coverage Saturday 10:00 — weekly list of broker statements to download
+#   rebalance-monthly    first Monday 09:30 — monthly proposal with the LLM judgment
+#   rebalance-triggers   daily 10:15    — band, cap, harvest and year-end triggers (engine only)
+#   rebalance-notify     every 30 min   — Telegram lines and the proposal's Discord thread
+#
+# The rebalance wrappers source rebalance-lib.sh, which is installed beside them.
 #
 # Mirrors the briefing's tools/hermes/install-cron.sh, and shares that profile's
 # TELEGRAM_BOT_TOKEN. Pass "local" to install without Telegram delivery.
@@ -92,13 +98,34 @@ hermes() { "$PY" -m hermes_cli.main "$@"; }
 # from the summary's accountCoverage block. Saturday morning, when there is time
 # to log in to a broker; weekly rather than on change, because a statement that
 # was not downloaded does not clear itself.
+#
+# The rebalance jobs (docs/rebalancing.md § Operations). rebalance-monthly is the only
+# one that calls an LLM. Its expression fires on days 1-7 and on every Monday, since
+# cron ORs the two day fields; the wrapper exits quietly unless it is both, so it
+# proposes once, on the first Monday, after the 08:00 briefing. rebalance-triggers
+# runs after the morning refresh has had time to land. rebalance-notify delivers
+# the events both of them produce, and the page's own status changes, every 30
+# minutes; all three share one lock so their notify-state writes never interleave.
 JOBS=(
   "observatory-health|0 9 * * *|observatory-health-cron.sh"
   "observatory-refresh|0 */6 * * *|observatory-refresh-cron.sh"
   "observatory-coverage|0 10 * * 6|observatory-coverage-cron.sh"
+  "rebalance-monthly|30 9 1-7 * 1|rebalance-monthly-cron.sh"
+  "rebalance-triggers|15 10 * * *|rebalance-triggers-cron.sh"
+  "rebalance-notify|*/30 * * * *|rebalance-notify-cron.sh"
 )
 
+# Files the wrappers source rather than run. Hermes runs the installed copies, so a
+# helper left in the repo would not be found beside them.
+SUPPORT=(rebalance-lib.sh)
+
 mkdir -p "$SCRIPTS_DIR"
+
+for SUPPORT_FILE in "${SUPPORT[@]}"; do
+  [ -f "$HERE/$SUPPORT_FILE" ] || { echo "support file not found: $HERE/$SUPPORT_FILE" >&2; exit 1; }
+  install -m 0644 "$HERE/$SUPPORT_FILE" "$SCRIPTS_DIR/$SUPPORT_FILE"
+  echo "installed support file -> $SCRIPTS_DIR/$SUPPORT_FILE"
+done
 
 # `cron create` and `cron pause` exit 0 even when they did nothing, so the state is
 # read back rather than assumed. `cron list` hides paused jobs; --all does not.
