@@ -1,4 +1,5 @@
 import type { Command } from '@/lib/cli/common'
+import { fbarTableCommand } from '@/lib/cli/fbar-table'
 import { sourcesStatusCommand } from '@/lib/cli/sources-status'
 import { taxCalendarCommand } from '@/lib/cli/tax-calendar'
 import { taxRealizedCommand } from '@/lib/cli/tax-realized'
@@ -10,4 +11,5 @@ export const commands: Record<string, Command> = {
   'tax:calendar': taxCalendarCommand,
   'tax:realized': taxRealizedCommand,
   'sources:status': sourcesStatusCommand,
+  'fbar:table': fbarTableCommand,
 }

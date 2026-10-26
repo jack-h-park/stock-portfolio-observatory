@@ -1,5 +1,5 @@
 // observatory-cli.mjs — entry point for the read-only CLIs an agent calls:
-// `pnpm tax:scenario`, `pnpm tax:calendar`, `pnpm tax:realized`, `pnpm sources:status`.
+// `pnpm tax:scenario`, `pnpm tax:calendar`, `pnpm tax:realized`, `pnpm sources:status`, `pnpm fbar:table`.
 //
 // A .mjs file in front of the TypeScript for the reason summary.mjs gives:
 // `.env.local` must be in process.env before @/config is evaluated, and an

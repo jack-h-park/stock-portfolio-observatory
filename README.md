@@ -664,7 +664,7 @@ See [docs/tax-realization-planner.md](docs/tax-realization-planner.md) for the r
 
 ### Read-only CLIs
 
-Four commands answer tax and data questions from the database without opening the app. An agent calls them so it can quote figures the engine computed instead of recomputing them in a session.
+Five commands answer tax and data questions from the database without opening the app. An agent calls them so it can quote figures the engine computed instead of recomputing them in a session.
 
 | Command | Answers |
 |---|---|
@@ -672,8 +672,9 @@ Four commands answer tax and data questions from the database without opening th
 | `pnpm tax:calendar` | Open wash-sale windows (DRIP buys included), recent dividend reinvestment per ticker, and T+1 settlement limits for accounts the account map marks `"cashAccount": true` |
 | `pnpm tax:realized --since <date>` | US realized lots in a date range, with where each figure came from (`replay` or `1099b`) |
 | `pnpm sources:status` | Age of the last source push, newest file per pushed folder, and what the coverage reminder says is still due |
+| `pnpm fbar:table [--year YYYY] [--csv]` | Each foreign account's maximum value in a year (the highest balance on any day, converted at the Treasury year-end rate), with how each was found; `--csv > file.csv` saves it. Reference figures, not a filing |
 
-All four take `--json` and then print one JSON object (`schemaVersion` 1) with a `provenance` block: database build time, policy file hash and mtime, price source, FX dates and the Korea credit mode. Exit codes: 0 ok, 1 error, 2 usage, 3 a refresh holds `.refresh.lock` (the database is being rebuilt, so the command refuses to read it). They open SQLite read-only and write nothing.
+All five take `--json` and then print one JSON object (`schemaVersion` 1) with a `provenance` block: database build time, policy file hash and mtime, price source, FX dates and the Korea credit mode. Exit codes: 0 ok, 1 error, 2 usage, 3 a refresh holds `.refresh.lock` (the database is being rebuilt, so the command refuses to read it). They open SQLite read-only and write nothing.
 
 `tax:scenario` reuses the planner (`estimateSaleSet`, `repriceForSaleDate` and `harvestFrontier` in `lib/tax-planning.ts`). US gains are in dollars. Korea gains are in won: proceeds at the sale-date rate from `historical_fx_rates` less the cost at the acquisition-date rate (`acquisition_cost_krw`). A sale date after the newest stored rate uses that rate, and the output says so. Where a scenario compares alternatives, the cheapest is labelled the lowest estimated tax under the stated inputs, not a recommendation. Losses (`lossUsd`, `realizedLossUsd`) are negative numbers.
 
