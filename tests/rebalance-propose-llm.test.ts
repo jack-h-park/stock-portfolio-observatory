@@ -89,7 +89,7 @@ const outlook = {
   confidence: 'medium',
 }
 const answer = (targetChange: unknown) =>
-  JSON.stringify({ outlook, targetChange, ideas: [{ ticker: 'AAA', sleeve: 'us_equity', why: 'test idea' }], questionsForMaintainer: ['test question?'] })
+  JSON.stringify({ outlook, targetChange, ideas: [{ market: 'US', ticker: 'AAA', sleeve: 'us_equity', why: 'test idea' }], questionsForMaintainer: ['test question?'] })
 const CHANGE = answer({
   decision: 'change',
   sleeves: { us_equity: { to: 48, reason: 'more us' }, cash: { to: 7, reason: 'less cash' } },
@@ -138,7 +138,7 @@ test('valid change -> change proposal with plan on proposed targets', async () =
   })
   assert.deepEqual(p.plan, JSON.parse(JSON.stringify(expected)))
   assert.equal(p.outlook?.summary, outlook.summary)
-  assert.deepEqual(p.ideas, [{ ticker: 'AAA', sleeve: 'us_equity', why: 'test idea' }])
+  assert.deepEqual(p.ideas, [{ market: 'US', ticker: 'AAA', sleeve: 'us_equity', why: 'test idea' }])
   assert.deepEqual(p.questionsForMaintainer, ['test question?'])
   assert.equal(p.llm?.status, 'ok')
   assert.equal(p.llm?.reason, null)

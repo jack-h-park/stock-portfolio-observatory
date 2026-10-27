@@ -23,6 +23,11 @@ export type LlmInput = {
     ytdUsLongUsd: number
     harvestableLossKrw: number
   }
+  /** What every idea must respect; the prompt states the rules that read these. */
+  constraints: {
+    usTaxPerson: boolean
+    washSaleBlockedBuys: { ticker: string; blockedThrough: string }[]
+  }
   context: BriefingContext
   pastDecisions: {
     id: string
@@ -214,6 +219,10 @@ export function buildLlmInput(args: {
       ytdUsShortUsd: input.ytd.usShortUsd,
       ytdUsLongUsd: input.ytd.usLongUsd,
       harvestableLossKrw: harvestable,
+    },
+    constraints: {
+      usTaxPerson: policy.investor?.usTaxPerson ?? false,
+      washSaleBlockedBuys: (input.washSaleBlockedBuys ?? []).map((b) => ({ ticker: b.ticker, blockedThrough: b.blockedThrough })),
     },
     context: {
       macro: context.macro.map((n) => ({ date: n.date, macro: scrub(n.macro).slice(0, MACRO_MAX) })),

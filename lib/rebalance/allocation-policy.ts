@@ -9,6 +9,8 @@ export type SleeveTarget = { target: number; band: number }
 export type LotMethod = 'fifo' | 'specific' | 'average'
 export type AccountRule = { lotMethod: LotMethod; fractional: boolean; managedBy: string | null; excludedCash: boolean }
 export type PreferredInstrument = { market: string; ticker: string; brokerage: string | null; account: string }
+/** Facts about the maintainer that limit what may be suggested. A US tax person should not hold non-US funds (PFIC). */
+export type InvestorProfile = { usTaxPerson: boolean }
 export type AllocationPolicy = {
   version: 1
   bounds: {
@@ -23,6 +25,8 @@ export type AllocationPolicy = {
   targets: Record<Sleeve, SleeveTarget>
   preferredInstruments: Partial<Record<Sleeve, PreferredInstrument[]>>
   accounts: Record<string, AccountRule>
+  /** Absent in policies saved before it existed; read as "not a US tax person". */
+  investor?: InvestorProfile
   history: { at: string; by: string; changes: Partial<Record<Sleeve, [number, number]>> }[]
 }
 export type AllocationPolicyState = { policy: AllocationPolicy | null; source: 'saved' | 'missing'; error: string | null }
@@ -79,6 +83,9 @@ export function validateAllocationPolicy(p: AllocationPolicy): string[] {
   for (const key of SCALAR_BOUNDS) {
     const value = p.bounds?.[key]
     if (!isNum(value) || value < 0) errors.push(`${key}: must be a number >= 0`)
+  }
+  if (p.investor !== undefined && (p.investor === null || typeof p.investor !== 'object' || typeof p.investor.usTaxPerson !== 'boolean')) {
+    errors.push('investor.usTaxPerson: must be true or false')
   }
   if (Math.abs(sum - 100) > SUM_TOLERANCE) errors.push(`targets sum to ${Math.round(sum * 100) / 100}, expected 100`)
   return errors

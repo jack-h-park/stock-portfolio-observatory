@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { getProposal, recordFill, transition, type Proposal } from '@/lib/rebalance/proposal-store'
 import {
+  addIdeaToBuyList,
   approveProposalPlan,
   approveProposalTargets,
   parseFillForm,
@@ -112,4 +113,12 @@ export async function closeProposal(formData: FormData) {
     fail(p.id, 'fills', 'wrong_status', error)
   }
   done(p.id, 'summary', 'closed')
+}
+
+/** Puts one idea on its sleeve's buy list, in the account the maintainer picked. */
+export async function addIdeaAction(formData: FormData) {
+  const p = loadProposal(formData)
+  const outcome = addIdeaToBuyList(p.id, formData)
+  if (outcome.ok) revalidatePath('/rebalance/settings')
+  finish(p.id, 'summary', outcome, 'summary', 'idea_added')
 }

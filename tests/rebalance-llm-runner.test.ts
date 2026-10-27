@@ -261,3 +261,11 @@ test('timeout escalates to SIGKILL after the 5s grace', async () => {
     mock.timers.reset()
   }
 })
+
+test('prompt states the idea constraints: market, PFIC for a US tax person, wash-sale windows', () => {
+  const p = buildPrompt(input())
+  assert.match(p, /market: 'KR' \| 'US' \| 'CRYPTO'/)
+  assert.match(p, /input\.constraints\.usTaxPerson is true, never suggest a fund, ETF/)
+  assert.match(p, /PFIC/)
+  assert.match(p, /input\.constraints\.washSaleBlockedBuys/)
+})

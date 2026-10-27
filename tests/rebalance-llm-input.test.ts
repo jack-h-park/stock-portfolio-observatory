@@ -298,3 +298,12 @@ test('labels, aliases, account numbers and owner names from the account map are 
     assert.equal(build({ context, accountMapPath }).context.macro[0].macro, macro)
   }
 })
+
+test('constraints carry the investor profile and the wash-sale windows', () => {
+  assert.deepEqual(build().constraints, { usTaxPerson: false, washSaleBlockedBuys: [] })
+  const out = build({
+    policy: { ...policy(), investor: { usTaxPerson: true } },
+    input: input({ washSaleBlockedBuys: [{ ticker: 'AAA', blockedThrough: '2026-11-01' }] }),
+  })
+  assert.deepEqual(out.constraints, { usTaxPerson: true, washSaleBlockedBuys: [{ ticker: 'AAA', blockedThrough: '2026-11-01' }] })
+})
