@@ -7174,8 +7174,17 @@ const ytdSalesDetail = `${usSalesThisYear.length} US sale(s) in ${taxYear} total
 // near 1,350 read as a smaller dollar gain than the one realized, and a small
 // won loss can be a dollar gain. USD rows keep their native dollar gain.
 // Stock rows only: a sale inside an IRP or 연금저축 account is not a taxable
-// realization, and gold is not a security.
+// realization.
 const realizedForTaxYear = stockOnly(realizedRows).filter((r) => r.tax_year === taxYear && !r.superseded_by)
+// Gold is not a security, but a US person reports its gain like any capital gain,
+// so the worldwide figure counts it. It stays out of `realizedForTaxYear`: the
+// Korea-side estimate below reads that set, and Korea does not tax these sales.
+// It is named GOLD in the per-market breakdown so a reader sees what it added.
+const goldRealizedForTaxYear = realizedRows.filter(
+  (r) => (r.asset_class ?? assetClassFor(r, accountMap)) === 'gold' && r.tax_year === taxYear && !r.superseded_by
+)
+const ytdRealizedRows = [...realizedForTaxYear, ...goldRealizedForTaxYear]
+const ytdMarketOf = (r) => (goldRealizedForTaxYear.includes(r) ? 'GOLD' : r.market)
 // Only the historical table: falling back to today's rate for an acquisition
 // that predates it would bring back the single-rate error for exactly that lot.
 // Such a lot is counted as unconvertible and named in the detail instead.
@@ -7196,9 +7205,9 @@ const realizedUsdOf = (r) => {
   if (proceedsUsd == null || !acquiredRate) return null
   return proceedsUsd - Number(r.cost_basis_krw) / acquiredRate
 }
-const unconvertible = realizedForTaxYear.filter((r) => realizedUsdOf(r) == null)
+const unconvertible = ytdRealizedRows.filter((r) => realizedUsdOf(r) == null)
 const sumUsd = (term) =>
-  realizedForTaxYear
+  ytdRealizedRows
     .filter((r) => text(r.tax_term).toLowerCase().startsWith(term))
     .reduce((sum, r) => sum + (realizedUsdOf(r) ?? 0), 0)
 const computedShortUsd = sumUsd('short')
@@ -7206,8 +7215,8 @@ const computedLongUsd = sumUsd('long')
 const usRealizedForTaxYear = realizedForTaxYear.filter((r) => r.market === 'US')
 const computedBasis = usRealizedForTaxYear.some((r) => r.basis === '1099b') ? '1099-B' : 'replay'
 // Named per market so a mismatch says WHERE it came from rather than only how big.
-const computedByMarket = [...new Set(realizedForTaxYear.map((r) => r.market))].sort().map((market) => {
-  const rows = realizedForTaxYear.filter((r) => r.market === market)
+const computedByMarket = [...new Set(ytdRealizedRows.map(ytdMarketOf))].sort().map((market) => {
+  const rows = ytdRealizedRows.filter((r) => ytdMarketOf(r) === market)
   return `${market} ${rows.reduce((sum, r) => sum + (realizedUsdOf(r) ?? 0), 0).toFixed(2)}`
 })
 // The part of the US figure that rests on Robinhood order fills rather than a
@@ -7241,7 +7250,7 @@ db.prepare('insert or replace into meta (key, value) values (?, ?)').run(
     basis: computedBasis,
     shortUsd: Number(computedShortUsd.toFixed(2)),
     longUsd: Number(computedLongUsd.toFixed(2)),
-    lots: realizedForTaxYear.length,
+    lots: ytdRealizedRows.length,
     // Worldwide, so the tax page can show which market each part came from
     // rather than implying the whole figure is US-sourced.
     scope: 'worldwide',

@@ -58,13 +58,15 @@ const LOT = {
   'Holding Days': 147, 'Tax Term': 'Short-term', Source: SOURCE,
 }
 
-function computedYtd(fxRates: { price_date: string; rate: number }[]) {
+type Extra = { transactions?: Record<string, string | number>[]; lots?: Record<string, string | number>[] }
+
+function computedYtd(fxRates: { price_date: string; rate: number }[], extra: Extra = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), 'kr-realized-usd-'))
   writeSheetPayloads(dir)
   const kr = path.join(dir, 'kr-statements')
   mkdirSync(kr, { recursive: true })
-  writeFileSync(path.join(kr, 'transactions.tsv'), tsv(TRANSACTION_COLUMNS, [BUY, SELL]), 'utf8')
-  writeFileSync(path.join(kr, 'realized.tsv'), tsv(REALIZED_COLUMNS, [LOT]), 'utf8')
+  writeFileSync(path.join(kr, 'transactions.tsv'), tsv(TRANSACTION_COLUMNS, [BUY, SELL, ...(extra.transactions ?? [])]), 'utf8')
+  writeFileSync(path.join(kr, 'realized.tsv'), tsv(REALIZED_COLUMNS, [LOT, ...(extra.lots ?? [])]), 'utf8')
   const fxPath = path.join(dir, 'historical-fx-rates.json')
   writeFileSync(fxPath, JSON.stringify({ rates: fxRates.map((r) => ({ ...r, source: 'test' })) }), 'utf8')
   const policyPath = path.join(dir, 'tax-policy.json')
@@ -81,7 +83,12 @@ function computedYtd(fxRates: { price_date: string; rate: number }[]) {
   const db = new Database(dbPath, { readonly: true })
   const row = db.prepare('select value from meta where key = ?').get('us_ytd_realized_computed') as { value: string }
   const lot = db.prepare('select acquisition_cost_usd from realized_lots where ticker = ?').get('APL') as { acquisition_cost_usd: number | null }
-  return { ...(JSON.parse(row.value) as { shortUsd: number; longUsd: number; unconvertibleLots: number }), acquisitionCostUsd: lot.acquisition_cost_usd }
+  const krRow = db.prepare('select value from meta where key = ?').get('kr_ytd_realized_computed') as { value: string }
+  return {
+    ...(JSON.parse(row.value) as { shortUsd: number; longUsd: number; unconvertibleLots: number; lots: number; byMarket: string[] }),
+    acquisitionCostUsd: lot.acquisition_cost_usd,
+    krLots: (JSON.parse(krRow.value) as { lots: number }).lots,
+  }
 }
 
 test('a won-denominated sale is measured in dollars leg by leg, not by converting the won gain', () => {
@@ -101,4 +108,40 @@ test('an acquisition older than the rate history is unconvertible rather than pr
   const ytd = computedYtd([{ price_date: '2026-06-01', rate: 1250 }])
   assert.equal(ytd.unconvertibleLots, 1)
   assert.equal(ytd.shortUsd, 0)
+})
+
+// A US person reports a gold sale like any capital gain, so the worldwide figure
+// counts it. It is named GOLD, and the Korea-side estimate does not see it.
+const GOLD_ACCOUNT = '미래에셋증권(금현물)'
+const goldTxn = (row: Record<string, string | number>) => ({
+  Account: GOLD_ACCOUNT, Ticker: 'M04020000', Name: 'Gold 99.99 1Kg', Currency: 'KRW', 'FX Rate': 1,
+  Fee: 0, Tax: 0, Balance: 0, Source: SOURCE, Page: 1, ...row,
+})
+const GOLD_BUY = goldTxn({
+  Date: '2026-01-05', Type: 'BUY', 'Raw Type': '금현물매수입고', Quantity: 10,
+  'Native Amount': 1_500_000, 'Amount (KRW)': 1_500_000, 'Settlement (KRW)': 1_500_000, 'Unit Price': 150_000,
+})
+const GOLD_SELL = goldTxn({
+  Date: '2026-06-01', Type: 'SELL', 'Raw Type': '금현물매도출고', Quantity: 10,
+  'Native Amount': 1_375_000, 'Amount (KRW)': 1_375_000, 'Settlement (KRW)': 1_375_000, 'Unit Price': 137_500,
+})
+const GOLD_LOT = {
+  ...LOT, Account: GOLD_ACCOUNT, Ticker: 'M04020000', Name: 'Gold 99.99 1Kg', 'Tax Term': 'Short-term',
+}
+
+test('a gold sale joins the worldwide figure as its own GOLD line and stays out of the Korea estimate', () => {
+  const rates = [
+    { price_date: '2026-01-05', rate: 1500 },
+    { price_date: '2026-06-01', rate: 1250 },
+  ]
+  const withoutGold = computedYtd(rates)
+  const withGold = computedYtd(rates, { transactions: [GOLD_BUY, GOLD_SELL], lots: [GOLD_LOT] })
+  // Same won amounts at the same two rates: the stock lot is a $100 gain and so is the gold lot.
+  assert.equal(withoutGold.shortUsd, 100)
+  assert.equal(withGold.shortUsd, 200)
+  assert.equal(withGold.lots, withoutGold.lots + 1)
+  assert.ok(withGold.byMarket.some((m) => m.startsWith('GOLD ') && m.endsWith('100.00')), JSON.stringify(withGold.byMarket))
+  assert.ok(!withoutGold.byMarket.some((m) => m.startsWith('GOLD ')))
+  // Korea does not tax these sales: its estimate counts the same lots as before.
+  assert.equal(withGold.krLots, withoutGold.krLots)
 })
