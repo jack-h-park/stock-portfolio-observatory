@@ -284,7 +284,7 @@ running the publisher, and for that the receipt is exact.
 
 | | machine | role |
 | --- | --- | --- |
-| **Production** | Jack's iMac — `ssh imac-hermes`, user `hermes-runner` | every scheduled job, and the only database anyone should quote |
+| **Production** | the ops host — `ssh ops-host` (a Mac Studio since 2026-09-24; Jack's iMac before that) | every scheduled job, and the only database anyone should quote |
 | **Development** | Jack's MacBook Pro | editing, testing, and where broker exports are downloaded |
 
 **The laptop is development and test only.** It is worth saying outright because
@@ -302,8 +302,23 @@ Deploying means the host. A merged pull request changes nothing until
 `git pull` runs there — and `make redeploy` when code changed, since `next start`
 keeps serving the old build until launchd restarts it.
 
-**The alias is `imac-hermes`.** `imac-runner` appears in older prose and is
-defined nowhere; it will not connect.
+**The alias is `ops-host`.** `imac-hermes` and `imac-runner` appear in older
+prose; neither reaches production.
+
+The dev server labels every page **Development copy** with the database's ingest
+date and age, because the laptop's database is refreshed by nothing. When
+development needs current numbers, copy the host's:
+
+```bash
+make pull-prod-db-dry   # print both sides' ingested_at, copy nothing
+make pull-prod-db       # replace the local database; the old one is kept as <db>.before-pull
+```
+
+It writes to the database the app reads (`STOCK_DB_PATH`), takes a consistent
+snapshot on the host with `sqlite3 .backup`, and refuses to run while the dev
+server holds the file open, or on a machine with the web service installed. It
+is deliberately not scheduled: a copy that syncs itself looks current, and goes
+stale silently the day the sync stops. The label shows the age either way.
 
 Keep real brokerage exports, generated databases, and runtime JSON files outside
 git or in ignored local files.

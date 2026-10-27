@@ -38,7 +38,7 @@ space := $(empty) $(empty)
 TOOL_PATH := $(subst $(space),:,$(strip $(TOOL_DIRS)))
 PNPM := PATH="$(NODE_BIN):$(TOOL_PATH):$$PATH" $(PNPM_BIN)
 
-.PHONY: install ingest refresh dev build start stop restart redeploy status refresh-status wait-listen require-tools install-service install-refresh-service uninstall-service uninstall-refresh-service install-push-service uninstall-push-service push-status push-sources file-downloads file-downloads-dry logs typecheck
+.PHONY: install ingest refresh dev build start stop restart redeploy status refresh-status wait-listen require-tools install-service install-refresh-service uninstall-service uninstall-refresh-service install-push-service uninstall-push-service push-status push-sources pull-prod-db pull-prod-db-dry file-downloads file-downloads-dry logs typecheck
 
 # Every pnpm-invoking target depends on this, so a stripped PATH fails here —
 # before a target has done anything — instead of part-way through.
@@ -202,6 +202,16 @@ push-status:
 
 push-sources:
 	./scripts/push-sources.sh
+
+# The reverse direction, for the laptop's dev server only: replace the local
+# database with a consistent copy of the host's. On demand, never on a timer —
+# see the header of scripts/pull-prod-db.sh. The dry run prints both sides'
+# ingested_at and copies nothing.
+pull-prod-db:
+	./scripts/pull-prod-db.sh
+
+pull-prod-db-dry:
+	./scripts/pull-prod-db.sh --dry-run
 
 # Identify whatever is in $(STOCK_DATA_DIR)/inbox by its CONTENTS, rename it to
 # the convention in docs/data-sources.md and move it to the directory that owns

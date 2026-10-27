@@ -5,6 +5,7 @@ import '@/styles/jp-theme.css'
 import '@/styles/globals.css'
 import { LanguageProvider } from '@/components/LanguageProvider'
 import { Sidebar } from '@/components/Sidebar'
+import { DevCopyBadge } from '@/components/DevCopyBadge'
 import { getLanguage } from '@/lib/i18n-server'
 import { getAssetView } from '@/lib/asset-view-server'
 import { getCurrencyPreferences } from '@/lib/currency-server'
@@ -55,7 +56,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               Scoped below `sm` because that is where the help popovers are
               position:fixed — above it they are absolute and would be cut off.
             */}
-            <main id="main-content" tabIndex={-1} className="jp-stagger min-w-0 flex-1 px-4 py-5 max-sm:overflow-x-clip lg:px-8 lg:py-6">{children}</main>
+            <main id="main-content" tabIndex={-1} className="jp-stagger min-w-0 flex-1 px-4 py-5 max-sm:overflow-x-clip lg:px-8 lg:py-6">
+              <DevCopyBadge language={language} />
+              {children}
+            </main>
           </div>
         </LanguageProvider>
       </body>
