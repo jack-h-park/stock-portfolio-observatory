@@ -116,6 +116,8 @@ const GOLD_RECORDS: MiraeRecord[] = [
   { date: '2026/02/03', type: '금현물매수출금', code: GOLD, fee: '1,000', amount: '481,000', cash: '119,000', name: GOLD_NAME, flow: '481,000' },
   { date: '2026/02/27', type: '금현물보관수수료', fee: '500', amount: '500', cash: '118,500', flow: '500' },
   { date: '2026/02/27', type: '금현물보관수수료세금', fee: '50', amount: '50', cash: '118,450', flow: '50' },
+  { date: '2026/03/10', type: '금현물매도출고', code: GOLD, amount: '320,000', qty: '2', price: '160,000', name: GOLD_NAME, held: '3' },
+  { date: '2026/03/10', type: '금현물매도입금', code: GOLD, amount: '320,000', cash: '438,450', name: GOLD_NAME, flow: '320,000' },
 ]
 
 // --- 삼성증권 연금저축 ledger -----------------------------------------------------
@@ -213,7 +215,7 @@ test('(a) the IRP certificate: 계좌대체입금 is a DEPOSIT and 신탁계약�
   assert.ok(!krRun().kinds.has('mirae-unmapped-type'), JSON.stringify(krRun().findings))
 })
 
-test('(b) the gold certificate: purchases in grams, the 매수출금 cash legs dropped, storage fees as FEE', () => {
+test('(b) the gold certificate: purchases and sales in grams, the cash legs dropped, storage fees as FEE', () => {
   const rows = byAccount('미래에셋증권(금현물)')
   const buys = rows.filter((r) => r.Type === 'BUY')
   assert.equal(buys.length, 2)
@@ -224,6 +226,10 @@ test('(b) the gold certificate: purchases in grams, the 매수출금 cash legs d
   }
   assert.deepEqual(buys.map((r) => Number(r.Quantity)), [2, 3])
   assert.ok(!rows.some((r) => r['Raw Type'] === '금현물매수출금'), 'a cash leg was kept')
+  // A sale is a SELL in grams, and its 매도입금 cash leg is dropped like the purchase's.
+  const sells = rows.filter((r) => r.Type === 'SELL')
+  assert.deepEqual(sells.map((r) => [r['Raw Type'], Number(r.Quantity), Number(r['Native Amount'])]), [['금현물매도출고', 2, 320000]])
+  assert.ok(!rows.some((r) => r['Raw Type'] === '금현물매도입금'), 'a sale cash leg was kept')
   assert.deepEqual(rows.filter((r) => r.Type === 'FEE').map((r) => r['Raw Type']), ['금현물보관수수료', '금현물보관수수료세금'])
   // A transfer between the owner's own accounts stays internal on this account.
   assert.equal(rows.find((r) => r['Raw Type'] === '계좌대체입금')?.Type, 'INTERNAL_TRANSFER')
