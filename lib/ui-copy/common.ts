@@ -34,6 +34,14 @@ export const UI_COPY_BY_LANG = {
         missing: 'The data has not been collected or is unavailable.',
       },
     },
+    devCopy: {
+      label: 'Development copy',
+      ingested: (date: string) => `DB ingested ${date}`,
+      age: (days: number) => `${days} days ago`,
+      unknown: 'ingest time not recorded',
+      description:
+        'This dev server reads a local database that nothing refreshes. It is not the production database. Run `make pull-prod-db` to copy the current one from the host.',
+    },
     priority: {
       high: 'High',
       medium: 'Medium',
@@ -107,6 +115,14 @@ export const UI_COPY_BY_LANG = {
         drift: '원본 데이터가 이전과 달라져 확인이 필요합니다.',
         missing: '아직 수집되지 않았거나 사용할 수 없는 데이터입니다.',
       },
+    },
+    devCopy: {
+      label: '개발 사본',
+      ingested: (date: string) => `DB 적재 ${date}`,
+      age: (days: number) => `${days}일 전`,
+      unknown: '적재 시각 기록 없음',
+      description:
+        '이 개발 서버는 아무것도 갱신하지 않는 로컬 데이터베이스를 읽습니다. 운영 데이터베이스가 아닙니다. 최신본은 `make pull-prod-db`로 호스트에서 복사합니다.',
     },
     priority: {
       high: '높음',
