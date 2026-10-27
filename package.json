@@ -51,6 +51,7 @@
     "tax:calendar": "tsx scripts/observatory-cli.mjs tax:calendar",
     "tax:realized": "tsx scripts/observatory-cli.mjs tax:realized",
     "sources:status": "tsx scripts/observatory-cli.mjs sources:status",
+    "fbar:table": "tsx scripts/observatory-cli.mjs fbar:table",
     "rebalance:propose": "tsx scripts/rebalance-cli.mjs propose",
     "rebalance:reconcile": "tsx scripts/rebalance-cli.mjs reconcile",
     "rebalance:status": "tsx scripts/rebalance-cli.mjs status",
