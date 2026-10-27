@@ -670,7 +670,7 @@ Five commands answer tax and data questions from the database without opening th
 |---|---|
 | `pnpm tax:scenario --scenario <name>` | Tax on a set of US sales: `lt-now`, `wait-lt`, `sell-all`, `harvest` (loss frontier by marginal saving per dollar), `filing-compare` (US-only vs US+KR), `date-shift` (`--sell-date`). Options: `--as-of`, `--tickers A,B`, `--filing us-only\|us-kr`, `--prices quotes.json` |
 | `pnpm tax:calendar` | Open wash-sale windows (DRIP buys included), recent dividend reinvestment per ticker, and T+1 settlement limits for accounts the account map marks `"cashAccount": true` |
-| `pnpm tax:realized --since <date>` | US realized lots in a date range, with where each figure came from (`replay` or `1099b`) |
+| `pnpm tax:realized --since <date> [--include-gold]` | US realized lots in a date range, with where each figure came from (`replay` or `1099b`). `--include-gold` adds physical gold (KRX 금현물) sales matched first in, first out, in dollars (cost at the purchase-date rate, proceeds at the sale-date rate, commissions included) and flags them as collectibles |
 | `pnpm sources:status` | Age of the last source push, newest file per pushed folder, and what the coverage reminder says is still due |
 | `pnpm fbar:table [--year YYYY] [--csv]` | Each foreign account's maximum value in a year (the highest balance on any day, converted at the Treasury year-end rate), with how each was found; `--csv > file.csv` saves it. Reference figures, not a filing |
 

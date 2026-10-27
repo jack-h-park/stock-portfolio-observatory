@@ -9,6 +9,7 @@ import { portfolioDate, valuePortfolio } from './portfolio-snapshot.mjs'
 import { resolveCryptoFiles, resolveUsHoldingFiles, resolveUsTransactionFiles, robinhoodStrategyLabel } from './source-files.mjs'
 import { DECIDABLE_WRAPPERS, resolveWrapperTreatment } from './wrapper-treatment.mjs'
 import { pensionProductId } from './pension-ids.mjs'
+import { matchGoldLots } from './gold-lots.mjs'
 import { buildPathFor, publishBuiltDb, removeAbandonedBuilds, removeDbFiles } from './db-swap.mjs'
 import { BANK_INFLOW_BOUND_KEYS, BANK_INFLOW_CATEGORIES, BANK_INFLOW_MATCH_KEYS } from './bank-inflow-rules.mjs'
 
@@ -1173,6 +1174,11 @@ create table realized_lots_all (
   realized_gl_krw real,
   holding_days integer,
   tax_term text,
+  -- Dollar proceeds and gain, filled for physical gold only: a won lot's dollar
+  -- cost is its won cost at the acquisition-date rate (acquisition_cost_usd) and
+  -- its dollar proceeds are the won proceeds at the sale-date rate.
+  proceeds_usd real,
+  realized_gl_usd real,
   -- basis says where the figure came from and therefore what it can be used
   -- for. 'replay' is this repo's own FIFO walk of the transactions: available
   -- year-round, and the only thing that exists for a year whose forms have not
@@ -5640,23 +5646,64 @@ for (const r of transactionRows) {
   if (!goldTradesByAccount.has(r.account)) goldTradesByAccount.set(r.account, [])
   goldTradesByAccount.get(r.account).push(r)
 }
+const goldRealizedRows = []
+let goldOversoldGrams = 0
 for (const [account, trades] of goldTradesByAccount) {
-  let grams = 0
-  let cost = 0
-  let lastTradeDate = ''
-  for (const r of [...trades].sort((a, b) => text(a.date).localeCompare(text(b.date)))) {
-    const quantity = Math.abs(number(r.quantity) ?? 0)
-    if (r.type === 'BUY') {
-      grams += quantity
-      cost += Math.abs(number(r.amount_krw) ?? number(r.settlement_krw) ?? 0)
-    } else if (grams > 0) {
-      // A sale takes its grams out at the average cost; none is on file today.
-      const sold = Math.min(quantity, grams)
-      cost -= (cost / grams) * sold
-      grams -= sold
-    }
-    if (text(r.date) > lastTradeDate) lastTradeDate = text(r.date)
+  // Matched first in, first out, so a sale carries the date of the purchase it
+  // consumed (the holding period) and its commission is netted from the proceeds.
+  const matched = matchGoldLots(
+    trades.map((r) => ({
+      date: text(r.date).slice(0, 10),
+      type: r.type,
+      grams: Math.abs(number(r.quantity) ?? 0),
+      amountKrw: Math.abs(number(r.amount_krw) ?? number(r.settlement_krw) ?? 0),
+      feeKrw: Math.abs(number(r.fee) ?? 0) + Math.abs(number(r.tax) ?? 0),
+    }))
+  )
+  goldOversoldGrams += matched.oversold
+  const saleSource = new Map(trades.filter((r) => r.type === 'SELL').map((r) => [text(r.date).slice(0, 10), r.source]))
+  for (const lot of matched.realized) {
+    const costUsd = (() => {
+      const rate = historicalUsdKrwOn(lot.acquiredDate)
+      return rate ? lot.costKrw / rate : null
+    })()
+    const proceedsUsd = usdOn(lot.proceedsKrw, 'KRW', lot.soldDate)
+    goldRealizedRows.push({
+      market: 'KR',
+      currency: 'KRW',
+      base_currency: 'KRW',
+      brokerage: account.split('(')[0],
+      source_system: 'gold_certificate',
+      account,
+      ticker: GOLD_CODE,
+      name: 'KRX 금현물',
+      acquired_date: lot.acquiredDate,
+      sold_date: lot.soldDate,
+      quantity_sold: lot.grams,
+      cost_basis_krw: lot.costKrw,
+      acquisition_cost_krw: lot.costKrw,
+      acquisition_cost_usd: costUsd,
+      proceeds_krw: lot.proceedsKrw,
+      realized_gl_krw: lot.gainKrw,
+      holding_days: lot.holdingDays,
+      tax_term: lot.term,
+      basis: 'replay',
+      tax_year: lot.soldDate.slice(0, 4),
+      native_cost_basis: lot.costKrw,
+      native_proceeds: lot.proceedsKrw,
+      native_realized_gl: lot.gainKrw,
+      proceeds_usd: proceedsUsd,
+      realized_gl_usd: proceedsUsd == null || costUsd == null ? null : proceedsUsd - costUsd,
+      source: saleSource.get(lot.soldDate) ?? null,
+      account_wrapper: wrapperFor({ account }, accountMap),
+      owner: ownerFor({ account }, accountMap),
+      asset_class: 'gold',
+    })
   }
+  const grams = matched.open.reduce((sum, lot) => sum + lot.grams, 0)
+  const cost = matched.open.reduce((sum, lot) => sum + lot.costKrw, 0)
+  let lastTradeDate = ''
+  for (const r of trades) if (text(r.date) > lastTradeDate) lastTradeDate = text(r.date)
   if (!(grams > 0)) continue
   const priced = goldPrice != null
   const value = priced ? grams * goldPrice.price : cost
@@ -5717,6 +5764,12 @@ if (droppedHoldingRows.length) {
 insertMany(db, 'holdings', holdingRows, HOLDING_COLUMNS)
 insertMany(db, 'holdings', pensionHoldingRows, [...HOLDING_COLUMNS, 'valuation_source'])
 insertMany(db, 'holdings', goldHoldingRows, [...HOLDING_COLUMNS, 'valuation_source'])
+insertMany(db, 'realized_lots', goldRealizedRows, [
+  'market', 'currency', 'base_currency', 'brokerage', 'source_system', 'account', 'ticker', 'name',
+  'acquired_date', 'sold_date', 'quantity_sold', 'cost_basis_krw', 'acquisition_cost_krw', 'acquisition_cost_usd',
+  'proceeds_krw', 'realized_gl_krw', 'holding_days', 'tax_term', 'proceeds_usd', 'realized_gl_usd',
+  'basis', 'tax_year', 'native_cost_basis', 'native_proceeds', 'native_realized_gl', 'source',
+])
 if (pensionHoldingRows.length) {
   console.error(
     `[pension] ${pensionHoldingRows.length} holding(s) from ${pensionSnapshotByAccount.size} snapshot(s): ` +
@@ -5934,6 +5987,17 @@ check(
     ? 'no pension history rebuilt from certificates before a first snapshot'
     : [...pensionReplayBreaks, ...pensionReplayNotes].join('; ') +
         (pensionReplayBreaks.length ? '. The derived points before the snapshot are suspect until the difference is explained' : ''),
+  'warning',
+  'supplementary'
+)
+check(
+  'gold_sales_matched',
+  goldOversoldGrams < 1e-6,
+  goldOversoldGrams < 1e-6
+    ? goldRealizedRows.length === 0
+      ? 'no gold sale'
+      : `${goldRealizedRows.length} gold sale slice(s), each matched to the purchase it consumed (first in, first out)`
+    : `${goldOversoldGrams} g sold with no earlier purchase on file; download a gold certificate that starts before the first purchase`,
   'warning',
   'supplementary'
 )

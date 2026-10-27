@@ -13,7 +13,10 @@
 /** Gold-backed ETFs, matched by ticker in the stock book. Add a ticker here to include it. */
 export const GOLD_ETF_TICKERS = ['IAU', 'IAUM', 'SGOL'] as const
 
-export type GoldTrade = { date: string; type: 'BUY' | 'SELL'; grams: number; costKrw: number }
+import { matchGoldLots } from '@/scripts/gold-lots.mjs'
+
+/** `costKrw` is the trade amount (grams x price); `feeKrw` its commission and the VAT on it. */
+export type GoldTrade = { date: string; type: 'BUY' | 'SELL'; grams: number; costKrw: number; feeKrw?: number }
 export type GoldPricePoint = { date: string; price: number }
 
 /**
@@ -26,24 +29,18 @@ export const emptyGoldBook = (): GoldBook => ({ cost: 0, pricedCost: 0, marketVa
 
 /**
  * Physical gold held on a date, rebuilt from its trades the way the ingest builds
- * the holding: a purchase adds grams and cost, a sale takes grams out at the
- * average cost. Valued at the latest KRX price on or before the date; with none,
- * the grams are carried at cost and counted as unpriced.
+ * the holding: purchases matched to sales first in, first out, each purchase
+ * carrying its commission. Valued at the latest KRX price on or before the date;
+ * with none, the grams are carried at cost and counted as unpriced.
  */
 export function physicalGoldBookAt(trades: GoldTrade[], prices: GoldPricePoint[], date: string): GoldBook {
-  let grams = 0
-  let cost = 0
-  for (const trade of trades) {
-    if (trade.date > date) continue
-    if (trade.type === 'BUY') {
-      grams += trade.grams
-      cost += trade.costKrw
-    } else if (grams > 0) {
-      const sold = Math.min(trade.grams, grams)
-      cost -= (cost / grams) * sold
-      grams -= sold
-    }
-  }
+  const { open } = matchGoldLots(
+    trades
+      .filter((trade) => trade.date <= date)
+      .map((trade) => ({ date: trade.date, type: trade.type, grams: trade.grams, amountKrw: trade.costKrw, feeKrw: trade.feeKrw }))
+  )
+  const grams = open.reduce((sum, lot) => sum + lot.grams, 0)
+  const cost = open.reduce((sum, lot) => sum + lot.costKrw, 0)
   if (!(grams > 0)) return emptyGoldBook()
   const price = prices.filter((row) => row.date <= date).at(-1)
   return price
