@@ -3,6 +3,7 @@ import path from 'node:path'
 import Database from 'better-sqlite3'
 import { loadLocalEnv } from './env.mjs'
 import { withoutUnsettledBar, newestSettledSession, coveredSession } from './settled-bars.mjs'
+import { fxWindowStart, fxCoversIncome } from './fx-window.mjs'
 
 loadLocalEnv()
 
@@ -48,6 +49,25 @@ function pensionEtfTickers() {
   }
 }
 
+// The earliest income row, from the all-accounts table when it exists. The FX
+// table has to reach it (see fx-window.mjs), and income can predate every trade.
+function earliestIncomeDate() {
+  const conn = new Database(dbPath, { readonly: true, fileMustExist: true })
+  try {
+    for (const table of ['dividends_all', 'dividends']) {
+      try {
+        const date = conn.prepare(`select min(date) as first_date from ${table}`).get()?.first_date
+        if (date) return String(date).slice(0, 10)
+      } catch {
+        // table absent in this database; try the next
+      }
+    }
+    return ''
+  } finally {
+    conn.close()
+  }
+}
+
 if (!process.env.FORCE_HISTORICAL_PRICES && fs.existsSync(pricesPath)) {
   const existing = JSON.parse(fs.readFileSync(pricesPath, 'utf8'))
   // A pension ETF the file has never heard of (neither priced nor listed missing)
@@ -60,7 +80,10 @@ if (!process.env.FORCE_HISTORICAL_PRICES && fs.existsSync(pricesPath)) {
   // carry a date the equity session has not reached. See coveredSession().
   const covered = coveredSession(existing.prices)
   const newestPossible = newestSettledSession()
-  if (covered >= newestPossible && Number(existing.valuationVersion || 0) >= 2 && newPensionTickers.length === 0) {
+  // A table written before an earlier income row existed starts too late for it.
+  const existingFx = fs.existsSync(fxPath) ? JSON.parse(fs.readFileSync(fxPath, 'utf8')) : null
+  const fxReachesIncome = fxCoversIncome(existingFx?.startDate, earliestIncomeDate())
+  if (covered >= newestPossible && Number(existing.valuationVersion || 0) >= 2 && newPensionTickers.length === 0 && fxReachesIncome) {
     console.log(`Historical prices already cover ${covered} (newest settled ${newestPossible}); skipping full refetch.`)
     process.exit(0)
   }
@@ -210,7 +233,8 @@ try {
     }
   }
 
-  const fxUrl = `https://api.frankfurter.app/${firstDate}..${endDate}?from=USD&to=KRW`
+  const fxStart = fxWindowStart(firstDate, earliestIncomeDate())
+  const fxUrl = `https://api.frankfurter.app/${fxStart}..${endDate}?from=USD&to=KRW`
   const fxPayload = await fetchJson(fxUrl)
   const fxRates = Object.entries(fxPayload?.rates ?? {})
     .map(([price_date, values]) => ({ price_date, rate: Number(values.KRW), source: 'Frankfurter API' }))
@@ -225,7 +249,7 @@ try {
   } else {
     fs.mkdirSync(path.dirname(pricesPath), { recursive: true })
     fs.writeFileSync(pricesPath, `${JSON.stringify({ valuationVersion: 2, generatedAt: new Date().toISOString(), startDate: firstDate, endDate, prices, missing }, null, 2)}\n`)
-    fs.writeFileSync(fxPath, `${JSON.stringify({ generatedAt: new Date().toISOString(), startDate: firstDate, endDate, rates: fxRates }, null, 2)}\n`)
+    fs.writeFileSync(fxPath, `${JSON.stringify({ generatedAt: new Date().toISOString(), startDate: fxStart, endDate, rates: fxRates }, null, 2)}\n`)
     console.log(`Wrote ${pricesPath}: ${prices.length} historical price rows, ${missing.length} missing tickers`)
     console.log(`Wrote ${fxPath}: ${fxRates.length} historical FX rows`)
   }
