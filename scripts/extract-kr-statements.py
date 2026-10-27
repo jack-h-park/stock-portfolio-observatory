@@ -108,6 +108,8 @@ TYPE_MAP = {
     # KRW per gram in 단가, and 거래금액 = 수량 × 단가. Its 매수출금 partner is
     # the cash leg of the same purchase and is in CASH_LEG_TYPES.
     "금현물매수입고": "BUY",
+    # The sale mirrors it: 매도출고 is the grams leaving, 매도입금 the cash leg.
+    "금현물매도출고": "SELL",
     "해외주식매수입고": "BUY",
     "소수해외매수입고": "BUY",
     "외화채권매수입고": "BUY",
@@ -270,6 +272,7 @@ CASH_LEG_TYPES = {
     "공모주청약대금출금",
     "공모주청약환불금",
     "금현물매수출금",
+    "금현물매도입금",
 }
 
 # Moves inside one account that change no holding and no flow. The foreign
