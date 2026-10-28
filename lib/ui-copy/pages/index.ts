@@ -15,6 +15,7 @@ import { reconciliation } from '@/lib/ui-copy/pages/reconciliation'
 import { overview } from '@/lib/ui-copy/pages/overview'
 import { transactions } from '@/lib/ui-copy/pages/transactions'
 import { lots } from '@/lib/ui-copy/pages/lots'
+import { realized } from '@/lib/ui-copy/pages/realized'
 import { costBasis } from '@/lib/ui-copy/pages/costBasis'
 import { dividends } from '@/lib/ui-copy/pages/dividends'
 import { cryptoPremium } from '@/lib/ui-copy/pages/cryptoPremium'
@@ -45,6 +46,7 @@ export const PAGE_COPY = {
   overview,
   transactions,
   lots,
+  realized,
   costBasis,
   dividends,
   cryptoPremium,

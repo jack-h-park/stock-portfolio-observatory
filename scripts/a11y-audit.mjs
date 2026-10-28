@@ -17,7 +17,7 @@ import fs from 'node:fs'
 
 const ROUTES = [
   '/', '/net-worth', '/pension', '/daily-briefing', '/holdings', '/review', '/rebalance', '/income',
-  '/tax-planning', '/tax-settings', '/lots', '/cost-basis', '/dividends',
+  '/tax-planning', '/tax-settings', '/lots', '/realized', '/cost-basis', '/dividends',
   '/transactions', '/fx', '/crypto-premium', '/accounts', '/health', '/data-ops',
   '/reconciliation', '/data-map', '/positions/KR/005930',
 ]
