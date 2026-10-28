@@ -111,6 +111,8 @@ export function policyFromSettingsForm(
       const value = readNumber(form, name, name, errors)
       if (value != null) next.bounds[name] = value
     }
+    // The limits form always carries this checkbox, so its absence there means unchecked.
+    next.investor = { usTaxPerson: form.has('investor_usTaxPerson') }
   }
 
   if (hasAny(form, 'acct_key_')) {

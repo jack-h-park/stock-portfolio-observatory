@@ -20,6 +20,8 @@ import { getInstrumentClasses } from '@/lib/rebalance/instrument-classes'
 import {
   PROPOSAL_STATUS_TONE,
   describeInstruction,
+  ideaAccountOptions,
+  ideaListed,
   isProposalDoneCode,
   policyChangedSince,
   isProposalErrorCode,
@@ -28,6 +30,7 @@ import { getProposal, type Proposal } from '@/lib/rebalance/proposal-store'
 import { llmStatusLine, safeSourceHref } from '@/lib/rebalance/proposal-view'
 import { getPageCopy } from '@/lib/ui-copy'
 import {
+  addIdeaAction,
   approvePlan,
   approveTargets,
   closeProposal,
@@ -156,8 +159,43 @@ function BulletList({ title, items }: { title: string; items: string[] }) {
   )
 }
 
+/** The "add to buy list" control under one idea, or why there is none. */
+function IdeaAdd({ proposal, policy, index, copy }: { proposal: Proposal; policy: AllocationPolicy | null; index: number; copy: Copy }) {
+  const idea = proposal.ideas[index]
+  if (!idea.market) return null
+  if (ideaListed(policy, idea)) return <div className="mt-1 text-label text-ink-3">{copy.outlook.ideaListed}</div>
+  if (!policy) return null
+  const options = ideaAccountOptions(proposal, policy, idea.market)
+  const blocked = proposal.inputSnapshot.washSaleBlockedBuys?.find((b) => b.ticker === idea.ticker)
+  return (
+    <div className="mt-1 space-y-1">
+      {blocked && <div className="text-label text-warning">{copy.outlook.ideaWashSale(blocked.blockedThrough)}</div>}
+      {policy.investor?.usTaxPerson && idea.market !== 'US' && idea.market !== 'CRYPTO' && (
+        <div className="text-label text-warning">{copy.outlook.ideaPficCheck}</div>
+      )}
+      {options.length === 0 ? (
+        <div className="text-label text-ink-3">{copy.outlook.ideaNoAccount}</div>
+      ) : (
+        <form action={addIdeaAction} className="flex flex-wrap items-center gap-2">
+          <input type="hidden" name="proposalId" value={proposal.id} />
+          <input type="hidden" name="ideaIndex" value={index} />
+          <Select size="sm" name="account" aria-label={copy.outlook.ideaAccount}>
+            {options.map((o) => (
+              <option key={o.key} value={o.key}>
+                {accountLabel(o.brokerage, o.account)}
+              </option>
+            ))}
+          </Select>
+          <SubmitButton>{copy.outlook.ideaAdd}</SubmitButton>
+        </form>
+      )}
+    </div>
+  )
+}
+
 function OutlookSection({ proposal, copy, language }: { proposal: Proposal; copy: Copy; language: 'en' | 'ko' }) {
   const { outlook, llm, ideas, questionsForMaintainer: questions } = proposal
+  const policy = getAllocationPolicy().policy
   if (!outlook && !llm && ideas.length === 0 && questions.length === 0) return null
   const tone = { low: 'warning', medium: 'neutral', high: 'success' } as const
   return (
@@ -208,7 +246,9 @@ function OutlookSection({ proposal, copy, language }: { proposal: Proposal; copy
           <ul className="space-y-1 text-caption text-ink-2">
             {ideas.map((idea, i) => (
               <li key={i}>
-                <span className="font-medium text-ink">{idea.ticker}</span> <Badge>{copy.sleeves[idea.sleeve] ?? idea.sleeve}</Badge> {idea.why}
+                <span className="font-medium text-ink">{idea.market ? `${idea.market}:${idea.ticker}` : idea.ticker}</span>{' '}
+                <Badge>{copy.sleeves[idea.sleeve] ?? idea.sleeve}</Badge> {idea.why}
+                <IdeaAdd proposal={proposal} policy={policy} index={i} copy={copy} />
               </li>
             ))}
           </ul>

@@ -55,6 +55,8 @@ export const rebalanceSettings = defineCopy({
       pct: '%',
       krw: 'KRW',
       days: 'days',
+      usTaxPerson: 'I am a US tax person',
+      usTaxPersonHelp: 'Ideas then leave out funds and ETFs listed outside the US (PFIC reporting); outside the US only operating companies are suggested.',
       save: 'Save limits',
     },
     accounts: {
@@ -143,6 +145,8 @@ export const rebalanceSettings = defineCopy({
       pct: '%',
       krw: '원',
       days: '일',
+      usTaxPerson: '미국 세금 신고 대상자입니다',
+      usTaxPersonHelp: '아이디어에서 미국 외에 상장된 펀드·ETF를 빼고(PFIC 신고 대상), 미국 외 시장은 개별 기업만 제안합니다.',
       save: '한도 저장',
     },
     accounts: {

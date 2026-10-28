@@ -133,10 +133,23 @@ test('rejects a non-object and missing sections', () => {
 })
 
 test('validates ideas', () => {
-  const bad = { ...validChange(), ideas: [{ ticker: 'X', sleeve: 'nope', why: 'w' }] }
+  const bad = { ...validChange(), ideas: [{ market: 'US', ticker: 'X', sleeve: 'nope', why: 'w' }] }
   assert.ok(errorsOf(bad).some((e) => e.includes('ideas[0].sleeve')))
-  const good = { ...validChange(), ideas: [{ ticker: 'X', sleeve: 'gold', why: 'w' }], questionsForMaintainer: ['q'] }
+  const good = { ...validChange(), ideas: [{ market: 'US', ticker: 'X', sleeve: 'gold', why: 'w' }], questionsForMaintainer: ['q'] }
   assert.equal(validateLlmOutput(good, policy()).ok, true)
+})
+
+test('an idea must name its market', () => {
+  for (const market of [undefined, 'JP', 'us']) {
+    const out = { ...validChange(), ideas: [{ market, ticker: 'X', sleeve: 'us_equity', why: 'w' }] }
+    assert.ok(errorsOf(out).some((e) => e.includes('ideas[0].market')), String(market))
+  }
+})
+
+test('an idea ticker is trimmed and upper-cased', () => {
+  const result = validateLlmOutput({ ...validChange(), ideas: [{ market: 'US', ticker: ' brk.b ', sleeve: 'us_equity', why: 'w' }] }, policy())
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.ok && result.output.ideas, [{ market: 'US', ticker: 'BRK.B', sleeve: 'us_equity', why: 'w' }])
 })
 
 test('caps text fields', () => {
@@ -169,7 +182,7 @@ test('the validator never throws on deeply nested values', () => {
     { ...validChange(), outlook: { ...outlook(), confidence: d } },
     { ...validChange(), targetChange: { decision: d, sleeves: {} } },
     change({ us_equity: { to: d, reason: 'a' } }),
-    { ...validChange(), ideas: [{ ticker: 't', sleeve: d, why: 'w' }] },
+    { ...validChange(), ideas: [{ market: 'US', ticker: 't', sleeve: d, why: 'w' }] },
   ]) {
     const result = validateLlmOutput(bad, policy())
     assert.equal(result.ok, false)

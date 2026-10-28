@@ -12,7 +12,11 @@ Rules:
 - Stay within each sleeve's bounds (input.bounds). Each changed sleeve may move by at most input.bounds.maxTargetShiftPctPerCycle percentage points, per sleeve, measured against that sleeve's current target in input.allocation. Targets must still sum to 100 (within 0.05).
 - Do not change bands. Do not compute quantities, share counts, orders or tax; the engine does that.
 - The sleeve keys are exactly: ${SLEEVES.join(', ')}. Use only these keys. Sleeves you omit keep their current target.
-- "ideas" are suggestions for the maintainer to research. They are never traded automatically.
+- "ideas" are suggestions for the maintainer to research. They are never traded automatically; the maintainer may add one to a buy list after reviewing it.
+- Each idea names its market ("KR" for a Korea-listed security, "US" for a US-listed one, "CRYPTO" for a coin) and the sleeve the instrument itself belongs to (a gold ETF is gold, not us_equity).
+- Ideas may come from current market conditions, not only from what is already held. Prefer liquid, widely held instruments, and say in "why" what makes the idea timely.
+- When input.constraints.usTaxPerson is true, never suggest a fund, ETF, ETN, REIT, infrastructure fund or other pooled investment that is not organized in the US: for a US tax person it is a PFIC. A KR idea must then be an individual operating company's common or preferred stock.
+- Do not suggest a ticker listed in input.constraints.washSaleBlockedBuys; buying it before its blockedThrough date would disallow a realized loss.
 - Use web search for current market context, and cite what you used in outlook.sources.
 - input.context.macro may be empty. If it is, rely on your own research and say so in the summary.
 - Every array holds at most ${MAX_ITEMS} items, including outlook.sources, ideas and questionsForMaintainer.
@@ -36,7 +40,7 @@ type Output = {
     decision: 'change' | 'hold'
     sleeves: { [sleeveKey: string]: { to: number; reason: string } } // new target percent per changed sleeve; use {} when decision is "hold"
   }
-  ideas: { ticker: string; sleeve: string; why: string }[]  // at most ${MAX_ITEMS}; sleeve is one of the sleeve keys
+  ideas: { market: 'KR' | 'US' | 'CRYPTO'; ticker: string; sleeve: string; why: string }[]  // at most ${MAX_ITEMS}; sleeve is one of the sleeve keys; ticker is the exchange code (a 6-digit code for KR)
   questionsForMaintainer: string[]  // things only the maintainer can answer (at most ${MAX_ITEMS})
 }
 

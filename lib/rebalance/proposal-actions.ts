@@ -1,17 +1,19 @@
 import { getTaxPolicyState, type TaxPolicy } from '@/lib/tax-policy'
 import {
   SLEEVES,
+  accountKey,
   applyTargets,
   checkTargetsAgainstBounds,
   getAllocationPolicy,
   saveAllocationPolicy,
   validateAllocationPolicy,
   type AllocationPolicy,
+  type PreferredInstrument,
   type Sleeve,
   type SleeveTarget,
 } from './allocation-policy'
 import { buildTradePlan, type Instruction, type TradePlan } from './engine'
-import { getInstrumentClasses } from './instrument-classes'
+import { classify, getInstrumentClasses, instrumentKey, saveInstrumentClasses } from './instrument-classes'
 import {
   editTargets,
   getProposal,
@@ -56,6 +58,12 @@ export const PROPOSAL_ERROR_CODES = [
   'targets_saved_not_advanced',
   // The target edits are saved, but the plan was not rebuilt against them; recompute or save again.
   'targets_saved_plan_stale',
+  // The idea is missing, or was stored before ideas carried a market.
+  'idea_invalid',
+  // The chosen account is not one the proposal's snapshot holds that market in.
+  'idea_account_invalid',
+  // The instrument is already classified into a different sleeve than the idea names.
+  'idea_class_conflict',
 ] as const
 export type ProposalErrorCode = (typeof PROPOSAL_ERROR_CODES)[number]
 
@@ -68,6 +76,7 @@ export const PROPOSAL_DONE_CODES = [
   'rejected',
   'fill_recorded',
   'closed',
+  'idea_added',
 ] as const
 export type ProposalDoneCode = (typeof PROPOSAL_DONE_CODES)[number]
 
@@ -409,4 +418,67 @@ export function recomputeProposalPlan(
   } catch (error) {
     return failed('action_failed', error)
   }
+}
+
+export type IdeaAccountOption = { key: string; brokerage: string | null; account: string }
+
+/** Accounts an idea could be bought in: those holding its market in the proposal's snapshot, plus buy-list accounts for it. */
+export function ideaAccountOptions(proposal: Proposal, policy: AllocationPolicy | null, market: string): IdeaAccountOption[] {
+  const options = new Map<string, IdeaAccountOption>()
+  const add = (brokerage: string | null, account: string) => {
+    const key = accountKey(brokerage, account)
+    if (!options.has(key)) options.set(key, { key, brokerage, account })
+  }
+  for (const p of proposal.inputSnapshot.positions) if (p.market === market) add(p.brokerage, p.account)
+  for (const list of Object.values(policy?.preferredInstruments ?? {})) {
+    for (const entry of list ?? []) if (entry.market === market) add(entry.brokerage, entry.account)
+  }
+  return [...options.values()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+}
+
+/** True when the buy list for the idea's sleeve already names this instrument, in any account. */
+export function ideaListed(policy: AllocationPolicy | null, idea: { market?: string; ticker: string; sleeve: Sleeve }): boolean {
+  return (policy?.preferredInstruments[idea.sleeve] ?? []).some((p) => p.market === idea.market && p.ticker === idea.ticker)
+}
+
+/**
+ * Adds one of a proposal's ideas to the buy list of its sleeve, in the chosen account. A security not yet
+ * classified is classified into the idea's sleeve, so a later buy counts toward it; one already classified
+ * elsewhere is refused rather than moved. The open proposal's plan is not rebuilt: recompute it to use the entry.
+ */
+export function addIdeaToBuyList(id: string, form: FormData, paths: ProposalPaths = {}): StepOutcome {
+  const p = loadFor(id, paths)
+  if (!p) return failed('not_found')
+  const index = Number(text(form, 'ideaIndex'))
+  const idea = Number.isInteger(index) && index >= 0 ? p.ideas[index] : undefined
+  if (!idea || !idea.market) return failed('idea_invalid')
+  const read = readPolicy(paths)
+  if ('code' in read) return failed(read.code, read.detail)
+  const { policy } = read
+  const option = ideaAccountOptions(p, policy, idea.market).find((o) => o.key === text(form, 'account'))
+  if (!option) return failed('idea_account_invalid')
+
+  let classes
+  try {
+    classes = getInstrumentClasses(paths.classes)
+  } catch (error) {
+    return failed('action_failed', error)
+  }
+  const current = classify({ market: idea.market, ticker: idea.ticker }, classes)
+  if (current && current !== idea.sleeve) return failed('idea_class_conflict')
+
+  const entry: PreferredInstrument = { market: idea.market, ticker: idea.ticker, brokerage: option.brokerage, account: option.account }
+  const list = policy.preferredInstruments[idea.sleeve] ?? []
+  const duplicate = list.some(
+    (e) => e.market === entry.market && e.ticker === entry.ticker && accountKey(e.brokerage, e.account) === option.key,
+  )
+  try {
+    if (!current) saveInstrumentClasses({ ...classes, [instrumentKey(idea.market, idea.ticker)]: idea.sleeve }, paths.classes)
+    if (!duplicate) {
+      saveAllocationPolicy({ ...policy, preferredInstruments: { ...policy.preferredInstruments, [idea.sleeve]: [...list, entry] } }, paths.policy)
+    }
+  } catch (error) {
+    return failed('write_failed', error)
+  }
+  return { ok: true, proposal: p }
 }

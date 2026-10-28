@@ -10,7 +10,10 @@ export type LlmOutlook = {
   confidence: 'low' | 'medium' | 'high'
 }
 export type LlmTargetChange = { decision: 'change' | 'hold'; sleeves: Partial<Record<Sleeve, { to: number; reason: string }>> }
-export type LlmIdea = { ticker: string; sleeve: Sleeve; why: string }
+export const IDEA_MARKETS = ['KR', 'US', 'CRYPTO'] as const
+export type IdeaMarket = (typeof IDEA_MARKETS)[number]
+/** `market` is required of new output; ideas stored before it existed have none, and only those can lack it. */
+export type LlmIdea = { market?: IdeaMarket; ticker: string; sleeve: Sleeve; why: string }
 export type LlmOutput = {
   outlook: LlmOutlook
   targetChange: LlmTargetChange
@@ -238,11 +241,15 @@ function validate(value: unknown, policy: AllocationPolicy): ValidationResult {
     if (!isObject(item)) return void errors.push(`${f}: must be an object`)
     const ticker = text(item.ticker, `${f}.ticker`, { required: true })
     const why = text(item.why, `${f}.why`, { required: true })
+    if (!(IDEA_MARKETS as readonly string[]).includes(item.market as string)) {
+      errors.push(`${f}.market: must be one of ${IDEA_MARKETS.join(', ')}, got ${echo(item.market)}`)
+      return
+    }
     if (!(SLEEVES as readonly string[]).includes(item.sleeve as string)) {
       errors.push(`${f}.sleeve: must be one of ${SLEEVES.join(', ')}, got ${echo(item.sleeve)}`)
       return
     }
-    ideas.push({ ticker, sleeve: item.sleeve as Sleeve, why })
+    ideas.push({ market: item.market as IdeaMarket, ticker: ticker.trim().toUpperCase(), sleeve: item.sleeve as Sleeve, why })
   })
   const questionsForMaintainer = strings(value.questionsForMaintainer, 'questionsForMaintainer')
 

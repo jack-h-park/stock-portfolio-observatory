@@ -159,6 +159,13 @@ export default async function RebalanceSettingsPage({ searchParams }: { searchPa
                 <Field key={name} label={copy.limits[name]} name={name} defaultValue={policy.bounds[name]} suffix={copy.limits[unit]} />
               ))}
             </div>
+            <label className="flex items-start gap-2 text-caption text-ink-2">
+              <Checkbox name="investor_usTaxPerson" defaultChecked={policy.investor?.usTaxPerson ?? false} />
+              <span>
+                <span className="font-medium text-ink">{copy.limits.usTaxPerson}</span>
+                <span className="block text-label text-ink-3">{copy.limits.usTaxPersonHelp}</span>
+              </span>
+            </label>
             <SubmitButton>{copy.limits.save}</SubmitButton>
           </form>
         </Card>
