@@ -13,7 +13,7 @@ import { getRebalanceInput } from '@/lib/adapters/rebalance-input'
 import { fmtDateShort, fmtDateTime, fmtKrw, fmtMoney, fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { routeSection } from '@/lib/page-names'
-import { SLEEVES, accountKey, getAllocationPolicy, type AllocationPolicy, type Sleeve } from '@/lib/rebalance/allocation-policy'
+import { SLEEVES, accountKey, getAllocationPolicy, rebalanceWrappers, type AllocationPolicy, type Sleeve } from '@/lib/rebalance/allocation-policy'
 import { computeAllocation } from '@/lib/rebalance/allocation'
 import type { EngineWarning, Instruction, SleeveMove } from '@/lib/rebalance/engine'
 import { getInstrumentClasses } from '@/lib/rebalance/instrument-classes'
@@ -284,7 +284,7 @@ function SummaryTab({ proposal, copy, language }: { proposal: Proposal; copy: Co
     try {
       const policy = policyFor(proposal)
       const then = computeAllocation(snapshot, policy, classes)
-      const now = computeAllocation(getRebalanceInput(portfolioToday()), policy, classes)
+      const now = computeAllocation(getRebalanceInput(portfolioToday(), undefined, rebalanceWrappers(policy)), policy, classes)
       drift = SLEEVES.map((sleeve) => ({
         sleeve,
         then: then.sleeves.find((r) => r.sleeve === sleeve)?.pct ?? 0,

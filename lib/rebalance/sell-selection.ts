@@ -52,6 +52,11 @@ const roundQty = (value: number) => Math.round(value * 1e8) / 1e8
  * account, priced at cost where there is no price); sellableKrw is the part held at a known price
  * in accounts the plan may trade, which bounds what the cap walk tries to sell.
  */
+/** A lot whose gain uses up the Korean deduction: KR-taxable, and held outside a Korean shelter such as an ISA. */
+export function inKrPool(lot: Pick<TaxPlanningLot, 'market' | 'account_wrapper'>, taxPolicy?: TaxPolicy): boolean {
+  return (lot.account_wrapper ?? 'taxable') === 'taxable' && krTaxable(lot, taxPolicy)
+}
+
 export type CapExcess = { sleeve: Sleeve; market: string; ticker: string; excessKrw: number; sellableKrw: number }
 
 /** Instruments above the position cap, summed across accounts (the cap limits exposure). Cash is never capped. */
@@ -391,7 +396,7 @@ export function selectSells(
   const tierOf = (c: TaxPlanCandidate): Tier => {
     const gain = Number(c.gainKrw ?? 0)
     if (isLoss(c)) return 'loss'
-    if (krTaxable(c, taxPolicy) && gain <= deductionLeft + KRW_EPS) return 'kr_deduction'
+    if (inKrPool(c, taxPolicy) && gain <= deductionLeft + KRW_EPS) return 'kr_deduction'
     return c.holdingBucket === 'long' ? 'us_long' : 'short_term'
   }
   const sortKey = (c: TaxPlanCandidate, tier: Tier): number => {
@@ -451,7 +456,7 @@ export function selectSells(
       proceeds += Number(candidate.proceedsKrw ?? 0)
       const gain = Number(candidate.gainKrw ?? 0)
       // Any KR-taxable gain sold uses up deduction, whichever tier it was picked in.
-      if (krTaxable(candidate, taxPolicy) && gain > 0) deductionLeft = Math.max(deductionLeft - gain, 0)
+      if (inKrPool(candidate, taxPolicy) && gain > 0) deductionLeft = Math.max(deductionLeft - gain, 0)
     }
     return proceeds
   }

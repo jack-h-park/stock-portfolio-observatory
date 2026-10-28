@@ -113,6 +113,7 @@ export function policyFromSettingsForm(
     }
     // The limits form always carries this checkbox, so its absence there means unchecked.
     next.investor = { usTaxPerson: form.has('investor_usTaxPerson') }
+    next.scope = { includeIsa: form.has('scope_includeIsa') }
   }
 
   if (hasAny(form, 'acct_key_')) {

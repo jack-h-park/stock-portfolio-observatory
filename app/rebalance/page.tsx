@@ -17,7 +17,7 @@ import { SubmitButton } from '@/components/SubmitButton'
 import { getRebalancePolicy } from '@/lib/rebalance-policy'
 import { dbAvailable, portfolioToday } from '@/lib/adapters/portfolio-db'
 import { getRebalanceInput } from '@/lib/adapters/rebalance-input'
-import { getAllocationPolicy } from '@/lib/rebalance/allocation-policy'
+import { getAllocationPolicy, rebalanceWrappers } from '@/lib/rebalance/allocation-policy'
 import { computeAllocation, type Allocation, type SleeveRow } from '@/lib/rebalance/allocation'
 import { getInstrumentClasses, type InstrumentClasses } from '@/lib/rebalance/instrument-classes'
 import { listProposals, type Proposal, type ProposalStatus } from '@/lib/rebalance/proposal-store'
@@ -63,7 +63,7 @@ function loadAllocation(): { state: 'ok'; allocation: Allocation } | { state: 'm
   }
   if (!dbAvailable()) return { state: 'no_data' }
   try {
-    const input = getRebalanceInput(portfolioToday())
+    const input = getRebalanceInput(portfolioToday(), undefined, rebalanceWrappers(policyState.policy))
     return { state: 'ok', allocation: computeAllocation(input, policyState.policy, classes) }
   } catch (error) {
     console.error('[rebalance] allocation:', error)

@@ -33,23 +33,26 @@ function num(value: number | null | undefined) {
 }
 
 /**
- * Sums the tax year's realized gains from realized lots: taxable wrapper only
- * (null counts as taxable), superseded rows excluded. The US short/long totals
- * are worldwide (a US taxpayer): every market's lots, in USD. The KR pool
- * (krTaxableGainKrw) is limited to lots krTaxable accepts; without a policy
- * the domestic-stock flags are off, so only US-market lots feed it.
+ * Sums the tax year's realized gains from realized lots, superseded rows excluded.
+ * The US short/long totals are worldwide (a US taxpayer): every market's lots, in
+ * USD, from taxable accounts (null counts as taxable) and from the wrappers in
+ * `usTaxableWrappers` (those the tax policy treats as US-taxable, such as an ISA).
+ * The KR pool (krTaxableGainKrw) takes taxable accounts only, limited to lots
+ * krTaxable accepts; without a policy the domestic-stock flags are off, so only
+ * US-market lots feed it.
  */
-export function deriveYtdRealized(rows: RealizedLotRow[], year: number, usdKrwRate: number): YtdRealized {
+export function deriveYtdRealized(rows: RealizedLotRow[], year: number, usdKrwRate: number, usTaxableWrappers: string[] = []): YtdRealized {
   let krTaxableGainKrw = 0
   let usShortUsd = 0
   let usLongUsd = 0
   let lotCount = 0
   for (const row of rows) {
     if (row.superseded_by != null) continue
-    if ((row.account_wrapper ?? 'taxable') !== 'taxable') continue
+    const wrapper = row.account_wrapper ?? 'taxable'
+    if (wrapper !== 'taxable' && !usTaxableWrappers.includes(wrapper)) continue
     if (Number(String(row.sold_date).slice(0, 4)) !== year) continue
     lotCount += 1
-    if (krTaxable(row)) krTaxableGainKrw += num(row.realized_gl_krw)
+    if (wrapper === 'taxable' && krTaxable(row)) krTaxableGainKrw += num(row.realized_gl_krw)
     // The planner's convention (tax-planning usGainUsd): a non-USD lot with a USD acquisition cost
     // is measured as its proceeds in USD less that cost; otherwise the KRW gain at the rate.
     const usd =

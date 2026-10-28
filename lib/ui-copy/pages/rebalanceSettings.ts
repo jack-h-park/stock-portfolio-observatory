@@ -57,6 +57,8 @@ export const rebalanceSettings = defineCopy({
       days: 'days',
       usTaxPerson: 'I am a US tax person',
       usTaxPersonHelp: 'Ideas then leave out funds and ETFs listed outside the US (PFIC reporting); outside the US only operating companies are suggested.',
+      includeIsa: 'Include ISA accounts',
+      includeIsaHelp: 'An ISA shelters only Korean tax; for a US tax person it is a taxable account. Its holdings, cash and lots then join the plan. Money moved into an ISA counts toward its contribution limits.',
       save: 'Save limits',
     },
     accounts: {
@@ -147,6 +149,8 @@ export const rebalanceSettings = defineCopy({
       days: '일',
       usTaxPerson: '미국 세금 신고 대상자입니다',
       usTaxPersonHelp: '아이디어에서 미국 외에 상장된 펀드·ETF를 빼고(PFIC 신고 대상), 미국 외 시장은 개별 기업만 제안합니다.',
+      includeIsa: 'ISA 계좌 포함',
+      includeIsaHelp: 'ISA는 한국 세금만 줄여 주고, 미국 세금 신고 대상자에게는 일반 과세 계좌입니다. 켜면 ISA의 보유 종목·현금·lot이 계획에 들어갑니다. ISA로 옮기는 돈은 납입 한도에 포함됩니다.',
       save: '한도 저장',
     },
     accounts: {

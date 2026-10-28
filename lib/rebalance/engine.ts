@@ -1,4 +1,4 @@
-import { krTaxable, summarizeTaxCandidates, usGainUsd } from '@/lib/tax-planning'
+import { summarizeTaxCandidates, usGainUsd } from '@/lib/tax-planning'
 import type { TaxPolicy } from '@/lib/tax-policy'
 import type { RebalanceInput } from '@/lib/adapters/rebalance-input'
 import { accountKey, type AllocationPolicy, type Sleeve, type SleeveTarget } from './allocation-policy'
@@ -11,6 +11,7 @@ import {
   KRW_EPS,
   prepareSellContext,
   selectSells,
+  inKrPool,
   sellAmounts,
   staleWarning,
   warningKey,
@@ -148,7 +149,7 @@ export function computeSleeveMoves(allocation: Allocation, targets: Record<Sleev
 function summarize(ctx: SellContext, picks: SellPick[], totalKrw: number): TaxSummary {
   const candidates = picks.map((p) => p.candidate)
   const krGainKrw = candidates
-    .filter((c) => krTaxable(c, ctx.taxPolicy))
+    .filter((c) => inKrPool(c, ctx.taxPolicy))
     .reduce((sum, c) => sum + Number(c.gainKrw ?? 0), 0)
   const ytd = ctx.input.ytd.krTaxableGainKrw
   const deduction = ctx.krDeductionKrw

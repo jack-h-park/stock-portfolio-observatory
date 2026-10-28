@@ -4,7 +4,7 @@ import { accountKey } from '@/lib/rebalance/allocation-policy'
 import type { RebalanceCash, RebalancePosition } from '@/lib/rebalance/allocation'
 import { deriveYtdRealized, type RealizedLotRow, type YtdRealized } from '@/lib/rebalance/ytd-realized'
 import { allAssetsTable, getTaxPlanningLots, getWashSaleReview, selfOnlyAnd } from '@/lib/adapters/portfolio-db'
-import { getTaxPolicyState } from '@/lib/tax-policy'
+import { getTaxPolicyState, usTaxableWrappers } from '@/lib/tax-policy'
 import type { TaxPlanningLot } from '@/lib/tax-planning'
 
 export type RecentBuy = { market: string; ticker: string; brokerage: string | null; account: string; date: string }
@@ -32,9 +32,15 @@ function columnsOf(conn: Database.Database, table: string) {
   return new Set((conn.prepare(`pragma table_info(${table})`).all() as { name: string }[]).map((c) => c.name))
 }
 
-/** Taxable wrapper and the maintainer's own rows; the scope boundary of every rebalance read. */
-function scope(conn: Database.Database, table: string) {
-  const wrapper = columnsOf(conn, table).has('account_wrapper') ? " and account_wrapper = 'taxable'" : ''
+/** `('taxable', 'isa')` for SQL. Wrapper names come from rebalanceWrappers, never from a request; anything else is refused. */
+function wrapperList(wrappers: string[]): string {
+  if (!wrappers.length || wrappers.some((w) => !/^[a-z_]+$/.test(w))) throw new Error(`invalid wrapper list: ${wrappers.join(', ')}`)
+  return `(${wrappers.map((w) => `'${w}'`).join(', ')})`
+}
+
+/** The plan's wrappers and the maintainer's own rows; the scope boundary of every rebalance read. */
+function scope(conn: Database.Database, table: string, wrappers: string[]) {
+  const wrapper = columnsOf(conn, table).has('account_wrapper') ? ` and account_wrapper in ${wrapperList(wrappers)}` : ''
   return `${wrapper}${selfOnlyAnd(conn, table)}`
 }
 
@@ -48,7 +54,7 @@ function latestUsdKrw(conn: Database.Database): number {
   return row && Number(row.rate) > 0 ? Number(row.rate) : FALLBACK_USD_KRW
 }
 
-function readPositions(conn: Database.Database): RebalancePosition[] {
+function readPositions(conn: Database.Database, wrappers: string[]): RebalancePosition[] {
   const table = allAssetsTable(conn, 'holdings')
   return conn
     .prepare(
@@ -57,14 +63,14 @@ function readPositions(conn: Database.Database): RebalancePosition[] {
               case when count(base_market_value) = 0 then null else sum(base_market_value) end as valueKrw,
               sum(coalesce(base_cost, total_cost_krw)) as costKrw, max(as_of_date) as dataAsOf
          from ${table}
-        where 1 = 1${scope(conn, table)}
+        where 1 = 1${scope(conn, table, wrappers)}
         group by brokerage, account, market, ticker
         order by brokerage, account, market, ticker`
     )
     .all() as RebalancePosition[]
 }
 
-function readCash(conn: Database.Database, usdKrw: number): RebalanceCash[] {
+function readCash(conn: Database.Database, usdKrw: number, wrappers: string[]): RebalanceCash[] {
   const toKrw = (currency: string, balance: number) =>
     currency === 'KRW' ? balance : currency === 'USD' ? balance * usdKrw : null
   const cash: RebalanceCash[] = []
@@ -95,10 +101,10 @@ function readCash(conn: Database.Database, usdKrw: number): RebalanceCash[] {
       .prepare(
         `select institution as brokerage, account, currency, balance, as_of_date as asOf
            from brokerage_cash c
-          where account_wrapper = 'taxable' and asset_class = 'security'${notChild}
+          where account_wrapper in ${wrapperList(wrappers)} and asset_class = 'security'${notChild}
             and id = (select id from brokerage_cash l
                        where l.institution = c.institution and l.account = c.account and l.pool = c.pool
-                         and l.currency = c.currency and l.account_wrapper = 'taxable' and l.asset_class = 'security'
+                         and l.currency = c.currency and l.account_wrapper = c.account_wrapper and l.asset_class = 'security'
                        order by l.as_of_date desc, l.id desc limit 1)
           order by institution, account, pool, currency`
       )
@@ -127,7 +133,7 @@ function readRecentBuys(conn: Database.Database, today: string): RecentBuy[] {
  * its latest transaction date. An account held with no transactions still has a date; an account
  * with neither has none (counted as stale by the engine).
  */
-function readAccountDataAsOf(conn: Database.Database): Record<string, string | null> {
+function readAccountDataAsOf(conn: Database.Database, wrappers: string[]): Record<string, string | null> {
   const latest: Record<string, string | null> = {}
   const merge = (rows: { brokerage: string | null; account: string; latest: string | null }[]) => {
     for (const row of rows) {
@@ -141,7 +147,7 @@ function readAccountDataAsOf(conn: Database.Database): Record<string, string | n
     conn
       .prepare(
         `select brokerage, account, max(as_of_date) as latest from ${holdings}
-          where 1 = 1${scope(conn, holdings)} group by brokerage, account`
+          where 1 = 1${scope(conn, holdings, wrappers)} group by brokerage, account`
       )
       .all() as { brokerage: string | null; account: string; latest: string | null }[]
   )
@@ -150,7 +156,7 @@ function readAccountDataAsOf(conn: Database.Database): Record<string, string | n
     conn
       .prepare(
         `select brokerage, account, max(date) as latest from ${transactions}
-          where 1 = 1${scope(conn, transactions)} group by brokerage, account`
+          where 1 = 1${scope(conn, transactions, wrappers)} group by brokerage, account`
       )
       .all() as { brokerage: string | null; account: string; latest: string | null }[]
   )
@@ -182,7 +188,11 @@ function readHealthErrors(conn: Database.Database): string[] {
   ).map((row) => row.name)
 }
 
-export function getRebalanceInput(today: string, dbPath: string = config.stockDbPath): RebalanceInput {
+/**
+ * Everything a plan reads, for the given account wrappers (rebalanceWrappers of the policy; taxable only by
+ * default). Year-to-date US totals count every wrapper the tax policy treats as US-taxable, whatever the scope.
+ */
+export function getRebalanceInput(today: string, dbPath: string = config.stockDbPath, wrappers: string[] = ['taxable']): RebalanceInput {
   const conn = new Database(dbPath, { readonly: true, fileMustExist: true })
   let snapshot: Omit<RebalanceInput, 'lots' | 'washSaleBlockedBuys'> & { realized: RealizedLotRow[] }
   try {
@@ -190,10 +200,10 @@ export function getRebalanceInput(today: string, dbPath: string = config.stockDb
     snapshot = {
       asOf: today,
       usdKrwRate,
-      positions: readPositions(conn),
-      cash: readCash(conn, usdKrwRate),
+      positions: readPositions(conn, wrappers),
+      cash: readCash(conn, usdKrwRate, wrappers),
       recentBuys: readRecentBuys(conn, today),
-      accountDataAsOf: readAccountDataAsOf(conn),
+      accountDataAsOf: readAccountDataAsOf(conn, wrappers),
       realized: readRealizedLots(conn),
       ytd: undefined as unknown as YtdRealized,
       healthErrors: readHealthErrors(conn),
@@ -202,8 +212,9 @@ export function getRebalanceInput(today: string, dbPath: string = config.stockDb
     conn.close()
   }
   const { realized, ...rest } = snapshot
-  const lots = getTaxPlanningLots(5000, getTaxPolicyState().policy, { dbPath, selfOnly: true }).filter(
-    (lot) => lot.account_wrapper === 'taxable'
+  const taxPolicy = getTaxPolicyState().policy
+  const lots = getTaxPlanningLots(5000, taxPolicy, { dbPath, selfOnly: true }).filter((lot) =>
+    wrappers.includes(lot.account_wrapper ?? 'taxable')
   )
   const washSaleBlockedBuys = getWashSaleReview(today, dbPath).windows.map((w) => ({
     ticker: w.ticker,
@@ -213,6 +224,6 @@ export function getRebalanceInput(today: string, dbPath: string = config.stockDb
     ...rest,
     lots,
     washSaleBlockedBuys,
-    ytd: deriveYtdRealized(realized, Number(today.slice(0, 4)), rest.usdKrwRate),
+    ytd: deriveYtdRealized(realized, Number(today.slice(0, 4)), rest.usdKrwRate, usTaxableWrappers(taxPolicy)),
   }
 }

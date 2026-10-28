@@ -3,7 +3,7 @@ import { portfolioToday } from '@/lib/adapters/portfolio-db'
 import { getRebalanceInput } from '@/lib/adapters/rebalance-input'
 import { refreshLockHeld } from '@/lib/cli/common'
 import { getTaxPolicyState } from '@/lib/tax-policy'
-import { getAllocationPolicy } from '@/lib/rebalance/allocation-policy'
+import { getAllocationPolicy, rebalanceWrappers } from '@/lib/rebalance/allocation-policy'
 import { getInstrumentClasses } from '@/lib/rebalance/instrument-classes'
 import { loadTransactions, reconcile } from '@/lib/rebalance/reconcile'
 import { KNOWN_RUNNERS, runnerFromConfig, type LlmRunner } from '@/lib/rebalance/llm-runner'
@@ -177,7 +177,7 @@ function runTriggers(today: string, now: Date, emit: (payload: Record<string, un
     return 1
   }
   const policy = policyState.policy
-  const input = getRebalanceInput(today, config.stockDbPath)
+  const input = getRebalanceInput(today, config.stockDbPath, rebalanceWrappers(policy))
   if (input.healthErrors.length) {
     emit({ ok: true, blocked: 'health_errors' })
     return 0
