@@ -290,16 +290,19 @@ per-currency sums, never descriptions. Fix them by adding a rule. Known gaps:
 The same grouping also yields `externalInflows`: money that arrived from a
 counterparty with nothing sent to it first, such as a sale, an inheritance or a
 surrendered policy. A 예적금, a 파킹통장 or a 미래에셋 account never yields one, because
-what it returns was already the maintainer's. A 토스뱅크 counterparty is grouped by
-name alone, so a loan repaid into a different bank is one round trip. Arrivals of
+what it returns was already the maintainer's. A Toss Bank or MG Community Credit Cooperative counterparty
+is grouped by name alone, so a loan repaid into a different bank, or into the other
+statement, is one round trip. A card payment and its refund (a memo naming a
+`카드`) are spending and join no group. Arrivals of
 one group within 120 days are one inflow, dated at the first.
 
 The refresh loads them into `external_inflows` and names them from a gitignored
 labels file. The file is `STOCK_ASSET_EVENT_LABELS_PATH`, default
 `data/asset-event-labels.local.json`; `data/asset-event-labels.example.json` shows
-its shape. A group is `counterparty:<name>` for a 토스뱅크 counterparty,
-`counterparty:<memo>|새마을금고 내역` for a 새마을금고 one (`counterparty:현금|새마을금고 내역`
-for cash paid in at the counter, whatever the memo says), and
+its shape. A group is `counterparty:<name>` for a Toss Bank or MG Community Credit Cooperative
+counterparty
+(`counterparty:현금|새마을금고 내역` for cash paid in at the counter, whatever the memo
+says), and
 `counterparty:<거래종류>|미래에셋증권` for one in the 미래에셋 CMA. A salary paid less than
 120 days apart chains into one inflow spanning years; hide it. A label that names
 no inflow is reported under `cash_statements_parsed`.
@@ -317,7 +320,9 @@ view, and `/net-worth`) merges two kinds of event:
   a run of one ticker, all accounts together, while its open cost basis stays at
   or above 1M KRW. Selling down to a small observation lot ends it, and a later
   rebuy starts a new one. The gain is realized gain, plus unrealized gain at
-  today's price, plus dividends. The estimated tax is the tax planner's total for
+  today's price, plus dividends. A dividend belongs to the latest period that
+  began on or before it, so one paid after a sell-out (a Korean year-end dividend)
+  or on a leftover observation lot still counts. The estimated tax is the tax planner's total for
   selling every taxable open lot now (`summarizeTaxCandidates`: deduction, loss
   netting and the cross-border credit applied), shared out by each lot's share of
   the positive gain; a lot in a wrapper the estimate leaves out carries none. In a

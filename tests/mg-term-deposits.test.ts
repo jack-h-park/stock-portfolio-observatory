@@ -306,5 +306,5 @@ m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 flow = lambda memo: {"statement": "mg", "memo": memo, "counterpartyInstitution": ""}
 print(json.dumps([m._bucket(flow("인터넷신규")), m._bucket(flow("인터넷신규(정기)")), m._bucket(flow("급여"))]))
 `], { cwd: ROOT, encoding: 'utf8' }))
-  assert.deepEqual(r, ['mg-savings', 'mg-savings', 'counterparty:급여|새마을금고 내역'])
+  assert.deepEqual(r, ['mg-savings', 'mg-savings', 'counterparty:급여'])
 })

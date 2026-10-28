@@ -471,3 +471,26 @@ print(json.dumps({"b": b, "closed": m.close_series(b, "2026-03-10")}))`)
   ])
   assert.deepEqual(r.closed.at(-1), { date: '2026-03-10', balance: 0, dayMax: 1050 })
 })
+
+test('a loan from 토스뱅크 repaid into the 새마을금고 statement is one round trip under the lender’s name', () => {
+  const r = py(`
+toss = [{"date": "2026-01-02", "seq": 0, "amount": -200.0, "counterparty": "Friend", "counterpartyInstitution": "Bank A"}]
+mg = [{"date": "2026-02-02", "seq": 0, "amount": 200.0, "description": "Friend", "kind": "대체"}]
+m.MIN_ESTIMATE_KRW = 1
+out, inflows = m.estimate_closed_accounts([("tossbank", "tossbank-0001", toss), ("mg", "mg-deposit", mg)], [], {}, [])
+print(json.dumps({"inflows": inflows, "accounts": [[a["account"], a["balances"]] for a in out]}))`)
+  assert.deepEqual(r.inflows, [])
+  assert.deepEqual(r.accounts, [['Friend', [{ date: '2026-01-02', balance: 200 }, { date: '2026-02-02', balance: 0 }]]])
+})
+
+test('card payments and refunds are spending: never money held outside, never outside money', () => {
+  const r = py(`
+toss = [
+ {"date": "2026-01-13", "seq": 0, "amount": -5000.0, "counterparty": "Example카드", "counterpartyInstitution": ""},
+ {"date": "2026-01-20", "seq": 1, "amount": 3000.0, "counterparty": "Example카드", "counterpartyInstitution": "Bank A"},
+]
+m.MIN_ESTIMATE_KRW = 1
+out, inflows = m.estimate_closed_accounts([("tossbank", "tossbank-0001", toss)], [], {}, [])
+print(json.dumps({"inflows": inflows, "accounts": [a["account"] for a in out]}))`)
+  assert.deepEqual(r, { inflows: [], accounts: [] })
+})

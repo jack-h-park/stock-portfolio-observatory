@@ -86,9 +86,13 @@ export function buildInvestmentEpisodes({
       else episode.unrealizedKrw += row.marketValueKrw - row.costKrw
       if (row.estimatedTaxKrw != null) episode.estimatedTaxKrw = (episode.estimatedTaxKrw ?? 0) + row.estimatedTaxKrw
     }
+    // A dividend belongs to the latest period that began on or before it: one paid
+    // after a sell-out (a Korean year-end dividend arrives in April) or on a
+    // leftover observation lot was earned by that period's shares. One before
+    // the first period was earned below the floor and counts nowhere.
     for (const row of dividends.filter((d) => key(d) === k)) {
-      const inside = spans.findIndex((span) => row.date >= span.start && row.date <= (span.end ?? '9999-12-31'))
-      if (inside >= 0) episodes[inside].dividendsKrw += row.amountKrw
+      const owner = spans.findLastIndex((span) => span.start <= row.date)
+      if (owner >= 0) episodes[owner].dividendsKrw += row.amountKrw
     }
     for (const episode of episodes) episode.gainKrw = episode.realizedKrw + episode.unrealizedKrw + episode.dividendsKrw
     out.push(...episodes)
