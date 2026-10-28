@@ -40,6 +40,7 @@ const ROUTES = [
   '/tax-planning',
   '/tax-settings',
   '/lots',
+  '/realized',
   '/cost-basis',
   '/dividends',
   '/transactions',

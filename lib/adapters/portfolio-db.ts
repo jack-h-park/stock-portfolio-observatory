@@ -3,6 +3,7 @@ import { periodEndFromSource } from '@/lib/supplementary'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import Database from 'better-sqlite3'
+import { rateOnOrBefore, toRealizedView, type RealizedLotRow, type RealizedLotView } from '@/lib/realized-lots'
 import { config } from '@/config'
 import { datedAmountSql, NET_DIVIDEND_SQL, type DisplayCurrency } from '@/lib/adapters/income-fx'
 import { buildTaxPlan, summarizeTaxCandidates, type TaxPlanningLot } from '@/lib/tax-planning'
@@ -5341,6 +5342,40 @@ export function getTaxLots(limit = 300) {
          limit ?`
       )
       .all(limit) as any[]
+  } finally {
+    conn.close()
+  }
+}
+
+/**
+ * Every closed lot, stocks and crypto, with the dollar figures a US filing needs.
+ *
+ * Reads the `realized_lots` view, which already leaves out physical gold, and
+ * skips a replay row that a 1099-B filing replaced: both would count one sale
+ * twice. A database too old to have the table returns nothing rather than throw.
+ */
+export function getRealizedLots(): RealizedLotView[] {
+  const conn = db()
+  try {
+    const hasTable = (name: string) =>
+      Boolean(conn.prepare("select 1 from sqlite_master where type in ('table', 'view') and name = ?").get(name))
+    if (!hasTable('realized_lots')) return []
+    const columns = new Set((conn.prepare('pragma table_info(realized_lots)').all() as { name: string }[]).map((c) => c.name))
+    const col = (name: string) => (columns.has(name) ? name : `null as ${name}`)
+    const notSuperseded = columns.has('superseded_by') ? "where coalesce(superseded_by, '') = ''" : ''
+    const rows = conn
+      .prepare(
+        `select market, currency, ${col('brokerage')}, account, ticker, name, acquired_date, sold_date, quantity_sold,
+                cost_basis_krw, proceeds_krw, realized_gl_krw, ${col('acquisition_cost_usd')}, ${col('native_proceeds')},
+                holding_days, tax_term, ${col('basis')}
+           from realized_lots ${notSuperseded}
+          order by sold_date desc, market, ticker, acquired_date`
+      )
+      .all() as RealizedLotRow[]
+    const rates = hasTable('historical_fx_rates')
+      ? (conn.prepare('select price_date, rate from historical_fx_rates order by price_date').all() as { price_date: string; rate: number }[])
+      : []
+    return rows.map((row) => toRealizedView(row, (date) => rateOnOrBefore(rates, date)))
   } finally {
     conn.close()
   }
