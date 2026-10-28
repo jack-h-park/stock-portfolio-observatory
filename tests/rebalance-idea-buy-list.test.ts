@@ -143,3 +143,15 @@ test('investor profile: the limits form sets it, and validation refuses a malfor
   const bad = { ...example(), investor: { usTaxPerson: 'yes' } } as unknown as AllocationPolicy
   assert.ok(validateAllocationPolicy(bad).some((e) => e.startsWith('investor.usTaxPerson')))
 })
+
+test('scope: the limits form sets includeIsa, rebalanceWrappers follows it, and validation refuses a malformed one', async () => {
+  const { rebalanceWrappers } = await import('../lib/rebalance/allocation-policy')
+  const limits = form({ positionCapPct: '15', maxTargetShiftPctPerCycle: '5', maxTurnoverPctPerProposal: '10', minTradeKrw: '100000', staleDataDays: '35', harvestThresholdKrw: '0', scope_includeIsa: 'on' })
+  const parsed = policyFromSettingsForm(limits, example())
+  assert.deepEqual(parsed.policy.scope, { includeIsa: true })
+  assert.deepEqual(rebalanceWrappers(parsed.policy), ['taxable', 'isa'])
+  assert.deepEqual(rebalanceWrappers(example()), ['taxable'])
+  assert.deepEqual(rebalanceWrappers(null), ['taxable'])
+  const bad = { ...example(), scope: { includeIsa: 1 } } as unknown as AllocationPolicy
+  assert.ok(validateAllocationPolicy(bad).some((e) => e.startsWith('scope.includeIsa')))
+})

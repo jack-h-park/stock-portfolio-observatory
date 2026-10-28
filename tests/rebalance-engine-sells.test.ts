@@ -4,6 +4,7 @@ import path from 'node:path'
 import test from 'node:test'
 import type { RebalanceInput } from '../lib/adapters/rebalance-input'
 import { buildTradePlan, computeSleeveMoves, type TradePlan } from '../lib/rebalance/engine'
+import { inKrPool } from '../lib/rebalance/sell-selection'
 import { computeAllocation, type RebalanceCash, type RebalancePosition } from '../lib/rebalance/allocation'
 import {
   accountKey,
@@ -570,4 +571,24 @@ test('sell-side warning amounts use thousands separators', () => {
   const w = p.warnings.find((x) => x.code === 'turnover_capped')
   assert.ok(w, JSON.stringify(p.warnings))
   assert.match(w.message, /from 1,000,000 to 500,000 KRW/)
+})
+
+test('a lot held in an ISA never takes the KR deduction tier', () => {
+  // The KR deduction tier test's lots, held in an ISA: CCC no longer uses the headroom, so DDD goes first as a US long gain.
+  const lots = [
+    { ...lot({ id: 1, ticker: 'CCC', qty: 10, price: 100, cost: 60 }), account_wrapper: 'isa' },
+    { ...lot({ id: 2, ticker: 'DDD', qty: 45, price: 100, cost: 77.7 }), account_wrapper: 'isa' },
+  ]
+  const p = plan(lots, 4_500_000, { over: { ytd: { year: 2026, krTaxableGainKrw: 2_000_000, usShortUsd: 0, usLongUsd: 0, lotCount: 1 } } })
+  const s = sells(p)
+  assert.equal(s[0].ticker, 'DDD')
+  assert.equal(s[0].tier, 'us_long')
+  assert.ok(s.every((i) => i.tier !== 'kr_deduction'))
+})
+
+test('inKrPool: taxable (or unset) wrapper and KR-taxable market only', () => {
+  assert.equal(inKrPool({ market: 'US', account_wrapper: 'taxable' }), true)
+  assert.equal(inKrPool({ market: 'US', account_wrapper: null }), true)
+  assert.equal(inKrPool({ market: 'US', account_wrapper: 'isa' }), false)
+  assert.equal(inKrPool({ market: 'KR', account_wrapper: 'taxable' }), false)
 })

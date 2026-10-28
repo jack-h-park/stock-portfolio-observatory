@@ -8,7 +8,7 @@ import { CardRow } from '@/components/layout'
 import { dbAvailable, portfolioToday } from '@/lib/adapters/portfolio-db'
 import { getRebalanceInput } from '@/lib/adapters/rebalance-input'
 import { getLanguage } from '@/lib/i18n-server'
-import { SLEEVES, accountKey, defaultAccountRule, getAllocationPolicy, type AccountRule, type Sleeve } from '@/lib/rebalance/allocation-policy'
+import { SLEEVES, accountKey, defaultAccountRule, getAllocationPolicy, rebalanceWrappers, type AccountRule, type Sleeve } from '@/lib/rebalance/allocation-policy'
 import { classify, getInstrumentClasses, instrumentKey, type InstrumentClasses } from '@/lib/rebalance/instrument-classes'
 import { ERROR_CODES, emptyAllocationPolicy, type SettingsErrorCode } from '@/lib/rebalance/settings-form'
 import { fmtNumber } from '@/lib/format'
@@ -67,7 +67,7 @@ export default async function RebalanceSettingsPage({ searchParams }: { searchPa
   let input: ReturnType<typeof getRebalanceInput> | null = null
   if (dbAvailable()) {
     try {
-      input = getRebalanceInput(portfolioToday())
+      input = getRebalanceInput(portfolioToday(), undefined, rebalanceWrappers(state.policy))
     } catch {
       input = null
     }
@@ -164,6 +164,13 @@ export default async function RebalanceSettingsPage({ searchParams }: { searchPa
               <span>
                 <span className="font-medium text-ink">{copy.limits.usTaxPerson}</span>
                 <span className="block text-label text-ink-3">{copy.limits.usTaxPersonHelp}</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-caption text-ink-2">
+              <Checkbox name="scope_includeIsa" defaultChecked={policy.scope?.includeIsa ?? false} />
+              <span>
+                <span className="font-medium text-ink">{copy.limits.includeIsa}</span>
+                <span className="block text-label text-ink-3">{copy.limits.includeIsaHelp}</span>
               </span>
             </label>
             <SubmitButton>{copy.limits.save}</SubmitButton>

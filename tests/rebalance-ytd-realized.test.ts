@@ -147,3 +147,14 @@ test('a non-USD lot without a USD acquisition cost falls back to realized_gl_krw
   assert.equal(out.usShortUsd, 500)
   assert.equal(out.usLongUsd, 100)
 })
+
+test('US totals take the US-taxable wrappers given; the KR pool stays taxable-only', () => {
+  const rows = [
+    { market: 'US', sold_date: '2026-02-01', tax_term: 'long', realized_gl_krw: 130_000, native_realized_gl: 100, currency: 'USD', account_wrapper: 'isa', superseded_by: null, proceeds_krw: null, acquisition_cost_usd: null },
+    { market: 'KR', sold_date: '2026-02-01', tax_term: 'short', realized_gl_krw: 260_000, native_realized_gl: 260_000, currency: 'KRW', account_wrapper: 'irp', superseded_by: null, proceeds_krw: null, acquisition_cost_usd: null },
+  ] as RealizedLotRow[]
+  const without = deriveYtdRealized(rows, 2026, 1300)
+  assert.deepEqual([without.lotCount, without.usLongUsd, without.krTaxableGainKrw], [0, 0, 0])
+  const withIsa = deriveYtdRealized(rows, 2026, 1300, ['isa'])
+  assert.deepEqual([withIsa.lotCount, withIsa.usLongUsd, withIsa.usShortUsd, withIsa.krTaxableGainKrw], [1, 100, 0, 0])
+})

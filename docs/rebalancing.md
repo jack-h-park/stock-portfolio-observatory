@@ -6,7 +6,8 @@ The rebalancer turns the portfolio's sleeve targets into lot-level sell and buy 
 
 - It never places, transmits or schedules an order. You place every order by hand at the broker, then record the fill.
 - It is not investment or tax advice. The figures are the Observatory's own estimates under the policy you configured.
-- Only taxable accounts owned by you are in scope. IRP, pension savings and ISA accounts, and child accounts, are never in an allocation, a total or a plan.
+- Only taxable accounts owned by you are in scope by default. IRP and pension savings accounts, and child accounts, are never in an allocation, a total or a plan. ISA accounts join when the policy's `scope.includeIsa` is true (the "Include ISA accounts" checkbox under Limits): an ISA shelters only Korean tax, so for a US tax person it is an ordinary taxable account. Their gains never use up the Korean deduction. Cash moved into an ISA counts toward its contribution limits, and cash moved out is a withdrawal; check both before placing a transfer the plan lists.
+- Year-to-date US realized totals count every wrapper the tax policy treats as US-taxable (`wrapperTreatment.US`), whether or not it is in the plan's scope; the Korean deduction pool counts taxable accounts only.
 - Nothing guesses a sleeve. A security without a classification is reported and left out of the totals.
 - Phase status: this guide covers the deterministic engine and the review pages (P0 and P1). A manual or triggered proposal is engine-only: it holds the targets and plans trades against them. A monthly proposal adds the LLM judgment (P2), described below. Scheduled triggers and chat notifications (P3) run as Hermes cron jobs; see "Operations". They are installed paused, so nothing runs until each job is resumed.
 
@@ -248,5 +249,5 @@ Resume order: `rebalance-notify` first. Its first run seeds the state, so existi
 ## What stays open
 
 - **Lot method per broker.** Each account defaults to `fifo`. Which method a broker actually applies on a sale (first-in-first-out, specific lot or average cost) is a fact about the broker, not something the Observatory can read. Confirm it at each broker and set it on the account before trusting which lots a sell names. Until then, treat the lot choice as a suggestion to verify at order time.
-- **Pension and ISA tax treatment** stays undecided on purpose; nothing here picks a value.
+- **Pension tax treatment** (IRP, pension savings) stays undecided on purpose; nothing here picks a value. An ISA's treatment is read from the tax policy's `wrapperTreatment`, not set here.
 - **Enabling the jobs.** The three rebalance jobs are declared and installed paused (see "Operations"). Whether and when to resume each one is an operator decision.

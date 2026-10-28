@@ -11,6 +11,8 @@ export type AccountRule = { lotMethod: LotMethod; fractional: boolean; managedBy
 export type PreferredInstrument = { market: string; ticker: string; brokerage: string | null; account: string }
 /** Facts about the maintainer that limit what may be suggested. A US tax person should not hold non-US funds (PFIC). */
 export type InvestorProfile = { usTaxPerson: boolean }
+/** An ISA is a Korean tax shelter only; to a US tax person it is an ordinary taxable account, so it can join the plan. */
+export type RebalanceScope = { includeIsa: boolean }
 export type AllocationPolicy = {
   version: 1
   bounds: {
@@ -27,6 +29,8 @@ export type AllocationPolicy = {
   accounts: Record<string, AccountRule>
   /** Absent in policies saved before it existed; read as "not a US tax person". */
   investor?: InvestorProfile
+  /** Which account wrappers the plan covers beyond taxable ones. Absent: taxable only. */
+  scope?: RebalanceScope
   history: { at: string; by: string; changes: Partial<Record<Sleeve, [number, number]>> }[]
 }
 export type AllocationPolicyState = { policy: AllocationPolicy | null; source: 'saved' | 'missing'; error: string | null }
@@ -40,6 +44,11 @@ const SCALAR_BOUNDS = [
   'staleDataDays',
   'harvestThresholdKrw',
 ] as const
+
+/** The account wrappers a plan reads: taxable always, ISA when the policy includes it. */
+export function rebalanceWrappers(p: Pick<AllocationPolicy, 'scope'> | null | undefined): string[] {
+  return p?.scope?.includeIsa ? ['taxable', 'isa'] : ['taxable']
+}
 
 /** Accounts are identified by the (brokerage, account) pair exactly as stored. */
 export function accountKey(brokerage: string | null, account: string): string {
@@ -86,6 +95,9 @@ export function validateAllocationPolicy(p: AllocationPolicy): string[] {
   }
   if (p.investor !== undefined && (p.investor === null || typeof p.investor !== 'object' || typeof p.investor.usTaxPerson !== 'boolean')) {
     errors.push('investor.usTaxPerson: must be true or false')
+  }
+  if (p.scope !== undefined && (p.scope === null || typeof p.scope !== 'object' || typeof p.scope.includeIsa !== 'boolean')) {
+    errors.push('scope.includeIsa: must be true or false')
   }
   if (Math.abs(sum - 100) > SUM_TOLERANCE) errors.push(`targets sum to ${Math.round(sum * 100) / 100}, expected 100`)
   return errors

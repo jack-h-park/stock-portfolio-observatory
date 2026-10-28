@@ -51,6 +51,7 @@ const lot = db.prepare(
 lot.run('T-1', 'KRX1', 'KRX1', 'taxable', 'self')
 lot.run('I-1', 'KRX2', 'KRX2', 'irp', 'self')
 lot.run('C-1', 'KRX4', 'KRX4', 'taxable', 'child:kid')
+lot.run('S-1', 'KRX3', 'KRX3', 'isa', 'self')
 
 db.exec(`
 insert into fx_rates values (1,'USD','KRW',1300,'2026-10-01','x'),(2,'USD','KRW',1400,'2026-10-10','x');
@@ -62,6 +63,7 @@ insert into brokerage_cash (institution,account,pool,currency,as_of_date,balance
   ('Invented Broker','T-1','usd','USD','2026-09-30',50,'x','taxable','security'),
   ('Invented Broker','T-1','usd','USD','2026-10-13',100,'x','taxable','security'),
   ('Invented Broker','I-1','krw','KRW','2026-10-13',8_000_000,'x','irp','security'),
+  ('Invented Broker','S-1','krw','KRW','2026-10-13',700_000,'x','isa','security'),
   ('Invented Broker','C-1','krw','KRW','2026-10-13',3_000_000,'x','taxable','security'),
   ('Invented Broker','T-1','gold','KRW','2026-10-13',2_000_000,'x','taxable','gold'),
   ('Invented Broker','N-1','krw','KRW','2026-10-13',1_000_000,'x','taxable','security');
@@ -95,6 +97,7 @@ const sale = more.prepare(
 sale.run('T-1', 'LOSS', 'LOSS', 'taxable', 'self', '2026-10-05', 'short', -140_000, -100) // open wash window
 sale.run('T-1', 'GAIN', 'GAIN', 'taxable', 'self', '2026-03-05', 'long', 280_000, 200)
 sale.run('I-1', 'IRAX', 'IRAX', 'irp', 'self', '2026-03-05', 'short', 999_000, 999) // out of scope
+sale.run('S-1', 'ISAX', 'ISAX', 'isa', 'self', '2026-04-05', 'long', 140_000, 100) // US-taxable when the tax policy says so
 sale.run('C-1', 'KID', 'KID', 'taxable', 'child:kid', '2026-03-05', 'short', 999_000, 999) // child
 sale.run('T-1', 'OLD', 'OLD', 'taxable', 'self', '2025-12-31', 'short', 999_000, 999) // last year
 more.prepare(
@@ -104,7 +107,7 @@ more.prepare(
 more.close()
 
 const TODAY = '2026-10-15'
-const load = async () => (await import('../lib/adapters/rebalance-input')).getRebalanceInput(TODAY, dbPath)
+const load = async (wrappers?: string[]) => (await import('../lib/adapters/rebalance-input')).getRebalanceInput(TODAY, dbPath, wrappers)
 
 test('positions are taxable, self-owned holdings_all rows only', async () => {
   const input = await load()
@@ -158,11 +161,12 @@ test('the snapshot carries the as-of date', async () => {
   assert.equal(input.ytd.year, 2026)
 })
 
-test('ytd sums the calendar year of today from taxable self lots; open wash windows are reported', async () => {
+test('ytd sums the calendar year of today from self lots in taxable and US-taxable wrappers; open wash windows are reported', async () => {
+  // The default tax policy treats an ISA as US-taxable, so its sale counts even with ISA out of the plan's scope.
   const input = await load()
-  assert.equal(input.ytd.lotCount, 2)
+  assert.equal(input.ytd.lotCount, 3)
   assert.equal(input.ytd.usShortUsd, -100)
-  assert.equal(input.ytd.usLongUsd, 200)
+  assert.equal(input.ytd.usLongUsd, 300)
   assert.deepEqual(input.washSaleBlockedBuys.map((w) => w.ticker), ['LOSS'])
 })
 
@@ -202,4 +206,17 @@ test('engine: an account held with no transactions and a fresh holdings date is 
   assert.ok(sell, JSON.stringify([p.moves, p.warnings]))
   assert.deepEqual(sell.notes, [])
   assert.ok(!p.warnings.some((w) => w.code === 'stale_account'))
+})
+
+test('with ISA in scope, its holdings, lots, cash and data dates join; pension wrappers stay out', async () => {
+  const input = await load(['taxable', 'isa'])
+  assert.deepEqual(input.positions.map((p) => p.ticker).sort(), ['AAA', 'KRX1', 'KRX3', 'KRX6', 'KRX7'])
+  assert.deepEqual(input.lots.map((l) => l.ticker).sort(), ['KRX1', 'KRX3'])
+  assert.ok(input.cash.some((c) => c.account === 'S-1' && c.balance === 700_000))
+  assert.ok(!input.cash.some((c) => c.account === 'I-1'))
+  assert.equal(input.accountDataAsOf['Invented Broker::S-1'], '2026-10-14')
+})
+
+test('a wrapper name that is not a plain identifier is refused', async () => {
+  await assert.rejects(async () => load(["taxable') or ('1'='1"]), /invalid wrapper list/)
 })

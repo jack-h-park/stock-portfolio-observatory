@@ -1,7 +1,7 @@
 import { config } from '@/config'
 import { getRebalanceInput, type RebalanceInput } from '@/lib/adapters/rebalance-input'
 import { readBriefingContext } from '@/lib/adapters/rebalance-context'
-import { getAllocationPolicy, SLEEVES, type AllocationPolicy, type Sleeve, type SleeveTarget } from '@/lib/rebalance/allocation-policy'
+import { getAllocationPolicy, rebalanceWrappers, SLEEVES, type AllocationPolicy, type Sleeve, type SleeveTarget } from '@/lib/rebalance/allocation-policy'
 import { buildTradePlan } from '@/lib/rebalance/engine'
 import { getInstrumentClasses, type InstrumentClasses } from '@/lib/rebalance/instrument-classes'
 import { parseLlmJson, validateLlmOutput, type LlmOutput, type LlmRecord } from '@/lib/rebalance/llm-contract'
@@ -52,7 +52,7 @@ function prepare(today: string, now: Date, paths: ProposePaths): Prepared | Extr
     }
   }
 
-  const input = getRebalanceInput(today, paths.db ?? config.stockDbPath)
+  const input = getRebalanceInput(today, paths.db ?? config.stockDbPath, rebalanceWrappers(state.policy))
   if (input.healthErrors.length) {
     return { ok: false, reason: 'health_errors', detail: `Failing error checks: ${input.healthErrors.join(', ')}` }
   }
