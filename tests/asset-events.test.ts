@@ -83,3 +83,16 @@ test('an episode is named by the shortest name its lots carry, not a filing’s 
   })
   assert.equal(episode.name, 'Invented Ultra')
 })
+
+test('a dividend paid after a holding period ends belongs to it, and one before any period counts nowhere', () => {
+  const episodes = buildInvestmentEpisodes({
+    closed: [closed(1, '2024-01-10', 20_000_000, '2024-12-20', 5_000_000), closed(2, '2025-06-01', 15_000_000, '2025-09-01', 1_000_000)],
+    open: [],
+    dividends: [
+      { market: 'KR', ticker: 'AAA', date: '2023-12-01', amountKrw: 100 },
+      { market: 'KR', ticker: 'AAA', date: '2025-04-15', amountKrw: 300_000 },
+      { market: 'KR', ticker: 'AAA', date: '2025-07-01', amountKrw: 50_000 },
+    ],
+  })
+  assert.deepEqual(episodes.map((e) => e.dividendsKrw), [300_000, 50_000])
+})

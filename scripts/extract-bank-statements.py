@@ -1224,6 +1224,9 @@ def _bucket(flow):
         # left unpaired stays with the 파킹통장 estimate, where the other leg (if a
         # statement on file shows one) cancels it rather than counting twice.
         return None if "이자" in memo else "tossbank-parking"
+    if "카드" in memo:
+        # A card payment and its refund are spending, whichever leg came first.
+        return None
     if flow["statement"] == "tossbank":
         if memo == "파킹통장":
             return "tossbank-parking"
@@ -1241,7 +1244,9 @@ def _bucket(flow):
             return "mg-savings"
         if flow.get("kind") == "현금" and flow["amount"] > 0:
             return "counterparty:현금|새마을금고 내역"
-        return f"counterparty:{memo}|새마을금고 내역"
+        # By name, the same key a Toss Bank row gets: money lent from one statement
+        # and repaid into the other is one round trip.
+        return f"counterparty:{memo}"
     if "대체" in memo:  # 미래에셋: a 계좌대체 to or from an account other than the ones on file
         return "mirae-other"
     return f"counterparty:{memo}|미래에셋증권"
