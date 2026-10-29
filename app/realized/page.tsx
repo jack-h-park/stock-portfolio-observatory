@@ -4,6 +4,8 @@ import { DataTable } from '@/components/DataTable'
 import { FilterBar } from '@/components/FilterBar'
 import { Badge, Card, Label, Signed, marketTone } from '@/components/ui'
 import { getRealizedLots } from '@/lib/adapters/portfolio-db'
+import { todayLosAngeles } from '@/lib/cli/common'
+import { NOT_COVERED_LINES, selectTaxExportRows, summarizeTaxExport } from '@/lib/tax-export'
 import { formatKrw, formatUsd } from '@/lib/currency'
 import { fmtNumber, fmtQuantity } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
@@ -34,7 +36,7 @@ export default async function RealizedLotsPage({
   const { years, defaultYear, year, selected, options, query, inYear, filtered } = queryRealized(
     rows,
     params,
-    String(new Date().getFullYear())
+    todayLosAngeles().slice(0, 4)
   )
   const rawCurrency = Array.isArray(params.ccy) ? params.ccy[0] : params.ccy
   const currency: 'krw' | 'usd' = rawCurrency === 'usd' ? 'usd' : 'krw'
@@ -45,14 +47,17 @@ export default async function RealizedLotsPage({
   const totals = sumRealized(filtered)
 
   const money = (krw: number | null, dollars: number | null) => (usd ? (dollars == null ? null : formatUsd(dollars)) : formatKrw(krw))
-  const exportParams = new URLSearchParams()
-  for (const [key, value] of Object.entries(params)) {
-    const single = Array.isArray(value) ? value[0] : value
-    if (single != null && key !== 'sort' && key !== 'ccy') exportParams.set(key, single)
-  }
-  // Pin the year the table is showing, so the file matches it even when that year was a default.
-  exportParams.set('year', year)
-  const exportHref = `${BASE}/export?${exportParams.toString()}`
+
+  // The download block is its own control: the table's filters never reach the file.
+  const exportYearAsked = Array.isArray(params.exportYear) ? params.exportYear[0] : params.exportYear
+  const exportYear = exportYearAsked === ALL_YEARS || (exportYearAsked && years.includes(exportYearAsked)) ? exportYearAsked : year
+  const exportAudit = (Array.isArray(params.exportAudit) ? params.exportAudit[0] : params.exportAudit) === '1'
+  const exportSummary = summarizeTaxExport(
+    selectTaxExportRows(getRealizedLots({ includeSuperseded: exportAudit }), { year: exportYear, audit: exportAudit })
+  )
+  const exportQuery = `year=${encodeURIComponent(exportYear)}${exportAudit ? '&audit=1' : ''}`
+  const downloadLinkClass =
+    'inline-flex min-h-8 items-center rounded-sm border border-line bg-card px-2.5 text-label font-medium text-ink-2 hover:border-ink-3 hover:bg-surface hover:text-ink'
 
   const yearOptions = [
     ...years.map((value) => ({ value, label: value })),
@@ -125,15 +130,51 @@ export default async function RealizedLotsPage({
           {usd && totals.missing_usd > 0 ? (
             <p className="text-caption text-ink-3">{copy.totals.missing(fmtNumber(totals.missing_usd))}</p>
           ) : null}
-          <div className="flex flex-wrap items-center gap-3">
-            <Link
-              href={exportHref}
-              prefetch={false}
-              className="inline-flex min-h-8 items-center rounded-sm border border-line bg-card px-2.5 text-label font-medium text-ink-2 hover:border-ink-3 hover:bg-surface hover:text-ink"
-            >
-              {copy.export}
-            </Link>
-            <span className="max-w-3xl text-caption text-ink-3">{copy.exportNote}</span>
+          <div className="space-y-2 rounded-md border border-line-subtle bg-surface px-3 py-2">
+            <Label>{copy.taxExport.title}</Label>
+            <form method="get" action={BASE} className="flex flex-wrap items-center gap-3 text-caption text-ink-2">
+              {Object.entries(params).map(([key, value]) => {
+                const single = Array.isArray(value) ? value[0] : value
+                return single != null && key !== 'exportYear' && key !== 'exportAudit' ? (
+                  <input key={key} type="hidden" name={key} value={single} />
+                ) : null
+              })}
+              <label className="flex items-center gap-1.5">
+                {copy.taxExport.year}
+                <select name="exportYear" defaultValue={exportYear} className="min-h-8 rounded-sm border border-line bg-card px-2 text-label text-ink">
+                  {yearOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input type="checkbox" name="exportAudit" value="1" defaultChecked={exportAudit} />
+                {copy.taxExport.audit}
+              </label>
+              <button type="submit" className={downloadLinkClass}>
+                {copy.taxExport.apply}
+              </button>
+            </form>
+            <div className="flex flex-wrap items-center gap-3">
+              <a href={`${BASE}/export?${exportQuery}`} className={downloadLinkClass}>
+                {copy.taxExport.csv}
+              </a>
+              <a href={`${BASE}/export/notes?${exportQuery}`} className={downloadLinkClass}>
+                {copy.taxExport.notes}
+              </a>
+            </div>
+            <p className="text-caption text-ink-2">{copy.taxExport.counts(exportSummary.rows, exportSummary.blankDollar)}</p>
+            <p className="text-caption text-ink-3">{copy.taxExport.filtersIgnored}</p>
+            <details className="text-caption text-ink-3">
+              <summary className="cursor-pointer">{copy.taxExport.notCovered}</summary>
+              <ul className="mt-1 list-disc space-y-1 pl-5">
+                {NOT_COVERED_LINES.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </details>
           </div>
           <DataTable
             rows={sorted}
