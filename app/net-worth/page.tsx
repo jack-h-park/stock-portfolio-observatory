@@ -4,7 +4,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, MetricField } from '@/components/ui'
 import { CardRow } from '@/components/layout'
 import { StackedAssetChart } from '@/components/charts'
-import { getAssetEvents, getChildAssets, getForeignAccountMaxima, getMeta, getNetWorth, getSnapshotDates, getTotalAssetsSeries, portfolioToday } from '@/lib/adapters/portfolio-db'
+import { getAssetAllocation, getAssetEvents, getChildAssets, getForeignAccountMaxima, getMeta, getNetWorth, getSnapshotDates, getTotalAssetsSeries, portfolioToday } from '@/lib/adapters/portfolio-db'
 import { convertMoney, createMoneyFormatter, formatKrw, formatUsd } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { fmtDate, fmtDateTime } from '@/lib/format'
@@ -14,6 +14,8 @@ import { lastCompleteYear, type ForeignAccountRow } from '@/lib/fbar'
 import { ASSET_CLASSES, type NetWorth, type TotalAssetsPoint } from '@/lib/net-worth'
 import { chartMarkers, snapEventDates } from '@/lib/asset-events'
 import { AssetEventList } from '@/components/AssetEventList'
+import { AllocationShares } from '@/components/AllocationShares'
+import type { AllocationClass, AllocationWrapper } from '@/lib/asset-allocation'
 import { getPageCopy } from '@/lib/ui-copy'
 
 export const dynamic = 'force-dynamic'
@@ -25,6 +27,25 @@ type ChildRow = { key: string; owner: string; account: string; asOf: string | nu
 
 /** The first year the FBAR table offers: the Treasury rates file starts here. */
 const FBAR_FIRST_YEAR = 2020
+
+/**
+ * Gold, crypto and cash keep the colours the total-assets chart gives them
+ * (crypto is marketColor('CRYPTO'), written out: charts.tsx is a client module).
+ */
+const CLASS_COLORS: Record<AllocationClass, string> = {
+  kr_equity: 'var(--brand-cyan)',
+  us_equity: 'var(--brand-blue)',
+  bonds: 'var(--brand-purple)',
+  gold: 'var(--brand-pink)',
+  crypto: 'var(--accent-warning)',
+  cash: 'var(--accent-success)',
+  unclassified: 'var(--text-tertiary)',
+}
+const WRAPPER_COLORS: Record<AllocationWrapper, string> = {
+  taxable: 'var(--brand-blue)',
+  isa: 'var(--brand-cyan)',
+  pension: 'var(--brand-purple)',
+}
 
 export default async function NetWorthPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams
@@ -38,6 +59,8 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
     convertMoney(krw, 'KRW', currencyPreferences.displayCurrency, currencyPreferences.usdKrwRate).value / 1_000_000
   const meta = getMeta()
   const netWorth = getNetWorth()
+  const allocation = getAssetAllocation(netWorth)
+  const allocationCopy = copy.allocation
   const classes = ASSET_CLASSES
   // Every snapshot date, plus today. The month-end table keeps the last point of
   // each month: the month's last snapshot, and today for the current month.
@@ -148,6 +171,42 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
           ) : null}
         </Card>
       </CardRow>
+
+      <Card title={allocationCopy.title} className="mb-5">
+        <div className="grid grid-cols-1 divide-y divide-line-subtle md:grid-cols-2 md:divide-x md:divide-y-0">
+          <AllocationShares
+            title={allocationCopy.byClass}
+            shares={allocation.classes}
+            labels={allocationCopy.classes}
+            colors={CLASS_COLORS}
+            money={money}
+            columns={allocationCopy.columns}
+          />
+          <AllocationShares
+            title={allocationCopy.byWrapper}
+            shares={allocation.wrappers}
+            labels={allocationCopy.wrappers}
+            colors={WRAPPER_COLORS}
+            money={money}
+            columns={allocationCopy.columns}
+            note={allocationCopy.wrapperNote}
+          />
+        </div>
+        <div className="flex flex-col gap-1 border-t border-line-subtle bg-surface px-4 py-3 text-label leading-relaxed text-ink-3">
+          <p>{allocationCopy.note}</p>
+          {allocation.marketDefaults.length ? (
+            <details>
+              <summary className="cursor-pointer">
+                {allocationCopy.marketDefaults(allocation.marketDefaults.length)} {allocationCopy.showDefaults}
+              </summary>
+              <p className="mt-1">
+                {allocation.marketDefaults.map((row) => `${row.market}:${row.ticker} ${row.name} (${allocationCopy.classes[row.market === 'US' ? 'us_equity' : 'kr_equity']})`).join(' · ')}
+              </p>
+            </details>
+          ) : null}
+          {allocation.unclassified.length ? <p>{allocationCopy.unclassified(allocation.unclassified.map((row) => row.name).join(', '))}</p> : null}
+        </div>
+      </Card>
 
       <Card
         title={copy.trend}
