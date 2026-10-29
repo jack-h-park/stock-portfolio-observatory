@@ -30,6 +30,10 @@ export type RealizedLotRow = {
   holding_days: number | null
   tax_term: string | null
   basis: string | null
+  asset_class: string | null
+  form_8949_box: string | null
+  covered_status: string | null
+  superseded_by: string | null
 }
 
 export type UsdRate = { rate: number; date: string }
