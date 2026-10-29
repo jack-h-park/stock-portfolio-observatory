@@ -49,29 +49,11 @@ import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow, KpiBand } from '@/components/layout'
 import { AssetViewLink } from '@/components/LanguageSwitcher'
 import { WashSaleBanner } from '@/components/WashSaleBanner'
+import { TrendRangeLinks } from '@/components/TrendRangeLinks'
+import { resolveTrendRange, trendRangeDays } from '@/lib/trend-ranges'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/')
-
-const TREND_RANGES = [
-  { key: '30', label: '1M', days: 30 },
-  { key: '90', label: '3M', days: 90 },
-  { key: '180', label: '6M', days: 180 },
-  { key: 'ytd', label: 'YTD', days: 'ytd' },
-  { key: '365', label: '1Y', days: 365 },
-  { key: '730', label: '2Y', days: 730 },
-  { key: '1095', label: '3Y', days: 1095 },
-  { key: '1825', label: '5Y', days: 1825 },
-  { key: 'all', label: 'All', days: 3650 },
-] as const
-const DEFAULT_TREND_RANGE = TREND_RANGES.find((range) => range.key === '730')!
-
-function trendRangeDays(days: number | 'ytd') {
-  if (days !== 'ytd') return days
-  const now = new Date()
-  const yearStart = new Date(now.getFullYear(), 0, 1)
-  return Math.max(1, Math.floor((now.getTime() - yearStart.getTime()) / 86_400_000) + 1)
-}
 
 const shortAxisLabel = (value: string) => value.length > 20 ? `${value.slice(0, 19)}...` : value
 const positionAxisLabel = (market: string, name: string, ticker: string) => {
@@ -113,7 +95,7 @@ export default async function OverviewPage({
 
   const meta = getMeta()
   const params = await searchParams
-  const selectedRange = TREND_RANGES.find((range) => range.key === params.trend) ?? DEFAULT_TREND_RANGE
+  const selectedRange = resolveTrendRange(params.trend)
   const selectedScope = resolveTrendScope(params.scope)
   const legacyMetricMap: Record<string, TrendMetricKey> = {
     global_base_market_value: 'market_value',
@@ -493,16 +475,7 @@ export default async function OverviewPage({
         className="mb-5"
         action={
           <div className="flex flex-wrap items-center justify-end gap-1">
-            {TREND_RANGES.map((range) => (
-              <Link
-                key={range.key}
-                href={`/?trend=${range.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}${childQuery}`}
-                scroll={false}
-                className={`rounded-sm border px-2 py-1 text-label font-medium ${selectedRange.key === range.key ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
-              >
-                {range.label}
-              </Link>
-            ))}
+            <TrendRangeLinks selected={selectedRange} hrefFor={(key) => `/?trend=${key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}${childQuery}`} />
           </div>
         }
       >
@@ -617,16 +590,7 @@ export default async function OverviewPage({
           className="mb-5"
           action={
             <div className="flex flex-wrap items-center justify-end gap-1">
-              {TREND_RANGES.map((range) => (
-                <Link
-                  key={range.key}
-                  href={`/?trend=${range.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}${childQuery}`}
-                  scroll={false}
-                  className={`rounded-sm border px-2 py-1 text-label font-medium ${selectedRange.key === range.key ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
-                >
-                  {range.label}
-                </Link>
-              ))}
+              <TrendRangeLinks selected={selectedRange} hrefFor={(key) => `/?trend=${key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}${childQuery}`} />
               <Link
                 href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}${includeChildren ? '' : '&children=1'}`}
                 scroll={false}
