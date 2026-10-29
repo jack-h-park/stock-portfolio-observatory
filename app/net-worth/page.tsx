@@ -64,6 +64,23 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
   const netWorth = getNetWorth()
   const allocation = getAssetAllocation(netWorth)
   const allocationCopy = copy.allocation
+  // Per class, the securities a mapping moved in from their market's class.
+  const movedDetails = Object.fromEntries(
+    Object.entries(allocation.reclassified).map(([key, rows]) => [
+      key,
+      <span key={key} className="flex flex-col gap-1 text-left">
+        <span>{allocationCopy.movedTitle(allocationCopy.classes[key as AllocationClass])}</span>
+        {rows!.map((row) => (
+          <span key={`${row.market}:${row.ticker}`} className="flex justify-between gap-3">
+            <span>
+              {row.ticker} <span className="text-ink-3">{row.name}</span>
+            </span>
+            <span className="shrink-0 tabular-nums">{money(row.valueKrw)}</span>
+          </span>
+        ))}
+      </span>,
+    ]),
+  ) as Partial<Record<AllocationClass, React.ReactNode>>
   const classes = ASSET_CLASSES
   // Every snapshot date, plus today. The month-end table keeps the last point of
   // each month: the month's last snapshot, and today for the current month.
@@ -190,6 +207,8 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
             colors={CLASS_COLORS}
             money={money}
             columns={allocationCopy.columns}
+            details={movedDetails}
+            detailLabel={allocationCopy.movedLabel}
           />
           <AllocationShares
             title={allocationCopy.byWrapper}

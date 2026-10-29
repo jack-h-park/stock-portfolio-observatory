@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+import { HelpPopover } from '@/components/HelpPopover'
 import type { AllocationShare } from '@/lib/asset-allocation'
 import { fmtPct } from '@/lib/format'
 
@@ -14,6 +16,8 @@ export function AllocationShares<K extends string>({
   money,
   columns,
   note,
+  details,
+  detailLabel,
 }: {
   title: string
   shares: AllocationShare<K>[]
@@ -22,6 +26,9 @@ export function AllocationShares<K extends string>({
   money: (krw: number) => string
   columns: { name: string; value: string; pct: string }
   note?: string
+  /** Shown in a popover beside a row's label, for the rows that have one. */
+  details?: Partial<Record<K, ReactNode>>
+  detailLabel?: (label: string) => string
 }) {
   return (
     <section className="flex flex-col gap-3 p-4">
@@ -46,6 +53,11 @@ export function AllocationShares<K extends string>({
               <th scope="row" className="py-2 text-left font-medium text-ink">
                 <span className="mr-2 inline-block h-2.5 w-2.5 rounded-full align-middle" style={{ background: colors[share.key] }} aria-hidden="true" />
                 {labels[share.key]}
+                {details?.[share.key] ? (
+                  <HelpPopover label={detailLabel?.(labels[share.key])} align="left">
+                    {details[share.key]}
+                  </HelpPopover>
+                ) : null}
               </th>
               <td className="py-2 text-right tabular-nums">{money(share.valueKrw)}</td>
               <td className="py-2 text-right font-medium tabular-nums text-ink">{fmtPct(share.pct, { digits: 1 })}</td>
