@@ -127,6 +127,10 @@ TYPE_MAP = {
     "주식매도출고": "SELL",
     "해외주식매도출고": "SELL",
     "외화채권매도출고": "SELL",
+    # The sale of a bond bought with 장내당일채권매수입고 (an ISA 국고채):
+    # 거래수량 is the face amount leaving, 거래금액 the proceeds. Its
+    # 매도대금입금 partner is the cash leg and is in CASH_LEG_TYPES.
+    "장내당일채권매도출고": "SELL",
     "소수해외매도출고": "SELL",
     # The share leg of a 주식배당, and it conveys nothing on its own. All three
     # rows on the books carry no quantity and no amount — the statement line is
@@ -269,6 +273,7 @@ CASH_LEG_TYPES = {
     "외화채권매도외화입금",
     "채권만기상환외화입금",
     "장내당일채권매수대금출금",
+    "장내당일채권매도대금입금",
     "공모주청약대금출금",
     "공모주청약환불금",
     "금현물매수출금",
