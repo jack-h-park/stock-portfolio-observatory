@@ -40,37 +40,6 @@ test('a gold ETF mapped to gold joins physical gold, out of US equity', () => {
   assert.deepEqual(r.marketDefaults.map((row) => row.ticker), ['AAA'])
 })
 
-test('pension holdings are split by what they hold: a cash row is cash, a mapped ETF is its class', () => {
-  const r = summarizeAllocation({
-    securities: [
-      security({ wrapper: 'irp', ticker: 'PENSION:t:cash:abc', name: 'Cash', valueKrw: 50 }),
-      security({ wrapper: 'irp', ticker: '360750', valueKrw: 250 }),
-      security({ wrapper: 'pension_savings', ticker: '069500', valueKrw: 200 }),
-    ],
-    cryptoKrw: 0,
-    goldKrw: 0,
-    cashKrw: 0,
-    classes: { 'KR:360750': 'us_equity' },
-  })
-  assert.equal(valueOf(r.classes, 'cash'), 50)
-  assert.equal(valueOf(r.classes, 'us_equity'), 250)
-  assert.equal(valueOf(r.classes, 'kr_equity'), 200)
-  assert.equal(valueOf(r.wrappers, 'pension'), 500)
-})
-
-test('a pension fund with no mapping has no market to fall back on: it is unclassified, not guessed', () => {
-  const r = summarizeAllocation({
-    securities: [security({ wrapper: 'irp', ticker: 'PENSION:t:abc123', name: 'Example fund', valueKrw: 70 })],
-    cryptoKrw: 0,
-    goldKrw: 0,
-    cashKrw: 0,
-    classes: {},
-  })
-  assert.equal(valueOf(r.classes, 'unclassified'), 70)
-  assert.deepEqual(r.unclassified.map((row) => row.name), ['Example fund'])
-  assert.deepEqual(r.marketDefaults, [])
-})
-
 test('every won lands in exactly one class and one wrapper, and the percentages add to 100', () => {
   const r = summarizeAllocation({
     securities: [
@@ -98,4 +67,57 @@ test('a class with nothing in it is dropped, and an empty portfolio has no perce
   assert.equal(r.totalKrw, 0)
   assert.deepEqual(r.classes, [])
   assert.deepEqual(r.wrappers, [])
+})
+
+test('one security held in several accounts is listed once, under the name of its largest holding', () => {
+  const r = summarizeAllocation({
+    securities: [
+      security({ ticker: '000660', name: 'Example Hynix', valueKrw: 100 }),
+      security({ wrapper: 'isa', ticker: '000660', name: 'Example Hynix Co', valueKrw: 300 }),
+      security({ market: 'US', ticker: 'AAA', valueKrw: 200 }),
+    ],
+    cryptoKrw: 0,
+    goldKrw: 0,
+    cashKrw: 0,
+    classes: {},
+  })
+  assert.deepEqual(
+    r.marketDefaults.map((row) => [row.ticker, row.name, row.valueKrw]),
+    [
+      ['000660', 'Example Hynix Co', 400],
+      ['AAA', 'Example', 200],
+    ],
+  )
+  assert.equal(valueOf(r.classes, 'kr_equity'), 400)
+})
+
+test('everything a pension holds is one pension class, whatever the mapping says', () => {
+  const r = summarizeAllocation({
+    securities: [
+      security({ wrapper: 'irp', ticker: 'PENSION:t:cash:abc', name: 'Cash', valueKrw: 50 }),
+      security({ wrapper: 'irp', ticker: '360750', valueKrw: 250 }),
+      security({ wrapper: 'pension_savings', ticker: 'PENSION:t:fund1', name: 'Example fund', valueKrw: 200 }),
+    ],
+    cryptoKrw: 0,
+    goldKrw: 0,
+    cashKrw: 0,
+    classes: { 'KR:360750': 'us_equity' },
+  })
+  assert.deepEqual(r.classes.map((row) => [row.key, row.valueKrw]), [['pension', 500]])
+  assert.equal(valueOf(r.wrappers, 'pension'), 500)
+  assert.deepEqual(r.marketDefaults, [])
+  assert.deepEqual(r.unclassified, [])
+})
+
+test('a security outside KR and US with no mapping is unclassified, not guessed', () => {
+  const r = summarizeAllocation({
+    securities: [security({ market: 'JP', ticker: '7203', name: 'Example JP', valueKrw: 70 })],
+    cryptoKrw: 0,
+    goldKrw: 0,
+    cashKrw: 0,
+    classes: {},
+  })
+  assert.equal(valueOf(r.classes, 'unclassified'), 70)
+  assert.deepEqual(r.unclassified.map((row) => row.name), ['Example JP'])
+  assert.deepEqual(r.marketDefaults, [])
 })

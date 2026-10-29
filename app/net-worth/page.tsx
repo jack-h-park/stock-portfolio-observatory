@@ -31,15 +31,16 @@ type ChildRow = { key: string; owner: string; account: string; asOf: string | nu
 const FBAR_FIRST_YEAR = 2020
 
 /**
- * Gold, crypto and cash keep the colours the total-assets chart gives them
+ * Gold, crypto, pension and cash keep the colours the total-assets chart gives them
  * (crypto is marketColor('CRYPTO'), written out: charts.tsx is a client module).
  */
 const CLASS_COLORS: Record<AllocationClass, string> = {
   kr_equity: 'var(--brand-cyan)',
   us_equity: 'var(--brand-blue)',
-  bonds: 'var(--brand-purple)',
+  bonds: 'var(--accent-info)',
   gold: 'var(--brand-pink)',
   crypto: 'var(--accent-warning)',
+  pension: 'var(--brand-purple)',
   cash: 'var(--accent-success)',
   unclassified: 'var(--text-tertiary)',
 }

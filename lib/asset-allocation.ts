@@ -1,18 +1,18 @@
 /**
  * Every asset the net worth counts, split two ways: by what it is (Korean or US
- * equity, bonds, gold, crypto, cash) and by the account wrapper it sits in
- * (taxable, ISA, pension). A pension is a wrapper, not an asset class, so its
- * holdings are split by what they hold like any other account's.
+ * equity, bonds, gold, crypto, pension, cash) and by the account wrapper it sits
+ * in (taxable, ISA, pension). A pension is one class, whatever it holds: its
+ * funds have no ticker or market to classify by, and are not split.
  *
- * A security takes its class from data/instrument-classes.json, the mapping the
- * rebalance engine reads, so a gold ETF counts as gold on both pages. Without a
- * mapping it falls back to its market (KR or US), and is listed so the fallback
- * can be checked. A pension fund has no market to fall back on and stays
- * unclassified: nothing is guessed.
+ * A taxable or ISA security takes its class from data/instrument-classes.json,
+ * the mapping the rebalance engine reads, so a gold ETF counts as gold on both
+ * pages. Without a mapping it falls back to its market (KR or US), and is listed
+ * so the fallback can be checked. Any other market stays unclassified: nothing
+ * is guessed.
  */
 import { classify, type InstrumentClasses } from './rebalance/instrument-classes'
 
-export const ALLOCATION_CLASSES = ['kr_equity', 'us_equity', 'bonds', 'gold', 'crypto', 'cash', 'unclassified'] as const
+export const ALLOCATION_CLASSES = ['kr_equity', 'us_equity', 'bonds', 'gold', 'crypto', 'pension', 'cash', 'unclassified'] as const
 export type AllocationClass = (typeof ALLOCATION_CLASSES)[number]
 export const ALLOCATION_WRAPPERS = ['taxable', 'isa', 'pension'] as const
 export type AllocationWrapper = (typeof ALLOCATION_WRAPPERS)[number]
@@ -25,23 +25,39 @@ export type AssetAllocation = {
   /** Non-empty classes only, in ALLOCATION_CLASSES order. */
   classes: AllocationShare<AllocationClass>[]
   wrappers: AllocationShare<AllocationWrapper>[]
-  /** Securities classed by their market because no mapping names them, largest first. */
+  /**
+   * Securities classed by their market because no mapping names them, one row
+   * per market and ticker across accounts, largest first.
+   */
   marketDefaults: AllocationSecurity[]
+  /** One row per market and ticker, as marketDefaults. */
   unclassified: AllocationSecurity[]
 }
 
 const PENSION_WRAPPERS = new Set(['irp', 'pension_savings'])
-/** A pension snapshot's cash row; see scripts/pension-ids.mjs. */
-const isPensionCash = (ticker: string) => ticker.startsWith('PENSION:') && ticker.includes(':cash:')
 
 function classOf(row: AllocationSecurity, classes: InstrumentClasses): { key: AllocationClass; byMarket: boolean } {
-  if (isPensionCash(row.ticker)) return { key: 'cash', byMarket: false }
+  if (PENSION_WRAPPERS.has(row.wrapper)) return { key: 'pension', byMarket: false }
   const mapped = classify(row, classes)
   if (mapped) return { key: mapped, byMarket: false }
-  if (row.ticker.startsWith('PENSION:')) return { key: 'unclassified', byMarket: false }
   if (row.market === 'KR') return { key: 'kr_equity', byMarket: true }
   if (row.market === 'US') return { key: 'us_equity', byMarket: true }
   return { key: 'unclassified', byMarket: false }
+}
+
+/**
+ * Rows with the same key summed into one, which keeps the name of its largest
+ * holding (brokers spell one company differently), largest first.
+ */
+function oneRowPer(rows: AllocationSecurity[], keyOf: (row: AllocationSecurity) => string): AllocationSecurity[] {
+  const largestFirst = (a: AllocationSecurity, b: AllocationSecurity) => b.valueKrw - a.valueKrw || a.ticker.localeCompare(b.ticker)
+  const merged = new Map<string, AllocationSecurity>()
+  for (const row of [...rows].sort(largestFirst)) {
+    const key = keyOf(row)
+    const seen = merged.get(key)
+    merged.set(key, seen ? { ...seen, valueKrw: seen.valueKrw + row.valueKrw } : row)
+  }
+  return [...merged.values()].sort(largestFirst)
 }
 
 function shares<K extends string>(order: readonly K[], values: Record<K, number>, totalKrw: number): AllocationShare<K>[] {
@@ -79,12 +95,11 @@ export function summarizeAllocation(input: {
   byWrapper.taxable += input.cryptoKrw + input.goldKrw + input.cashKrw
 
   const totalKrw = ALLOCATION_CLASSES.reduce((sum, key) => sum + byClass[key], 0)
-  const largestFirst = (a: AllocationSecurity, b: AllocationSecurity) => b.valueKrw - a.valueKrw || a.ticker.localeCompare(b.ticker)
   return {
     totalKrw,
     classes: shares(ALLOCATION_CLASSES, byClass, totalKrw),
     wrappers: shares(ALLOCATION_WRAPPERS, byWrapper, totalKrw),
-    marketDefaults: marketDefaults.sort(largestFirst),
-    unclassified: unclassified.sort(largestFirst),
+    marketDefaults: oneRowPer(marketDefaults, (row) => `${row.market}:${row.ticker}`),
+    unclassified: oneRowPer(unclassified, (row) => `${row.market}:${row.ticker}`),
   }
 }
