@@ -43,6 +43,7 @@ function lot(over: Partial<RealizedLotRow> = {}): RealizedLotRow {
     form_8949_box: null,
     covered_status: null,
     superseded_by: null,
+    collectible: null,
     ...over,
   }
 }
