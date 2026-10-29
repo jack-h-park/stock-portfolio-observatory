@@ -15,6 +15,8 @@ import { ASSET_CLASSES, type NetWorth, type TotalAssetsPoint } from '@/lib/net-w
 import { chartMarkers, snapEventDates } from '@/lib/asset-events'
 import { AssetEventList } from '@/components/AssetEventList'
 import { AllocationShares } from '@/components/AllocationShares'
+import { TrendRangeLinks } from '@/components/TrendRangeLinks'
+import { DEFAULT_TREND_RANGE, resolveTrendRange, trendRangeDays, type TrendRange } from '@/lib/trend-ranges'
 import type { AllocationClass, AllocationWrapper } from '@/lib/asset-allocation'
 import { getPageCopy } from '@/lib/ui-copy'
 
@@ -65,7 +67,11 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
   // Every snapshot date, plus today. The month-end table keeps the last point of
   // each month: the month's last snapshot, and today for the current month.
   const totalAssets = getTotalAssetsSeries(getSnapshotDates(100 * 365), netWorth)
-  const eventMarkers = snapEventDates(getAssetEvents(), totalAssets.points.map((point) => point.date))
+  // The chart and its events cover the selected period only (?trend=, 2Y by
+  // default, as on the overview); the month-end table keeps every month.
+  const selectedRange = resolveTrendRange(params.trend)
+  const trendAssets = getTotalAssetsSeries(getSnapshotDates(trendRangeDays(selectedRange.days)), netWorth)
+  const eventMarkers = snapEventDates(getAssetEvents(), trendAssets.points.map((point) => point.date))
   const eventsCopy = getPageCopy('assetEvents', language)
   // Self only unless ?children=1. Even then the children are their own band,
   // column and table: never inside a total on this page.
@@ -73,8 +79,10 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
   const childAssets = includeChildren ? getChildAssets(totalAssets.points.map((point) => point.date)) : null
   const childrenOn = new Map((childAssets?.points ?? []).map((point) => [point.date, point.total]))
   const childCopy = copy.children
-  const hrefWith = (next: { fbarYear?: number; children?: boolean }) => {
+  const hrefWith = (next: { fbarYear?: number; children?: boolean; trend?: TrendRange['key'] }) => {
     const query = new URLSearchParams()
+    const trend = next.trend ?? selectedRange.key
+    if (trend !== DEFAULT_TREND_RANGE.key) query.set('trend', trend)
     const year = next.fbarYear ?? (params.fbarYear ? Number(Array.isArray(params.fbarYear) ? params.fbarYear[0] : params.fbarYear) : null)
     if (year) query.set('fbarYear', String(year))
     if (next.children ?? includeChildren) query.set('children', '1')
@@ -212,19 +220,22 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
         title={copy.trend}
         className="mb-5"
         action={
-          <Link
-            href={hrefWith({ children: !includeChildren })}
-            scroll={false}
-            aria-pressed={includeChildren}
-            title={childCopy.toggleHint}
-            className={`rounded-sm border px-2 py-1 text-label font-medium ${includeChildren ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
-          >
-            {childCopy.toggle}
-          </Link>
+          <div className="flex flex-wrap items-center justify-end gap-1">
+            <TrendRangeLinks selected={selectedRange} hrefFor={(trend) => hrefWith({ trend })} />
+            <Link
+              href={hrefWith({ children: !includeChildren })}
+              scroll={false}
+              aria-pressed={includeChildren}
+              title={childCopy.toggleHint}
+              className={`rounded-sm border px-2 py-1 text-label font-medium ${includeChildren ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
+            >
+              {childCopy.toggle}
+            </Link>
+          </div>
         }
       >
         <StackedAssetChart
-          points={totalAssets.points.map((point) => ({
+          points={trendAssets.points.map((point) => ({
             date: point.date,
             stocks: point.stocks == null ? null : toDisplayMillions(point.stocks),
             crypto: point.crypto == null ? null : toDisplayMillions(point.crypto),
@@ -235,11 +246,11 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
             ...(includeChildren ? { children: childrenOn.get(point.date) == null ? null : toDisplayMillions(childrenOn.get(point.date)!) } : {}),
           }))}
           childrenBand={includeChildren ? { label: childCopy.band, combinedLabel: childCopy.combined } : undefined}
-          startsOn={totalAssets.startsOn}
+          startsOn={trendAssets.startsOn}
           currency={currencyPreferences.displayCurrency}
           labels={{ ...copy.classes, total: copy.historyColumns.total }}
           axisLabel={currencyPreferences.displayCurrency === 'USD' ? copy.chartAxisUsd : copy.chartAxisKrw}
-          markers={chartMarkers(eventMarkers, totalAssets.points[0]?.date)}
+          markers={chartMarkers(eventMarkers, trendAssets.points[0]?.date)}
         />
         <div className="mt-1 text-label text-ink-3">
           {copy.trendStarts(classes.filter((key) => totalAssets.startsOn[key]).map((key) => copy.classSince(copy.classes[key], fmtDate(totalAssets.startsOn[key]!))))}
