@@ -34,6 +34,8 @@ export type RealizedLotRow = {
   form_8949_box: string | null
   covered_status: string | null
   superseded_by: string | null
+  /** Gold and other collectibles; null where the source has no such column. */
+  collectible: boolean | null
 }
 
 export type UsdRate = { rate: number; date: string }
@@ -137,7 +139,7 @@ export function defaultSoldYear(years: string[], currentYear: string): string {
   return latest ?? ALL_YEARS
 }
 
-function csvCell(value: string | number | null): string {
+export function csvCell(value: string | number | null): string {
   if (value == null) return ''
   const text = String(value)
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
