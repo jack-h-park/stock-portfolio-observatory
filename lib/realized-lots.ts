@@ -82,6 +82,7 @@ export function toRealizedView(row: RealizedLotRow, rateAt: (date: string) => Us
   }
   return {
     ...row,
+    collectible: row.collectible ?? null,
     sold_year: soldYear,
     cost_usd: cost,
     proceeds_usd: proceeds,

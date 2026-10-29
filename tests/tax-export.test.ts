@@ -231,3 +231,19 @@ test('notes state the build date, the row counts and every NOT_COVERED_LINES ent
   for (const line of NOT_COVERED_LINES) assert.ok(notes.includes(line), line)
   assert.match(taxExportNotes(summary, { year: '2026', builtAt: null, audit: false }), /build date is unknown/i)
 })
+
+test('a row without a collectible key yields null and a false cell', () => {
+  const { collectible: _omit, ...rest } = lot() as unknown as Record<string, unknown>
+  void _omit
+  const view = toRealizedView(rest as unknown as RealizedLotRow, (d) => rateOnOrBefore(RATES, d))
+  assert.equal(view.collectible, null)
+  assert.equal(cells(dataLines(taxExportCsv([view]))[0])[col('collectible')], 'false')
+})
+
+test('stored free-text cells starting with a formula character are neutralised', () => {
+  const c = cells(dataLines(taxExportCsv([lot({ basis: '=1+1', market: '@X', form_8949_box: '+A', asset_class: '-y' })]))[0])
+  assert.equal(c[col('basis_source')], "'=1+1")
+  assert.equal(c[col('market')], "'@X")
+  assert.equal(c[col('form_8949_box')], "'+A")
+  assert.equal(c[col('asset_class')], "'-y")
+})
