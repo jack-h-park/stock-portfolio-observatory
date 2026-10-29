@@ -1,24 +1,19 @@
-import { getRealizedLots } from '@/lib/adapters/portfolio-db'
-import { form8949Csv } from '@/lib/realized-lots'
-import { queryRealized } from '@/lib/realized-lots-query'
+import { taxExportCsv } from '@/lib/tax-export'
+import { EXPORT_HEADERS, loadTaxExport } from '@/lib/tax-export-request'
 
 export const dynamic = 'force-dynamic'
 
 /**
- * The table's rows as a Form 8949 worksheet.
- *
- * It reads the URL through the same function as the page, so the file holds
- * exactly what the table shows for those filters. The page pins the year it is
- * showing into the link, so a default year is never a surprise in the file.
+ * The tax worksheet for one sale year (or every year). It reads only `year` and
+ * `audit` from the URL; the table's filters do not apply.
  */
 export async function GET(request: Request) {
-  const params = Object.fromEntries(new URL(request.url).searchParams.entries())
-  const { filtered, year } = queryRealized(getRealizedLots(), params, String(new Date().getFullYear()))
-  return new Response(form8949Csv(filtered), {
+  const { rows, fileStem } = loadTaxExport(request)
+  return new Response(taxExportCsv(rows), {
     headers: {
+      ...EXPORT_HEADERS,
       'content-type': 'text/csv; charset=utf-8',
-      'content-disposition': `attachment; filename="realized-lots-${year}.csv"`,
-      'cache-control': 'no-store',
+      'content-disposition': `attachment; filename="${fileStem}.csv"`,
     },
   })
 }
