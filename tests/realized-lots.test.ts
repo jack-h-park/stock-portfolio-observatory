@@ -39,6 +39,10 @@ function lot(over: Partial<RealizedLotRow> = {}): RealizedLotRow {
     holding_days: 648,
     tax_term: 'Long-term',
     basis: 'replay',
+    asset_class: null,
+    form_8949_box: null,
+    covered_status: null,
+    superseded_by: null,
     ...over,
   }
 }

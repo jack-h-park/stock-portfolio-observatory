@@ -786,6 +786,19 @@ export function getMeta() {
   }
 }
 
+/** When the last ingest finished, or null for a database that never recorded it. */
+export function getIngestedAt(): string | null {
+  const conn = db()
+  try {
+    const row = conn.prepare("select value from meta where key = 'ingested_at'").get() as { value: string } | undefined
+    return row?.value ?? null
+  } catch {
+    return null
+  } finally {
+    conn.close()
+  }
+}
+
 export function getOverview() {
   const conn = db()
   try {
@@ -5394,13 +5407,14 @@ export function getTaxLots(limit = 300) {
 }
 
 /**
- * Every closed lot, stocks and crypto, with the dollar figures a US filing needs.
+ * Every closed lot of the maintainer's own, stocks and crypto, with the dollar figures a US filing needs.
+ * Another owner's lots (a child's account) are never returned.
  *
  * Reads the `realized_lots` view, which already leaves out physical gold, and
  * skips a replay row that a 1099-B filing replaced: both would count one sale
  * twice. A database too old to have the table returns nothing rather than throw.
  */
-export function getRealizedLots(): RealizedLotView[] {
+export function getRealizedLots(options: { includeSuperseded?: boolean } = {}): RealizedLotView[] {
   const conn = db()
   try {
     const hasTable = (name: string) =>
@@ -5408,13 +5422,14 @@ export function getRealizedLots(): RealizedLotView[] {
     if (!hasTable('realized_lots')) return []
     const columns = new Set((conn.prepare('pragma table_info(realized_lots)').all() as { name: string }[]).map((c) => c.name))
     const col = (name: string) => (columns.has(name) ? name : `null as ${name}`)
-    const notSuperseded = columns.has('superseded_by') ? "where coalesce(superseded_by, '') = ''" : ''
+    const notSuperseded = columns.has('superseded_by') && !options.includeSuperseded ? " and coalesce(superseded_by, '') = ''" : ''
     const rows = conn
       .prepare(
         `select market, currency, ${col('brokerage')}, account, ticker, name, acquired_date, sold_date, quantity_sold,
                 cost_basis_krw, proceeds_krw, realized_gl_krw, ${col('acquisition_cost_usd')}, ${col('native_proceeds')},
-                holding_days, tax_term, ${col('basis')}
-           from realized_lots ${notSuperseded}
+                holding_days, tax_term, ${col('basis')}, ${col('asset_class')}, ${col('form_8949_box')},
+                ${col('covered_status')}, ${col('superseded_by')}
+           from realized_lots where 1 = 1${selfOnlyAnd(conn, 'realized_lots')}${notSuperseded}
           order by sold_date desc, market, ticker, acquired_date`
       )
       .all() as RealizedLotRow[]
