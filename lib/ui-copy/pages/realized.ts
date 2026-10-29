@@ -27,7 +27,8 @@ export const realized = defineCopy({
       csv: 'Download worksheet (CSV)',
       notes: 'Download notes (text)',
       filtersIgnored: 'The filters, search and sort above do not apply to the download: it holds every row of the year chosen here.',
-      counts: (rows: number, blank: number) => `${rows} row(s) in the file; ${blank} with a blank dollar figure (unknown, not zero).`,
+      counts: (rows: number, blank: number, superseded: number) =>
+        `${rows + superseded} row(s) in the file${superseded > 0 ? ` (${rows} reported, ${superseded} superseded)` : ''}; ${blank} with a blank dollar figure (unknown, not zero).`,
       notCovered: 'What the download does not cover',
     },
     approximateRate: 'No rate for the sale date; the nearest earlier one was used.',
@@ -74,7 +75,8 @@ export const realized = defineCopy({
       csv: '작업용 CSV 내려받기',
       notes: '설명 파일(텍스트) 내려받기',
       filtersIgnored: '위의 필터, 검색, 정렬은 내려받는 파일에 적용되지 않습니다. 여기서 고른 연도의 모든 행이 담깁니다.',
-      counts: (rows: number, blank: number) => `파일에 ${rows}행, 그중 달러 값이 빈 행 ${blank}개 (0이 아니라 알 수 없음).`,
+      counts: (rows: number, blank: number, superseded: number) =>
+        `파일에 ${rows + superseded}행${superseded > 0 ? ` (보고 ${rows}행, 대체됨 ${superseded}행)` : ''}, 그중 달러 값이 빈 행 ${blank}개 (0이 아니라 알 수 없음).`,
       notCovered: '내려받는 파일이 다루지 않는 것',
     },
     approximateRate: '매도일 환율이 없어 가장 가까운 이전 환율을 썼습니다.',

@@ -23,9 +23,14 @@ test('realized copy carries the tax export block strings', () => {
       assert.equal(typeof copy.taxExport[key], 'string', `${language} taxExport.${key}`)
       assert.ok(copy.taxExport[key].length > 0)
     }
-    const counts = copy.taxExport.counts(12, 3)
+    const counts = copy.taxExport.counts(12, 3, 0)
     assert.match(counts, /12/)
     assert.match(counts, /3/)
+    // Audit mode: the file holds reported plus superseded rows, and the text counts both.
+    const audit = copy.taxExport.counts(12, 3, 5)
+    assert.match(audit, /17/)
+    assert.match(audit, /12/)
+    assert.match(audit, /5/)
     assert.equal('export' in copy, false)
     assert.equal('exportNote' in copy, false)
   }

@@ -29,6 +29,7 @@ function lot(over: Partial<RealizedLotRow> = {}) {
     realized_gl_krw: -35_000,
     acquisition_cost_usd: 500,
     native_proceeds: 665_000,
+    native_realized_gl: null,
     holding_days: 648,
     tax_term: 'Long-term',
     basis: 'replay',
@@ -46,10 +47,10 @@ const dataLines = (csv: string) => csv.split('\r\n').slice(1, -1)
 const cells = (line: string) => line.split(',')
 const col = (name: (typeof TAX_EXPORT_HEADER)[number]) => TAX_EXPORT_HEADER.indexOf(name)
 
-test('header is the 18 columns in spec order', () => {
+test('header is the 19 columns in spec order', () => {
   assert.deepEqual(
     [...TAX_EXPORT_HEADER],
-    ['description', 'date_acquired', 'date_sold', 'proceeds_usd', 'cost_basis_usd', 'gain_loss_usd', 'term', 'form_8949_box', 'covered', 'basis_source', 'row_status', 'asset_class', 'market', 'collectible', 'proceeds_rate_note', 'broker', 'account_alias', 'ticker']
+    ['description', 'date_acquired', 'date_sold', 'proceeds_usd', 'cost_basis_usd', 'adjustment_usd', 'gain_loss_usd', 'term', 'form_8949_box', 'covered', 'basis_source', 'row_status', 'asset_class', 'market', 'collectible', 'proceeds_rate_note', 'broker', 'account_alias', 'ticker']
   )
 })
 
@@ -246,4 +247,67 @@ test('stored free-text cells starting with a formula character are neutralised',
   assert.equal(c[col('market')], "'@X")
   assert.equal(c[col('form_8949_box')], "'+A")
   assert.equal(c[col('asset_class')], "'-y")
+})
+
+const usdLot = (over: Partial<RealizedLotRow> = {}) =>
+  lot({ market: 'US', currency: 'USD', basis: '1099b', form_8949_box: 'A', covered_status: 'Covered', ...over })
+
+test('a 1099b row exports the broker gain and the adjustment as the difference', () => {
+  const c = cells(dataLines(taxExportCsv([usdLot({ native_proceeds: 900, acquisition_cost_usd: 1000, native_realized_gl: 0 })]))[0])
+  assert.equal(c[col('proceeds_usd')], '900.00')
+  assert.equal(c[col('cost_basis_usd')], '1000.00')
+  assert.equal(c[col('adjustment_usd')], '100.00')
+  assert.equal(c[col('gain_loss_usd')], '0.00')
+})
+
+test('a 1099b row with no adjustment prints 0.00; with an unknown figure the adjustment is blank', () => {
+  const same = cells(dataLines(taxExportCsv([usdLot({ native_proceeds: 900, acquisition_cost_usd: 800, native_realized_gl: 100 })]))[0])
+  assert.equal(same[col('adjustment_usd')], '0.00')
+  assert.equal(same[col('gain_loss_usd')], '100.00')
+  const noForm = cells(dataLines(taxExportCsv([usdLot({ native_proceeds: 900, acquisition_cost_usd: 800, native_realized_gl: null })]))[0])
+  assert.equal(noForm[col('adjustment_usd')], '')
+  assert.equal(noForm[col('gain_loss_usd')], '100.00')
+  const noCost = cells(dataLines(taxExportCsv([usdLot({ native_proceeds: 900, acquisition_cost_usd: null, native_realized_gl: 5 })]))[0])
+  assert.equal(noCost[col('adjustment_usd')], '')
+  assert.equal(noCost[col('gain_loss_usd')], '')
+})
+
+test('a replay row has a blank adjustment and ignores native_realized_gl', () => {
+  const c = cells(dataLines(taxExportCsv([lot({ native_realized_gl: -35_000 })]))[0])
+  assert.equal(c[col('adjustment_usd')], '')
+  assert.equal(c[col('gain_loss_usd')], (665000 / 1330 - 500).toFixed(2))
+})
+
+test('the page view of a 1099b row carries the broker gain too', () => {
+  assert.equal(usdLot({ native_proceeds: 900, acquisition_cost_usd: 1000, native_realized_gl: 0 }).gain_usd, 0)
+})
+
+test('rounded cells add up: gain is the difference of the printed proceeds and cost', () => {
+  const rows = [usdLot({ basis: 'replay', native_proceeds: 100.004, acquisition_cost_usd: 50.006 })]
+  const c = cells(dataLines(taxExportCsv(rows))[0])
+  assert.equal(c[col('proceeds_usd')], '100.00')
+  assert.equal(c[col('cost_basis_usd')], '50.01')
+  assert.equal(c[col('gain_loss_usd')], '49.99')
+})
+
+test('a term total equals the sum of the exported gain cells', () => {
+  const rows = Array.from({ length: 3 }, (_, i) => usdLot({ basis: 'replay', ticker: `T${i}`, native_proceeds: 100.004, acquisition_cost_usd: 50.006 }))
+  const sum = dataLines(taxExportCsv(rows)).reduce((acc, l) => acc + Math.round(Number(cells(l)[col('gain_loss_usd')]) * 100), 0)
+  assert.equal(summarizeTaxExport(rows).byTerm.long.gain_usd, sum / 100)
+  assert.equal(summarizeTaxExport(rows).byTerm.long.gain_usd, 149.97)
+})
+
+test('a tiny negative value prints 0.00, never -0.00', () => {
+  const c = cells(dataLines(taxExportCsv([usdLot({ basis: 'replay', native_proceeds: 10, acquisition_cost_usd: 10.004 })]))[0])
+  assert.equal(c[col('gain_loss_usd')], '0.00')
+  const f = cells(dataLines(taxExportCsv([usdLot({ native_proceeds: 10, acquisition_cost_usd: 10, native_realized_gl: -0.004 })]))[0])
+  assert.equal(f[col('gain_loss_usd')], '0.00')
+  assert.equal(f[col('adjustment_usd')], '0.00')
+})
+
+test('the coverage text says physical gold is not exported yet', () => {
+  const notes = taxExportNotes(summarizeTaxExport([lot()]), { year: '2026', builtAt: null, audit: false })
+  assert.match(notes, /physical gold sales are not exported yet/i)
+  assert.ok(!/folded/i.test(notes))
+  assert.match(notes, /adjustment_usd/)
 })

@@ -27,6 +27,12 @@ export type RealizedLotRow = {
   realized_gl_krw: number | null
   acquisition_cost_usd: number | null
   native_proceeds: number | null
+  /**
+   * The broker's own gain on a `1099b` row, which differs from proceeds minus
+   * cost by wash-sale and basis adjustments. On other rows it may be in won, so
+   * it is read for `1099b` rows only; null where the column is absent.
+   */
+  native_realized_gl: number | null
   holding_days: number | null
   tax_term: string | null
   basis: string | null
@@ -66,9 +72,15 @@ function finite(value: number | null | undefined): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
+/** The form's gain for a `1099b` row (dollars), else null. */
+export function formGainUsd(row: RealizedLotRow): number | null {
+  return row.basis === '1099b' ? finite(row.native_realized_gl) : null
+}
+
 export function toRealizedView(row: RealizedLotRow, rateAt: (date: string) => UsdRate | null): RealizedLotView {
   const soldYear = (row.sold_date ?? '').slice(0, 4)
   const cost = finite(row.acquisition_cost_usd)
+  const formGain = formGainUsd(row)
   let proceeds: number | null = null
   let approximate = false
   if (row.currency === 'USD') {
@@ -86,7 +98,9 @@ export function toRealizedView(row: RealizedLotRow, rateAt: (date: string) => Us
     sold_year: soldYear,
     cost_usd: cost,
     proceeds_usd: proceeds,
-    gain_usd: cost != null && proceeds != null ? proceeds - cost : null,
+    // On a 1099-B row the broker's filed gain, which the file also uses, so the
+    // page and the download agree; otherwise proceeds minus cost.
+    gain_usd: cost != null && proceeds != null ? (formGain ?? proceeds - cost) : null,
     rate_approximate: approximate,
   }
 }

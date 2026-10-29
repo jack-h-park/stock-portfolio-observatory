@@ -73,25 +73,26 @@ Form 8949 order first, then context. One header row, UTF-8, CRLF, no BOM, no pre
 | 3 | `date_sold` | `sold_date` (column c) |
 | 4 | `proceeds_usd` | derived as on the branch (column d); blank if unknown |
 | 5 | `cost_basis_usd` | `acquisition_cost_usd` (column e); blank if unknown |
-| 6 | `gain_loss_usd` | proceeds minus cost (column h); blank if either side is unknown. See "Adjustments" |
-| 7 | `term` | `short`, `long`, or blank when unknown |
-| 8 | `form_8949_box` | the stored `form_8949_box` when set (1099-B rows); blank for replay rows. Never derived. |
-| 9 | `covered` | stored `covered_status` normalised to `covered`, `noncovered`, or blank |
-| 10 | `basis_source` | `replay` or `1099b` (stored `basis`) |
-| 11 | `row_status` | `reported` (default) or `superseded` (audit rows only) |
-| 12 | `asset_class` | `security`, `crypto`, `gold` |
-| 13 | `market` | `US`, `KR`, `CRYPTO`, `GOLD` as stored |
-| 14 | `collectible` | `true` for gold, otherwise `false` |
-| 15 | `proceeds_rate_note` | `approximate_fx` when the sale-date rate was not the sale day's own, else blank |
-| 16 | `broker` | brokerage name |
-| 17 | `account_alias` | see Privacy |
-| 18 | `ticker` | ticker or symbol |
+| 6 | `adjustment_usd` | Form 8949 column g: on `1099b` rows the broker's gain minus (proceeds minus cost), from cents-rounded values, `0.00` allowed; blank for replay rows and whenever an input is unknown. See "Adjustments" |
+| 7 | `gain_loss_usd` | column h. On `1099b` rows the broker's filed gain (`native_realized_gl`); otherwise proceeds minus cost. Blank if proceeds or cost is unknown. Every dollar cell is rounded to cents first, so the printed cells add up |
+| 8 | `term` | `short`, `long`, or blank when unknown |
+| 9 | `form_8949_box` | the stored `form_8949_box` when set (1099-B rows); blank for replay rows. Never derived. |
+| 10 | `covered` | stored `covered_status` normalised to `covered`, `noncovered`, or blank |
+| 11 | `basis_source` | `replay` or `1099b` (stored `basis`) |
+| 12 | `row_status` | `reported` (default) or `superseded` (audit rows only) |
+| 13 | `asset_class` | `security`, `crypto`, `gold` |
+| 14 | `market` | `US`, `KR`, `CRYPTO`, `GOLD` as stored |
+| 15 | `collectible` | `true` for gold, otherwise `false` |
+| 16 | `proceeds_rate_note` | `approximate_fx` when the sale-date rate was not the sale day's own, else blank |
+| 17 | `broker` | brokerage name |
+| 18 | `account_alias` | see Privacy |
+| 19 | `ticker` | ticker or symbol |
 
 ### Adjustments (call)
 
-The database stores no wash-sale or other adjustment code or amount. A `1099b` row's cost is the broker's figure with wash sales and return-of-capital adjustments already applied (see the `basis` comment in `scripts/ingest-stock-data.mjs`), so proceeds minus that cost equals the broker's gain. The 8949 columns f and g are therefore **omitted**, not left blank, and the notes say adjustments are folded into the cost of `1099b` rows. Replay rows carry no wash-sale estimate in the file; the wash-sale estimate stays on the wash-sale page.
+The database stores no wash-sale or other adjustment code or amount, but a `1099b` row stores the form's own gain in `native_realized_gl`, which differs from proceeds minus cost by the wash-sale and basis adjustments (see `scripts/ingest-stock-data.mjs`). On `1099b` rows `gain_loss_usd` is therefore the broker's filed gain, and `adjustment_usd` (column g) is the difference from proceeds minus cost. The adjustment code (column f) is **omitted**, not left blank, because neither the code nor the wash amount is stored. Replay rows carry no adjustment (the cell is blank) and no wash-sale estimate in the file; the wash-sale estimate stays on the wash-sale page. The page's dollar gain for a `1099b` row uses the same filed gain, so page and file agree.
 
-Why a derived box is refused: the branch's own comment is right. The box depends on whether the venue issued a 1099-B or 1099-DA, a fact the app holds only for filed rows. Where the box is blank the coverage note says why. (call) Columns 1–7 follow Form 8949 (a, b, c, d, e, h, plus term); a hand-copier can ignore the rest. Columns f and g are absent, see above.
+Why a derived box is refused: the branch's own comment is right. The box depends on whether the venue issued a 1099-B or 1099-DA, a fact the app holds only for filed rows. Where the box is blank the coverage note says why. (call) Columns 1–8 follow Form 8949 (a, b, c, d, e, g, h, plus term); a hand-copier can ignore the rest. Column f is absent, see above.
 
 ### Superseded replay rows and 1099-B rows
 

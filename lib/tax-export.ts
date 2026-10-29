@@ -6,7 +6,7 @@
  * The stored account string never leaves this module: it is only the key that
  * assigns an alias, and the alias is per file on purpose.
  */
-import { ALL_YEARS, csvCell, defaultSoldYear, type RealizedLotView } from './realized-lots'
+import { ALL_YEARS, csvCell, defaultSoldYear, formGainUsd, type RealizedLotView } from './realized-lots'
 
 export const TAX_EXPORT_HEADER = [
   'description',
@@ -14,6 +14,7 @@ export const TAX_EXPORT_HEADER = [
   'date_sold',
   'proceeds_usd',
   'cost_basis_usd',
+  'adjustment_usd',
   'gain_loss_usd',
   'term',
   'form_8949_box',
@@ -53,8 +54,33 @@ function textCell(value: string): string {
   return /^[=+\-@]/.test(value) ? `'${value}` : value
 }
 
-function money(value: number | null): string {
-  return value == null ? '' : value.toFixed(2)
+/** Whole cents; a value that is not a finite number stays unknown. */
+function cents(value: number | null): number | null {
+  if (value == null || !Number.isFinite(value)) return null
+  const rounded = Math.round(value * 100)
+  return rounded === 0 ? 0 : rounded
+}
+
+/** Integer cents as text, so no float arithmetic or `-0.00` reaches the file. */
+function centsText(value: number | null): string {
+  if (value == null) return ''
+  const abs = Math.abs(value)
+  return `${value < 0 ? '-' : ''}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`
+}
+
+/**
+ * The dollar cells of one row, in integer cents, so the printed cells and the
+ * totals are the same numbers. On a 1099-B row the gain is the broker's filed
+ * gain and the adjustment is its difference from proceeds minus cost; a replay
+ * row has no adjustment and a gain of proceeds minus cost.
+ */
+function figuresOf(row: RealizedLotView): { proceeds: number | null; cost: number | null; adjustment: number | null; gain: number | null } {
+  const proceeds = cents(row.proceeds_usd)
+  const cost = cents(row.cost_usd)
+  if (proceeds == null || cost == null) return { proceeds, cost, adjustment: null, gain: null }
+  const formGain = cents(formGainUsd(row))
+  if (formGain == null) return { proceeds, cost, adjustment: null, gain: proceeds - cost }
+  return { proceeds, cost, adjustment: formGain - (proceeds - cost), gain: formGain }
 }
 
 function quantityText(value: number | null): string {
@@ -105,13 +131,15 @@ export function taxExportCsv(rows: RealizedLotView[]): string {
   for (const row of rows) {
     const broker = row.brokerage?.trim() || 'Unknown'
     const description = `${quantityText(row.quantity_sold)} ${row.ticker}`.trim()
+    const figures = figuresOf(row)
     const cells = [
       textCell(description),
       row.acquired_date ?? '',
       row.sold_date ?? '',
-      money(row.proceeds_usd),
-      money(row.cost_usd),
-      money(row.gain_usd),
+      centsText(figures.proceeds),
+      centsText(figures.cost),
+      centsText(figures.adjustment),
+      centsText(figures.gain),
       termOf(row.tax_term) === 'unknown' ? '' : termOf(row.tax_term),
       textCell(boxOf(row.form_8949_box)),
       coveredOf(row.covered_status),
@@ -134,6 +162,7 @@ export type TaxExportSummary = {
   rows: number
   blankDollar: number
   superseded: number
+  /** Dollars, summed from whole cents so it equals the sum of the exported cells. */
   byTerm: Record<'short' | 'long' | 'unknown', { count: number; gain_usd: number }>
 }
 
@@ -148,30 +177,33 @@ export function summarizeTaxExport(rows: RealizedLotView[]): TaxExportSummary {
       unknown: { count: 0, gain_usd: 0 },
     },
   }
+  const totalCents = { short: 0, long: 0, unknown: 0 }
   for (const row of rows) {
     if (row.superseded_by) {
       summary.superseded += 1
       continue
     }
     summary.rows += 1
-    if (row.cost_usd == null || row.proceeds_usd == null || row.gain_usd == null) {
+    const gain = figuresOf(row).gain
+    if (gain == null) {
       summary.blankDollar += 1
       continue
     }
-    const bucket = summary.byTerm[termOf(row.tax_term)]
-    bucket.count += 1
-    bucket.gain_usd += row.gain_usd
+    const key = termOf(row.tax_term)
+    totalCents[key] += gain
+    summary.byTerm[key].count += 1
   }
+  for (const key of ['short', 'long', 'unknown'] as const) summary.byTerm[key].gain_usd = totalCents[key] / 100
   return summary
 }
 
 /** What the export does not cover: one source for the notes file and the page. */
 export const NOT_COVERED_LINES: readonly string[] = [
   'This is a worksheet, not a filing. Rows marked replay are this repo\'s FIFO estimate; rows marked 1099b are the broker\'s filed figures.',
-  'Wash-sale adjustments are not computed for replay rows. Adjustments are folded into the cost of 1099b rows, so the Form 8949 adjustment columns are omitted.',
+  'On 1099b rows the gain is the broker\'s filed gain, and adjustment_usd is its difference from proceeds minus cost (wash-sale and basis adjustments); the adjustment code is not stored, so Form 8949 column f is omitted. Replay rows carry no adjustment, and wash sales are not computed for them.',
   'Box codes appear only on 1099b rows. Crypto rows have no box here; 1099-DA is not parsed by this app.',
   'Korea-account lots are measured in dollars: cost at the acquisition-date rate, proceeds at the sale-date rate. This is the repo\'s reading of the IRS method, to be confirmed with the preparer.',
-  'Not included: other owners\' accounts, pension wrappers, dividends and interest, FBAR, Korean-side gains and tax.',
+  'Not included: physical gold sales are not exported yet; other owners\' accounts, pension wrappers, dividends and interest, FBAR, Korean-side gains and tax.',
   'Two accounts that carry an identical stored label cannot be told apart by the export, and share one alias.',
 ]
 
