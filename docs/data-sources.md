@@ -685,6 +685,36 @@ publishes it as `kr_ytd_realized_computed` (shown beside the field on the tax
 settings page), and `kr_ytd_realized_assumption_reviewed` fails while the two
 differ by more than ₩1,000.
 
+**The tax worksheet download (`/realized`).** The `realized_lots` view feeds two
+downloads, `/realized/export` (CSV) and `/realized/export/notes` (text). They
+read only `year` (`YYYY` or `all-years`; default is the table's default year)
+and `audit=1` from the URL, so the page's market, broker, term and search
+filters never narrow the file. A row belongs to a year by its sale date. Only
+the owner's own lots are read (the same self-only predicate as the CLI), and a
+database without the newer columns still answers. The file names are
+`tax-realized-<year>.csv` or `tax-realized-all-years.csv`, with `-audit` before
+the extension for an audit file, and `<same stem>-notes.txt` for the notes; both
+are sent `no-store`, `nosniff` and as attachments. The CSV has one header row,
+CRLF line ends and no preamble. Its 18 columns, in order, are
+`description`, `date_acquired`, `date_sold`, `proceeds_usd`, `cost_basis_usd`,
+`gain_loss_usd`, `term`, `form_8949_box`, `covered`, `basis_source`,
+`row_status`, `asset_class`, `market`, `collectible`, `proceeds_rate_note`,
+`broker`, `account_alias` and `ticker`. A figure that is unknown is blank, never
+zero, and `gain_loss_usd` is blank if either side is. `term` is `short`, `long`
+or blank. `form_8949_box` is the stored letter on a `1099b` row and blank on a
+`replay` row; it is never derived. `basis_source` is the only statement of
+whether a figure is this repo's estimate (`replay`) or the broker's filed one
+(`1099b`). The Form 8949 adjustment columns are omitted, because a `1099b` row's
+cost already has the broker's adjustments folded in, and `replay` rows carry no
+wash-sale estimate. By default superseded replay rows (those a filing replaced)
+are absent; `audit=1` adds them with `row_status=superseded`, and they count in
+no total. The stored account string never appears: `account_alias` is
+`<broker> A`, `<broker> B` and so on, assigned in order of first appearance in
+that one file, so aliases cannot be joined across files. The notes file states
+the row count, the rows with a blank dollar figure, gain or loss by term over the
+other rows, and what the export does not cover. Gold is not exported yet; the
+`collectible` column is `false` on every row until it is.
+
 **An RSU account can hold nothing, and that is why it was missed.** 삼성증권's
 주식보상 account is where RSUs vest, and its position can sit at zero — vested
 shares move on to another broker soon after. An account with no position looks
