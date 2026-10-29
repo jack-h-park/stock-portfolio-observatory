@@ -32,17 +32,24 @@ export type AssetAllocation = {
   marketDefaults: AllocationSecurity[]
   /** One row per market and ticker, as marketDefaults. */
   unclassified: AllocationSecurity[]
+  /**
+   * Per class, the securities a mapping moved there from their market's class
+   * (a gold ETF into gold, a US index ETF listed in Korea into US equity), one
+   * row per market and ticker, largest first. A class nothing moved into is absent.
+   */
+  reclassified: Partial<Record<AllocationClass, AllocationSecurity[]>>
 }
 
 const PENSION_WRAPPERS = new Set(['irp', 'pension_savings'])
+
+const marketClass = (market: string): AllocationClass | null => (market === 'KR' ? 'kr_equity' : market === 'US' ? 'us_equity' : null)
 
 function classOf(row: AllocationSecurity, classes: InstrumentClasses): { key: AllocationClass; byMarket: boolean } {
   if (PENSION_WRAPPERS.has(row.wrapper)) return { key: 'pension', byMarket: false }
   const mapped = classify(row, classes)
   if (mapped) return { key: mapped, byMarket: false }
-  if (row.market === 'KR') return { key: 'kr_equity', byMarket: true }
-  if (row.market === 'US') return { key: 'us_equity', byMarket: true }
-  return { key: 'unclassified', byMarket: false }
+  const byMarket = marketClass(row.market)
+  return byMarket ? { key: byMarket, byMarket: true } : { key: 'unclassified', byMarket: false }
 }
 
 /**
@@ -81,6 +88,7 @@ export function summarizeAllocation(input: {
   const byWrapper = Object.fromEntries(ALLOCATION_WRAPPERS.map((key) => [key, 0])) as Record<AllocationWrapper, number>
   const marketDefaults: AllocationSecurity[] = []
   const unclassified: AllocationSecurity[] = []
+  const moved: Partial<Record<AllocationClass, AllocationSecurity[]>> = {}
 
   for (const row of input.securities) {
     const { key, byMarket } = classOf(row, input.classes)
@@ -88,6 +96,8 @@ export function summarizeAllocation(input: {
     byWrapper[PENSION_WRAPPERS.has(row.wrapper) ? 'pension' : row.wrapper === 'isa' ? 'isa' : 'taxable'] += row.valueKrw
     if (byMarket) marketDefaults.push(row)
     if (key === 'unclassified') unclassified.push(row)
+    const market = marketClass(row.market)
+    if (!byMarket && market && key !== market && key !== 'pension') (moved[key] ??= []).push(row)
   }
   byClass.crypto += input.cryptoKrw
   byClass.gold += input.goldKrw
@@ -101,5 +111,8 @@ export function summarizeAllocation(input: {
     wrappers: shares(ALLOCATION_WRAPPERS, byWrapper, totalKrw),
     marketDefaults: oneRowPer(marketDefaults, (row) => `${row.market}:${row.ticker}`),
     unclassified: oneRowPer(unclassified, (row) => `${row.market}:${row.ticker}`),
+    reclassified: Object.fromEntries(
+      Object.entries(moved).map(([key, rows]) => [key, oneRowPer(rows, (row) => `${row.market}:${row.ticker}`)]),
+    ) as AssetAllocation['reclassified'],
   }
 }
