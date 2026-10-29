@@ -16,7 +16,7 @@ const OLD_COLUMNS = `market text, currency text, brokerage text, account text, t
   realized_gl_krw real, acquisition_cost_usd real, native_proceeds real, holding_days integer,
   tax_term text, basis text`
 const EXTRA_COLUMNS = 'owner text, asset_class text, form_8949_box text, covered_status text, superseded_by text'
-const HEADER_LINE = 'description,date_acquired,date_sold,proceeds_usd,cost_basis_usd,gain_loss_usd,term,form_8949_box,covered,basis_source,row_status,asset_class,market,collectible,proceeds_rate_note,broker,account_alias,ticker\r\n'
+const HEADER_LINE = 'description,date_acquired,date_sold,proceeds_usd,cost_basis_usd,adjustment_usd,gain_loss_usd,term,form_8949_box,covered,basis_source,row_status,asset_class,market,collectible,proceeds_rate_note,broker,account_alias,ticker\r\n'
 
 type Cell = string | number | null
 
@@ -156,6 +156,6 @@ test('works on a database without the extra columns', async () => {
   const lines = bodyLines(await res.text())
   assert.equal(lines.length, 2)
   const cells = lines[1].split(',')
-  assert.equal(cells[7], '')
+  assert.equal(cells[8], '')
   assert.equal((await notes(url('/realized/export/notes'))).status, 200)
 })

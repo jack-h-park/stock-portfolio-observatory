@@ -15,8 +15,8 @@ function first(value: string | string[] | undefined): string | undefined {
 }
 
 /**
- * The page's and the CSV's one reading of the URL, so a download always holds
- * exactly the rows the table shows.
+ * The page's one reading of the URL. The tax worksheet download does not use it:
+ * it reads only the year and the audit flag, so the table's filters never reach the file.
  *
  * The year is not one of the ordinary groups: it opens on this year rather than
  * on "All", and the table-filter helpers drop the "All" value from the URL,

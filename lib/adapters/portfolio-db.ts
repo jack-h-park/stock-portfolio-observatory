@@ -5426,7 +5426,7 @@ export function getRealizedLots(options: { includeSuperseded?: boolean } = {}): 
     const rows = conn
       .prepare(
         `select market, currency, ${col('brokerage')}, account, ticker, name, acquired_date, sold_date, quantity_sold,
-                cost_basis_krw, proceeds_krw, realized_gl_krw, ${col('acquisition_cost_usd')}, ${col('native_proceeds')},
+                cost_basis_krw, proceeds_krw, realized_gl_krw, ${col('acquisition_cost_usd')}, ${col('native_proceeds')}, ${col('native_realized_gl')},
                 holding_days, tax_term, ${col('basis')}, ${col('asset_class')}, ${col('form_8949_box')},
                 ${col('covered_status')}, ${col('superseded_by')}
            from realized_lots where 1 = 1${selfOnlyAnd(conn, 'realized_lots')}${notSuperseded}

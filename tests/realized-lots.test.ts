@@ -35,6 +35,7 @@ function lot(over: Partial<RealizedLotRow> = {}): RealizedLotRow {
     realized_gl_krw: -35_000,
     acquisition_cost_usd: 500,
     native_proceeds: 665_000,
+    native_realized_gl: null,
     holding_days: 648,
     tax_term: 'Long-term',
     basis: 'replay',

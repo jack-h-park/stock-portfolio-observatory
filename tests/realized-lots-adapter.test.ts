@@ -67,6 +67,13 @@ test('getRealizedLots works on a table without the extra columns', async () => {
   assert.equal(rows[0].form_8949_box, null)
   assert.equal(rows[0].covered_status, null)
   assert.equal(rows[0].superseded_by, null)
+  assert.equal(rows[0].native_realized_gl, null)
+})
+
+test('getRealizedLots selects native_realized_gl when the column exists', async () => {
+  rebuild('native_realized_gl real', [lot('AAA', 12.34)])
+  const { getRealizedLots } = await import('../lib/adapters/portfolio-db')
+  assert.equal(getRealizedLots()[0].native_realized_gl, 12.34)
 })
 
 test('getIngestedAt reads the meta value, or null', async () => {

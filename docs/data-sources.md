@@ -697,24 +697,27 @@ database without the newer columns still answers. The file names are
 `tax-realized-<year>.csv` or `tax-realized-all-years.csv`, with `-audit` before
 the extension for an audit file, and `<same stem>-notes.txt` for the notes; both
 are sent `no-store`, `nosniff` and as attachments. The CSV has one header row,
-CRLF line ends and no preamble. Its 18 columns, in order, are
+CRLF line ends and no preamble. Its 19 columns, in order, are
 `description`, `date_acquired`, `date_sold`, `proceeds_usd`, `cost_basis_usd`,
-`gain_loss_usd`, `term`, `form_8949_box`, `covered`, `basis_source`,
+`adjustment_usd`, `gain_loss_usd`, `term`, `form_8949_box`, `covered`, `basis_source`,
 `row_status`, `asset_class`, `market`, `collectible`, `proceeds_rate_note`,
 `broker`, `account_alias` and `ticker`. A figure that is unknown is blank, never
 zero, and `gain_loss_usd` is blank if either side is. `term` is `short`, `long`
 or blank. `form_8949_box` is the stored letter on a `1099b` row and blank on a
 `replay` row; it is never derived. `basis_source` is the only statement of
 whether a figure is this repo's estimate (`replay`) or the broker's filed one
-(`1099b`). The Form 8949 adjustment columns are omitted, because a `1099b` row's
-cost already has the broker's adjustments folded in, and `replay` rows carry no
-wash-sale estimate. By default superseded replay rows (those a filing replaced)
+(`1099b`). On a `1099b` row `gain_loss_usd` is the broker's filed gain and
+`adjustment_usd` is its difference from proceeds minus cost (wash-sale and basis
+adjustments); the adjustment code is not stored, so that Form 8949 column is
+omitted. `replay` rows carry no adjustment (blank) and no wash-sale estimate.
+Every dollar cell is rounded to cents first, so the gain equals the printed
+proceeds minus cost and a term total equals the sum of the cells. By default superseded replay rows (those a filing replaced)
 are absent; `audit=1` adds them with `row_status=superseded`, and they count in
 no total. The stored account string never appears: `account_alias` is
 `<broker> A`, `<broker> B` and so on, assigned in order of first appearance in
 that one file, so aliases cannot be joined across files. The notes file states
 the row count, the rows with a blank dollar figure, gain or loss by term over the
-other rows, and what the export does not cover. Gold is not exported yet; the
+other rows, and what the export does not cover. Physical gold sales are not exported yet; the
 `collectible` column is `false` on every row until it is.
 
 **An RSU account can hold nothing, and that is why it was missed.** 삼성증권's
