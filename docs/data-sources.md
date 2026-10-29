@@ -687,9 +687,11 @@ differ by more than ₩1,000.
 
 **The tax worksheet download (`/realized`).** The `realized_lots` view feeds two
 downloads, `/realized/export` (CSV) and `/realized/export/notes` (text). They
-read only `year` (`YYYY` or `all-years`; default is the table's default year)
-and `audit=1` from the URL, so the page's market, broker, term and search
-filters never narrow the file. A row belongs to a year by its sale date. Only
+read only `year` (`YYYY` or `all-years`) and `audit=1` from the URL, so the
+page's market, broker, term and search filters never narrow the file. A row
+belongs to a year by its stored sale date (a date, with no timezone
+conversion). The default year is the current year in the US (Los Angeles)
+calendar, else the latest year that has sales. Only
 the owner's own lots are read (the same self-only predicate as the CLI), and a
 database without the newer columns still answers. The file names are
 `tax-realized-<year>.csv` or `tax-realized-all-years.csv`, with `-audit` before
