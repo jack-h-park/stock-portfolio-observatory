@@ -1054,8 +1054,8 @@ function withCumulativeRealized(conn: Database.Database, snapshots: PortfolioSna
  * - ETFs on a past date: tax lots valued at the historical close, the same
  *   valuer the month-end backfill uses.
  * - The last snapshot is the live row, so both parts read the holdings instead.
- * - Realized: ETF sales from realized_lots, cumulative. No physical gold sale is
- *   on file, so that part contributes nothing.
+ * - Realized: ETF sales from realized_lots plus physical gold sales (matched first
+ *   in, first out by the ingest), cumulative, in won.
  */
 export function withGoldScope(snapshots: PortfolioSnapshot[]): PortfolioSnapshot[] {
   if (snapshots.length === 0) return snapshots
@@ -1068,13 +1068,15 @@ export function withGoldScope(snapshots: PortfolioSnapshot[]): PortfolioSnapshot
     const tickers = [...GOLD_ETF_TICKERS]
     const marks = tickers.map(() => '?').join(', ')
 
+    const transactionColumns = hasTable('transactions_all') ? columnsOf('transactions_all') : new Set<string>()
+    const feeSql = transactionColumns.has('fee') && transactionColumns.has('tax') ? 'abs(coalesce(fee, 0)) + abs(coalesce(tax, 0))' : '0'
     const trades: GoldTrade[] =
-      hasTable('transactions_all') && columnsOf('transactions_all').has('asset_class')
+      transactionColumns.has('asset_class')
         ? (
             conn
               .prepare(
                 `select substr(date, 1, 10) as date, type, abs(coalesce(quantity, 0)) as grams,
-                        abs(coalesce(amount_krw, settlement_krw, 0)) as costKrw
+                        abs(coalesce(amount_krw, settlement_krw, 0)) as costKrw, ${feeSql} as feeKrw
                    from transactions_all where asset_class = 'gold' and type in ('BUY', 'SELL') order by date, id`
               )
               .all() as GoldTrade[]
@@ -1101,7 +1103,7 @@ export function withGoldScope(snapshots: PortfolioSnapshot[]): PortfolioSnapshot
           )
           .all(...tickers) as { market: string; account: string; ticker: string; acquired_date: string | null; sold_date: string | null; quantity_sold: number | null; cost_basis_krw: number | null }[])
       : []
-    const sales = realizedColumns.has('sold_date') && realizedColumns.has('realized_gl_krw')
+    const sales: { sold_date: string; amount: number }[] = realizedColumns.has('sold_date') && realizedColumns.has('realized_gl_krw')
       ? (conn
           .prepare(
             `select substr(sold_date, 1, 10) as sold_date, sum(realized_gl_krw) as amount
@@ -1112,6 +1114,21 @@ export function withGoldScope(snapshots: PortfolioSnapshot[]): PortfolioSnapshot
           )
           .all(...tickers) as { sold_date: string; amount: number }[])
       : []
+    // Physical gold sales: the ingest writes them to realized_lots_all (the stock view leaves them out).
+    const goldSales =
+      hasTable('realized_lots_all') && columnsOf('realized_lots_all').has('asset_class')
+        ? (conn
+            .prepare(
+              `select substr(sold_date, 1, 10) as sold_date, sum(realized_gl_krw) as amount
+                 from realized_lots_all
+                where asset_class = 'gold' and sold_date is not null and sold_date != '' and realized_gl_krw is not null
+                  and coalesce(superseded_by, '') = ''
+                group by substr(sold_date, 1, 10)`
+            )
+            .all() as { sold_date: string; amount: number }[])
+        : []
+    sales.push(...goldSales)
+    sales.sort((a, b) => a.sold_date.localeCompare(b.sold_date))
     const historicalPrices = hasTable('historical_prices')
       ? (conn
           .prepare(
