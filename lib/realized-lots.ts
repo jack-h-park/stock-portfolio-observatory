@@ -27,9 +27,21 @@ export type RealizedLotRow = {
   realized_gl_krw: number | null
   acquisition_cost_usd: number | null
   native_proceeds: number | null
+  /**
+   * The broker's own gain on a `1099b` row, which differs from proceeds minus
+   * cost by wash-sale and basis adjustments. On other rows it may be in won, so
+   * it is read for `1099b` rows only; null where the column is absent.
+   */
+  native_realized_gl: number | null
   holding_days: number | null
   tax_term: string | null
   basis: string | null
+  asset_class: string | null
+  form_8949_box: string | null
+  covered_status: string | null
+  superseded_by: string | null
+  /** Gold and other collectibles; null where the source has no such column. */
+  collectible: boolean | null
 }
 
 export type UsdRate = { rate: number; date: string }
@@ -60,9 +72,15 @@ function finite(value: number | null | undefined): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
+/** The form's gain for a `1099b` row (dollars), else null. */
+export function formGainUsd(row: RealizedLotRow): number | null {
+  return row.basis === '1099b' ? finite(row.native_realized_gl) : null
+}
+
 export function toRealizedView(row: RealizedLotRow, rateAt: (date: string) => UsdRate | null): RealizedLotView {
   const soldYear = (row.sold_date ?? '').slice(0, 4)
   const cost = finite(row.acquisition_cost_usd)
+  const formGain = formGainUsd(row)
   let proceeds: number | null = null
   let approximate = false
   if (row.currency === 'USD') {
@@ -76,10 +94,13 @@ export function toRealizedView(row: RealizedLotRow, rateAt: (date: string) => Us
   }
   return {
     ...row,
+    collectible: row.collectible ?? null,
     sold_year: soldYear,
     cost_usd: cost,
     proceeds_usd: proceeds,
-    gain_usd: cost != null && proceeds != null ? proceeds - cost : null,
+    // On a 1099-B row the broker's filed gain, which the file also uses, so the
+    // page and the download agree; otherwise proceeds minus cost.
+    gain_usd: cost != null && proceeds != null ? (formGain ?? proceeds - cost) : null,
     rate_approximate: approximate,
   }
 }
@@ -133,53 +154,8 @@ export function defaultSoldYear(years: string[], currentYear: string): string {
   return latest ?? ALL_YEARS
 }
 
-function csvCell(value: string | number | null): string {
+export function csvCell(value: string | number | null): string {
   if (value == null) return ''
   const text = String(value)
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
-}
-
-function round(value: number | null, digits: number): string {
-  return value == null ? '' : value.toFixed(digits)
-}
-
-export const FORM_8949_HEADER = [
-  'Description of property',
-  'Date acquired',
-  'Date sold',
-  'Proceeds (USD)',
-  'Cost basis (USD)',
-  'Gain or loss (USD)',
-  'Term',
-] as const
-
-/**
- * Rows in the order Form 8949 asks for them. It is a worksheet, not a filing:
- * the box column is absent on purpose, and a lot with no dollar figure keeps its
- * row with the amounts blank so the gap is visible instead of silently dropped.
- */
-export function form8949Csv(rows: RealizedLotView[]): string {
-  const lines: string[] = [FORM_8949_HEADER.map(csvCell).join(',')]
-  for (const row of rows) {
-    lines.push(
-      [
-        `${trimQuantity(row.quantity_sold)} ${row.ticker}`.trim(),
-        row.acquired_date ?? '',
-        row.sold_date ?? '',
-        round(row.proceeds_usd, 2),
-        round(row.cost_usd, 2),
-        round(row.gain_usd, 2),
-        row.tax_term ?? '',
-      ]
-        .map(csvCell)
-        .join(',')
-    )
-  }
-  return `${lines.join('\r\n')}\r\n`
-}
-
-function trimQuantity(value: number | null): string {
-  if (value == null) return ''
-  // Eight places covers the finest unit these venues trade; trailing zeros are noise.
-  return Number(value.toFixed(8)).toString()
 }
