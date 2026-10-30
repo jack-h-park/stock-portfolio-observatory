@@ -121,3 +121,25 @@ test('a security outside KR and US with no mapping is unclassified, not guessed'
   assert.deepEqual(r.unclassified.map((row) => row.name), ['Example JP'])
   assert.deepEqual(r.marketDefaults, [])
 })
+
+test('a security mapped away from its market class is listed under the class it moved to', () => {
+  const r = summarizeAllocation({
+    securities: [
+      security({ market: 'US', ticker: 'IAU', name: 'Gold Trust', valueKrw: 300 }),
+      security({ market: 'US', ticker: 'IAU', name: 'Gold Trust', wrapper: 'isa', valueKrw: 100 }),
+      security({ market: 'US', ticker: 'MSTR', name: 'Strategy', valueKrw: 200 }),
+      security({ market: 'KR', ticker: '360750', name: 'US500 ETF', valueKrw: 50 }),
+      security({ market: 'US', ticker: 'AAPL', name: 'Apple', valueKrw: 900 }),
+      security({ market: 'KR', ticker: 'KRX1', name: 'Mapped to its own market class', valueKrw: 10 }),
+    ],
+    cryptoKrw: 0,
+    goldKrw: 0,
+    cashKrw: 0,
+    classes: { 'US:IAU': 'gold', 'US:MSTR': 'crypto', 'KR:360750': 'us_equity', 'KR:KRX1': 'kr_equity' },
+  })
+  const listed = (key: string) => (r.reclassified[key as keyof typeof r.reclassified] ?? []).map((row) => [row.ticker, row.valueKrw])
+  assert.deepEqual(listed('gold'), [['IAU', 400]])
+  assert.deepEqual(listed('crypto'), [['MSTR', 200]])
+  assert.deepEqual(listed('us_equity'), [['360750', 50]])
+  assert.deepEqual(listed('kr_equity'), [])
+})

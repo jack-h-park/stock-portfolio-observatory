@@ -120,6 +120,18 @@ const GOLD_RECORDS: MiraeRecord[] = [
   { date: '2026/03/10', type: '금현물매도입금', code: GOLD, amount: '320,000', cash: '438,450', name: GOLD_NAME, flow: '320,000' },
 ]
 
+// A 국고채 bought and sold on the exchange inside the ISA. 거래수량 is the face
+// amount, 거래금액 the price paid or received.
+const BOND = 'KR103502GA34'
+const BOND_NAME = '국고채권 01500-5003(20-2)'
+const ISA_RECORDS: MiraeRecord[] = [
+  { date: '2024/03/28', type: '계좌대체입금', amount: '600,000', cash: '600,000', flow: '600,000', counterparty: '미래에셋증권' },
+  { date: '2024/03/29', type: '장내당일채권매수입고', code: BOND, amount: '498,120', qty: '700,000', price: '7,116', name: BOND_NAME, held: '700,000' },
+  { date: '2024/03/29', type: '장내당일채권매수대금출금', code: BOND, amount: '498,120', cash: '101,880', name: BOND_NAME, flow: '498,120' },
+  { date: '2026/10/27', type: '장내당일채권매도출고', code: BOND, amount: '420,420', qty: '700,000', price: '6,006', name: BOND_NAME, held: '0' },
+  { date: '2026/10/27', type: '장내당일채권매도대금입금', code: BOND, amount: '420,420', cash: '522,300', name: BOND_NAME, flow: '420,420' },
+]
+
 // --- 삼성증권 연금저축 ledger -----------------------------------------------------
 
 const SAMSUNG_HEADER: Table = [
@@ -177,6 +189,8 @@ function runKrExtract(samsungTotal = '500,120') {
     miraeCertificate('퇴직연금_개인IRP', '2020/01/01 ~ 2026/10/10', IRP_RECORDS))
   writeDoc(path.join(statements, 'mirae-gold-transactions-20260101-20261010.pdf'),
     miraeCertificate('금현물', '2026/01/01 ~ 2026/10/10', GOLD_RECORDS))
+  writeDoc(path.join(statements, 'mirae-isa-transactions-20240101-20261029.pdf'),
+    miraeCertificate('ISA(중개형)', '2024/01/01 ~ 2026/10/29', ISA_RECORDS, '000-01'))
   writeDoc(path.join(statements, 'samsung-pension-transactions-20240101-20251231.pdf'), samsungLedger(samsungTotal))
   const result = spawnSync(PY, ['scripts/extract-kr-statements.py'], {
     cwd: REPO_ROOT,
@@ -235,6 +249,18 @@ test('(b) the gold certificate: purchases and sales in grams, the cash legs drop
   assert.equal(rows.find((r) => r['Raw Type'] === '계좌대체입금')?.Type, 'INTERNAL_TRANSFER')
   // 유가잔고 is the running gram balance; the walk agrees with it.
   assert.ok(!krRun().kinds.has('share-balance-break'), JSON.stringify(krRun().findings))
+})
+
+test('(b2) a 국고채 sold on the exchange in the ISA is a SELL of its face amount, and its cash leg is dropped', () => {
+  const rows = byAccount('미래에셋증권(ISA)').filter((r) => r.Ticker === BOND)
+  assert.deepEqual(
+    rows.map((r) => [r.Type, r['Raw Type'], Number(r.Quantity), Number(r['Native Amount'])]),
+    [
+      ['BUY', '장내당일채권매수입고', 700000, 498120],
+      ['SELL', '장내당일채권매도출고', 700000, 420420],
+    ],
+  )
+  assert.ok(!krRun().kinds.has('mirae-unmapped-type'), JSON.stringify(krRun().findings))
 })
 
 test('(c) the 삼성 연금저축 ledger: English types, the pension label, and a passing totals check', () => {
