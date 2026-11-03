@@ -12,7 +12,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALLER="$HERE/../deploy/hermes/install-cron.sh"
-JOBS=(observatory-health observatory-refresh observatory-coverage rebalance-monthly rebalance-triggers rebalance-notify)
+JOBS=(observatory-health observatory-refresh observatory-close-refresh observatory-coverage rebalance-monthly rebalance-triggers rebalance-notify)
 FAIL=0
 ACCOUNT="$(id -un)"   # expanded up front: a substitution inside a check's arguments would clobber $?
 
@@ -102,6 +102,9 @@ new_home; ARGS=(local); set_role ops
 run_installer env
 grep '^cron create' "$FAKE_LOG" | grep -- '--name observatory-refresh' | grep -Fq -- '0 */6 * * *'
 check "observatory-refresh is created on the six-hourly schedule" $?
+
+grep '^cron create' "$FAKE_LOG" | grep -- '--name observatory-close-refresh ' | grep -Fq -- '10 13 * * 1-5'
+check "observatory-close-refresh is created weekdays at 13:10, before the 13:30 review" $?
 
 # the rebalance jobs carry their schedules, and the helper they source is installed beside them
 grep '^cron create' "$FAKE_LOG" | grep -- '--name rebalance-monthly' | grep -Fq -- '30 9 1-7 * 1'

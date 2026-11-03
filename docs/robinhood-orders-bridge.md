@@ -105,9 +105,11 @@ account's order history, in the same pass and under the same `fetchedAt`:
 - Store the raw response. The modelling happens in the ingest, as it does for
   lots, so changing the shape never costs another round of calls.
 
-No cron can write this file, so the bridge is only as current as the last
-snapshot session. That limit already applies to positions and is reported by
-`robinhood_snapshot_fresh`. The orders add no new staleness, and they move
+The file is pulled before every scheduled refresh by stock-trading-skills'
+`scripts/robinhood_snapshot.py`, run from `deploy/hermes/observatory-refresh-cron.sh`.
+A pull that fails validation keeps the previous file, so the bridge is as current
+as the last pull that passed. That limit applies to positions too and is reported
+by `robinhood_snapshot_fresh`. The orders add no new staleness, and they move
 together with the positions they explain.
 
 ### 2. Cutoff: one per account, from the CSVs alone
