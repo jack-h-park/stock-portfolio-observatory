@@ -94,6 +94,12 @@ hermes() { "$PY" -m hermes_cli.main "$@"; }
 # data/refresh-runs.json. If the launchd service is ever reinstalled
 # (`make install-refresh-service`), pause this job in the same breath.
 #
+# observatory-close-refresh runs the same wrapper once more on weekdays at 13:10, after
+# the 13:00 close and before stock-trading-skills' 13:30 review, whose reconcile reads
+# the holdings sheet this refresh publishes. Without it, a trade made after the 12:00
+# run reads as sheet drift in that day's review. It cannot collide with the six-hourly
+# job: refresh.mjs holds .refresh.lock, and a second run finds it and stops.
+#
 # observatory-coverage is the weekly list of broker statements to download, read
 # from the summary's accountCoverage block. Saturday morning, when there is time
 # to log in to a broker; weekly rather than on change, because a statement that
@@ -109,6 +115,7 @@ hermes() { "$PY" -m hermes_cli.main "$@"; }
 JOBS=(
   "observatory-health|0 9 * * *|observatory-health-cron.sh"
   "observatory-refresh|0 */6 * * *|observatory-refresh-cron.sh"
+  "observatory-close-refresh|10 13 * * 1-5|observatory-refresh-cron.sh"
   "observatory-coverage|0 10 * * 6|observatory-coverage-cron.sh"
   "rebalance-monthly|30 9 1-7 * 1|rebalance-monthly-cron.sh"
   "rebalance-triggers|15 10 * * *|rebalance-triggers-cron.sh"

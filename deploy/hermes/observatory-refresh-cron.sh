@@ -54,11 +54,28 @@ fi
 cd "$REPO" || { echo "⚠️ Observatory refresh: cannot cd to $REPO"; exit 1; }
 
 mkdir -p "$(dirname "$LOG")"
+
+# Pull the Robinhood snapshot first, so the ingest and the holdings sheet it feeds
+# see today's positions. The pull lives in stock-trading-skills, beside the
+# read-only broker proxy and the token store it uses; this repo holds no broker
+# credentials. It replaces data/robinhood-snapshot.json only with a pull that
+# passes validation, so any failure here leaves the previous file and the refresh
+# carries on with it. robinhood_snapshot_fresh still reports the file's age.
+TRADING_REPO="${TRADING_REPO:-$HOME/workspace/ai-assets/jackhpark-stock-trading-skills}"
+SNAP_PULL="$TRADING_REPO/scripts/robinhood_snapshot.py"
+SNAP_RC=0
+SNAP_OUT=""
+if [ -f "$SNAP_PULL" ]; then
+  SNAP_OUT="$(/usr/bin/python3 "$SNAP_PULL" --out "$REPO/data/robinhood-snapshot.json" 2>&1)"
+  SNAP_RC=$?
+fi
+
 OUT="$(pnpm refresh 2>&1)"
 RC=$?
 
 {
   echo "=== $STAMP refresh (rc=$RC) ==="
+  [ -n "$SNAP_OUT" ] && printf '[robinhood-snapshot] rc=%s\n%s\n' "$SNAP_RC" "$SNAP_OUT"
   printf '%s\n' "$OUT"
 } >> "$LOG"
 
@@ -109,6 +126,23 @@ elif [ -n "$MISSING" ]; then
   MESSAGE="⚠️ Observatory refresh: expected brokerage export missing — $MISSING"
 else
   FINGERPRINT="clean"
+fi
+
+# A refused or failed snapshot pull is its own fact, reported beside whatever the
+# refresh did. Keyed on the exit code only: the reasons name symbols and counts
+# that change from run to run, and would re-alert every six hours.
+if [ "$SNAP_RC" -ne 0 ]; then
+  SNAP_WHY="$(printf '%s\n' "$SNAP_OUT" | head -4)"
+  SNAP_MSG="⚠️ Robinhood snapshot not updated (rc=$SNAP_RC); the refresh used the previous one.
+$SNAP_WHY"
+  if [ "$FINGERPRINT" = "clean" ]; then
+    FINGERPRINT="snapshot:$SNAP_RC"
+    MESSAGE="$SNAP_MSG"
+  else
+    FINGERPRINT="$FINGERPRINT|snapshot:$SNAP_RC"
+    MESSAGE="$MESSAGE
+$SNAP_MSG"
+  fi
 fi
 
 STATE_FILE="${OBSERVATORY_REFRESH_STATE:-$HOME/.config/stock-portfolio-observatory/refresh-cron-state}"

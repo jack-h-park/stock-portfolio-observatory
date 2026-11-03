@@ -6777,7 +6777,7 @@ if (robinhoodPositionRows.length === 0) {
   robinhoodFreshDetail =
     `${robinhoodPositionRows.length} position(s) from the MCP snapshot, ` +
     `${ageDays == null ? 'undated' : `${ageDays.toFixed(1)}d old`} ` +
-    `(${robinhoodSnapshotLotCount} lot(s); regenerate with the Robinhood MCP, no cron can)`
+    `(${robinhoodSnapshotLotCount} lot(s); pulled by observatory-refresh via stock-trading-skills robinhood_snapshot.py; a refused pull is in logs/refresh-cron.log)`
 } else {
   const asOf = robinhoodPositionRows[0]?.as_of_date ?? null
   const ageDays = asOf ? (Date.now() - Date.parse(`${asOf}T00:00:00Z`)) / 86_400_000 : null
