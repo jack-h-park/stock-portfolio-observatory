@@ -71,9 +71,20 @@ const txn = (row: Record<string, string | number>) => ({
   Account: GOLD, Ticker: 'M04020000', Name: 'Gold 99.99 1Kg', Currency: 'KRW', 'FX Rate': 1, Fee: 0, Tax: 0, Balance: 0, Source: SOURCE, Page: 1, ...row,
 })
 
-function ingestGold() {
+function ingestGold({ sheetSale = false } = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), 'gold-fifo-'))
   writeSheetPayloads(dir)
+  if (sheetSale) {
+    // The Korea sheet lists the same sale as one average-cost slice.
+    writeFileSync(
+      path.join(dir, '.codex_sheet_payloads', 'realized.tsv'),
+      [
+        'Account\tTicker\tName\tAcquired Date\tSold Date\tQuantity Sold\tCost Basis (KRW)\tProceeds (KRW)\tRealized G/L (KRW)\tHolding Days\tTax Term\tSource',
+        `${GOLD}\tM04020000\tGold 99.99 1Kg\t2025-03-03\t2026-09-01\t12\t1500000\t2040000\t540000\t546\tLong-term\t${SOURCE}`,
+      ].join('\n') + '\n',
+      'utf8'
+    )
+  }
   const kr = path.join(dir, 'kr-statements')
   mkdirSync(kr, { recursive: true })
   writeFileSync(
@@ -133,6 +144,17 @@ test('the ingest writes one gold realized row per purchase lot, in won and in do
   near(holding.base_cost, 450_000)
   const check = db.prepare("select status from validation_checks where name = 'gold_sales_matched'").get() as { status: string }
   assert.equal(check.status, 'pass')
+})
+
+test('a sale the Korea sheet already lists is counted once, as the matched rows', () => {
+  const db = ingestGold({ sheetSale: true })
+  const rows = db
+    .prepare("select source_system, quantity_sold from realized_lots_all where asset_class = 'gold' order by acquired_date")
+    .all() as { source_system: string; quantity_sold: number }[]
+  assert.deepEqual(rows, [
+    { source_system: 'gold_certificate', quantity_sold: 5 },
+    { source_system: 'gold_certificate', quantity_sold: 7 },
+  ])
 })
 
 function cliDb() {
