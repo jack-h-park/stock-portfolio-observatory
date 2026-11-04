@@ -230,7 +230,7 @@ async function main() {
   const summaryPath =
     arg('--summary') ||
     process.env.STOCK_BRIEFING_SUMMARY_PATH ||
-    path.join(os.homedir(), 'workspace/data/stock-management/outputs/stock-portfolio-observatory/briefing-summary.json')
+    path.join(os.homedir(), 'workspace/data/financial-records/outputs/stock-portfolio-observatory/briefing-summary.json')
   let message
   try {
     message = coverageMessage(JSON.parse(fs.readFileSync(summaryPath, 'utf8')))

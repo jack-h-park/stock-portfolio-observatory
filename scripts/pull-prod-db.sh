@@ -49,7 +49,7 @@ fi
 DB_REL="outputs/stock-portfolio-observatory/stock-portfolio-observatory.db"
 LOCAL_DB="${STOCK_DB_PATH:-$REPO_DIR/private-data/$DB_REL}"
 HOST="${STOCK_PROD_HOST:-ops-host}"
-REMOTE_DB="${STOCK_PROD_DATA_DIR:-workspace/data/stock-management}/$DB_REL"
+REMOTE_DB="${STOCK_PROD_DATA_DIR:-workspace/data/financial-records}/$DB_REL"
 DRY=0
 SERVICE_LABEL=com.jackpark.stock-observatory
 

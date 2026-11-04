@@ -1,6 +1,6 @@
 # Stock Portfolio Observatory
 
-Read-only portfolio monitoring dashboard for manually curated stock-management data.
+Read-only portfolio monitoring dashboard for manually curated financial-records data.
 
 This repository is intended to contain application code only. Real brokerage exports,
 tax documents, generated databases, price snapshots, and mapping overrides should stay

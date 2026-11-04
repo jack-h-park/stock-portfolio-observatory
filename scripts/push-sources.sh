@@ -76,9 +76,9 @@ if [ -f "$ENV_FILE" ]; then
   done < <(grep -E '^(STOCK_DATA_DIR|STOCK_PROD_HOST|STOCK_PROD_DATA_DIR|STOCK_PROD_REPO_DIR|STOCK_PYTHON_BIN)=' "$ENV_FILE" || true)
 fi
 
-LOCAL_DIR="${STOCK_DATA_DIR:-$HOME/workspace/data/stock-management}"
+LOCAL_DIR="${STOCK_DATA_DIR:-$HOME/workspace/data/financial-records}"
 HOST="${STOCK_PROD_HOST:-ops-host}"
-REMOTE_DIR="${STOCK_PROD_DATA_DIR:-workspace/data/stock-management}"
+REMOTE_DIR="${STOCK_PROD_DATA_DIR:-workspace/data/financial-records}"
 REMOTE_REPO_DIR="${STOCK_PROD_REPO_DIR:-workspace/code/core/jackhpark-stock-observatory}"
 DRY=""
 

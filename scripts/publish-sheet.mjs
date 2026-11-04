@@ -67,7 +67,7 @@ import Database from 'better-sqlite3'
 const KEY_PATH = process.env.STOCK_SHEETS_SA_KEY
   || join(homedir(), '.config', 'stock-portfolio-briefing', 'gcp-sheets-sa.json')
 const DB_PATH = process.env.STOCK_DB_PATH
-  || join(homedir(), 'workspace', 'data', 'stock-management', 'outputs',
+  || join(homedir(), 'workspace', 'data', 'financial-records', 'outputs',
     'stock-portfolio-observatory', 'stock-portfolio-observatory.db')
 
 const argv = process.argv.slice(2)
