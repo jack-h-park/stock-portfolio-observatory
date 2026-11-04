@@ -526,10 +526,17 @@ export function summarizeTaxCandidates({
     ? baseUsEstimate.taxBeforeForeignTaxCreditUsd * usdKrwRate
     : 0
 
+  // The US-source part of the year: US-market candidates plus the US-market gains already realized
+  // this year. ytdRealized*GainLossUsd cannot stand in for the latter because it is worldwide (Korean,
+  // gold and crypto sales are in it), so the US-source share is its own pair of assumptions. Korea's
+  // pool already holds those realized gains (ytdRealizedTaxableGainKrw), so leaving them out here
+  // taxed them in Korea with no credit for the US tax on them.
   const usMarketRows = priced.filter((row) => row.market === 'US')
   const usMarketTaxable = netCapitalGainBuckets(
-    sumUsGainUsd(usMarketRows.filter((row) => row.holdingBucket === 'short')),
-    sumUsGainUsd(usMarketRows.filter((row) => row.holdingBucket === 'long'))
+    sumUsGainUsd(usMarketRows.filter((row) => row.holdingBucket === 'short')) +
+      (yearInput ? assumptionNumber(policy, 'US', 'ytdRealizedUsSourceShortGainLossUsd', 0) : 0),
+    sumUsGainUsd(usMarketRows.filter((row) => row.holdingBucket === 'long')) +
+      (yearInput ? assumptionNumber(policy, 'US', 'ytdRealizedUsSourceLongGainLossUsd', 0) : 0)
   )
   const usMarketEstimate = estimateUsCapitalGainTax({
     ...engineInput,

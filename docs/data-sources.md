@@ -685,6 +685,25 @@ publishes it as `kr_ytd_realized_computed` (shown beside the field on the tax
 settings page), and `kr_ytd_realized_assumption_reviewed` fails while the two
 differ by more than ₩1,000.
 
+**The US-source part of the year-to-date gain is a third assumption.** Under
+`KR.foreignTaxCreditMode = estimated-us-source` Korea credits the US federal tax
+on the US-market gains in its pool, capped at the Korea tax. The gains already
+realized this year are in that pool through `ytdRealizedTaxableGainKrw`, so the
+credit has to count the US tax on their US-market part too; without it, a year's
+past sales were taxed by Korea with no credit at all. `ytdRealized*GainLossUsd`
+cannot supply that part because it is worldwide (Korean, gold and crypto sales
+are in it), so the planner reads `US.ytdRealizedUsSourceShortGainLossUsd` and
+`US.ytdRealizedUsSourceLongGainLossUsd`, nets them with the planned US-market
+sales, and measures the US federal tax on the result. Like the other two, the
+pair is typed on the tax settings page, not derived at read time: the ingest
+publishes the US-market part of its replay in `us_ytd_realized_computed`
+(`usSourceShortUsd` / `usSourceLongUsd`, shown beside the fields), and
+`us_source_ytd_realized_assumption_reviewed` fails while either differs by more
+than a dollar. The check only applies under `estimated-us-source`, the one mode
+that reads the pair. A missing pair counts as 0, which is the old behavior. The
+rebalancing engine, which derives all of its year-to-date figures from
+`realized_lots`, derives this pair the same way.
+
 **An RSU account can hold nothing, and that is why it was missed.** 삼성증권's
 주식보상 account is where RSUs vest, and its position can sit at zero — vested
 shares move on to another broker soon after. An account with no position looks

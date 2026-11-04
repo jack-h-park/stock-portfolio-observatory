@@ -70,7 +70,7 @@ const input = (over: Partial<RebalanceInput> = {}): RebalanceInput => ({
   recentBuys: [],
   washSaleBlockedBuys: [],
   accountDataAsOf: {},
-  ytd: { year: 2026, krTaxableGainKrw: 500_000, usShortUsd: 10, usLongUsd: 20, lotCount: 1 },
+  ytd: { year: 2026, krTaxableGainKrw: 500_000, usShortUsd: 10, usLongUsd: 20, usSourceShortUsd: 0, usSourceLongUsd: 0, lotCount: 1 },
   healthErrors: [],
   ...over,
 })

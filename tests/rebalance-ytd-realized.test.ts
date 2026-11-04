@@ -70,6 +70,21 @@ test('US totals are worldwide: KRW-denominated KR and crypto lots convert at the
   assert.equal(out.usShortUsd, 10_000)
   assert.equal(out.usLongUsd, -2000)
   assert.equal(out.krTaxableGainKrw, 0)
+  // Neither lot is US-source.
+  assert.equal(out.usSourceShortUsd, 0)
+  assert.equal(out.usSourceLongUsd, 0)
+})
+
+test('the US-source split is the US-market part of the worldwide totals', () => {
+  const rows = [
+    row({ native_realized_gl: 1000 }),
+    row({ tax_term: 'long', native_realized_gl: 500 }),
+    row({ market: 'KR', currency: 'KRW', realized_gl_krw: 1_400_000, native_realized_gl: 1_400_000 }),
+  ]
+  const out = deriveYtdRealized(rows, 2026, 1400)
+  assert.equal(out.usShortUsd, 2000)
+  assert.equal(out.usSourceShortUsd, 1000)
+  assert.equal(out.usSourceLongUsd, 500)
 })
 
 test('US short and long split by tax_term, measured in USD', () => {
@@ -87,7 +102,7 @@ test('US short and long split by tax_term, measured in USD', () => {
 test('withDerivedYtd overwrites the three manual assumptions and taxInputYear', () => {
   const input = policy()
   const snapshot = structuredClone(input)
-  const derived: YtdRealized = { year: 2026, krTaxableGainKrw: 123, usShortUsd: 4, usLongUsd: 5, lotCount: 3 }
+  const derived: YtdRealized = { year: 2026, krTaxableGainKrw: 123, usShortUsd: 4, usLongUsd: 5, usSourceShortUsd: 1, usSourceLongUsd: 2, lotCount: 3 }
   const out = withDerivedYtd(input, derived)
   assert.deepEqual(input, snapshot)
   const kr = out.jurisdictions.find((j) => j.code === 'KR')!.manualAssumptions
@@ -95,18 +110,20 @@ test('withDerivedYtd overwrites the three manual assumptions and taxInputYear', 
   assert.equal(kr.ytdRealizedTaxableGainKrw, 123)
   assert.equal(us.ytdRealizedShortGainLossUsd, 4)
   assert.equal(us.ytdRealizedLongGainLossUsd, 5)
+  assert.equal(us.ytdRealizedUsSourceShortGainLossUsd, 1)
+  assert.equal(us.ytdRealizedUsSourceLongGainLossUsd, 2)
   assert.equal(us.taxInputYear, 2026)
 })
 
 test('compareWithPolicy reports manual values where present, null where absent', () => {
-  const derived: YtdRealized = { year: 2026, krTaxableGainKrw: 1, usShortUsd: 2, usLongUsd: 3, lotCount: 1 }
+  const derived: YtdRealized = { year: 2026, krTaxableGainKrw: 1, usShortUsd: 2, usLongUsd: 3, usSourceShortUsd: 0, usSourceLongUsd: 0, lotCount: 1 }
   const cmp = compareWithPolicy(derived, policy())
   assert.equal(cmp.derived, derived)
   assert.deepEqual(cmp.manual, { krTaxableGainKrw: null, usShortUsd: 5, usLongUsd: null })
 })
 
 test('withDerivedYtd creates a missing jurisdiction or assumptions bag without mutating input', () => {
-  const derived: YtdRealized = { year: 2026, krTaxableGainKrw: 7, usShortUsd: 8, usLongUsd: 9, lotCount: 1 }
+  const derived: YtdRealized = { year: 2026, krTaxableGainKrw: 7, usShortUsd: 8, usLongUsd: 9, usSourceShortUsd: 0, usSourceLongUsd: 0, lotCount: 1 }
   const input = policy()
   input.jurisdictions = input.jurisdictions.filter((j) => j.code === 'US')
   const snapshot = structuredClone(input)
