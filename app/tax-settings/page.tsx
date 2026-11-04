@@ -38,7 +38,18 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
   const ytdComputed = (() => {
     try {
       const raw = getMeta()?.us_ytd_realized_computed
-      return raw ? (JSON.parse(raw) as { taxYear: string; basis: string; shortUsd: number; longUsd: number; lots: number }) : null
+      return raw
+        ? (JSON.parse(raw) as {
+            taxYear: string
+            basis: string
+            shortUsd: number
+            longUsd: number
+            lots: number
+            usSourceShortUsd?: number
+            usSourceLongUsd?: number
+            usSourceLots?: number
+          })
+        : null
     } catch {
       return null
     }
@@ -55,6 +66,11 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
   const ytdHint = (term: 'shortUsd' | 'longUsd') =>
     ytdComputed
       ? copy.us.ytdHint(ytdComputed.basis, ytdComputed.taxYear, fmtNumber(ytdComputed[term], 2), ytdComputed.lots)
+      : undefined
+  // Absent until the ingest that publishes the US-market part has run once.
+  const usSourceYtdHint = (term: 'usSourceShortUsd' | 'usSourceLongUsd') =>
+    ytdComputed?.[term] != null
+      ? copy.us.ytdHint(ytdComputed.basis, ytdComputed.taxYear, fmtNumber(ytdComputed[term], 2), ytdComputed.usSourceLots ?? 0)
       : undefined
 
   return (
@@ -279,6 +295,8 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
               <Field label={copy.us.lossDeductionLimit} name="usLossDeductionLimitUsd" defaultValue={assumptionNumber(policy, 'US', 'lossDeductionLimitUsd', 3000)} suffix="USD" />
               <Field label={copy.us.ytdRealizedShort} name="usYtdRealizedShortGainLossUsd" defaultValue={assumptionNumber(policy, 'US', 'ytdRealizedShortGainLossUsd', 0)} suffix="USD" hint={ytdHint('shortUsd')} />
               <Field label={copy.us.ytdRealizedLong} name="usYtdRealizedLongGainLossUsd" defaultValue={assumptionNumber(policy, 'US', 'ytdRealizedLongGainLossUsd', 0)} suffix="USD" hint={ytdHint('longUsd')} />
+              <Field label={copy.us.ytdRealizedUsSourceShort} name="usYtdRealizedUsSourceShortGainLossUsd" defaultValue={assumptionNumber(policy, 'US', 'ytdRealizedUsSourceShortGainLossUsd', 0)} suffix="USD" hint={usSourceYtdHint('usSourceShortUsd')} />
+              <Field label={copy.us.ytdRealizedUsSourceLong} name="usYtdRealizedUsSourceLongGainLossUsd" defaultValue={assumptionNumber(policy, 'US', 'ytdRealizedUsSourceLongGainLossUsd', 0)} suffix="USD" hint={usSourceYtdHint('usSourceLongUsd')} />
               <Field label={copy.us.shortLossCarryover} name="usShortTermCapitalLossCarryoverUsd" defaultValue={assumptionNumber(policy, 'US', 'shortTermCapitalLossCarryoverUsd', 0)} suffix="USD" />
               <Field label={copy.us.longLossCarryover} name="usLongTermCapitalLossCarryoverUsd" defaultValue={assumptionNumber(policy, 'US', 'longTermCapitalLossCarryoverUsd', 0)} suffix="USD" />
               <Field label={copy.us.ftcCarryover} name="usForeignTaxCreditCarryoverUsd" defaultValue={assumptionNumber(policy, 'US', 'foreignTaxCreditCarryoverUsd', 0)} suffix="USD" />

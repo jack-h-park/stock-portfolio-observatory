@@ -71,6 +71,8 @@
         "netInvestmentIncomeTaxRatePct": 3.8,
         "ytdRealizedShortGainLossUsd": 0,
         "ytdRealizedLongGainLossUsd": 0,
+        "ytdRealizedUsSourceShortGainLossUsd": 0,
+        "ytdRealizedUsSourceLongGainLossUsd": 0,
         "shortTermCapitalLossCarryoverUsd": 0,
         "longTermCapitalLossCarryoverUsd": 0,
         "foreignTaxCreditCarryoverUsd": 0,

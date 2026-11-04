@@ -122,7 +122,7 @@ const input = (lots: TaxPlanningLot[], cashKrw: number, over: Partial<RebalanceI
   recentBuys: [],
   washSaleBlockedBuys: [],
   accountDataAsOf: { [accountKey('BrokerA', 'acct-1')]: AS_OF, [accountKey('BrokerA', 'acct-2')]: AS_OF },
-  ytd: { year: 2026, krTaxableGainKrw: 0, usShortUsd: 0, usLongUsd: 0, lotCount: 0 },
+  ytd: { year: 2026, krTaxableGainKrw: 0, usShortUsd: 0, usLongUsd: 0, usSourceShortUsd: 0, usSourceLongUsd: 0, lotCount: 0 },
   healthErrors: [],
   ...over,
 })
@@ -144,7 +144,7 @@ const plan = (
   })
 
 /** YTD gains already at the KR deduction: nothing fits the kr_deduction tier. */
-const DEDUCTION_USED = { ytd: { year: 2026, krTaxableGainKrw: 2_500_000, usShortUsd: 0, usLongUsd: 0, lotCount: 1 } }
+const DEDUCTION_USED = { ytd: { year: 2026, krTaxableGainKrw: 2_500_000, usShortUsd: 0, usLongUsd: 0, usSourceShortUsd: 0, usSourceLongUsd: 0, lotCount: 1 } }
 
 const sells = (p: TradePlan) => p.instructions.filter((i) => i.kind === 'sell')
 const near = (a: number, b: number, tol = 1e-6) => assert.ok(Math.abs(a - b) <= tol, `${a} != ${b}`)
@@ -203,14 +203,14 @@ test('KR deduction tier fills the remaining deduction before US long gains', () 
     lot({ id: 1, ticker: 'CCC', qty: 10, price: 100, cost: 60 }),
     lot({ id: 2, ticker: 'DDD', qty: 45, price: 100, cost: 77.7 }),
   ]
-  const p = plan(lots, 4_500_000, { over: { ytd: { year: 2026, krTaxableGainKrw: 2_000_000, usShortUsd: 0, usLongUsd: 0, lotCount: 1 } } })
+  const p = plan(lots, 4_500_000, { over: { ytd: { year: 2026, krTaxableGainKrw: 2_000_000, usShortUsd: 0, usLongUsd: 0, usSourceShortUsd: 0, usSourceLongUsd: 0, lotCount: 1 } } })
   const s = sells(p)
   assert.equal(s.length, 1)
   assert.equal(s[0].ticker, 'CCC')
   assert.equal(s[0].tier, 'kr_deduction')
   assert.equal(s[0].quantity, 5)
   // Without the deduction headroom DDD (lower gain/proceeds) goes first, as a US long gain.
-  const q = plan(lots, 4_500_000, { over: { ytd: { year: 2026, krTaxableGainKrw: 2_500_000, usShortUsd: 0, usLongUsd: 0, lotCount: 1 } } })
+  const q = plan(lots, 4_500_000, { over: { ytd: { year: 2026, krTaxableGainKrw: 2_500_000, usShortUsd: 0, usLongUsd: 0, usSourceShortUsd: 0, usSourceLongUsd: 0, lotCount: 1 } } })
   assert.equal(sells(q)[0].ticker, 'DDD')
   assert.equal(sells(q)[0].tier, 'us_long')
 })
@@ -220,7 +220,7 @@ test('short-term gains come last and carry tier short_term', () => {
     lot({ id: 1, ticker: 'EEE', qty: 52, price: 100, cost: 98, long: false }),
     lot({ id: 2, ticker: 'FFF', qty: 3, price: 100, cost: 30 }),
   ]
-  const p = plan(lots, 4_500_000, { over: { ytd: { year: 2026, krTaxableGainKrw: 2_500_000, usShortUsd: 0, usLongUsd: 0, lotCount: 1 } } })
+  const p = plan(lots, 4_500_000, { over: { ytd: { year: 2026, krTaxableGainKrw: 2_500_000, usShortUsd: 0, usLongUsd: 0, usSourceShortUsd: 0, usSourceLongUsd: 0, lotCount: 1 } } })
   const s = sells(p)
   assert.deepEqual(
     s.map((i) => [i.ticker, i.tier, i.quantity, i.holdingBucket]),
@@ -508,7 +508,7 @@ test('same input twice yields deep-equal plans', () => {
 })
 
 /** YTD KR gain of 4,000,000: tax(ytd only) = (4,000,000 - 2,500,000) x 22% = 330,000. */
-const YTD_KR_GAIN = { ytd: { year: 2026, krTaxableGainKrw: 4_000_000, usShortUsd: 0, usLongUsd: 0, lotCount: 1 } }
+const YTD_KR_GAIN = { ytd: { year: 2026, krTaxableGainKrw: 4_000_000, usShortUsd: 0, usLongUsd: 0, usSourceShortUsd: 0, usSourceLongUsd: 0, lotCount: 1 } }
 
 test('estimatedTaxKrw is the plan\'s incremental tax: a loss sale against ytd gains is negative', () => {
   // BBB sells 2 shares at a 50 USD loss each: -100,000 KRW. Year total = (3,900,000 - 2,500,000) x 22% = 308,000.
@@ -579,7 +579,7 @@ test('a lot held in an ISA never takes the KR deduction tier', () => {
     { ...lot({ id: 1, ticker: 'CCC', qty: 10, price: 100, cost: 60 }), account_wrapper: 'isa' },
     { ...lot({ id: 2, ticker: 'DDD', qty: 45, price: 100, cost: 77.7 }), account_wrapper: 'isa' },
   ]
-  const p = plan(lots, 4_500_000, { over: { ytd: { year: 2026, krTaxableGainKrw: 2_000_000, usShortUsd: 0, usLongUsd: 0, lotCount: 1 } } })
+  const p = plan(lots, 4_500_000, { over: { ytd: { year: 2026, krTaxableGainKrw: 2_000_000, usShortUsd: 0, usLongUsd: 0, usSourceShortUsd: 0, usSourceLongUsd: 0, lotCount: 1 } } })
   const s = sells(p)
   assert.equal(s[0].ticker, 'DDD')
   assert.equal(s[0].tier, 'us_long')

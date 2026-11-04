@@ -130,7 +130,7 @@ const input = (lots: TaxPlanningLot[], cashRows: RebalanceCash[], over: Partial<
   recentBuys: [],
   washSaleBlockedBuys: [],
   accountDataAsOf: { [ACCT1]: AS_OF, [ACCT2]: AS_OF },
-  ytd: { year: 2026, krTaxableGainKrw: 0, usShortUsd: 0, usLongUsd: 0, lotCount: 0 },
+  ytd: { year: 2026, krTaxableGainKrw: 0, usShortUsd: 0, usLongUsd: 0, usSourceShortUsd: 0, usSourceLongUsd: 0, lotCount: 0 },
   healthErrors: [],
   ...over,
 })
@@ -303,7 +303,7 @@ test('taxSummary deduction used/remaining against ytd', () => {
   const run = (ytd: number) =>
     plan(lots, [cash(4_000_000, 'KRW')], {
       t: targets({ us_equity: { target: 45, band: 5 } }),
-      over: { ytd: { year: 2026, krTaxableGainKrw: ytd, usShortUsd: 0, usLongUsd: 0, lotCount: 1 } },
+      over: { ytd: { year: 2026, krTaxableGainKrw: ytd, usShortUsd: 0, usLongUsd: 0, usSourceShortUsd: 0, usSourceLongUsd: 0, lotCount: 1 } },
     }).taxSummary
   const fresh = run(0)
   near(fresh.krGainKrw, 800_000)

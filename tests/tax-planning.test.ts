@@ -499,3 +499,37 @@ test('gains Korea already taxed this year use up the basic deduction before a pl
   // Another year starts its own pool.
   assert.equal(summarizeTaxCandidates({ candidates: plan.candidates, policy: withYtd, scenario: 'KR_ONLY', year: 2027 }).krTaxKrw, 0)
 })
+
+// Korea credits the US federal tax on the US-source part of its pool. Gains already realized this
+// year are in the Korean pool through ytdRealizedTaxableGainKrw, so the US tax on their US-market
+// part has to be in the credit as well, or a year with no planned sale is taxed twice.
+test('the cross-border credit covers US tax on US-source gains already realized this year', () => {
+  const ytdPolicy = (usSourceShortUsd?: number) => {
+    const current = policy({ creditMode: 'estimated-us-source' })
+    const us = current.jurisdictions.find((j) => j.code === 'US')!.manualAssumptions
+    // Worldwide: $10,000 of US-market gain plus $2,000 realized in Korea.
+    us.ytdRealizedShortGainLossUsd = 12_000
+    if (usSourceShortUsd != null) us.ytdRealizedUsSourceShortGainLossUsd = usSourceShortUsd
+    current.jurisdictions.find((j) => j.code === 'KR')!.manualAssumptions.ytdRealizedTaxableGainKrw = 10_000_000
+    return current
+  }
+  const summarize = (current: TaxPolicy, year = 2026) =>
+    summarizeTaxCandidates({ candidates: [], policy: current, scenario: 'US_AND_KR', year })
+
+  const usFederal = estimateUsCapitalGainTax({
+    year: 2026, filingStatus: 'MFJ', stateCode: 'NONE', ordinaryIncomeUsd: 336_000,
+    shortGainUsd: 10_000, longGainUsd: 0, federalBracketInflationPct: 2.5, fallbackStateRatePct: 0, niitRatePct: 0,
+  }).federalRegularTaxUsd
+  const aggregate = summarize(ytdPolicy(10_000))
+  assert.equal(aggregate.krTaxKrw, 7_500_000 * 0.22)
+  assert.equal(aggregate.usFederalTaxOnUsMarketGainKrw, usFederal * 1000)
+  // The US tax on the US-source part exceeds Korea's, so the credit takes all of it.
+  assert.ok(usFederal * 1000 > aggregate.krTaxKrw)
+  assert.equal(aggregate.krForeignTaxCreditKrw, aggregate.krTaxKrw)
+  assert.equal(aggregate.combinedTaxAfterCreditsKrw, aggregate.usTaxKrw)
+
+  // The worldwide figure is not US-source: without the US-source split there is nothing to credit.
+  assert.equal(summarize(ytdPolicy()).krForeignTaxCreditKrw, 0)
+  // Another year starts its own pool on both sides.
+  assert.equal(summarize(ytdPolicy(10_000), 2027).usFederalTaxOnUsMarketGainKrw, 0)
+})

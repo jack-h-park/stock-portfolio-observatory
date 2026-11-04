@@ -20,6 +20,9 @@ export type YtdRealized = {
   krTaxableGainKrw: number
   usShortUsd: number
   usLongUsd: number
+  /** The US-market part of usShortUsd/usLongUsd: the US-source share Korea's credit is measured on. */
+  usSourceShortUsd: number
+  usSourceLongUsd: number
   lotCount: number
 }
 
@@ -45,6 +48,8 @@ export function deriveYtdRealized(rows: RealizedLotRow[], year: number, usdKrwRa
   let krTaxableGainKrw = 0
   let usShortUsd = 0
   let usLongUsd = 0
+  let usSourceShortUsd = 0
+  let usSourceLongUsd = 0
   let lotCount = 0
   for (const row of rows) {
     if (row.superseded_by != null) continue
@@ -63,10 +68,15 @@ export function deriveYtdRealized(rows: RealizedLotRow[], year: number, usdKrwRa
           : row.acquisition_cost_usd != null && row.proceeds_krw != null
             ? num(row.proceeds_krw) / usdKrwRate - num(row.acquisition_cost_usd)
             : num(row.realized_gl_krw) / usdKrwRate
-    if (/long/i.test(row.tax_term ?? '')) usLongUsd += usd
+    const long = /long/i.test(row.tax_term ?? '')
+    if (long) usLongUsd += usd
     else usShortUsd += usd
+    if (row.market === 'US') {
+      if (long) usSourceLongUsd += usd
+      else usSourceShortUsd += usd
+    }
   }
-  return { year, krTaxableGainKrw, usShortUsd, usLongUsd, lotCount }
+  return { year, krTaxableGainKrw, usShortUsd, usLongUsd, usSourceShortUsd, usSourceLongUsd, lotCount }
 }
 
 function manualValue(policy: TaxPolicy, jurisdiction: string, key: string): number | null {
@@ -102,6 +112,8 @@ export function withDerivedYtd(policy: TaxPolicy, derived: YtdRealized): TaxPoli
   set('KR', 'ytdRealizedTaxableGainKrw', derived.krTaxableGainKrw)
   set('US', 'ytdRealizedShortGainLossUsd', derived.usShortUsd)
   set('US', 'ytdRealizedLongGainLossUsd', derived.usLongUsd)
+  set('US', 'ytdRealizedUsSourceShortGainLossUsd', derived.usSourceShortUsd)
+  set('US', 'ytdRealizedUsSourceLongGainLossUsd', derived.usSourceLongUsd)
   set('US', 'taxInputYear', derived.year)
   return copy
 }

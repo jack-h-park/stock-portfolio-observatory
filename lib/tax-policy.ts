@@ -219,6 +219,8 @@ export function policyFromFormData(formData: FormData): TaxPolicy {
   setAssumption(policy, 'US', 'taxInputYear', numeric(formData.get('usTaxInputYear')) ?? new Date().getFullYear())
   setAssumption(policy, 'US', 'ytdRealizedShortGainLossUsd', numeric(formData.get('usYtdRealizedShortGainLossUsd')) ?? 0)
   setAssumption(policy, 'US', 'ytdRealizedLongGainLossUsd', numeric(formData.get('usYtdRealizedLongGainLossUsd')) ?? 0)
+  setAssumption(policy, 'US', 'ytdRealizedUsSourceShortGainLossUsd', numeric(formData.get('usYtdRealizedUsSourceShortGainLossUsd')) ?? 0)
+  setAssumption(policy, 'US', 'ytdRealizedUsSourceLongGainLossUsd', numeric(formData.get('usYtdRealizedUsSourceLongGainLossUsd')) ?? 0)
   setAssumption(policy, 'US', 'shortTermCapitalLossCarryoverUsd', numeric(formData.get('usShortTermCapitalLossCarryoverUsd')) ?? 0)
   setAssumption(policy, 'US', 'longTermCapitalLossCarryoverUsd', numeric(formData.get('usLongTermCapitalLossCarryoverUsd')) ?? 0)
   setAssumption(policy, 'US', 'foreignTaxCreditCarryoverUsd', numeric(formData.get('usForeignTaxCreditCarryoverUsd')) ?? 0)

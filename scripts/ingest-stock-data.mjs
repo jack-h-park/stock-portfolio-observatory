@@ -7222,9 +7222,10 @@ const ytdSalesDetail = `${usSalesThisYear.length} US sale(s) in ${taxYear} total
 // `ytdRealized*Usd` is passed to estimateUsCapitalGainTax as `ytdShortGainUsd`,
 // where it joins the same pool as the projected gains — and that pool is every
 // priced lot regardless of market, because a US person reports worldwide capital
-// gains. The US-market-only sub-estimate that backs the foreign-tax-credit
-// limitation passes ytd 0 instead, which is the tell: scope is already decided
-// upstream, and this check only has to match it.
+// gains. The US-market-only sub-estimate that backs Korea's cross-border credit
+// reads the US-source part from its own pair of assumptions
+// (`ytdRealizedUsSource*GainLossUsd`, checked below), so scope is already
+// decided upstream, and this check only has to match it.
 //
 // Comparing a correctly worldwide assumption against a US-only replay reported a
 // disagreement that was really a scope mismatch — KRW 740,800 of Korean gains
@@ -7277,6 +7278,12 @@ const sumUsd = (term) =>
 const computedShortUsd = sumUsd('short')
 const computedLongUsd = sumUsd('long')
 const usRealizedForTaxYear = realizedForTaxYear.filter((r) => r.market === 'US')
+const sumUsSourceUsd = (term) =>
+  usRealizedForTaxYear
+    .filter((r) => text(r.tax_term).toLowerCase().startsWith(term))
+    .reduce((sum, r) => sum + (realizedUsdOf(r) ?? 0), 0)
+const computedUsSourceShortUsd = sumUsSourceUsd('short')
+const computedUsSourceLongUsd = sumUsSourceUsd('long')
 const computedBasis = usRealizedForTaxYear.some((r) => r.basis === '1099b') ? '1099-B' : 'replay'
 // Named per market so a mismatch says WHERE it came from rather than only how big.
 const computedByMarket = [...new Set(ytdRealizedRows.map(ytdMarketOf))].sort().map((market) => {
@@ -7320,6 +7327,10 @@ db.prepare('insert or replace into meta (key, value) values (?, ?)').run(
     scope: 'worldwide',
     byMarket: computedByMarket,
     unconvertibleLots: unconvertible.length,
+    // The US-market part, the planner's US-source share for Korea's cross-border credit.
+    usSourceShortUsd: Number(computedUsSourceShortUsd.toFixed(2)),
+    usSourceLongUsd: Number(computedUsSourceLongUsd.toFixed(2)),
+    usSourceLots: usRealizedForTaxYear.length,
   })
 )
 
@@ -7337,6 +7348,34 @@ check(
         `${assumedShortUsd} / ${assumedLongUsd}` +
         `${unconvertible.length ? `; ${unconvertible.length} lot(s) had no FX for their acquisition or sale date` : ''}` +
         `${taxPolicy ? '' : ` (no policy file at ${path.basename(taxPolicyPath)})`}` +
+        bridgedRealizedDetail,
+  'warning'
+)
+
+// The US-source part of the same figures. Under `estimated-us-source` Korea
+// credits the US federal tax on the US-market gains in its pool, and the gains
+// already realized this year are in that pool, so the planner needs their
+// US-market share — which the worldwide pair above cannot give it. Same rule as
+// above: published and checked, typed by the operator. The check only applies
+// while that credit mode is on, because nothing else reads the pair.
+const usSourceCreditMode =
+  (taxPolicy?.jurisdictions ?? []).find((j) => j?.code === 'KR')?.manualAssumptions?.foreignTaxCreditMode === 'estimated-us-source'
+const assumedUsSourceShortUsd = Number(usTaxAssumptions?.ytdRealizedUsSourceShortGainLossUsd ?? 0)
+const assumedUsSourceLongUsd = Number(usTaxAssumptions?.ytdRealizedUsSourceLongGainLossUsd ?? 0)
+const usSourceYtdAgrees =
+  Math.abs(assumedUsSourceShortUsd - computedUsSourceShortUsd) <= 1 &&
+  Math.abs(assumedUsSourceLongUsd - computedUsSourceLongUsd) <= 1
+check(
+  'us_source_ytd_realized_assumption_reviewed',
+  !usSourceCreditMode || usRealizedForTaxYear.length === 0 || usSourceYtdAgrees,
+  !usSourceCreditMode
+    ? 'KR foreignTaxCreditMode is not estimated-us-source; nothing reads the US-source split'
+    : usRealizedForTaxYear.length === 0
+      ? `no ${taxYear} US-market sales`
+      : `${usRealizedForTaxYear.length} US-market lot(s) sold in ${taxYear} give ${computedUsSourceShortUsd.toFixed(2)} short / ` +
+        `${computedUsSourceLongUsd.toFixed(2)} long (${computedBasis}); ytdRealizedUsSource*GainLossUsd is ` +
+        `${assumedUsSourceShortUsd} / ${assumedUsSourceLongUsd}` +
+        (usSourceYtdAgrees ? '' : ' — update it on the tax settings page') +
         bridgedRealizedDetail,
   'warning'
 )
