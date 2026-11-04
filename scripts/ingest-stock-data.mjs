@@ -5764,6 +5764,11 @@ if (droppedHoldingRows.length) {
 insertMany(db, 'holdings', holdingRows, HOLDING_COLUMNS)
 insertMany(db, 'holdings', pensionHoldingRows, [...HOLDING_COLUMNS, 'valuation_source'])
 insertMany(db, 'holdings', goldHoldingRows, [...HOLDING_COLUMNS, 'valuation_source'])
+// The Korea sheet already lists these accounts' gold sales (average-cost slices
+// with no dollar figures). The matched rows replace them, so a sale is counted once.
+for (const account of new Set(goldRealizedRows.map((r) => r.account))) {
+  db.prepare("delete from realized_lots_all where asset_class = 'gold' and account = ?").run(account)
+}
 insertMany(db, 'realized_lots', goldRealizedRows, [
   'market', 'currency', 'base_currency', 'brokerage', 'source_system', 'account', 'ticker', 'name',
   'acquired_date', 'sold_date', 'quantity_sold', 'cost_basis_krw', 'acquisition_cost_krw', 'acquisition_cost_usd',
@@ -7244,9 +7249,17 @@ const realizedForTaxYear = stockOnly(realizedRows).filter((r) => r.tax_year === 
 // so the worldwide figure counts it. It stays out of `realizedForTaxYear`: the
 // Korea-side estimate below reads that set, and Korea does not tax these sales.
 // It is named GOLD in the per-market breakdown so a reader sees what it added.
-const goldRealizedForTaxYear = realizedRows.filter(
-  (r) => (r.asset_class ?? assetClassFor(r, accountMap)) === 'gold' && r.tax_year === taxYear && !r.superseded_by
-)
+const goldAccountsMatched = new Set(goldRealizedRows.map((r) => r.account))
+const goldRealizedForTaxYear = [
+  ...realizedRows.filter(
+    (r) =>
+      (r.asset_class ?? assetClassFor(r, accountMap)) === 'gold' &&
+      !goldAccountsMatched.has(r.account) &&
+      r.tax_year === taxYear &&
+      !r.superseded_by
+  ),
+  ...goldRealizedRows.filter((r) => r.tax_year === taxYear),
+]
 const ytdRealizedRows = [...realizedForTaxYear, ...goldRealizedForTaxYear]
 const ytdMarketOf = (r) => (goldRealizedForTaxYear.includes(r) ? 'GOLD' : r.market)
 // Only the historical table: falling back to today's rate for an acquisition
