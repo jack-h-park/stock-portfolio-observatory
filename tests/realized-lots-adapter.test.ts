@@ -87,3 +87,26 @@ test('getIngestedAt reads the meta value, or null', async () => {
   w.close()
   assert.equal(getIngestedAt(), '2025-06-01T00:00:00Z')
 })
+
+test('getRealizedLots adds physical gold, as collectibles with stored dollar proceeds, only when asked', async () => {
+  const db = new Database(dbPath)
+  // Earlier tests leave realized_lots as a table; this one needs the view over the all-assets table.
+  const kind = (db.prepare("select type from sqlite_master where name = 'realized_lots'").get() as { type: string } | undefined)?.type
+  if (kind) db.exec(`drop ${kind} realized_lots`)
+  db.exec('drop table if exists realized_lots_all')
+  db.exec(`create table realized_lots_all (${OLD_COLUMNS}, owner text, asset_class text, proceeds_usd real, superseded_by text)`)
+  db.exec("create view realized_lots as select * from realized_lots_all where asset_class = 'security'")
+  const insert = db.prepare(`insert into realized_lots_all values (${Array(21).fill('?').join(',')})`)
+  insert.run('US', 'USD', 'Invented Broker', 'ACC-1', 'AAA', 'AAA Inc', '2024-01-02', '2025-03-04', 10, 1000, 1500, 500, 0.7, 1.1, 427, 'Long-term', 'lot', 'self', 'security', null, null)
+  insert.run('KR', 'KRW', 'Invented Gold', 'GOLD-1', 'M04020000', 'Gold', '2025-01-10', '2026-03-04', 5, 500000, 700000, 200000, 357.73, 700000, 418, 'Long-term', 'replay', 'self', 'gold', 565.73, null)
+  db.close()
+  const { getRealizedLots } = await import('../lib/adapters/portfolio-db')
+  assert.deepEqual(getRealizedLots().map((r) => r.ticker), ['AAA'])
+  const rows = getRealizedLots({ includeGold: true })
+  assert.deepEqual(rows.map((r) => r.ticker), ['M04020000', 'AAA'])
+  const [gold, stock] = rows
+  assert.equal(gold.collectible, true)
+  assert.equal(gold.proceeds_usd, 565.73)
+  assert.equal(gold.gain_usd, 565.73 - 357.73)
+  assert.notEqual(stock.collectible, true)
+})

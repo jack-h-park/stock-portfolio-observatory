@@ -130,7 +130,10 @@ export function taxExportCsv(rows: RealizedLotView[]): string {
   const lines: string[] = [TAX_EXPORT_HEADER.join(',')]
   for (const row of rows) {
     const broker = row.brokerage?.trim() || 'Unknown'
-    const description = `${quantityText(row.quantity_sold)} ${row.ticker}`.trim()
+    const description =
+      assetClassOf(row) === 'gold'
+        ? `${quantityText(row.quantity_sold)} g physical gold (KRX)`
+        : `${quantityText(row.quantity_sold)} ${row.ticker}`.trim()
     const figures = figuresOf(row)
     const cells = [
       textCell(description),
@@ -164,6 +167,8 @@ export type TaxExportSummary = {
   superseded: number
   /** Dollars, summed from whole cents so it equals the sum of the exported cells. */
   byTerm: Record<'short' | 'long' | 'unknown', { count: number; gain_usd: number }>
+  /** Collectibles (physical gold) apart from `byTerm`: their long-term rate differs from a stock's. */
+  collectibleByTerm: Record<'short' | 'long' | 'unknown', { count: number; gain_usd: number }>
 }
 
 export function summarizeTaxExport(rows: RealizedLotView[]): TaxExportSummary {
@@ -176,8 +181,14 @@ export function summarizeTaxExport(rows: RealizedLotView[]): TaxExportSummary {
       long: { count: 0, gain_usd: 0 },
       unknown: { count: 0, gain_usd: 0 },
     },
+    collectibleByTerm: {
+      short: { count: 0, gain_usd: 0 },
+      long: { count: 0, gain_usd: 0 },
+      unknown: { count: 0, gain_usd: 0 },
+    },
   }
   const totalCents = { short: 0, long: 0, unknown: 0 }
+  const collectibleCents = { short: 0, long: 0, unknown: 0 }
   for (const row of rows) {
     if (row.superseded_by) {
       summary.superseded += 1
@@ -190,10 +201,14 @@ export function summarizeTaxExport(rows: RealizedLotView[]): TaxExportSummary {
       continue
     }
     const key = termOf(row.tax_term)
-    totalCents[key] += gain
-    summary.byTerm[key].count += 1
+    const [cents, bucket] = row.collectible === true ? [collectibleCents, summary.collectibleByTerm] : [totalCents, summary.byTerm]
+    cents[key] += gain
+    bucket[key].count += 1
   }
-  for (const key of ['short', 'long', 'unknown'] as const) summary.byTerm[key].gain_usd = totalCents[key] / 100
+  for (const key of ['short', 'long', 'unknown'] as const) {
+    summary.byTerm[key].gain_usd = totalCents[key] / 100
+    summary.collectibleByTerm[key].gain_usd = collectibleCents[key] / 100
+  }
   return summary
 }
 
@@ -203,7 +218,8 @@ export const NOT_COVERED_LINES: readonly string[] = [
   'On 1099b rows the gain is the broker\'s filed gain, and adjustment_usd is its difference from proceeds minus cost (wash-sale and basis adjustments); the adjustment code is not stored, so Form 8949 column f is omitted. Replay rows carry no adjustment, and wash sales are not computed for them.',
   'Box codes appear only on 1099b rows. Crypto rows have no box here; 1099-DA is not parsed by this app.',
   'Korea-account lots are measured in dollars: cost at the acquisition-date rate, proceeds at the sale-date rate. This is the repo\'s reading of the IRS method, to be confirmed with the preparer.',
-  'Not included: physical gold sales are not exported yet; other owners\' accounts, pension wrappers, dividends and interest, FBAR, Korean-side gains and tax.',
+  'Physical gold (KRX) sales are included as collectibles (collectible=true), matched first in, first out so each row carries the holding period of the purchase it consumed. Purchase commissions are added to cost and sale commissions are taken out of proceeds, in won, then converted at the acquisition-date and sale-date rates. The gain on long-term collectibles is taxed at a different maximum rate than a stock\'s; this export does not compute any tax.',
+  'Not included: other owners\' accounts, pension wrappers, dividends and interest, FBAR, Korean-side gains and tax.',
   'Two accounts that carry an identical stored label cannot be told apart by the export, and share one alias.',
 ]
 
@@ -228,6 +244,14 @@ export function taxExportNotes(summary: TaxExportSummary, ctx: { year: string; b
   lines.push(`  short: ${summary.byTerm.short.count} rows, ${fmt(summary.byTerm.short.gain_usd)}`)
   lines.push(`  long: ${summary.byTerm.long.count} rows, ${fmt(summary.byTerm.long.gain_usd)}`)
   lines.push(`  unknown term: ${summary.byTerm.unknown.count} rows, ${fmt(summary.byTerm.unknown.gain_usd)}`)
+  const gold = summary.collectibleByTerm
+  if (gold.short.count + gold.long.count + gold.unknown.count > 0) {
+    lines.push('')
+    lines.push('Collectibles (physical gold), kept out of the totals above (USD):')
+    lines.push(`  short: ${gold.short.count} rows, ${fmt(gold.short.gain_usd)}`)
+    lines.push(`  long: ${gold.long.count} rows, ${fmt(gold.long.gain_usd)}`)
+    if (gold.unknown.count > 0) lines.push(`  unknown term: ${gold.unknown.count} rows, ${fmt(gold.unknown.gain_usd)}`)
+  }
   lines.push('')
   lines.push('What this export does not cover:')
   for (const line of NOT_COVERED_LINES) lines.push(`- ${line}`)

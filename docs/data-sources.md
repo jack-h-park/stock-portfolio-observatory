@@ -736,8 +736,12 @@ no total. The stored account string never appears: `account_alias` is
 `<broker> A`, `<broker> B` and so on, assigned in order of first appearance in
 that one file, so aliases cannot be joined across files. The notes file states
 the row count, the rows with a blank dollar figure, gain or loss by term over the
-other rows, and what the export does not cover. Physical gold sales are not exported yet; the
-`collectible` column is `false` on every row until it is.
+other rows, and what the export does not cover. Physical gold sales (`realized_lots_all`,
+`asset_class = 'gold'`, matched first in, first out by the ingest) are in the
+file as `collectible=true` rows with the dollar figures the ingest stored; the
+closed-lot table on the page still lists stocks and crypto only. The notes
+report the collectibles' gain by term apart from the other rows, because their
+long-term rate differs; no tax is computed.
 
 **An RSU account can hold nothing, and that is why it was missed.** 삼성증권's
 주식보상 account is where RSUs vest, and its position can sit at zero — vested

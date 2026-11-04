@@ -15,7 +15,7 @@ export const EXPORT_HEADERS = {
 export function loadTaxExport(request: Request): { rows: RealizedLotView[]; year: string; audit: boolean; fileStem: string } {
   const params = new URL(request.url).searchParams
   const audit = params.get('audit') === '1'
-  const all = getRealizedLots({ includeSuperseded: audit })
+  const all = getRealizedLots({ includeSuperseded: audit, includeGold: true })
   const years = [...new Set(all.map((row) => row.sold_year).filter(Boolean))]
   const resolved = readExportParams(params, years, todayLosAngeles().slice(0, 4))
   const rows = selectTaxExportRows(all, resolved)

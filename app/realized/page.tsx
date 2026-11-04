@@ -53,7 +53,7 @@ export default async function RealizedLotsPage({
   const exportYear = exportYearAsked === ALL_YEARS || (exportYearAsked && years.includes(exportYearAsked)) ? exportYearAsked : year
   const exportAudit = (Array.isArray(params.exportAudit) ? params.exportAudit[0] : params.exportAudit) === '1'
   const exportSummary = summarizeTaxExport(
-    selectTaxExportRows(getRealizedLots({ includeSuperseded: exportAudit }), { year: exportYear, audit: exportAudit })
+    selectTaxExportRows(getRealizedLots({ includeSuperseded: exportAudit, includeGold: true }), { year: exportYear, audit: exportAudit })
   )
   const exportQuery = `year=${encodeURIComponent(exportYear)}${exportAudit ? '&audit=1' : ''}`
   const downloadLinkClass =

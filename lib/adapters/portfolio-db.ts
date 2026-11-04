@@ -5427,33 +5427,46 @@ export function getTaxLots(limit = 300) {
  * Every closed lot of the maintainer's own, stocks and crypto, with the dollar figures a US filing needs.
  * Another owner's lots (a child's account) are never returned.
  *
- * Reads the `realized_lots` view, which already leaves out physical gold, and
- * skips a replay row that a 1099-B filing replaced: both would count one sale
- * twice. A database too old to have the table returns nothing rather than throw.
+ * Reads the `realized_lots` view, which leaves out physical gold, and skips a
+ * replay row that a 1099-B filing replaced: both would count one sale twice.
+ * `includeGold` adds the physical gold slices (first in, first out, already in
+ * dollars) from `realized_lots_all`, marked as collectibles. A database too old
+ * to have the table returns nothing rather than throw.
  */
-export function getRealizedLots(options: { includeSuperseded?: boolean } = {}): RealizedLotView[] {
+export function getRealizedLots(options: { includeSuperseded?: boolean; includeGold?: boolean } = {}): RealizedLotView[] {
   const conn = db()
   try {
     const hasTable = (name: string) =>
       Boolean(conn.prepare("select 1 from sqlite_master where type in ('table', 'view') and name = ?").get(name))
     if (!hasTable('realized_lots')) return []
-    const columns = new Set((conn.prepare('pragma table_info(realized_lots)').all() as { name: string }[]).map((c) => c.name))
-    const col = (name: string) => (columns.has(name) ? name : `null as ${name}`)
-    const notSuperseded = columns.has('superseded_by') && !options.includeSuperseded ? " and coalesce(superseded_by, '') = ''" : ''
-    const rows = conn
-      .prepare(
-        `select market, currency, ${col('brokerage')}, account, ticker, name, acquired_date, sold_date, quantity_sold,
-                cost_basis_krw, proceeds_krw, realized_gl_krw, ${col('acquisition_cost_usd')}, ${col('native_proceeds')}, ${col('native_realized_gl')},
-                holding_days, tax_term, ${col('basis')}, ${col('asset_class')}, ${col('form_8949_box')},
-                ${col('covered_status')}, ${col('superseded_by')}
-           from realized_lots where 1 = 1${selfOnlyAnd(conn, 'realized_lots')}${notSuperseded}
-          order by sold_date desc, market, ticker, acquired_date`
-      )
-      .all() as RealizedLotRow[]
+    const read = (table: string, extraWhere: string, collectible: boolean): RealizedLotRow[] => {
+      const columns = new Set((conn.prepare(`pragma table_info(${table})`).all() as { name: string }[]).map((c) => c.name))
+      const col = (name: string) => (columns.has(name) ? name : `null as ${name}`)
+      const notSuperseded = columns.has('superseded_by') && !options.includeSuperseded ? " and coalesce(superseded_by, '') = ''" : ''
+      const rows = conn
+        .prepare(
+          `select market, currency, ${col('brokerage')}, account, ticker, name, acquired_date, sold_date, quantity_sold,
+                  cost_basis_krw, proceeds_krw, realized_gl_krw, ${col('acquisition_cost_usd')}, ${col('native_proceeds')}, ${col('proceeds_usd')},
+                  ${col('native_realized_gl')}, holding_days, tax_term, ${col('basis')}, ${col('asset_class')}, ${col('form_8949_box')},
+                  ${col('covered_status')}, ${col('superseded_by')}
+             from ${table} where 1 = 1${extraWhere}${selfOnlyAnd(conn, table)}${notSuperseded}`
+        )
+        .all() as RealizedLotRow[]
+      return collectible ? rows.map((row) => ({ ...row, collectible: true })) : rows
+    }
+    const lots = read('realized_lots', '', false)
+    if (options.includeGold && hasTable('realized_lots_all')) lots.push(...read('realized_lots_all', " and asset_class = 'gold'", true))
+    lots.sort(
+      (a, b) =>
+        (b.sold_date ?? '').localeCompare(a.sold_date ?? '') ||
+        a.market.localeCompare(b.market) ||
+        a.ticker.localeCompare(b.ticker) ||
+        (a.acquired_date ?? '').localeCompare(b.acquired_date ?? '')
+    )
     const rates = hasTable('historical_fx_rates')
       ? (conn.prepare('select price_date, rate from historical_fx_rates order by price_date').all() as { price_date: string; rate: number }[])
       : []
-    return rows.map((row) => toRealizedView(row, (date) => rateOnOrBefore(rates, date)))
+    return lots.map((row) => toRealizedView(row, (date) => rateOnOrBefore(rates, date)))
   } finally {
     conn.close()
   }

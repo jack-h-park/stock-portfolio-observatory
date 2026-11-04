@@ -305,9 +305,29 @@ test('a tiny negative value prints 0.00, never -0.00', () => {
   assert.equal(f[col('adjustment_usd')], '0.00')
 })
 
-test('the coverage text says physical gold is not exported yet', () => {
+test('the coverage text says physical gold is included as a collectible', () => {
   const notes = taxExportNotes(summarizeTaxExport([lot()]), { year: '2026', builtAt: null, audit: false })
-  assert.match(notes, /physical gold sales are not exported yet/i)
+  assert.match(notes, /physical gold \(KRX\) sales are included as collectibles/i)
+  assert.ok(!/not exported yet/i.test(notes))
   assert.ok(!/folded/i.test(notes))
   assert.match(notes, /adjustment_usd/)
+})
+
+test('gold rows are described in grams and their gain is summed apart from stocks', () => {
+  const gold = lot({
+    market: 'KR', asset_class: 'gold', collectible: true, ticker: 'M04020000', quantity_sold: 5,
+    proceeds_usd: 565.73, acquisition_cost_usd: 357.73, tax_term: 'Long-term', basis: 'replay',
+  })
+  const c = cells(dataLines(taxExportCsv([gold]))[0])
+  assert.equal(c[col('description')], '5 g physical gold (KRX)')
+  assert.equal(c[col('collectible')], 'true')
+  assert.equal(c[col('proceeds_usd')], '565.73')
+  assert.equal(c[col('gain_loss_usd')], '208.00')
+  const stock = lot({ acquisition_cost_usd: 400, tax_term: 'Long-term' })
+  const s = summarizeTaxExport([gold, stock])
+  assert.equal(s.collectibleByTerm.long.count, 1)
+  assert.equal(s.collectibleByTerm.long.gain_usd, 208)
+  assert.equal(s.byTerm.long.count, 1)
+  const notes = taxExportNotes(s, { year: '2026', builtAt: null, audit: false })
+  assert.match(notes, /Collectibles \(physical gold\)[^\n]*\r\n\s+short: 0 rows, 0\.00\r\n\s+long: 1 rows, 208\.00/)
 })

@@ -27,6 +27,8 @@ export type RealizedLotRow = {
   realized_gl_krw: number | null
   acquisition_cost_usd: number | null
   native_proceeds: number | null
+  /** Dollar proceeds already stored by the ingest (physical gold); the derived figure is the fallback. */
+  proceeds_usd?: number | null
   /**
    * The broker's own gain on a `1099b` row, which differs from proceeds minus
    * cost by wash-sale and basis adjustments. On other rows it may be in won, so
@@ -85,6 +87,9 @@ export function toRealizedView(row: RealizedLotRow, rateAt: (date: string) => Us
   let approximate = false
   if (row.currency === 'USD') {
     proceeds = finite(row.native_proceeds)
+  } else if (finite(row.proceeds_usd) != null) {
+    // Stored at the sale-date rate by the ingest, the same figure tax:realized prints.
+    proceeds = row.proceeds_usd as number
   } else if (row.sold_date && finite(row.proceeds_krw) != null) {
     const fx = rateAt(row.sold_date)
     if (fx && fx.rate > 0) {
