@@ -122,7 +122,7 @@ export const overview = defineCopy({
       GOLD: 'Physical gold (KRX) plus gold ETFs (IAU, IAUM, SGOL). The ETFs are already inside Global and United States, so do not add this tab to them.',
     },
     goldScopeInfo:
-      'How the Gold tab is calculated. Holdings: KRX physical gold plus the gold ETFs IAU, IAUM and SGOL. The ETFs come from the stock book and the physical gold from the gold account statements, so no position is counted twice. Overlap: Global and United States already include the ETFs but not the physical gold; this tab is a separate view and is never added to them. Physical gold value: grams held × the latest KRX price on or before each date (cost when there is no price). Realized G/L: ETF sales only, running total; no physical gold sale is on file.',
+      'How the Gold tab is calculated. Holdings: KRX physical gold plus the gold ETFs IAU, IAUM and SGOL. The ETFs come from the stock book and the physical gold from the gold account statements, so no position is counted twice. Overlap: Global and United States already include the ETFs but not the physical gold; this tab is a separate view and is never added to them. Physical gold value: grams held × the latest KRX price on or before each date (cost when there is no price). Realized G/L: running total of ETF sales and physical gold sales, in won; each gold sale is matched to the purchase it consumed (first in, first out), with commissions included.',
     goldScopeNote:
       'Gold = KRX physical gold + gold ETFs (IAU · IAUM · SGOL). The ETFs are also counted in Global and United States; this tab is a separate view, not an addition.',
   },
@@ -247,7 +247,7 @@ export const overview = defineCopy({
       GOLD: '금현물(KRX)과 금 ETF(IAU·IAUM·SGOL)를 합친 보기입니다. 금 ETF는 전체·미국 탭에 이미 들어 있으므로 이 탭을 다른 탭에 더하면 중복입니다.',
     },
     goldScopeInfo:
-      '금 탭 계산 방식. 구성: KRX 금현물 + 금 ETF(IAU, IAUM, SGOL). 금 ETF는 주식 보유내역에서, 금현물은 금 계좌 거래내역에서 가져오므로 같은 자산이 두 번 잡히지 않습니다. 중복 처리: 전체·미국 탭에는 금 ETF만 들어 있고 금현물은 없습니다. 금 탭은 별도 보기이며 다른 탭에 더하지 않습니다. 금현물 평가금액: 보유 그램 × 해당 날짜 이전 최신 KRX 시세(시세가 없으면 취득원가). 실현손익: 금 ETF 매도 누적이며, 금현물 매도 기록이 없어 금현물분은 반영되지 않습니다.',
+      '금 탭 계산 방식. 구성: KRX 금현물 + 금 ETF(IAU, IAUM, SGOL). 금 ETF는 주식 보유내역에서, 금현물은 금 계좌 거래내역에서 가져오므로 같은 자산이 두 번 잡히지 않습니다. 중복 처리: 전체·미국 탭에는 금 ETF만 들어 있고 금현물은 없습니다. 금 탭은 별도 보기이며 다른 탭에 더하지 않습니다. 금현물 평가금액: 보유 그램 × 해당 날짜 이전 최신 KRX 시세(시세가 없으면 취득원가). 실현손익: 금 ETF 매도와 금현물 매도의 누적 합계(원화)이며, 금현물은 오래된 매수분부터 차례로 매칭(선입선출)하고 수수료를 반영합니다.',
     goldScopeNote:
       '금 = KRX 금현물 + 금 ETF(IAU · IAUM · SGOL). 금 ETF는 전체·미국 탭에도 포함되어 있으며, 이 탭은 합산이 아니라 별도로 보는 화면입니다.',
   },

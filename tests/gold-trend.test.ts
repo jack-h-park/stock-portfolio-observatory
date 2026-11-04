@@ -25,9 +25,10 @@ test('physical gold: grams bought on or before the date at the latest KRX price,
   assert.deepEqual(physicalGoldBookAt(trades, prices, '2024-12-31'), emptyGoldBook())
 })
 
-test('physical gold: a sale takes grams out at the average cost', () => {
+test('physical gold: a sale takes grams from the oldest purchase first', () => {
   const book = physicalGoldBookAt([...trades, { date: '2025-08-01', type: 'SELL', grams: 5, costKrw: 0 }], prices, '2025-08-02')
-  assert.equal(book.cost, 1_800_000)
+  // 5 of the first 10 g (cost 500,000) are left, plus all of the second purchase (1,400,000).
+  assert.equal(book.cost, 1_900_000)
   assert.equal(book.marketValue, 15 * 150_000)
 })
 
@@ -84,6 +85,7 @@ create table transactions_all (id integer primary key, date text, type text, qua
 create table gold_prices (date text, price real);
 create table tax_lots (market text, account text, ticker text, acquired_date text, open_quantity real, cost_basis_krw real);
 create table realized_lots (market text, account text, ticker text, acquired_date text, sold_date text, quantity_sold real, cost_basis_krw real, realized_gl_krw real, superseded_by text);
+create table realized_lots_all (sold_date text, realized_gl_krw real, superseded_by text, asset_class text);
 create table historical_prices (market text, ticker text, currency text, price_date text, close real);
 create table historical_fx_rates (price_date text, rate real);
 create table holdings (ticker text, quantity real, base_cost real, base_market_value real);
@@ -100,6 +102,8 @@ db.prepare("insert into historical_fx_rates values ('2025-01-01', 1000)").run()
 // A sold lot, and a replay estimate of the same sale that a filing superseded.
 db.prepare("insert into realized_lots values ('US', 'acct', 'IAU', '2025-01-15', '2025-05-01', 2, 180000, 40000, null)").run()
 db.prepare("insert into realized_lots values ('US', 'acct', 'IAU', '2025-01-15', '2025-05-01', 2, 180000, 38000, 'Sample 1099-B')").run()
+// A physical gold sale (written by the ingest to the _all table) joins the running realized total.
+db.prepare("insert into realized_lots_all values ('2025-05-15', 15000, null, 'gold'), ('2025-05-16', 99999, null, 'security')").run()
 // A stock that is not a gold ETF must not leak in.
 db.prepare("insert into tax_lots values ('US', 'acct', 'AAPL', '2025-02-01', 5, 999999)").run()
 db.prepare("insert into holdings values ('IAU', 5, 500000, 700000), ('AAPL', 5, 999999, 1200000)").run()
@@ -120,9 +124,9 @@ test('adapter: past dates rebuild gold + ETF from lots, the last snapshot reads 
   assert.equal(rows[0].gold_market_value, 1_284_000)
   assert.equal(rows[0].gold_cost_basis, 1_680_000)
   assert.equal(rows[0].gold_realized_gl, 0)
-  // 2025-06-30: IAU 5 × 14 × 1,000 = 70,000; the 40,000 sale (not the superseded 38,000) is realized.
+  // 2025-06-30: IAU 5 × 14 × 1,000 = 70,000; the 40,000 ETF sale (not the superseded 38,000) and the 15,000 gold sale are realized.
   assert.equal(rows[1].gold_market_value, 1_270_000)
-  assert.equal(rows[1].gold_realized_gl, 40_000)
+  assert.equal(rows[1].gold_realized_gl, 55_000)
   // The last snapshot is the live book: 1,300,000 + 700,000, and AAPL stays out.
   assert.equal(rows[2].gold_market_value, 2_000_000)
   assert.equal(rows[2].gold_cost_basis, 1_500_000)

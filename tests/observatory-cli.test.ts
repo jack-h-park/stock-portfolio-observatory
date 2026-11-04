@@ -234,8 +234,8 @@ test('tax:calendar settlement is unavailable until an account is marked cashAcco
 test('tax:realized lists US sales in range, without superseded or Korean rows', () => {
   const json = ok(fixture, ['tax:realized', '--since', '2026-01-01', '--until', '2026-06-30'])
   assert.deepEqual(json.rows, [
-    { account: TAXABLE, brokerage: 'Example Broker', ticker: 'FFF', soldDate: '2026-02-10', quantity: 2, proceedsUsd: 250, gainUsd: 150, term: 'long', basis: 'replay' },
-    { account: TAXABLE, brokerage: 'Example Broker', ticker: 'EEE', soldDate: '2026-06-01', quantity: 3, proceedsUsd: 600, gainUsd: -300, term: 'short', basis: 'replay' },
+    { kind: 'security', collectible: false, account: TAXABLE, brokerage: 'Example Broker', ticker: 'FFF', soldDate: '2026-02-10', quantity: 2, proceedsUsd: 250, costUsd: 100, gainUsd: 150, term: 'long', basis: 'replay' },
+    { kind: 'security', collectible: false, account: TAXABLE, brokerage: 'Example Broker', ticker: 'EEE', soldDate: '2026-06-01', quantity: 3, proceedsUsd: 600, costUsd: 900, gainUsd: -300, term: 'short', basis: 'replay' },
   ])
   assert.deepEqual(ok(fixture, ['tax:realized', '--since', '2026-03-01', '--until', '2026-05-31']).rows, [])
 })
