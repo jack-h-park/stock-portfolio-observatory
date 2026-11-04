@@ -17,7 +17,7 @@ export const metadata: Metadata = {
     default: APP_NAME,
     template: `%s · ${APP_NAME}`,
   },
-  description: 'Read-only portfolio monitoring for local stock-management data.',
+  description: 'Read-only portfolio monitoring for local financial-records data.',
   applicationName: APP_NAME,
   icons: {
     icon: '/favicon.ico',

@@ -50,7 +50,7 @@ const has = (flag) => process.argv.includes(flag)
 const summaryPath =
   arg('--summary') ||
   process.env.STOCK_BRIEFING_SUMMARY_PATH ||
-  path.join(os.homedir(), 'workspace/data/stock-management/outputs/stock-portfolio-observatory/briefing-summary.json')
+  path.join(os.homedir(), 'workspace/data/financial-records/outputs/stock-portfolio-observatory/briefing-summary.json')
 const statePath = arg('--state', path.join(os.homedir(), '.config/stock-portfolio-observatory/summary-health-state.json'))
 const maxAgeHours = Number(arg('--max-age-hours', DEFAULT_MAX_AGE_HOURS))
 
