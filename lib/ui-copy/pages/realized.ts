@@ -4,7 +4,7 @@ export const realized = defineCopy({
   en: {
     title: 'Realized Lots',
     emphasis: 'Lots',
-    subtitle: 'Every closed lot across Korean and US stocks and crypto, in won and in dollars, with a Form 8949 worksheet export.',
+    subtitle: 'Every closed lot across Korean and US stocks and crypto, in won and in dollars, with a Form 8949 worksheet download.',
     card: 'Closed lots',
     searchPlaceholder: 'ticker, name, account',
     filtered: 'Filtered',
@@ -19,9 +19,18 @@ export const realized = defineCopy({
       gain: 'Gain / loss',
       missing: (count: string) => `${count} lot(s) have no dollar figure and are left out of the dollar totals.`,
     },
-    export: 'Download Form 8949 worksheet (CSV)',
-    exportNote:
-      'Dollar figures: cost is the acquisition-date dollar cost; proceeds of a won lot use the USD/KRW rate of the sale date. The worksheet has no Form 8949 box column, because that depends on whether a 1099 was issued.',
+    taxExport: {
+      title: 'Tax worksheet download',
+      year: 'Sold in',
+      audit: 'Include superseded rows (audit)',
+      apply: 'Update',
+      csv: 'Download worksheet (CSV)',
+      notes: 'Download notes (text)',
+      filtersIgnored: 'The filters, search and sort above do not apply to the download: it holds every row of the year chosen here.',
+      counts: (rows: number, blank: number, superseded: number) =>
+        `${rows + superseded} row(s) in the file${superseded > 0 ? ` (${rows} reported, ${superseded} superseded)` : ''}; ${blank} with a blank dollar figure (unknown, not zero).`,
+      notCovered: 'What the download does not cover',
+    },
     approximateRate: 'No rate for the sale date; the nearest earlier one was used.',
     columns: {
       market: 'Market',
@@ -58,9 +67,18 @@ export const realized = defineCopy({
       gain: '손익',
       missing: (count: string) => `${count}건은 달러 값이 없어 달러 합계에서 제외했습니다.`,
     },
-    export: 'Form 8949 작업용 CSV 내려받기',
-    exportNote:
-      '달러 값: 원가는 취득일 환율로 잰 달러 원가이고, 원화 단위의 매도금액은 매도일 USD/KRW 환율로 환산합니다. 8949 구분(박스) 열은 1099 발급 여부에 따라 달라져서 넣지 않았습니다.',
+    taxExport: {
+      title: '세금 작업용 파일 내려받기',
+      year: '매도 연도',
+      audit: '대체된 행 포함 (감사용)',
+      apply: '적용',
+      csv: '작업용 CSV 내려받기',
+      notes: '설명 파일(텍스트) 내려받기',
+      filtersIgnored: '위의 필터, 검색, 정렬은 내려받는 파일에 적용되지 않습니다. 여기서 고른 연도의 모든 행이 담깁니다.',
+      counts: (rows: number, blank: number, superseded: number) =>
+        `파일에 ${rows + superseded}행${superseded > 0 ? ` (보고 ${rows}행, 대체됨 ${superseded}행)` : ''}, 그중 달러 값이 빈 행 ${blank}개 (0이 아니라 알 수 없음).`,
+      notCovered: '내려받는 파일이 다루지 않는 것',
+    },
     approximateRate: '매도일 환율이 없어 가장 가까운 이전 환율을 썼습니다.',
     columns: {
       market: '시장',

@@ -7,7 +7,6 @@ import Database from 'better-sqlite3'
 import {
   ALL_YEARS,
   defaultSoldYear,
-  form8949Csv,
   rateOnOrBefore,
   sumRealized,
   toRealizedView,
@@ -36,9 +35,15 @@ function lot(over: Partial<RealizedLotRow> = {}): RealizedLotRow {
     realized_gl_krw: -35_000,
     acquisition_cost_usd: 500,
     native_proceeds: 665_000,
+    native_realized_gl: null,
     holding_days: 648,
     tax_term: 'Long-term',
     basis: 'replay',
+    asset_class: null,
+    form_8949_box: null,
+    covered_status: null,
+    superseded_by: null,
+    collectible: null,
     ...over,
   }
 }
@@ -107,17 +112,6 @@ test('the year filter defaults, can be widened to every year, and ignores a year
   assert.equal(queryRealized(rows, { year: '1999' }, '2026').year, '2026')
   assert.deepEqual(queryRealized(rows, { year: ALL_YEARS, market: 'KR' }, '2026').filtered, [])
   assert.deepEqual(queryRealized(rows, { q: 'old', year: ALL_YEARS }, '2026').filtered.map((r) => r.ticker), ['OLD'])
-})
-
-test('the worksheet has the 8949 columns, escapes commas and leaves an unpriced lot blank', () => {
-  const rows = [
-    toRealizedView(lot({ ticker: 'A,B', quantity_sold: 0.12345678 }), at),
-    toRealizedView(lot({ acquisition_cost_usd: null }), at),
-  ]
-  const lines = form8949Csv(rows).trimEnd().split('\r\n')
-  assert.equal(lines[0], 'Description of property,Date acquired,Date sold,Proceeds (USD),Cost basis (USD),Gain or loss (USD),Term')
-  assert.equal(lines[1], `"0.12345678 A,B",2025-01-02,2026-10-12,${(665_000 / 1330).toFixed(2)},500.00,${(665_000 / 1330 - 500).toFixed(2)},Long-term`)
-  assert.equal(lines[2], `0.5 AAA,2025-01-02,2026-10-12,${(665_000 / 1330).toFixed(2)},,,Long-term`)
 })
 
 test('the adapter reads the view, skips a replaced replay row and prices each lot', async () => {
