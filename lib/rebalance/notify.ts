@@ -36,6 +36,9 @@ const STATUS_TEXT: Record<string, string> = {
 
 const pagePath = (id: string) => `/rebalance/proposals/${id}`
 
+/** The marker the control plane's hand-off script requires before it delivers a composed message. */
+const HANDOFF_MARKER = '<<<HANDOFF>>>'
+
 /** Instruction counts by kind, the plan's tax effect to the nearest 10,000 KRW and warning counts: no account labels. */
 function threadPrompt(p: Proposal): string {
   const counts = (items: string[]) => {
@@ -58,6 +61,10 @@ function threadPrompt(p: Proposal): string {
     `Warnings by code: ${counts(p.plan.warnings.map((w) => w.code))}.`,
     `Page: ${pagePath(p.id)}`,
     'Write a short opening (≤ 1,200 chars) for the maintainer: what this proposal suggests and why, what to check first, and that approval happens on the page. Do not invent figures. This is not advice.',
+    // The control plane's run-handoff.sh delivers only output carrying this marker and
+    // drops the rest, posting a "couldn't compose" stand-in instead. Same wording as its
+    // own nudge prompts.
+    `Prefix the whole message with the exact marker ${HANDOFF_MARKER} on its own line; output nothing else.`,
   ]
   return lines.join('\n')
 }

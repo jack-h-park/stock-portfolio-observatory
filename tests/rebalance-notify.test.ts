@@ -81,6 +81,16 @@ test('new proposal yields created with telegram+discord', async () => {
   assert.match(created.threadPrompt ?? '', /sell 1, buy 1/)
 })
 
+// The control plane's run-handoff.sh delivers a composed opening only when it carries
+// the <<<HANDOFF>>> marker; unmarked output is dropped and a stand-in line is posted.
+test('threadPrompt asks for the hand-off marker the control plane delivers on', async () => {
+  const { pendingEvents } = await import('../lib/rebalance/notify')
+  const events = pendingEvents([proposal()], { version: 1, seeded: true, announced: {} }, T0)
+  const prompt = events.find((e) => e.kind === 'created')?.threadPrompt ?? ''
+  assert.match(prompt, /Prefix the whole message with the exact marker <<<HANDOFF>>> on its own line/)
+  assert.ok(prompt.trimEnd().endsWith('output nothing else.'))
+})
+
 test('status change yields one status_changed per transition', async () => {
   const { pendingEvents, seedState } = await import('../lib/rebalance/notify')
   const before = proposal()
