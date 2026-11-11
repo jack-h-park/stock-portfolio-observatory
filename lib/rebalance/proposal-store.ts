@@ -4,6 +4,7 @@ import { config } from '@/config'
 import type { RebalanceInput } from '@/lib/adapters/rebalance-input'
 import type { AllocationPolicy, Sleeve } from '@/lib/rebalance/allocation-policy'
 import type { TradePlan } from '@/lib/rebalance/engine'
+import { isHarvestScenario, type HarvestScenario } from '@/lib/rebalance/harvest'
 import type { LlmIdea, LlmOutlook, LlmRecord } from '@/lib/rebalance/llm-contract'
 
 export type ProposalStatus =
@@ -80,6 +81,11 @@ export type Proposal = {
   targetChange: TargetChange
   plan: TradePlan
   planSkips: string[]
+  /**
+   * The loss-harvest scenario at creation, when there was a harvestable loss (harvest.ts). Absent on proposals
+   * written before it existed and on ones with nothing to harvest; never turned into instructions.
+   */
+  harvest?: HarvestScenario
   fills: Record<string, Fill>
   reconciliation: ReconciliationResult | null
   events: ProposalEvent[]
@@ -137,6 +143,7 @@ function fromFile(text: string): Proposal {
   p.llm ??= null
   if (!Array.isArray(p.ideas)) p.ideas = []
   if (!Array.isArray(p.questionsForMaintainer)) p.questionsForMaintainer = []
+  if (p.harvest !== undefined && !isHarvestScenario(p.harvest)) delete p.harvest
   return p
 }
 
@@ -182,9 +189,9 @@ function commit(p: Proposal, events: ProposalEvent[], now: Date, dir: string): P
 
 type ProposalInput = Omit<
   Proposal,
-  'schemaVersion' | 'status' | 'createdAt' | 'updatedAt' | 'expiresAt' | 'events' | 'fills' | 'reconciliation' | 'ideas' | 'questionsForMaintainer'
+  'schemaVersion' | 'status' | 'createdAt' | 'updatedAt' | 'expiresAt' | 'events' | 'fills' | 'reconciliation' | 'ideas' | 'questionsForMaintainer' | 'harvest'
 > &
-  Partial<Pick<Proposal, 'ideas' | 'questionsForMaintainer'>>
+  Partial<Pick<Proposal, 'ideas' | 'questionsForMaintainer' | 'harvest'>>
 
 export function createProposal(input: ProposalInput, now: Date, dir?: string): Proposal {
   const d = resolveDir(dir)
@@ -220,8 +227,14 @@ const EVENT_FOR: Partial<Record<ProposalStatus, ProposalEvent['type']>> = {
   closed: 'closed',
 }
 
+/** True when the plan has a buy or a sell: something to fill and reconcile. Transfers alone are not trades. */
+export function planHasTrades(plan: Pick<TradePlan, 'instructions'>): boolean {
+  return plan.instructions.some((i) => i.kind === 'buy' || i.kind === 'sell')
+}
+
 function assertTransition(p: Proposal, to: ProposalStatus) {
   const from = p.status
+  const nothingToTrade = !planHasTrades(p.plan)
   const ok =
     (from === 'draft' && to === 'targets_approved' && p.targetChange.decision === 'change') ||
     (from === 'draft' && to === 'plan_approved' && p.targetChange.decision === 'hold') ||
@@ -229,6 +242,9 @@ function assertTransition(p: Proposal, to: ProposalStatus) {
     (from === 'plan_approved' && to === 'executing') ||
     (from === 'executing' && to === 'reconciled') ||
     (from === 'reconciled' && to === 'closed') ||
+    // A plan with nothing to buy or sell can never reach reconciled; closing ends it without trades.
+    (from === 'draft' && to === 'closed' && p.targetChange.decision === 'hold' && nothingToTrade) ||
+    (from === 'targets_approved' && to === 'closed' && nothingToTrade) ||
     (['draft', 'targets_approved', 'plan_approved'].includes(from) && to === 'rejected') ||
     (from === 'draft' && to === 'expired')
   if (!ok) throw new Error(`Transition ${from} -> ${to} is not allowed (decision: ${p.targetChange.decision})`)

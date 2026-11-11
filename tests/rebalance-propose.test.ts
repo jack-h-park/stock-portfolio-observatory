@@ -121,3 +121,28 @@ test('propose builds a hold proposal whose plan equals buildTradePlan of the sna
   assert.deepEqual(p.plan, JSON.parse(JSON.stringify(expected)))
   assert.equal(p.inputSnapshot.asOf, TODAY)
 })
+
+test('a proposal stores the loss-harvest scenario only when there is a harvestable loss', () => {
+  const plainDir = tmpDir()
+  const plain = proposeEngineOnly(args(plainDir))
+  assert.equal(plain.ok, true)
+  if (plain.ok) assert.equal('harvest' in getProposal(plain.proposal.id, plainDir)!, false)
+
+  const lossDb = path.join(root, 'loss.db')
+  fs.copyFileSync(dbPath, lossDb)
+  const c = new Database(lossDb)
+  c.exec(`insert into tax_lots_all (market,currency,base_currency,brokerage,account,ticker,name,fx_rate_to_base,open_quantity,native_cost_basis,
+    native_market_value,native_unrealized_gl,cost_basis_krw,acquired_date,holding_days,tax_term)
+    values ('KR','KRW','KRW','BrokerA','acct-1','KRX1','Fake Co',1,10,3000000,2000000,-1000000,3000000,'2025-01-02',600,'long')`)
+  c.close()
+  const dir = tmpDir()
+  const r = proposeEngineOnly(args(dir, { db: lossDb }))
+  assert.equal(r.ok, true)
+  if (!r.ok) return
+  const stored = getProposal(r.proposal.id, dir)!
+  assert.ok(stored.harvest, 'the scenario is stored')
+  assert.equal(stored.harvest.totalLossKrw, 1_000_000)
+  assert.deepEqual(stored.harvest.rows.map((row) => [row.market, row.ticker, row.name]), [['KR', 'KRX1', 'Fake Co']])
+  // Never an instruction: the plan does not sell the loss lot.
+  assert.equal(stored.plan.instructions.some((i) => i.ticker === 'KRX1'), false)
+})

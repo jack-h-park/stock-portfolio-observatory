@@ -4,6 +4,7 @@ import {
   FALLBACK_USD_KRW_RATE,
   krTaxable,
   longTermEligibleOn,
+  summarizeTaxCandidates,
   usGainUsd,
   type TaxPlanCandidate,
   type TaxPlanningLot,
@@ -164,21 +165,61 @@ export function prepareSellContext(args: {
   }
 }
 
+/** A priced candidate with a won loss: what a loss harvest would sell. */
+const isHarvestable = (c: TaxPlanCandidate) => c.proceedsKrw != null && c.gainKrw != null && c.gainKrw < 0
+
+export type HarvestCandidates = {
+  /** Every priced lot with a won loss, outside the wash-sale window. */
+  candidates: TaxPlanCandidate[]
+  /** Loss lots of instruments bought within the window, left out of `candidates`, with that latest buy date. */
+  washExcluded: { candidate: TaxPlanCandidate; lastBuy: string }[]
+}
+
 /**
- * The loss the tax plan could realize today, in KRW: every priced lot with a won loss, except lots of an
- * instrument (market and ticker) bought within the wash-sale window before `today`, which the sell walk would
- * refuse to sell at a loss. The loss trigger and the LLM input both read this figure.
+ * The lots a loss harvest could sell today: every priced lot with a won loss, except lots of an instrument
+ * (market and ticker) bought within the wash-sale window before `today`, which the sell walk would refuse to sell
+ * at a loss. The one selection the loss trigger, the LLM input and the harvest scenario all read, so they cannot
+ * disagree.
+ */
+export function harvestCandidates(ctx: SellContext, today: string): HarvestCandidates {
+  const washFrom = addDays(today, -WASH_WINDOW_DAYS)
+  const lastBuy = new Map<string, string>()
+  for (const b of ctx.input.recentBuys) {
+    if (b.date < washFrom || b.date > today) continue
+    const key = instrumentKey(b.market, b.ticker)
+    if ((lastBuy.get(key) ?? '') < b.date) lastBuy.set(key, b.date)
+  }
+  const all = buildTaxPlan({ lots: ctx.input.lots, policy: ctx.taxPolicy }).candidates.filter(isHarvestable)
+  const candidates: TaxPlanCandidate[] = []
+  const washExcluded: HarvestCandidates['washExcluded'] = []
+  for (const c of all) {
+    const bought = lastBuy.get(instrumentKey(c.market, c.ticker))
+    if (bought) washExcluded.push({ candidate: c, lastBuy: bought })
+    else candidates.push(c)
+  }
+  return { candidates, washExcluded }
+}
+
+/**
+ * The loss the tax plan could realize today, in KRW: the sum of harvestCandidates' won losses. The loss trigger
+ * and the LLM input both read this figure.
  */
 export function harvestableLossKrw(ctx: SellContext, today: string): number {
-  const washFrom = addDays(today, -WASH_WINDOW_DAYS)
-  const conflicted = new Set(
-    ctx.input.recentBuys.filter((b) => b.date >= washFrom && b.date <= today).map((b) => instrumentKey(b.market, b.ticker))
-  )
-  const lots = ctx.input.lots.filter((lot) => !conflicted.has(instrumentKey(lot.market, lot.ticker)))
-  return buildTaxPlan({ lots, policy: ctx.taxPolicy }).candidates.reduce(
-    (sum, c) => (c.proceedsKrw != null && c.gainKrw != null && c.gainKrw < 0 ? sum + -c.gainKrw : sum),
-    0
-  )
+  return harvestCandidates(ctx, today).candidates.reduce((sum, c) => sum + -Number(c.gainKrw), 0)
+}
+
+/**
+ * The year's estimated tax, in KRW, with these candidates sold on top of what was already realized this year
+ * (YTD). yearTaxKrw(ctx, picks) − yearTaxKrw(ctx, []) is a set of sells' own tax effect: both sides run the same
+ * aggregate, the YTD-only side with no candidates. The plan's tax summary and the harvest scenario share it.
+ */
+export function yearTaxKrw(ctx: Pick<SellContext, 'input' | 'taxPolicy'>, candidates: TaxPlanCandidate[]): number {
+  return summarizeTaxCandidates({
+    candidates,
+    policy: ctx.taxPolicy,
+    scenario: ctx.taxPolicy.activeScenario,
+    year: Number(ctx.input.asOf.slice(0, 4)),
+  }).combinedTaxAfterCreditsKrw
 }
 
 const SCALED_FIELDS = [
