@@ -26,6 +26,7 @@ export function getFinanceOverview(filePath = config.stockDbPath) {
             ? value * rate
             : null
     const observations: AssetObservation[] = []
+    const cashProducts: AssetObservation[] = []
     const holdings = rows(has('holdings_all') ? 'holdings_all' : 'holdings')
     for (const row of holdings) {
       const institution = String(row.brokerage ?? ''),
@@ -33,6 +34,7 @@ export function getFinanceOverview(filePath = config.stockDbPath) {
         wrapper = String(row.account_wrapper ?? 'taxable')
       const pension = ['irp', 'pension_savings'].includes(wrapper),
         sweep = row.market === 'US' && SWEEPS.has(String(row.ticker).replace(/\*/g, '').toUpperCase())
+      const cashProduct = sweep || (pension && /^PENSION:[^:]+:cash:/.test(String(row.ticker)))
       const assetClass = pension
         ? 'pensions'
         : row.asset_class === 'gold'
@@ -52,10 +54,10 @@ export function getFinanceOverview(filePath = config.stockDbPath) {
             ? Number(row.base_cost)
             : null
       const currency = String(row.currency ?? (row.market === 'US' ? 'USD' : 'KRW'))
-      observations.push({
+      const observation: AssetObservation = {
         owner: owner(row),
         accountId: JSON.stringify([institution, account]),
-        assetKey: sweep ? `cash:${currency}` : JSON.stringify([row.market, row.ticker]),
+        assetKey: JSON.stringify([row.market, row.ticker]),
         assetClass,
         asOf: row.as_of_date ? String(row.as_of_date) : null,
         valueKrw: Number(row.quantity) < 0 ? null : value,
@@ -70,7 +72,51 @@ export function getFinanceOverview(filePath = config.stockDbPath) {
         institution,
         account,
         currency,
-        nativeAmount: row.native_market_value == null ? undefined : Number(row.native_market_value),
+        nativeAmount:
+          row.native_market_value == null
+            ? currency === 'KRW' && value != null
+              ? value
+              : undefined
+            : Number(row.native_market_value),
+        wrapper,
+        market: String(row.market ?? ''),
+        ticker: String(row.ticker ?? ''),
+        name: String(row.name ?? row.ticker ?? ''),
+        asset_class: cashProduct ? 'cash' : String(row.asset_class ?? 'security'),
+      }
+      ;(cashProduct ? cashProducts : observations).push(observation)
+    }
+    // Cash product rows are components, whereas brokerage/bank balances are
+    // account/currency aggregates. Sum distinct products before reconciliation.
+    const productAccounts = new Map<string, AssetObservation[]>()
+    for (const row of cashProducts) {
+      const key = JSON.stringify([row.owner, row.accountId, row.currency])
+      productAccounts.set(key, [...(productAccounts.get(key) ?? []), row])
+    }
+    for (const products of productAccounts.values()) {
+      const byProduct = new Map<string, AssetObservation>()
+      for (const row of products.sort((a, b) => (a.asOf ?? '').localeCompare(b.asOf ?? ''))) {
+        const old = byProduct.get(row.assetKey)
+        byProduct.set(
+          row.assetKey,
+          old && old.asOf === row.asOf && old.valueKrw !== row.valueKrw ? { ...row, valueKrw: null } : row,
+        )
+      }
+      const components = [...byProduct.values()],
+        first = components[0]
+      observations.push({
+        ...first,
+        assetKey: `cash:${first.currency}`,
+        ticker: `CASH:${first.currency}`,
+        market: '',
+        asset_class: 'cash',
+        asOf: components.some((row) => row.asOf == null) ? null : components.map((row) => row.asOf!).sort()[0],
+        valueKrw: components.some((row) => row.valueKrw == null)
+          ? null
+          : components.reduce((n, row) => n + row.valueKrw!, 0),
+        nativeAmount: components.some((row) => row.nativeAmount == null)
+          ? undefined
+          : components.reduce((n, row) => n + row.nativeAmount!, 0),
       })
     }
     const cash = (row: Raw, balance: number, currency: string, assetClass: 'cash' | 'pensions' = 'cash') =>
@@ -88,6 +134,11 @@ export function getFinanceOverview(filePath = config.stockDbPath) {
         nativeAmount: balance,
         cashKind: String(row.kind ?? 'cash'),
         derived: Boolean(row.derived),
+        wrapper: String(row.account_wrapper ?? 'taxable'),
+        market: '',
+        ticker: `CASH:${currency}`,
+        name: String(row.account),
+        asset_class: 'cash',
       })
     // Reduce each source independently first. Bank snapshots and the broker's
     // sweep representation then share one account/currency inclusion key.

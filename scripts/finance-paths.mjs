@@ -153,7 +153,23 @@ export function financeEnvironment(env = process.env, cwd = process.cwd()) {
   return {
     ...env,
     FINANCE_MODE: 'private',
+    ...(roots.mode === 'sample'
+      ? {
+          FINANCE_RECORDS_DIR: roots.recordsDir,
+          FINANCE_RUNTIME_DIR: roots.runtimeDir,
+          FINANCE_STATE_DIR: roots.stateDir,
+          FINANCE_TAX_DIR: roots.taxDir,
+        }
+      : {}),
     STOCK_DATA_DIR: roots.recordsDir,
     ...Object.fromEntries(Object.keys(FINANCE_FILES).map((key) => [key, financeFile(key, env, cwd)])),
   }
+}
+
+// Operational jobs have an established private fallback independent of a fresh
+// app checkout's safe sample default. Only applicable explicit overrides replace it.
+export function financeOperationalFile(key, fallback, env = process.env, cwd = process.cwd()) {
+  const explicit =
+    text(env[key]) || text(env[currentKey(key)]) || text(env.FINANCE_RUNTIME_DIR) || text(env.FINANCE_MODE) === 'sample'
+  return explicit ? financeFile(key, env, cwd) : path.resolve(cwd, fallback)
 }

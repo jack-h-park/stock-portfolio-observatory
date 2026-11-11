@@ -281,6 +281,14 @@
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
           }
+        },
+        "filedDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "statusDate": {
+          "type": "string",
+          "format": "date"
         }
       },
       "required": [

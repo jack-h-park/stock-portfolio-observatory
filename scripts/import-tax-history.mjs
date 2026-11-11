@@ -39,6 +39,7 @@ try {
       reason: String(options.get('--reason') ?? ''),
       reviewedMatchDecisions: decisions.matches ?? [],
       reviewedRecordChanges: decisions.changes ?? [],
+      reviewedProvisionalBases: decisions.provisionalBases ?? [],
     })
     console.log(JSON.stringify({ schemaVersion: 1, stateRevision: store.revision }))
   }

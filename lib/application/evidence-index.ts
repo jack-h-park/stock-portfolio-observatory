@@ -30,6 +30,11 @@ export function resolveTaxEvidence(evidence: Evidence, roots: EvidenceRoots) {
     throw new Error('Evidence missing; review a hash-matched relink')
   }
   if (!inside(root, real)) throw new Error('Evidence symlink leaves its named root')
+  let component = root
+  for (const segment of relative.split('/')) {
+    component = path.join(component, segment)
+    if (fs.lstatSync(component).isSymbolicLink()) throw new Error('Evidence symlink is not a real file reference')
+  }
   let fd: number
   try {
     fd = fs.openSync(real, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW)
@@ -103,8 +108,10 @@ export function indexEvidenceRoot(
           { records: root, tax: null },
         )
         candidates.push(relativePath)
-      } catch {
-        /* Only identical bytes are candidates; a mismatch is expected. */
+      } catch (error) {
+        // A different hash is an exhausted candidate; an unreadable/missing
+        // file is an incomplete search, never proof that no matching file exists.
+        if (!(error instanceof Error && error.message.startsWith('Evidence changed;'))) complete = false
       }
     }
   }

@@ -32,7 +32,7 @@ export async function TaxHistoryScreen({
     try {
       view = getTaxHistoryView(store, {
         taxUnitId: unitId,
-        taxYear: value('year') ? Number(value('year')) : cash ? undefined : selected?.year ?? units[0]?.year,
+        taxYear: value('year') ? Number(value('year')) : cash ? undefined : (selected?.year ?? units[0]?.year),
         authority: value('authority') || undefined,
         view: cash ? 'cash-date' : 'tax-year',
         cashDateFrom: value('from') || undefined,
@@ -86,7 +86,7 @@ export async function TaxHistoryScreen({
                 type="number"
                 min="1900"
                 max="2200"
-                defaultValue={value('year') ?? (cash ? '' : selected?.year ?? units[0]?.year)}
+                defaultValue={value('year') ?? (cash ? '' : (selected?.year ?? units[0]?.year))}
                 className="w-28 rounded-sm border border-line bg-card p-2"
               />
             </label>
@@ -131,7 +131,7 @@ export async function TaxHistoryScreen({
           )}
           {view && (
             <Card title={cash ? copy.cashView : copy.yearView}>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto" tabIndex={0} role="region" aria-label={cash ? copy.cashView : copy.yearView}>
                 {cash ? (
                   <table className="w-full min-w-[42rem] text-left text-body">
                     <caption className="sr-only">{copy.cashView}</caption>
@@ -151,7 +151,10 @@ export async function TaxHistoryScreen({
                         <tr key={event.id}>
                           <td className="p-3">{event.date ?? copy.none}</td>
                           <td className="p-3">{event.postingDate ?? '—'}</td>
-                          <td className="p-3">{event.kind}<div className="text-caption text-ink-2">{event.taxUnitIds.join(' · ')}</div></td>
+                          <td className="p-3">
+                            {event.kind}
+                            <div className="text-caption text-ink-2">{event.taxUnitIds.join(' · ')}</div>
+                          </td>
                           {(['principal', 'interest', 'penalty'] as const).map((field) => (
                             <td key={field} className="whitespace-nowrap p-3 tabular-nums">
                               {formatMoney({ currency: event.currency, minor: event[field] })}
@@ -210,13 +213,35 @@ export async function TaxHistoryScreen({
       {view && view.unallocated.length > 0 && (
         <Card title={copy.unallocated} className="mt-5">
           <p className="p-4 text-body text-ink-2">{copy.unallocatedNote}</p>
-          <ul className="px-4 pb-4 text-body">
-            {view.unallocated.map((row) => (
-              <li key={row.eventId}>
-                {row.eventId} · {formatMoney({ currency: row.currency, minor: row.principal })}
-              </li>
-            ))}
-          </ul>
+          <div className="overflow-x-auto" tabIndex={0} role="region" aria-label={copy.unallocated}>
+            <table className="w-full min-w-[38rem] text-left text-body">
+              <caption className="sr-only">{copy.unallocated}</caption>
+              <thead>
+                <tr>
+                  {[copy.date, copy.kind, copy.principal, copy.interest, copy.penalty].map((label) => (
+                    <th key={label} scope="col" className="p-3">
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {view.unallocated.map((event) => (
+                  <tr key={event.eventId}>
+                    <td className="p-3">{event.date ?? copy.none}</td>
+                    <td className="p-3">
+                      {event.kind} · {event.eventId}
+                    </td>
+                    {(['principal', 'interest', 'penalty'] as const).map((component) => (
+                      <td key={component} className="whitespace-nowrap p-3 tabular-nums">
+                        {formatMoney({ currency: event.currency, minor: event[component] })}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
       )}
       <p className="mt-5 text-body text-ink-2">{copy.compare}</p>

@@ -14,7 +14,7 @@ import { deriveUsTargetPct, getAllocationPolicy } from '@/lib/rebalance/allocati
 import { getTaxPolicyState, usTaxableWrappers, wrapperTreatment, type TaxPolicy, type WrapperTreatment } from '@/lib/tax-policy'
 import { ASSET_CLASSES, depositsSeries, totalAssetsSeries, type CashBalanceRow, type NetWorth, type TotalAssetsSeries } from '@/lib/net-worth'
 import type { PensionContributionYear } from '@/lib/pension'
-import { summarizeAllocation, type AllocationSecurity, type AssetAllocation } from '@/lib/asset-allocation'
+import { summarizeAllocation, type AssetAllocation } from '@/lib/asset-allocation'
 import { getInstrumentClasses } from '@/lib/rebalance/instrument-classes'
 import { groupAccountRanges, type AccountDataRange, type AssetType, type RangeKind, type RangeRow } from '@/lib/account-ranges'
 import { foreignAccountMaxima, isUsBrokerage, isUsCashInstitution, maxBalance, treasuryRateFor, type BalancePoint, type ForeignAccountInput, type ForeignAccountMaxima } from '@/lib/fbar'
@@ -1401,41 +1401,12 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
  * net worth's total.
  */
 export function getAssetAllocation(netWorth: NetWorth = getNetWorth()): AssetAllocation {
-  const conn = db()
-  try {
-    const hasTable = (name: string) =>
-      Boolean(conn.prepare("select 1 from sqlite_master where type in ('table', 'view') and name = ?").get(name))
-    const grouped = `account_wrapper as wrapper, market, ticker, max(name) as name, max(asset_class) as asset_class`
-    const stocks = hasTable('holdings')
-      ? (conn
-          .prepare(
-            `select ${grouped}, coalesce(sum(base_market_value), 0) as valueKrw
-               from holdings
-              where ${STOCK_WRAPPER_SQL} and market in ('KR', 'US')${selfOnlyAnd(conn, 'holdings')}
-              group by account_wrapper, market, ticker`
-          )
-          .all() as AllocationSecurity[])
-      : []
-    const pensions = hasTable('holdings_all')
-      ? (conn
-          .prepare(
-            `select ${grouped}, coalesce(sum(coalesce(base_market_value, base_cost, 0)), 0) as valueKrw
-               from holdings_all
-              where ${PENSION_ROW_SQL}${selfOnlyAnd(conn, 'holdings_all')}
-              group by account_wrapper, market, ticker`
-          )
-          .all() as AllocationSecurity[])
-      : []
-    return summarizeAllocation({
-      securities: [...stocks, ...pensions],
-      cryptoKrw: netWorth.byClass.crypto,
-      goldKrw: netWorth.byClass.gold,
-      cashKrw: netWorth.byClass.cash,
-      classes: getInstrumentClasses(),
-    })
-  } finally {
-    conn.close()
-  }
+  void netWorth
+  const summary = getFinanceOverview()
+  return summarizeAllocation({
+    securities: summary.included.map(row => ({ wrapper: row.wrapper ?? 'taxable', market: row.market ?? '', ticker: row.ticker ?? row.assetKey, name: row.name ?? row.account ?? row.assetKey, asset_class: row.asset_class ?? (row.assetClass === 'cash' ? 'cash' : row.assetClass === 'gold' ? 'gold' : 'security'), valueKrw: row.valueKrw! })),
+    cryptoKrw: 0, goldKrw: 0, cashKrw: 0, classes: getInstrumentClasses(),
+  })
 }
 
 /**

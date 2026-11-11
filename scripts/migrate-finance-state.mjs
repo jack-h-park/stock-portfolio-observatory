@@ -90,7 +90,12 @@ export function applyFinanceStateMigration(plan) {
       throw new Error('Destination conflict')
   }
   for (const file of plan.files) {
-    if (fs.existsSync(file.destination)) continue
+    if (fs.existsSync(file.destination)) {
+      noSymlinks(file.destination)
+      if (!fs.statSync(file.destination).isFile() || hash(file.destination) !== file.sha256)
+        throw new Error('Destination conflict after preflight')
+      continue
+    }
     fs.mkdirSync(path.dirname(file.destination), { recursive: true, mode: 0o700 })
     noSymlinks(file.destination)
     const temporary = `${file.destination}.${randomUUID()}.tmp`
@@ -100,10 +105,22 @@ export function applyFinanceStateMigration(plan) {
       if (hash(temporary) !== file.sha256) throw new Error('Source changed during copy')
       // An exclusive link publishes the verified copy without clobbering a file
       // another writer created after preflight. Originals are never removed.
-      fs.linkSync(temporary, file.destination)
+      try {
+        fs.linkSync(temporary, file.destination)
+      } catch (error) {
+        if (error.code !== 'EEXIST') throw error
+        noSymlinks(file.destination)
+        if (!fs.statSync(file.destination).isFile() || hash(file.destination) !== file.sha256)
+          throw new Error('Destination conflict during publication')
+      }
     } finally {
       fs.rmSync(temporary, { force: true })
     }
+  }
+  for (const file of plan.files) {
+    noSymlinks(file.destination)
+    if (!fs.statSync(file.destination).isFile() || hash(file.destination) !== file.sha256)
+      throw new Error('Destination changed before final verification')
   }
   return { ...plan, status: 'copied-and-verified', files: plan.files.map((file) => ({ ...file, status: 'matching' })) }
 }

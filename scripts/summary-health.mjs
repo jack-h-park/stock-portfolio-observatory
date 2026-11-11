@@ -1,4 +1,4 @@
-import { financeFile } from './finance-paths.mjs'
+import { financeOperationalFile } from './finance-paths.mjs'
 // summary-health.mjs — is the published summary healthy, and is anyone being told?
 //
 // The refresh runs under launchd, which records an exit code and delivers nothing.
@@ -50,8 +50,7 @@ const has = (flag) => process.argv.includes(flag)
 
 const summaryPath =
   arg('--summary') ||
-  financeFile('STOCK_BRIEFING_SUMMARY_PATH') ||
-  path.join(os.homedir(), 'workspace/data/financial-records/outputs/stock-portfolio-observatory/briefing-summary.json')
+  financeOperationalFile('STOCK_BRIEFING_SUMMARY_PATH', path.join(os.homedir(), 'workspace/data/financial-records/outputs/stock-portfolio-observatory/briefing-summary.json'))
 const statePath = arg('--state', path.join(os.homedir(), '.config/stock-portfolio-observatory/summary-health-state.json'))
 const maxAgeHours = Number(arg('--max-age-hours', DEFAULT_MAX_AGE_HOURS))
 

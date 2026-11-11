@@ -26,6 +26,8 @@ export type TaxReturn = Versioned & {
   liability: Money
   supersedesId?: string
   evidenceIds: string[]
+  filedDate?: string
+  statusDate?: string
 }
 export type TaxAssessment = Versioned & { obligationId: string; liability: Money; date: string; evidenceIds: string[] }
 export type Components = { principal: string; interest: string; penalty: string }

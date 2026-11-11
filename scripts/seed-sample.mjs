@@ -5,7 +5,9 @@ import Database from 'better-sqlite3'
 import { financeFile, resolveFinancePaths } from './finance-paths.mjs'
 
 const root = process.cwd()
-const roots = resolveFinancePaths({ ...process.env, FINANCE_MODE: 'sample' }, root)
+if (process.env.FINANCE_MODE?.trim() && process.env.FINANCE_MODE.trim() !== 'sample') throw new Error('Refusing sample seed in an explicitly private or invalid FINANCE_MODE')
+const sampleEnv = { ...process.env, FINANCE_MODE: 'sample' }
+const roots = resolveFinancePaths(sampleEnv, root)
 const sampleDataDir = roots.recordsDir
 const dbPath = roots.dbPath
 const sampleSourceDir = path.join(sampleDataDir, 'sample-source')
@@ -24,12 +26,14 @@ const marker = path.join(sampleRoot, '.finance-sample.json')
 // Check every existing component before writing; a symlink could redirect an
 // otherwise safe lexical path into real records, including a DB/WAL file.
 function checkSampleTree(dir) {
-  if (!fs.existsSync(dir)) return
-  if (fs.lstatSync(dir).isSymbolicLink()) throw new Error('Sample output refuses symlinks')
-  if (fs.statSync(dir).isDirectory()) for (const entry of fs.readdirSync(dir)) checkSampleTree(path.join(dir, entry))
+  let stat
+  try { stat = fs.lstatSync(dir) } catch (error) { if (error.code === 'ENOENT') return; throw error }
+  if (stat.isSymbolicLink()) throw new Error('Sample output refuses symlinks')
+  if (stat.isDirectory()) for (const entry of fs.readdirSync(dir)) checkSampleTree(path.join(dir, entry))
 }
 for (const part of [path.join(root, 'private-data'), sampleRoot]) {
-  if (fs.existsSync(part) && fs.lstatSync(part).isSymbolicLink()) throw new Error('Sample root refuses symlinks')
+  try { if (fs.lstatSync(part).isSymbolicLink()) throw new Error('Sample root refuses symlinks') }
+  catch (error) { if (error.code !== 'ENOENT') throw error }
 }
 checkSampleTree(sampleRoot)
 if (fs.existsSync(sampleRoot) && fs.readdirSync(sampleRoot).length &&
@@ -139,7 +143,7 @@ writeJson(path.join(roots.runtimeDir, 'crypto-activity.json'), {
 // guard above already stops this on a configured machine, but that guard is
 // bypassable with SAMPLE_FORCE=1 and says nothing about mappings specifically.
 // Writing elsewhere means sample mode cannot touch the real rules at all.
-writeJson(financeFile('STOCK_MANUAL_MAPPINGS_PATH'), {
+writeJson(financeFile('STOCK_MANUAL_MAPPINGS_PATH', sampleEnv, root), {
   version: 1,
   description: 'Synthetic sample mappings.',
   incomeRules: [{ match: { typeIncludes: 'interest' }, category: 'interest', note: 'Sample interest classification.' }],
@@ -194,13 +198,14 @@ for (const t of SECURITIES_TABLES) {
 
 insertMany(db, 'meta', [
   { key: 'ingested_at', value: now },
+  { key: 'data_mode', value: 'sample' },
   { key: 'data_dir', value: sampleDataDir },
   { key: 'payload_dir', value: sampleSourceDir },
   { key: 'fx_rates_path', value: path.join(roots.runtimeDir, 'fx-rates.json') },
   { key: 'kr_prices_path', value: path.join(roots.runtimeDir, 'kr-prices.json') },
   { key: 'us_prices_path', value: path.join(roots.runtimeDir, 'us-prices.json') },
   { key: 'us_pdf_evidence_path', value: path.join(roots.runtimeDir, 'us-pdf-evidence.json') },
-  { key: 'manual_mappings_path', value: financeFile('STOCK_MANUAL_MAPPINGS_PATH') },
+  { key: 'manual_mappings_path', value: financeFile('STOCK_MANUAL_MAPPINGS_PATH', sampleEnv, root) },
   { key: 'refresh_runs_path', value: path.join(roots.runtimeDir, 'refresh-runs.json') },
 ], ['key', 'value'])
 
@@ -321,7 +326,7 @@ console.log(`Wrote sample database: ${dbPath}`)
 // Real documents are written by the briefing cron on the private host; these
 // mirror that schema (fully derived: rows parsed, aggregates precomputed, one
 // block per market).
-const briefingArchiveDir = financeFile('STOCK_BRIEFING_ARCHIVE_DIR')
+const briefingArchiveDir = financeFile('STOCK_BRIEFING_ARCHIVE_DIR', sampleEnv, root)
 
 const MARKET_META = {
   US: { id: 'US', label: 'US', flag: '\u{1F1FA}\u{1F1F8}', currency: 'USD', symbol: '$', priceDigits: 2, moverMinCost: 300 },

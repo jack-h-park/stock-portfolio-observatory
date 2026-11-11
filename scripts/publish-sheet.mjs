@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { financeFile } from './finance-paths.mjs'
+import { financeFile, financeOperationalFile } from './finance-paths.mjs'
 // publish-kr-sheet.mjs — write the Korean 미실현수익 정리 tab from the database.
 //
 // This is the second thing this app publishes rather than reads (the first is
@@ -64,10 +64,14 @@ import { createSign } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
+import { loadLocalEnv } from './env.mjs'
+import { assertOperationalPublishing } from './publish-safety.mjs'
+
+loadLocalEnv()
 
 const KEY_PATH = process.env.STOCK_SHEETS_SA_KEY
   || join(homedir(), '.config', 'stock-portfolio-briefing', 'gcp-sheets-sa.json')
-const DB_PATH = financeFile('STOCK_DB_PATH')
+const DB_PATH = financeOperationalFile('STOCK_DB_PATH', join(homedir(), 'workspace/data/financial-records/outputs/stock-portfolio-observatory/stock-portfolio-observatory.db'))
 
 const argv = process.argv.slice(2)
 const has = (f) => argv.includes(f)
@@ -268,6 +272,9 @@ function readHoldings() {
   } catch (e) {
     die(`cannot open the database at ${DB_PATH} (${e.message})`)
   }
+  if (APPLY) {
+    try { assertOperationalPublishing(db) } catch (error) { db.close(); die(error.message) }
+  }
   const rows = db.prepare(`
     select account, ticker, name, quantity, native_cost, native_price, as_of_date
       from holdings
@@ -340,6 +347,9 @@ function build(rows) {
 
 // ---------------------------------------------------------------------------
 
+// Validate and snapshot the selected database before credentials or network I/O.
+const rows = readHoldings()
+const { raw, entered, rowCount, asOf } = build(rows)
 const scope = APPLY
   ? 'https://www.googleapis.com/auth/spreadsheets'
   : 'https://www.googleapis.com/auth/spreadsheets.readonly'
@@ -348,9 +358,6 @@ const { token, email } = await accessToken(scope)
 const meta = await api(token, '?fields=properties.title,sheets.properties')
 const tabs = meta.sheets.map((s) => s.properties)
 const target = tabs.find((p) => p.title === TAB)
-
-const rows = readHoldings()
-const { raw, entered, rowCount, asOf } = build(rows)
 
 console.error(`[${LABEL}] ${meta.properties.title}`)
 console.error(`[${LABEL}] identity  ${email}`)

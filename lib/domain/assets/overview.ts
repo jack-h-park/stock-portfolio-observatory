@@ -14,6 +14,11 @@ export type AssetObservation = {
   nativeAmount?: number
   cashKind?: string
   derived?: boolean
+  wrapper?: string
+  market?: string
+  ticker?: string
+  name?: string
+  asset_class?: string
 }
 
 export function summarizeFinanceAssets(observations: AssetObservation[], owners: readonly string[] = ['self']) {

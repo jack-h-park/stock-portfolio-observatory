@@ -1,6 +1,6 @@
 # Private storage and configuration
 
-The shared resolver in [finance-paths.mjs](../../scripts/finance-paths.mjs) is used by the app, CLI, ingestion, fetchers, and Node wrappers that pass paths into Python. Operational shell jobs retain legacy names until their separately reviewed cutover. Direct Python commands use the legacy environment interface; invoke their Node package commands for new-root resolution.
+The shared resolver in [finance-paths.mjs](../../scripts/finance-paths.mjs) is used by the app, CLI, ingestion, fetchers, and Node wrappers that pass paths into Python. Operational shell jobs retain legacy names until their separately reviewed cutover. The sheet publisher, summary-health job, and coverage reminder retain their established private fallback paths unless an applicable file/runtime override is supplied; an inferred app sample default never replaces an operational fallback. Applying synthetic positions to an operational sheet is refused before credential or network access. Direct Python commands use the legacy environment interface; invoke their Node package commands for new-root resolution.
 
 | Setting | Purpose |
 | --- | --- |

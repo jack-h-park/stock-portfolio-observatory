@@ -41,6 +41,7 @@ export function canonical(value: unknown): string {
 export function taxHistoryPath() {
   return path.join(config.finance.stateDir, 'tax-history.json')
 }
+const MAX_STATE_BYTES = 20 * 1024 * 1024
 export function readTaxHistory(filePath = taxHistoryPath()): TaxHistoryStoreV1 {
   let stat: fs.Stats
   try {
@@ -49,7 +50,7 @@ export function readTaxHistory(filePath = taxHistoryPath()): TaxHistoryStoreV1 {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return emptyTaxHistory()
     throw error
   }
-  if (stat.isSymbolicLink() || !stat.isFile() || stat.size > 20 * 1024 * 1024)
+  if (stat.isSymbolicLink() || !stat.isFile() || stat.size > MAX_STATE_BYTES)
     throw new Error('Invalid tax-history state file')
   return validateTaxHistory(JSON.parse(fs.readFileSync(filePath, 'utf8')))
 }
@@ -107,9 +108,12 @@ export function commitTaxHistory(filePath: string, options: CommitTaxHistory): T
       records,
     })
     const valid = validateTaxHistory(next)
+    const serialized = `${JSON.stringify(valid, null, 2)}\n`
+    if (Buffer.byteLength(serialized, 'utf8') > MAX_STATE_BYTES)
+      throw new Error('Tax-history state size exceeds the readable limit; previous revision retained')
     const fd = fs.openSync(temporary, 'wx', 0o600)
     try {
-      fs.writeFileSync(fd, `${JSON.stringify(valid, null, 2)}\n`)
+      fs.writeFileSync(fd, serialized)
       fs.fsyncSync(fd)
     } finally {
       fs.closeSync(fd)

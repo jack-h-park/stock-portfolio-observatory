@@ -44,7 +44,13 @@ export function getTaxHistoryView(store: TaxHistoryStoreV1, filter: TaxHistoryFi
     })
     .map((event) => ({
       ...event,
-      taxUnitIds: [...new Set(allocations.filter(row => row.eventId === event.id).map(row => store.obligations.find(obligation => obligation.id === row.obligationId)!.taxUnitId))].sort(),
+      taxUnitIds: [
+        ...new Set(
+          allocations
+            .filter((row) => row.eventId === event.id)
+            .map((row) => store.obligations.find((obligation) => obligation.id === row.obligationId)!.taxUnitId),
+        ),
+      ].sort(),
       wholeEvent: { principal: event.principal, interest: event.interest, penalty: event.penalty },
       ...Object.fromEntries(
         COMPONENTS.map((field) => [
@@ -56,10 +62,30 @@ export function getTaxHistoryView(store: TaxHistoryStoreV1, filter: TaxHistoryFi
         ]),
       ),
     }))
+  const unallocated = projection.unallocated
+    .map((row) => ({
+      ...row,
+      date: store.events.find((event) => event.id === row.eventId)!.date,
+      kind: store.events.find((event) => event.id === row.eventId)!.kind,
+    }))
+    .filter((row) => {
+      if (row.date == null) {
+        if (filter.cashDateFrom || filter.cashDateTo) {
+          missingOccurrenceDates.push(row.eventId)
+          return false
+        }
+        return true
+      }
+      return (
+        (!filter.cashDateFrom || row.date >= filter.cashDateFrom) &&
+        (!filter.cashDateTo || row.date <= filter.cashDateTo)
+      )
+    })
   return {
     ...projection,
     obligations,
     cashEvents,
+    unallocated,
     issues: projection.issues.filter((row) => ids.has(row.obligationId)),
     missingOccurrenceDates,
     coverage: { confirmed: obligations.filter((row) => row.status === 'confirmed').length, total: obligations.length },

@@ -1,4 +1,4 @@
-import { financeFile } from './finance-paths.mjs'
+import { financeFile, resolveFinancePaths } from './finance-paths.mjs'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -21,7 +21,8 @@ const snapshotDate = portfolioDate(new Date(now))
 
 const dataDir = financeFile('STOCK_DATA_DIR')
 const payloadDir = path.join(dataDir, '.codex_sheet_payloads')
-const outDir = path.join(dataDir, 'outputs/stock-portfolio-observatory')
+const financePaths = resolveFinancePaths()
+const outDir = financePaths.mode === 'sample' || process.env.FINANCE_RUNTIME_DIR?.trim() ? financePaths.runtimeDir : path.join(dataDir, 'outputs/stock-portfolio-observatory')
 const dbPath = financeFile('STOCK_DB_PATH')
 const fxRatesPath = financeFile('STOCK_FX_RATES_PATH')
 const krPricesPath = financeFile('STOCK_KR_PRICES_PATH')
@@ -843,6 +844,7 @@ function required(value) {
 }
 
 fs.mkdirSync(outDir, { recursive: true })
+fs.mkdirSync(path.dirname(dbPath), { recursive: true })
 let previousPortfolioSnapshots = []
 if (fs.existsSync(dbPath)) {
   const previousDb = new Database(dbPath, { readonly: true })

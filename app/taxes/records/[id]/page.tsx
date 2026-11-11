@@ -5,8 +5,9 @@ import { Card, TextLink } from '@/components/ui'
 import { config } from '@/config'
 import { readTaxHistory } from '@/lib/adapters/tax-history-store'
 import { indexEvidenceRoot, resolveTaxEvidence } from '@/lib/application/evidence-index'
+import { getTaxRecordDetail } from '@/lib/application/tax-record-detail'
 import { live } from '@/lib/domain/taxes/history'
-import { formatMoney, reconcileTaxHistory } from '@/lib/domain/taxes/reconcile'
+import { formatMoney } from '@/lib/domain/taxes/reconcile'
 import { getLanguage } from '@/lib/i18n-server'
 import { routeMetadata } from '@/lib/page-names'
 import { getPageCopy } from '@/lib/ui-copy'
@@ -27,17 +28,10 @@ export default async function TaxRecordPage({
     language = await getLanguage(),
     copy = getPageCopy('taxHistory', language)
   const store = readTaxHistory(),
-    obligation = live(store.obligations).find((row) => row.id === id)
-  if (!obligation) notFound()
-  const row = reconcileTaxHistory(store).obligations.find((item) => item.id === id)!
-  const allocations = live(store.allocations).filter((item) => item.obligationId === id)
-  const events = live(store.events).filter((event) => allocations.some((allocation) => allocation.eventId === event.id))
-  const evidenceIds = new Set([
-    ...row.candidates.flatMap((item) => item.evidenceIds),
-    ...events.flatMap((item) => item.evidenceIds),
-    ...allocations.flatMap((item) => item.evidenceIds),
-    ...(obligation.effectiveBasis?.evidenceIds ?? []),
-  ])
+    detail = getTaxRecordDetail(store, id)
+  if (!detail) notFound()
+  const { obligation, row, allocations, events, versions, adjustments, auditChanges } = detail
+  const evidenceIds = new Set(detail.evidenceIds)
   const roots = { records: config.finance.recordsDir, tax: config.finance.taxDir }
   const fields = (kind: string, itemId: string) => (
     <>
@@ -120,6 +114,71 @@ export default async function TaxRecordPage({
             </button>
           </form>
         )}
+      </Card>
+      <Card title={copy.versions} className="mt-5">
+        <p className="p-4 text-body">
+          {copy.basis}:{' '}
+          {obligation.effectiveBasis
+            ? `${obligation.effectiveBasis.kind} · ${obligation.effectiveBasis.id} · ${copy.version} ${obligation.effectiveBasis.recordRevision}`
+            : copy.none}
+        </p>
+        <div className="overflow-x-auto" tabIndex={0} role="region" aria-label={copy.versions}>
+          <table className="w-full min-w-[48rem] text-left text-body">
+            <caption className="sr-only">{copy.versions}</caption>
+            <thead>
+              <tr>
+                {[
+                  copy.kind,
+                  copy.version,
+                  copy.filingStatus,
+                  copy.supersedes,
+                  copy.date,
+                  copy.reported,
+                  copy.evidence,
+                ].map((label) => (
+                  <th key={label} scope="col" className="p-3">
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {versions.map((version) => (
+                <tr key={`${version.kind}:${version.id}`}>
+                  <td className="p-3">
+                    {version.kind} · {version.id}
+                    {version.deleted ? ` · ${copy.archived}` : ''}
+                  </td>
+                  <td className="p-3">{version.recordRevision}</td>
+                  <td className="p-3">
+                    {version.status}
+                    {version.statusDate ? ` · ${version.statusDate}` : ''}
+                  </td>
+                  <td className="p-3">{version.supersedesId ?? '—'}</td>
+                  <td className="p-3">{version.date ?? copy.none}</td>
+                  <td className="whitespace-nowrap p-3 tabular-nums">{formatMoney(version.liability)}</td>
+                  <td className="p-3">{version.evidenceIds.join(' · ') || copy.none}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+      <Card title={copy.adjustments} className="mt-5">
+        <p className="p-4 text-body">
+          {copy.adjustments}: {formatMoney({ currency: row.currency, minor: row.adjustmentMinor })}
+        </p>
+        <ul className="divide-y divide-line">
+          {adjustments.map((adjustment) => (
+            <li key={adjustment.id} className="p-4 text-body">
+              {adjustment.id} · {adjustment.effectiveDate} · {formatMoney(adjustment.amount)}
+              {adjustment.deleted ? ` · ${copy.archived}` : ''}
+              <div className="text-caption text-ink-2">
+                {copy.evidence}: {adjustment.evidenceIds.join(' · ') || copy.none}
+              </div>
+            </li>
+          ))}
+        </ul>
       </Card>
       <Card title={copy.events} className="mt-5">
         <ul className="divide-y divide-line">
@@ -239,22 +298,11 @@ export default async function TaxRecordPage({
       </Card>
       <Card title={copy.changes} className="mt-5">
         <ul className="divide-y divide-line">
-          {store.changes
-            .filter((change) =>
-              change.records.some(
-                (record) =>
-                  record.id === id ||
-                  allocations.some((allocation) => allocation.id === record.id) ||
-                  events.some((event) => event.id === record.id) ||
-                  evidenceIds.has(record.id) ||
-                  row.candidates.some((candidate) => candidate.id === record.id),
-              ),
-            )
-            .map((change) => (
-              <li key={change.id} className="p-4 text-body">
-                {change.changedAt} · {copy.revision} {change.storeRevision} · {change.reason}
-              </li>
-            ))}
+          {auditChanges.map((change) => (
+            <li key={change.id} className="p-4 text-body">
+              {change.changedAt} · {copy.revision} {change.storeRevision} · {change.reason}
+            </li>
+          ))}
         </ul>
       </Card>
     </>
