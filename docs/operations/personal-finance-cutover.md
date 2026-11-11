@@ -4,6 +4,8 @@ Product branding, repository slug, local checkout location, output filenames, sc
 
 ## Preparation
 
+- Preserve the [intentional owner-device web access constraint](private-web-access.md). A gateway/path rename must retain approved-device enforcement for the entire finance site, normal browser access and unchanged rules for other services; verify both the effective rule and startup configuration.
+
 - Use the [compatibility inventory](../architecture/compatibility-inventory.md) to identify owning hosts and actual briefing/trading, source-sync, sheet, scheduler, and backup consumers.
 - Verify open PRs, worktree ownership/use, dirty state, ancestry, and unique content before a checkout move. Other agents' active worktrees are not cleanup candidates.
 - Keep source archives in place. Tax-document folder names do not establish jurisdiction; evidence uses root aliases and metadata.

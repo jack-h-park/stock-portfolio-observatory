@@ -1,5 +1,7 @@
 # Private storage and configuration
 
+Storage mode and network authorization are separate. The owner-operated private website uses an intentional approved-owner-device restriction over Tailscale, scoped to the finance hostname; normal browser access remains available without an SSH tunnel. `FINANCE_MODE=private` is not a login or access-control mechanism. See [private web access](../operations/private-web-access.md) for the policy, new-device review and enforcement boundary.
+
 The shared resolver in [finance-paths.mjs](../../scripts/finance-paths.mjs) is used by the app, CLI, ingestion, fetchers, and Node wrappers that pass paths into Python. Operational shell jobs retain legacy names until their separately reviewed cutover. The sheet publisher, summary-health job, and coverage reminder retain their established private fallback paths unless an applicable file/runtime override is supplied; an inferred app sample default never replaces an operational fallback. Applying synthetic positions to an operational sheet is refused before credential or network access. Direct Python commands use the legacy environment interface; invoke their Node package commands for new-root resolution.
 
 | Setting | Purpose |
