@@ -17,7 +17,7 @@ import fs from 'node:fs'
 
 const ROUTES = [
   '/', '/net-worth', '/pension', '/daily-briefing', '/holdings', '/review', '/rebalance', '/income',
-  '/tax-planning', '/tax-settings', '/lots', '/realized', '/cost-basis', '/dividends',
+  '/taxes', '/taxes/history', '/taxes/records/us-2025', '/tax-planning', '/tax-settings', '/lots', '/realized', '/cost-basis', '/dividends',
   '/transactions', '/fx', '/crypto-premium', '/accounts', '/health', '/data-ops',
   '/reconciliation', '/data-map', '/positions/KR/005930',
 ]
@@ -27,7 +27,7 @@ const LANGUAGE_COOKIE = 'stock-observatory-language'
 // One extra pass renders the overview in the all-assets view, which draws the
 // stacked total-assets chart that the default view never shows.
 const ASSET_VIEW_COOKIE = 'stock-observatory-asset-view'
-const VIEWS = [null, 'all']
+const VIEWS = [null, 'stocks']
 
 function arg(flag, fallback) {
   const i = process.argv.indexOf(flag)

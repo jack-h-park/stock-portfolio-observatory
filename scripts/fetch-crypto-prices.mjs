@@ -1,12 +1,13 @@
+import { financeFile } from './finance-paths.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { loadLocalEnv } from './env.mjs'
 
 loadLocalEnv()
 
-const activityPath = process.env.STOCK_CRYPTO_ACTIVITY_PATH || path.join(process.cwd(), 'data/crypto-activity.json')
-const outPath = process.env.STOCK_CRYPTO_PRICES_PATH || path.join(process.cwd(), 'data/crypto-prices.json')
-const fxRatesPath = process.env.STOCK_FX_RATES_PATH || path.join(process.cwd(), 'data/fx-rates.json')
+const activityPath = financeFile('STOCK_CRYPTO_ACTIVITY_PATH')
+const outPath = financeFile('STOCK_CRYPTO_PRICES_PATH')
+const fxRatesPath = financeFile('STOCK_FX_RATES_PATH')
 
 // Crypto is priced PER VENUE, not once per symbol.
 //

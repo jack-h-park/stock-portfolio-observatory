@@ -1,4 +1,6 @@
 import Link from 'next/link'
+import { FinanceTaxSummary } from '@/components/FinanceTaxSummary'
+import { AssetCoverageNote } from '@/components/AssetCoverageNote'
 import { isSupplementarySource } from '@/lib/supplementary'
 import { FreshnessInline } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
@@ -307,6 +309,7 @@ export default async function OverviewPage({
 
       {netWorth ? (
         <Card title={copy.totalAssets} className="mb-5">
+          <AssetCoverageNote summary={netWorth} language={language} />
           <div className="text-metric font-medium tabular-nums text-ink">{money(netWorth.totalKrw, 'KRW')}</div>
           <ul className="mt-3 grid gap-1.5">
             {(['stocks', 'crypto', 'cash', 'pensions', 'gold'] as const).map((key) => (
@@ -339,6 +342,7 @@ export default async function OverviewPage({
         </Card>
       ) : null}
 
+      <FinanceTaxSummary language={language} />
       <Card title={copy.marketBreakdown} info={copy.marketBreakdownInfo} className="mb-5">
         <div className="mb-5">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
@@ -594,7 +598,7 @@ export default async function OverviewPage({
               <Link
                 href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}${includeChildren ? '' : '&children=1'}`}
                 scroll={false}
-                aria-pressed={includeChildren}
+                aria-label={`${childCopy.toggle}: ${includeChildren ? (language === 'ko' ? '포함됨' : 'included') : (language === 'ko' ? '제외됨' : 'excluded')}`}
                 title={childCopy.toggleHint}
                 className={`rounded-sm border px-2 py-1 text-label font-medium ${includeChildren ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
               >

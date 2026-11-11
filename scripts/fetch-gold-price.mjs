@@ -1,3 +1,4 @@
+import { financeFile } from './finance-paths.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
@@ -28,9 +29,9 @@ loadLocalEnv()
 // the earliest gold purchase, it also pages backwards until it reaches that
 // purchase or 400 days, whichever is nearer.
 
-const outPath = process.env.STOCK_GOLD_PRICES_PATH || path.join(process.cwd(), 'data/gold-prices.json')
+const outPath = financeFile('STOCK_GOLD_PRICES_PATH')
 const dbPath =
-  process.env.STOCK_DB_PATH || path.join(process.cwd(), 'private-data/outputs/stock-portfolio-observatory/stock-portfolio-observatory.db')
+  financeFile('STOCK_DB_PATH')
 const MAX_BACKFILL_PAGES = 20
 
 async function getJson(url) {

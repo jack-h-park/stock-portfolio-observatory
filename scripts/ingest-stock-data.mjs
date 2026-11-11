@@ -1,3 +1,4 @@
+import { financeFile, resolveFinancePaths } from './finance-paths.mjs'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -18,38 +19,39 @@ loadLocalEnv()
 const now = new Date().toISOString()
 const snapshotDate = portfolioDate(new Date(now))
 
-const dataDir = process.env.STOCK_DATA_DIR || path.join(process.cwd(), 'private-data')
+const dataDir = financeFile('STOCK_DATA_DIR')
 const payloadDir = path.join(dataDir, '.codex_sheet_payloads')
-const outDir = path.join(dataDir, 'outputs/stock-portfolio-observatory')
-const dbPath = process.env.STOCK_DB_PATH || path.join(outDir, 'stock-portfolio-observatory.db')
-const fxRatesPath = process.env.STOCK_FX_RATES_PATH || path.join(process.cwd(), 'data/fx-rates.json')
-const krPricesPath = process.env.STOCK_KR_PRICES_PATH || path.join(process.cwd(), 'data/kr-prices.json')
-const usPricesPath = process.env.STOCK_US_PRICES_PATH || path.join(process.cwd(), 'data/us-prices.json')
-const historicalPricesPath = process.env.STOCK_HISTORICAL_PRICES_PATH || path.join(process.cwd(), 'data/historical-prices.json')
-const historicalFxRatesPath = process.env.STOCK_HISTORICAL_FX_RATES_PATH || path.join(process.cwd(), 'data/historical-fx-rates.json')
-const usPdfEvidencePath = process.env.STOCK_US_PDF_EVIDENCE_PATH || path.join(process.cwd(), 'data/us-pdf-evidence.json')
+const financePaths = resolveFinancePaths()
+const outDir = financePaths.mode === 'sample' || process.env.FINANCE_RUNTIME_DIR?.trim() ? financePaths.runtimeDir : path.join(dataDir, 'outputs/stock-portfolio-observatory')
+const dbPath = financeFile('STOCK_DB_PATH')
+const fxRatesPath = financeFile('STOCK_FX_RATES_PATH')
+const krPricesPath = financeFile('STOCK_KR_PRICES_PATH')
+const usPricesPath = financeFile('STOCK_US_PRICES_PATH')
+const historicalPricesPath = financeFile('STOCK_HISTORICAL_PRICES_PATH')
+const historicalFxRatesPath = financeFile('STOCK_HISTORICAL_FX_RATES_PATH')
+const usPdfEvidencePath = financeFile('STOCK_US_PDF_EVIDENCE_PATH')
 const robinhoodSnapshotPath =
-  process.env.STOCK_ROBINHOOD_SNAPSHOT_PATH || path.join(process.cwd(), 'data/robinhood-snapshot.json')
-const cryptoActivityPath = process.env.STOCK_CRYPTO_ACTIVITY_PATH || path.join(process.cwd(), 'data/crypto-activity.json')
-const cryptoPricesPath = process.env.STOCK_CRYPTO_PRICES_PATH || path.join(process.cwd(), 'data/crypto-prices.json')
-const manualMappingsPath = process.env.STOCK_MANUAL_MAPPINGS_PATH || path.join(process.cwd(), 'data/manual-mappings.json')
-const refreshRunsPath = process.env.STOCK_REFRESH_RUNS_PATH || path.join(process.cwd(), 'data/refresh-runs.json')
+  financeFile('STOCK_ROBINHOOD_SNAPSHOT_PATH')
+const cryptoActivityPath = financeFile('STOCK_CRYPTO_ACTIVITY_PATH')
+const cryptoPricesPath = financeFile('STOCK_CRYPTO_PRICES_PATH')
+const manualMappingsPath = financeFile('STOCK_MANUAL_MAPPINGS_PATH')
+const refreshRunsPath = financeFile('STOCK_REFRESH_RUNS_PATH')
 // Read-only here: the ingest never writes tax policy. It reads one corner of it
 // so a hand-entered assumption can be checked against the transactions the
 // ingest actually sees — see `us_ytd_realized_assumption_reviewed` below.
-const taxPolicyPath = process.env.STOCK_TAX_POLICY_PATH || path.join(process.cwd(), 'data/tax-policy.json')
-const accountMapPath = process.env.STOCK_ACCOUNT_MAP_PATH || path.join(process.cwd(), 'data/accounts.local.json')
+const taxPolicyPath = financeFile('STOCK_TAX_POLICY_PATH')
+const accountMapPath = financeFile('STOCK_ACCOUNT_MAP_PATH')
 const accountMap = loadAccountMap(accountMapPath)
 // Pension holdings snapshots (`<token>-holdings-<YYYYMMDD>.csv`, made by hand) and
 // the year-end certificates extract-pension-evidence.py reads. Both are optional:
 // with neither, no pension holding is written and the pension checks pass empty.
-const pensionDir = process.env.STOCK_PENSION_DIR || path.join(dataDir, 'pension')
+const pensionDir = financeFile('STOCK_PENSION_DIR')
 const pensionEvidencePath =
-  process.env.STOCK_PENSION_EVIDENCE_PATH || path.join(process.cwd(), 'data/pension-evidence.json')
+  financeFile('STOCK_PENSION_EVIDENCE_PATH')
 // The KRX gold price (fetch-gold-price.mjs). Optional: without it the gold
 // holding is valued at cost and `gold_priced` says so.
-const goldPricesPath = process.env.STOCK_GOLD_PRICES_PATH || path.join(process.cwd(), 'data/gold-prices.json')
-const bankBalancesPath = process.env.STOCK_BANK_BALANCES_PATH || path.join(process.cwd(), 'data/bank-balances.json')
+const goldPricesPath = financeFile('STOCK_GOLD_PRICES_PATH')
+const bankBalancesPath = financeFile('STOCK_BANK_BALANCES_PATH')
 // A bad deposit file must never abort the required stock ingest. Everything
 // read from it goes through normalizeBankBalances, which keeps only well-formed
 // elements and lists what it dropped; the cash_balances_readable check reports
@@ -203,7 +205,7 @@ const bankBalances = (() => {
   }
 })()
 const assetEventLabelsPath =
-  process.env.STOCK_ASSET_EVENT_LABELS_PATH || path.join(process.cwd(), 'data/asset-event-labels.local.json')
+  financeFile('STOCK_ASSET_EVENT_LABELS_PATH')
 // Names for money that arrived from outside. Gitignored: the groups carry real
 // counterparties. A missing or unreadable file leaves every inflow unlabeled.
 const assetEventLabels = (() => {
@@ -224,7 +226,7 @@ for (const label of assetEventLabels) {
   }
 }
 const fxLedgerPath =
-  process.env.STOCK_FX_LEDGER_PATH || path.join(outDir, 'fx-ledger.json')
+  financeFile('STOCK_FX_LEDGER_PATH')
 
 const sources = {
   holdings: 'summary.noapost.tsv',
@@ -275,7 +277,7 @@ for (const problem of sourceDateProblems) {
 // accounts whose statements exist, so they REPLACE the hand-dumped payload rows
 // for those accounts and leave every other account (today: Toss) untouched \u2014
 // swapping the files wholesale would delete the brokerage that is not covered yet.
-const krStatementsDir = process.env.STOCK_KR_STATEMENTS_DIR || path.join(process.cwd(), 'data/kr-statements')
+const krStatementsDir = financeFile('STOCK_KR_STATEMENTS_DIR')
 
 function readTsvAt(dir, filename) {
   const filePath = path.join(dir, filename)
@@ -842,6 +844,7 @@ function required(value) {
 }
 
 fs.mkdirSync(outDir, { recursive: true })
+fs.mkdirSync(path.dirname(dbPath), { recursive: true })
 let previousPortfolioSnapshots = []
 if (fs.existsSync(dbPath)) {
   const previousDb = new Database(dbPath, { readonly: true })
@@ -1763,7 +1766,7 @@ retag(holdingRows)
 // separate because they age differently: this snapshot is refreshed hourly, a
 // statement only when one is downloaded. `toss_holdings_lots_provenance` below
 // measures the gap between them rather than papering over it.
-const tossSnapshotPath = process.env.STOCK_TOSS_SNAPSHOT_PATH || path.join(process.cwd(), 'data/toss-snapshot.json')
+const tossSnapshotPath = financeFile('STOCK_TOSS_SNAPSHOT_PATH')
 const tossSnapshot = fs.existsSync(tossSnapshotPath)
   ? JSON.parse(fs.readFileSync(tossSnapshotPath, 'utf8'))
   : null
@@ -6706,8 +6709,7 @@ check(
 const sheetPublishMaxLagDays = Number(process.env.STOCK_SHEET_MAX_LAG_DAYS
   || process.env.STOCK_KR_SHEET_MAX_LAG_DAYS || 7)
 for (const [market, receiptFile] of [['KR', 'kr-sheet-publish.json'], ['US', 'us-sheet-publish.json']]) {
-  const receiptPath = process.env[`STOCK_${market}_SHEET_RECEIPT_PATH`]
-    || path.join(process.cwd(), 'data', receiptFile)
+  const receiptPath = financeFile(`STOCK_${market}_SHEET_RECEIPT_PATH`)
   const receipt = fs.existsSync(receiptPath)
     ? (() => { try { return JSON.parse(fs.readFileSync(receiptPath, 'utf8')) } catch { return null } })()
     : null

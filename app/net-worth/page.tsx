@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { AssetCoverageNote } from '@/components/AssetCoverageNote'
 import { DataTable, type DataTableColumn } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, MetricField } from '@/components/ui'
@@ -175,6 +176,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
         emphasis={copy.emphasis}
         subtitle={copy.subtitle(fmtDateTime(meta.ingested_at, language))}
       />
+      <AssetCoverageNote summary={netWorth} language={language} />
 
       <CardRow columns={3}>
         <Card>
@@ -245,7 +247,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
             <Link
               href={hrefWith({ children: !includeChildren })}
               scroll={false}
-              aria-pressed={includeChildren}
+              aria-label={`${childCopy.toggle}: ${includeChildren ? (language === 'ko' ? '포함됨' : 'included') : (language === 'ko' ? '제외됨' : 'excluded')}`}
               title={childCopy.toggleHint}
               className={`rounded-sm border px-2 py-1 text-label font-medium ${includeChildren ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
             >

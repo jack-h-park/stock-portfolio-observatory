@@ -1,3 +1,4 @@
+import { financeEnvironment } from './finance-paths.mjs'
 import { spawn } from 'node:child_process'
 import { loadLocalEnv } from './env.mjs'
 
@@ -5,7 +6,7 @@ loadLocalEnv()
 
 const child = spawn(process.env.STOCK_PYTHON_BIN || 'python3', ['scripts/extract-fx-ledger.py'], {
   cwd: process.cwd(),
-  env: process.env,
+  env: financeEnvironment(),
   stdio: 'inherit',
 })
 

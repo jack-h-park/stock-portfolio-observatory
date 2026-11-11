@@ -1,8 +1,8 @@
 {
-  "name": "stock-portfolio-observatory",
+  "name": "personal-finance-observatory",
   "version": "0.1.0",
   "private": true,
-  "description": "Read-only stock portfolio monitoring dashboard",
+  "description": "Local personal finance observatory for assets, cash flow and KR/US tax history",
   "license": "MIT",
   "packageManager": "pnpm@10.18.2",
   "pnpm": {
@@ -50,6 +50,7 @@
     "tax:scenario": "tsx scripts/observatory-cli.mjs tax:scenario",
     "tax:calendar": "tsx scripts/observatory-cli.mjs tax:calendar",
     "tax:realized": "tsx scripts/observatory-cli.mjs tax:realized",
+    "tax:import": "tsx scripts/import-tax-history.mjs",
     "sources:status": "tsx scripts/observatory-cli.mjs sources:status",
     "fbar:table": "tsx scripts/observatory-cli.mjs fbar:table",
     "rebalance:propose": "tsx scripts/rebalance-cli.mjs propose",

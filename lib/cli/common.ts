@@ -15,6 +15,7 @@
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
+import { financeFile } from '@/scripts/finance-paths.mjs'
 import Database from 'better-sqlite3'
 import { config } from '@/config'
 import { assumptionString, getTaxPolicyState, type TaxPolicyState } from '@/lib/tax-policy'
@@ -99,7 +100,7 @@ export function todayLosAngeles(now: Date = new Date()) {
 
 /** Same path and override as scripts/refresh.mjs. */
 export function refreshLockPath() {
-  return process.env.STOCK_REFRESH_LOCK_PATH || path.join(process.cwd(), '.refresh.lock')
+  return financeFile('STOCK_REFRESH_LOCK_PATH')
 }
 
 /**

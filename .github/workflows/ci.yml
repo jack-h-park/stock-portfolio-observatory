@@ -41,6 +41,8 @@ jobs:
 
       - name: Seed synthetic sample data
         run: pnpm seed:sample
+        env:
+          FINANCE_MODE: sample
 
       - name: Typecheck
         run: pnpm typecheck

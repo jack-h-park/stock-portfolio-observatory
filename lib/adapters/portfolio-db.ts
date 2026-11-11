@@ -1,3 +1,4 @@
+import { getFinanceOverview } from '@/lib/application/finance-overview'
 import fs from 'node:fs'
 import { periodEndFromSource } from '@/lib/supplementary'
 import path from 'node:path'
@@ -11,9 +12,9 @@ import { allocateTax, buildInvestmentEpisodes, mergeAssetEvents, type AssetEvent
 import { getRebalancePolicy, marketTargetsFor } from '@/lib/rebalance-policy'
 import { deriveUsTargetPct, getAllocationPolicy } from '@/lib/rebalance/allocation-policy'
 import { getTaxPolicyState, usTaxableWrappers, wrapperTreatment, type TaxPolicy, type WrapperTreatment } from '@/lib/tax-policy'
-import { ASSET_CLASSES, depositsSeries, summarizeNetWorth, totalAssetsSeries, type AsOfNote, type CashBalanceRow, type NetWorth, type TotalAssetsSeries } from '@/lib/net-worth'
+import { ASSET_CLASSES, depositsSeries, totalAssetsSeries, type CashBalanceRow, type NetWorth, type TotalAssetsSeries } from '@/lib/net-worth'
 import type { PensionContributionYear } from '@/lib/pension'
-import { summarizeAllocation, type AllocationSecurity, type AssetAllocation } from '@/lib/asset-allocation'
+import { summarizeAllocation, type AssetAllocation } from '@/lib/asset-allocation'
 import { getInstrumentClasses } from '@/lib/rebalance/instrument-classes'
 import { groupAccountRanges, type AccountDataRange, type AssetType, type RangeKind, type RangeRow } from '@/lib/account-ranges'
 import { foreignAccountMaxima, isUsBrokerage, isUsCashInstitution, maxBalance, treasuryRateFor, type BalancePoint, type ForeignAccountInput, type ForeignAccountMaxima } from '@/lib/fbar'
@@ -1375,67 +1376,21 @@ export function getTotalAssetsSeries(dates: string[], precomputed?: NetWorth): T
 }
 
 export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWorth {
-  const overview = precomputed ?? getOverview()
-  const conn = db()
-  try {
-    const hasTable = (name: string) =>
-      Boolean(conn.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(name))
-    // One row per (institution, account): the newest date, and the highest id when a date repeats.
-    const latest = hasTable('cash_balances')
-      ? (conn
-          .prepare(
-            `select institution, account, kind, currency, as_of_date as asOfDate, balance, derived
-               from (
-                 select *, row_number() over (partition by institution, account order by as_of_date desc, id desc) as rn
-                   from cash_balances
-                  where 1 = 1${selfOnlyAnd(conn, 'cash_balances')}
-               )
-              where rn = 1
-              order by institution, account`
-          )
-          .all() as any[])
-      : []
-    const usd = conn
-      .prepare("select rate from fx_rates where from_currency = 'USD' and to_currency = 'KRW' order by as_of_date desc limit 1")
-      .get() as { rate: number } | undefined
-    // Pensions and gold live only in holdings_all, never in the stock view the
-    // overview totals read. A row with no market value counts at cost.
-    const selfHoldings = hasTable('holdings_all') ? selfOnlyAnd(conn, 'holdings_all') : ''
-    const others = hasTable('holdings_all')
-      ? (conn
-          .prepare(
-            `select
-               coalesce(sum(case when ${PENSION_ROW_SQL} then coalesce(base_market_value, base_cost, 0) end), 0) as pensions,
-               coalesce(sum(case when ${GOLD_ROW_SQL} then coalesce(base_market_value, base_cost, 0) end), 0) as gold
-               from holdings_all
-              where 1 = 1${selfHoldings}`
-          )
-          .get() as { pensions: number; gold: number })
-      : { pensions: 0, gold: 0 }
-    // Values from a dated snapshot or held at cost, one note per account and date.
-    const asOfNotes = hasTable('holdings_all')
-      ? (conn
-          .prepare(
-            `select distinct case when ${PENSION_ROW_SQL} then 'pensions' else 'gold' end as assetClass, account as label, as_of_date as asOf
-               from holdings_all
-              where (${PENSION_ROW_SQL} or ${GOLD_ROW_SQL})${selfHoldings}
-                and (valuation_source in ('snapshot', 'cost') or base_market_value is null)
-                and as_of_date is not null
-              order by account, as_of_date`
-          )
-          .all() as AsOfNote[])
-      : []
-    return summarizeNetWorth({
-      stocksKrw: (overview.totals.kr_base_market_value ?? 0) + (overview.totals.us_base_market_value ?? 0),
-      cryptoKrw: overview.totals.crypto_base_market_value ?? 0,
-      usdKrw: usd?.rate ?? null,
-      cash: latest.map((row) => ({ ...row, derived: Boolean(row.derived) })),
-      pensionsKrw: Number(others.pensions),
-      goldKrw: Number(others.gold),
-      asOfNotes,
-    })
-  } finally {
-    conn.close()
+  // Retain the call signature while scoping current assets independently of the
+  // investment-only overview (which has different ownership/inclusion rules).
+  void precomputed
+  const summary = getFinanceOverview()
+  const dated = summary.included.filter(row => row.assetClass !== 'cash' && row.asOf && ['snapshot', 'cost'].includes(row.method))
+  const notes = [...new Map(dated.map(row => [JSON.stringify([row.assetClass, row.account, row.asOf]), { assetClass: row.assetClass, label: row.account ?? row.accountId, asOf: row.asOf! }])).values()].sort((a,b) => a.label.localeCompare(b.label) || a.asOf.localeCompare(b.asOf))
+  const oldestCash = summary.included.filter(row => row.assetClass === 'cash' && row.asOf).sort((a,b) => a.asOf!.localeCompare(b.asOf!))[0]
+  if (oldestCash) notes.push({ assetClass: 'cash', label: oldestCash.account ?? oldestCash.accountId, asOf: oldestCash.asOf! })
+  return {
+    totalKrw: summary.totalKrw,
+    byClass: summary.byClass,
+    asOfNotes: notes,
+    cash: summary.included.filter(row => row.assetClass === 'cash' && row.nativeAmount != null && (row.currency === 'USD' || row.currency === 'KRW')).map(row => ({ institution: row.institution ?? '', account: row.account ?? row.accountId, kind: row.cashKind ?? 'cash', currency: row.currency as 'USD' | 'KRW', asOfDate: row.asOf ?? '', balance: row.nativeAmount!, derived: row.derived ?? false, krw: row.valueKrw })),
+    unpricedCash: summary.omissions.filter(row => row.assetKey.startsWith('cash:')).map(row => row.accountId),
+    coverage: { omittedAssetCount: summary.omissions.length, sourceCoverageConfirmed: false, liabilitiesSupported: false },
   }
 }
 
@@ -1446,41 +1401,12 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
  * net worth's total.
  */
 export function getAssetAllocation(netWorth: NetWorth = getNetWorth()): AssetAllocation {
-  const conn = db()
-  try {
-    const hasTable = (name: string) =>
-      Boolean(conn.prepare("select 1 from sqlite_master where type in ('table', 'view') and name = ?").get(name))
-    const grouped = `account_wrapper as wrapper, market, ticker, max(name) as name, max(asset_class) as asset_class`
-    const stocks = hasTable('holdings')
-      ? (conn
-          .prepare(
-            `select ${grouped}, coalesce(sum(base_market_value), 0) as valueKrw
-               from holdings
-              where ${STOCK_WRAPPER_SQL} and market in ('KR', 'US')
-              group by account_wrapper, market, ticker`
-          )
-          .all() as AllocationSecurity[])
-      : []
-    const pensions = hasTable('holdings_all')
-      ? (conn
-          .prepare(
-            `select ${grouped}, coalesce(sum(coalesce(base_market_value, base_cost, 0)), 0) as valueKrw
-               from holdings_all
-              where ${PENSION_ROW_SQL}${selfOnlyAnd(conn, 'holdings_all')}
-              group by account_wrapper, market, ticker`
-          )
-          .all() as AllocationSecurity[])
-      : []
-    return summarizeAllocation({
-      securities: [...stocks, ...pensions],
-      cryptoKrw: netWorth.byClass.crypto,
-      goldKrw: netWorth.byClass.gold,
-      cashKrw: netWorth.byClass.cash,
-      classes: getInstrumentClasses(),
-    })
-  } finally {
-    conn.close()
-  }
+  void netWorth
+  const summary = getFinanceOverview()
+  return summarizeAllocation({
+    securities: summary.included.map(row => ({ wrapper: row.wrapper ?? 'taxable', market: row.market ?? '', ticker: row.ticker ?? row.assetKey, name: row.name ?? row.account ?? row.assetKey, asset_class: row.asset_class ?? (row.assetClass === 'cash' ? 'cash' : row.assetClass === 'gold' ? 'gold' : 'security'), valueKrw: row.valueKrw! })),
+    cryptoKrw: 0, goldKrw: 0, cashKrw: 0, classes: getInstrumentClasses(),
+  })
 }
 
 /**

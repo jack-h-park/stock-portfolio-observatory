@@ -1,8 +1,8 @@
 /**
  * Every asset the net worth counts, split two ways: by what it is (Korean or US
  * equity, bonds, gold, crypto, pension, cash) and by the account wrapper it sits
- * in (taxable, ISA, pension). A pension is one class, whatever it holds: its
- * funds have no ticker or market to classify by, and are not split.
+ * in (taxable, ISA, pension). Known pension exposure is classified independently
+ * of its wrapper; unmapped pension products remain in an explicit pension bucket.
  *
  * A taxable or ISA security takes its class from data/instrument-classes.json,
  * the mapping the rebalance engine reads, so a gold ETF counts as gold on both
@@ -45,9 +45,10 @@ const PENSION_WRAPPERS = new Set(['irp', 'pension_savings'])
 const marketClass = (market: string): AllocationClass | null => (market === 'KR' ? 'kr_equity' : market === 'US' ? 'us_equity' : null)
 
 function classOf(row: AllocationSecurity, classes: InstrumentClasses): { key: AllocationClass; byMarket: boolean } {
-  if (PENSION_WRAPPERS.has(row.wrapper)) return { key: 'pension', byMarket: false }
+  if (row.asset_class === 'cash' || /^PENSION:[^:]+:cash:/.test(row.ticker)) return { key: 'cash', byMarket: false }
   const mapped = classify(row, classes)
   if (mapped) return { key: mapped, byMarket: false }
+  if (PENSION_WRAPPERS.has(row.wrapper)) return { key: 'pension', byMarket: false }
   const byMarket = marketClass(row.market)
   return byMarket ? { key: byMarket, byMarket: true } : { key: 'unclassified', byMarket: false }
 }

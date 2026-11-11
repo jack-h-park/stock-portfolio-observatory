@@ -48,13 +48,13 @@ test('the five securities names are stock-only views over *_all tables', () => {
 // or a page that names *_all works against real data and fails on the sample.
 test('the sample seed writes the same stock-only views over *_all tables', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'stock-views-seed-'))
-  const dbPath = path.join(dir, 'sample.db')
+  const dbPath = path.join(dir, 'private-data/personal-finance-sample/runtime/observatory.db')
   const env: Record<string, string> = {}
-  for (const [key, value] of Object.entries(process.env)) if (value !== undefined && !key.startsWith('STOCK_')) env[key] = value
+  for (const [key, value] of Object.entries(process.env)) if (value !== undefined && !key.startsWith('STOCK_') && !key.startsWith('FINANCE_')) env[key] = value
   execFileSync(process.execPath, [path.join(REPO_ROOT, 'scripts/seed-sample.mjs')], {
     cwd: dir,
     stdio: 'pipe',
-    env: { ...env, SAMPLE_STOCK_DB_PATH: dbPath } as unknown as NodeJS.ProcessEnv,
+    env: { ...env } as unknown as NodeJS.ProcessEnv,
   })
   const db = new Database(dbPath)
   assertStockViews(db)

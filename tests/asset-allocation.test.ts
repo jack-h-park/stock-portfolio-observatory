@@ -91,7 +91,7 @@ test('one security held in several accounts is listed once, under the name of it
   assert.equal(valueOf(r.classes, 'kr_equity'), 400)
 })
 
-test('everything a pension holds is one pension class, whatever the mapping says', () => {
+test('mapped pension exposure and cash are independent of the pension wrapper', () => {
   const r = summarizeAllocation({
     securities: [
       security({ wrapper: 'irp', ticker: 'PENSION:t:cash:abc', name: 'Cash', valueKrw: 50 }),
@@ -103,7 +103,7 @@ test('everything a pension holds is one pension class, whatever the mapping says
     cashKrw: 0,
     classes: { 'KR:360750': 'us_equity' },
   })
-  assert.deepEqual(r.classes.map((row) => [row.key, row.valueKrw]), [['pension', 500]])
+  assert.deepEqual(r.classes.map((row) => [row.key, row.valueKrw]), [['us_equity', 250], ['pension', 200], ['cash', 50]])
   assert.equal(valueOf(r.wrappers, 'pension'), 500)
   assert.deepEqual(r.marketDefaults, [])
   assert.deepEqual(r.unclassified, [])

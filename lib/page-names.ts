@@ -26,6 +26,8 @@ export const ROUTE_HREFS = [
   '/income',
   '/cash-inflow',
   '/tax-planning',
+  '/taxes',
+  '/taxes/history',
   '/tax-settings',
   '/lots',
   '/realized',
@@ -51,7 +53,7 @@ export type RouteHref = (typeof ROUTE_HREFS)[number]
  * `app/layout.tsx`, so without this the home tab was the one tab missing the
  * product name.
  */
-export const APP_NAME = 'Stock Portfolio Observatory'
+export const APP_NAME = 'Personal Finance Observatory'
 
 /** The sidebar's label for a route, in one language. */
 export function routeName(href: RouteHref, language: Language): string {

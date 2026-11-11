@@ -1,3 +1,4 @@
+import { financeEnvironment } from './finance-paths.mjs'
 import { spawn } from 'node:child_process'
 import { loadLocalEnv } from './env.mjs'
 
@@ -18,7 +19,7 @@ if (!pythonBin.includes('/')) {
 
 const child = spawn(pythonBin, ['scripts/extract-kr-statements.py'], {
   cwd: process.cwd(),
-  env: process.env,
+  env: financeEnvironment(),
   stdio: 'inherit',
 })
 

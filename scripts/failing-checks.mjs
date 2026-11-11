@@ -1,3 +1,4 @@
+import { financeFile } from './finance-paths.mjs'
 // failing-checks.mjs — print the ids of the validation checks the current
 // database does not pass, one line, for deploy/hermes/refresh-now.sh.
 //
@@ -14,8 +15,7 @@ import { loadLocalEnv } from './env.mjs'
 loadLocalEnv()
 
 const dbPath =
-  process.env.STOCK_DB_PATH ||
-  path.join(process.env.STOCK_DATA_DIR || path.join(process.cwd(), 'private-data'), 'outputs/stock-portfolio-observatory/stock-portfolio-observatory.db')
+  financeFile('STOCK_DB_PATH')
 
 try {
   const db = new Database(dbPath, { readonly: true, fileMustExist: true })

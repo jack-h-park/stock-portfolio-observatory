@@ -1,3 +1,4 @@
+import { financeFile, financeEnvironment } from './finance-paths.mjs'
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { loadLocalEnv } from './env.mjs'
@@ -5,8 +6,8 @@ import { resolveCryptoFiles } from './source-files.mjs'
 
 loadLocalEnv()
 
-const dataDir = process.env.STOCK_DATA_DIR || path.join(process.cwd(), 'private-data')
-const outPath = process.env.STOCK_CRYPTO_ACTIVITY_PATH || path.join(process.cwd(), 'data/crypto-activity.json')
+const dataDir = financeFile('STOCK_DATA_DIR')
+const outPath = financeFile('STOCK_CRYPTO_ACTIVITY_PATH')
 const pythonBin = process.env.STOCK_PYTHON_BIN || 'python3'
 
 // Same warning as the US PDF extractor: a bare interpreter name resolves through
@@ -31,7 +32,7 @@ for (const gap of missing) {
 // source-files.mjs stays the only thing that decides which files are read.
 const child = spawn(pythonBin, ['scripts/extract-crypto-activity.py'], {
   cwd: process.cwd(),
-  env: process.env,
+  env: financeEnvironment(),
   stdio: ['pipe', 'inherit', 'inherit'],
 })
 child.stdin.write(JSON.stringify({ outPath, files }))

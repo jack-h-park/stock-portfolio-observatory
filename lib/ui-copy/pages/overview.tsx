@@ -2,7 +2,7 @@ import { defineCopy } from '@/lib/ui-copy/define'
 
 export const overview = defineCopy({
   en: {
-    title: 'Portfolio Overview',
+    title: 'Financial Overview',
     totalAssets: 'Total assets',
     assetClasses: { stocks: 'Stocks', crypto: 'Crypto', cash: 'Cash', pensions: 'Pensions', gold: 'Gold' },
     asOfNotesHint: "A dated class is valued from a snapshot, at cost, or from a balance older than today, not from today's price.",
@@ -12,13 +12,13 @@ export const overview = defineCopy({
     classSince: (label: string, date: string) => `${label} from ${date}`,
     totalAssetsTrendNote:
       'Cash includes estimated balances of accounts with no statement on file (a parking account, a matured term deposit, a closed CMA), traced from the transfers the statements show. Pensions move only on certificate and snapshot dates, and hold the last value between them. Gold is grams held times the KRX price on or before each date, at cost where no price is stored. Before a class starts it adds nothing. The last point is today, and matches the Total assets card.',
-    openNetWorth: 'Open net worth',
+    openNetWorth: 'Inspect total assets',
     totalAssetsInclDeposits: 'Total assets incl. deposits, pensions and gold',
     viewAllAssets: '→ view all assets',
     unpricedCash: (count: number) => `${count} deposit account(s) without an FX rate are not in the total.`,
     emphasis: 'Overview',
     subtitle: (ingestedAt: string, fx: string | null) =>
-      `Read-only status loaded from local investment data at ${ingestedAt}.${fx ? ` Applied FX: ${fx}.` : ''}`,
+      `Investment status loaded from local records at ${ingestedAt}.${fx ? ` Applied FX: ${fx}.` : ''}`,
     needsReview: (count: number) => `Operations review ${count}`,
     healthy: 'Healthy',
     freshnessTitle: 'Data Freshness',
@@ -127,7 +127,7 @@ export const overview = defineCopy({
       'Gold = KRX physical gold + gold ETFs (IAU · IAUM · SGOL). The ETFs are also counted in Global and United States; this tab is a separate view, not an addition.',
   },
   ko: {
-    title: '포트폴리오 개요',
+    title: '재무 개요',
     totalAssets: '총자산',
     assetClasses: { stocks: '주식', crypto: '암호화폐', cash: '현금', pensions: '연금', gold: '금' },
     asOfNotesHint: '날짜가 붙은 자산군은 오늘 시세가 아니라 snapshot, 취득원가 또는 오늘 이전 잔고 기준입니다.',
@@ -137,13 +137,13 @@ export const overview = defineCopy({
     classSince: (label: string, date: string) => `${label} ${date}부터`,
     totalAssetsTrendNote:
       '현금에는 거래내역이 없는 계좌(파킹통장, 만기된 예적금, 해지된 CMA)의 추정 잔액이 포함되며, 다른 계좌 거래내역에 나온 이체로 계산합니다. 연금은 증명서와 snapshot 날짜에만 바뀌고, 그 사이에는 마지막 값을 유지합니다. 금은 보유 그램 × 해당 날짜 이전 최신 KRX 시세이며, 시세가 없으면 취득원가입니다. 데이터가 시작되기 전의 자산군은 더하지 않습니다. 마지막 점은 오늘이며 총자산 카드와 같습니다.',
-    openNetWorth: '순자산 열기',
+    openNetWorth: '총자산 확인',
     totalAssetsInclDeposits: '예금·연금·금 포함 총자산',
     viewAllAssets: '→ 전체 자산 보기',
     unpricedCash: (count: number) => `환율이 없는 예금 계좌 ${count}개는 합계에 포함되지 않았습니다.`,
     emphasis: '개요',
     subtitle: (ingestedAt: string, fx: string | null) =>
-      `로컬 투자 자료를 ${ingestedAt}에 불러온 읽기 전용 현황입니다.${fx ? ` 적용 환율: ${fx}.` : ''}`,
+      `로컬 투자 자료를 ${ingestedAt}에 불러온 투자 현황입니다.${fx ? ` 적용 환율: ${fx}.` : ''}`,
     needsReview: (count: number) => `운영 검토 대기 ${count}건`,
     healthy: '정상',
     freshnessTitle: '데이터 최신 상태',

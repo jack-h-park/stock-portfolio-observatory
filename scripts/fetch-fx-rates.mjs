@@ -1,3 +1,4 @@
+import { financeFile } from './finance-paths.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { loadLocalEnv } from './env.mjs'
@@ -15,7 +16,7 @@ loadLocalEnv()
 // Same provider and shape as the price snapshots, so all three age together and
 // one stale check covers them.
 
-const outPath = process.env.STOCK_FX_RATES_PATH || path.join(process.cwd(), 'data/fx-rates.json')
+const outPath = financeFile('STOCK_FX_RATES_PATH')
 const baseCurrency = process.env.STOCK_BASE_CURRENCY || 'KRW'
 // Currencies held besides the base. Extend when a portfolio adds one.
 const quoteCurrencies = (process.env.STOCK_FX_CURRENCIES || 'USD')

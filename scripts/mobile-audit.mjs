@@ -14,14 +14,14 @@
  */
 const ROUTES = [
   '/', '/net-worth', '/pension', '/daily-briefing', '/holdings', '/review', '/rebalance', '/income',
-  '/tax-planning', '/tax-settings', '/lots', '/realized', '/cost-basis', '/dividends',
+  '/taxes', '/taxes/history', '/taxes/records/us-2025', '/tax-planning', '/tax-settings', '/lots', '/realized', '/cost-basis', '/dividends',
   '/transactions', '/fx', '/crypto-premium', '/accounts', '/health', '/data-ops',
   '/reconciliation', '/data-map', '/positions/KR/005930',
 ]
 const MIN_TARGET = 24
 // The overview is audited twice: once in the default stock view, once in the
 // all-assets view, which adds the stacked total-assets chart.
-const PASSES = [...ROUTES.map((route) => ({ route, view: null })), { route: '/', view: 'all' }]
+const PASSES = [...ROUTES.map((route) => ({ route, view: null })), { route: '/', view: 'stocks' }]
 
 function arg(flag, fallback) {
   const i = process.argv.indexOf(flag)
