@@ -215,3 +215,54 @@ test('threadPrompt skips a sleeve change missing from or to (no "undefined%")', 
   assert.match(e.threadPrompt, /Decision: change \(us_equity 40% -> 45%\)\./)
   assert.doesNotMatch(e.threadPrompt, /undefined|null%/)
 })
+
+test('threadMaterial carries the full outlook, every idea and question, and the harvest line; facts only', async () => {
+  const { pendingEvents } = await import('../lib/rebalance/notify')
+  const long = `${'Rates are easing across the curve. '.repeat(50)}END-MARKER`
+  const p = proposal({
+    outlook: { summary: long, drivers: [], risks: [], whatWouldChangeMyView: [], sources: [], confidence: 'high' },
+    ideas: [
+      { market: 'KR', ticker: '000001', sleeve: 'kr_equity', why: `Margins recovering. ${'x'.repeat(300)}` },
+      { market: 'US', ticker: 'ZZZ', sleeve: 'us_equity', why: 'Cheap on earnings.' },
+    ],
+    questionsForMaintainer: ['Is the cash floor still right?', 'Any planned withdrawal this year?'],
+    harvest: { totalLossKrw: 12_345_678, taxEffectKrw: -2_345_678 } as never,
+  } as Partial<Proposal>)
+  const e = pendingEvents([p], { version: 1, seeded: true, announced: {} }, T0).find((x) => x.kind === 'created')!
+  const m = e.threadMaterial ?? ''
+  assert.ok(m)
+  // The summary is kept up to 1,500 characters (this one is longer, so it is cut and marked).
+  assert.ok(m.includes(long.slice(0, 1_400)))
+  assert.ok(!m.includes('END-MARKER'))
+  assert.match(m, /Outlook \(high confidence\): Rates are easing/)
+  assert.match(m, /^- KR:000001 \(kr_equity\) — Margins recovering\. x+…$/m)
+  const ideaLine = m.split('\n').find((l) => l.startsWith('- KR:000001'))!
+  assert.ok(ideaLine.length < 240, 'the why is capped near 200 characters')
+  assert.match(m, /^- US:ZZZ \(us_equity\) — Cheap on earnings\.$/m)
+  assert.match(m, /^- Is the cash floor still right\?$/m)
+  assert.match(m, /^- Any planned withdrawal this year\?$/m)
+  assert.match(m, /about 12350000 KRW of losses, a tax effect of about -2350000 KRW/)
+  assert.match(m, /Estimated tax effect of the plan: about 1230000 KRW\./)
+  assert.match(m, /^Page: \/rebalance\/proposals\/rb-2026-10$/m)
+  // Facts only: the writing instructions and the hand-off marker live in the fallback prompt.
+  assert.doesNotMatch(m, /HANDOFF|Write a short opening/)
+  assert.ok(e.threadPrompt?.startsWith(m), 'the fallback prompt is the material plus instructions')
+  assert.match(e.threadPrompt ?? '', /Prefix the whole message with the exact marker <<<HANDOFF>>> on its own line; output nothing else\.$/)
+})
+
+test('threadMaterial without ideas, questions or harvest says so briefly; other events carry none', async () => {
+  const { pendingEvents } = await import('../lib/rebalance/notify')
+  const p = proposal({ status: 'plan_approved' }, [{ at: T0.toISOString(), type: 'plan_approved', detail: '' }])
+  const events = pendingEvents([p], { version: 1, seeded: true, announced: {} }, T0)
+  const m = events.find((x) => x.kind === 'created')?.threadMaterial ?? ''
+  assert.match(m, /^Ideas: none\.$/m)
+  assert.doesNotMatch(m, /Questions for the maintainer|Loss harvest/)
+  for (const e of events.filter((x) => x.kind !== 'created')) assert.equal(e.threadMaterial, null)
+})
+
+test('threadMaterial has no account label', async () => {
+  const { pendingEvents } = await import('../lib/rebalance/notify')
+  const e = pendingEvents([proposal()], { version: 1, seeded: true, announced: {} }, T0).find((x) => x.kind === 'created')
+  assert.ok(e?.threadMaterial)
+  assert.doesNotMatch(e.threadMaterial, /Secret Broker|ACC-1|AAA|BBB|123456789|987654321/)
+})

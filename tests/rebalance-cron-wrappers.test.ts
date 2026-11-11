@@ -59,10 +59,25 @@ exit "\${FAKE_RAR_RC:-0}"
 `
 
 // Stands in for "python send_discord.py ...": records which interpreter ran, argv and stdin.
+// "python .../nudge_prompt.py ..." runs the fake contract script (a bash script) instead.
 const FAKE_PY = `#!/usr/bin/env bash
+case "$1" in *nudge_prompt.py) exec bash "$@" ;; esac
 printf 'ARGS %s %s\\n' "$0" "$*" >> "$FAKE_SEND_LOG"
 printf 'TEXT %s\\n' "$(cat)" >> "$FAKE_SEND_LOG"
 exit "\${FAKE_SEND_RC:-0}"
+`
+
+// Stands in for the control plane's nudge_prompt.py: records its argv one per line, then prints per
+// FAKE_NUDGE_MODE: the contract as JSON (Korean as \uXXXX escapes, like json.dumps), garbage, an empty
+// list, or a failure.
+const FAKE_NUDGE = `#!/usr/bin/env bash
+for a in "$@"; do printf '%s\\n' "$a" >> "$FAKE_NUDGE_LOG"; done
+case "\${FAKE_NUDGE_MODE:-ok}" in
+  ok) printf '{"lines": ["CONTRACT RULES", "\\\\ud55c\\\\uad6d\\\\uc5b4 block", "", "%s", ""]}\\n' "$5" ;;
+  garbage) echo 'not json' ;;
+  empty) echo '{"lines": []}' ;;
+  fail) exit 3 ;;
+esac
 `
 
 function write(file: string, body: string, mode = 0o644) {
@@ -71,7 +86,7 @@ function write(file: string, body: string, mode = 0o644) {
   fs.chmodSync(file, mode)
 }
 
-function fixture(over: Record<string, string | undefined> = {}, { controlPlane = true, discordEnv = true } = {}): Fixture {
+function fixture(over: Record<string, string | undefined> = {}, { controlPlane = true, discordEnv = true, nudge = false } = {}): Fixture {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rb-cron-'))
   const repo = path.join(root, 'repo')
   write(path.join(repo, 'package.json'), '{}\n')
@@ -81,6 +96,7 @@ function fixture(over: Record<string, string | undefined> = {}, { controlPlane =
   const cp = path.join(root, 'control-plane')
   write(path.join(cp, 'gateway', 'scripts', 'run-agent-request.sh'), FAKE_RAR, 0o755)
   write(path.join(cp, 'gateway', 'scripts', 'send_discord.py'), '# placeholder; the fake python never runs it\n')
+  if (nudge) write(path.join(cp, 'gateway', 'scripts', 'nudge_prompt.py'), FAKE_NUDGE)
   const opsHome = path.join(root, 'ops-home')
   const envFile = path.join(root, 'trader.env')
   if (discordEnv) write(envFile, 'OTHER_SECRET=nope\nDISCORD_BOT_TOKEN="tok-123"\n')
@@ -110,6 +126,7 @@ function fixture(over: Record<string, string | undefined> = {}, { controlPlane =
     FAKE_PNPM_LOG: f.pnpmLog,
     FAKE_RAR_LOG: f.rarLog,
     FAKE_SEND_LOG: f.sendLog,
+    FAKE_NUDGE_LOG: path.join(root, 'nudge.log'),
     REBALANCE_TODAY_DOW: '1',
     REBALANCE_TODAY_DOM: '05',
   }
@@ -586,4 +603,49 @@ test('notify: nothing pending → silent; a failed notify command → one line, 
   assert.equal(b.code, 1)
   assert.equal(b.lines.length, 1)
   assert.match(b.lines[0], /Rebalance notify/)
+})
+
+// --- thread opening: the control plane's shared contract ----------------------------------------------
+
+const withMaterial = (over: Record<string, unknown> = {}) =>
+  event({ channels: ['discord'], telegram: null, threadMaterial: 'Fact one\nFact two', ...over })
+const promptOf = (f: Fixture) => {
+  const log = read(f.rarLog)
+  const start = log.indexOf('--prompt\n') + '--prompt\n'.length
+  return log.slice(start, log.indexOf('\n--origin\n', start))
+}
+
+test('notify: with nudge_prompt.py the opening prompt is the shared contract, a blank line, then the material', opts, () => {
+  const f = fixture({ FAKE_NOTIFY_JSON: notifyJson([withMaterial()]) }, { nudge: true })
+  const r = run(f, 'rebalance-notify-cron.sh')
+  assert.equal(r.code, 0, r.err)
+  const subject = 'Subject: rebalancing proposal rb-1 from the Stock Observatory. Its facts follow; the page is the place to approve, close or reject it.'
+  // The contract's \uXXXX escapes arrive as the Korean text they stand for.
+  assert.equal(promptOf(f), `CONTRACT RULES\n한국어 block\n\n${subject}\n\nFact one\nFact two`)
+  const args = read(path.join(f.root, 'nudge.log')).split('\n')
+  assert.deepEqual(args.slice(0, 5), ['contract', '--origin', 'sweep', '--subject-line', subject])
+  assert.equal(args[5], '--step-three')
+  assert.match(args[6], /^Your read of the proposal: what it suggests and why, in two or three lines \(decision, outlook, triggers, and any loss-harvest figure exactly as given\)/)
+  assert.match(args[6], /Approval happens on the page, not in this thread\. Do not invent figures; this is input to the maintainer's own decision, not advice\.$/)
+  assert.deepEqual(marks(f), ['rebalance:notify --mark rb-1:created:new --channel discord'])
+})
+
+test('notify: a contract script that fails, prints garbage or no lines falls back to the CLI prompt', opts, () => {
+  for (const mode of ['fail', 'garbage', 'empty']) {
+    const f = fixture({ FAKE_NOTIFY_JSON: notifyJson([withMaterial()]), FAKE_NUDGE_MODE: mode }, { nudge: true })
+    const r = run(f, 'rebalance-notify-cron.sh')
+    assert.equal(r.code, 0, r.err)
+    assert.equal(promptOf(f), 'Line one\nLine two', mode)
+    assert.equal(rarCalls(f), 1, mode)
+  }
+})
+
+test('notify: without nudge_prompt.py, or without material, the CLI prompt is used as before', opts, () => {
+  const noScript = fixture({ FAKE_NOTIFY_JSON: notifyJson([withMaterial()]) })
+  assert.equal(run(noScript, 'rebalance-notify-cron.sh').code, 0)
+  assert.equal(promptOf(noScript), 'Line one\nLine two')
+  const noMaterial = fixture({ FAKE_NOTIFY_JSON: notifyJson([withMaterial({ threadMaterial: null })]) }, { nudge: true })
+  assert.equal(run(noMaterial, 'rebalance-notify-cron.sh').code, 0)
+  assert.equal(promptOf(noMaterial), 'Line one\nLine two')
+  assert.equal(read(path.join(noMaterial.root, 'nudge.log')), '', 'the contract is not asked for without material')
 })

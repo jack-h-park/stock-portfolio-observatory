@@ -33,7 +33,7 @@ export PATH="$PATH:/usr/bin:/bin:/usr/sbin:/sbin"
 unset _d
 
 RB_PNPM="${REBALANCE_PNPM:-pnpm}"
-# send_discord.py runs under the Hermes venv interpreter when there is one, as
+# send_discord.py and nudge_prompt.py run under the Hermes venv interpreter when there is one, as
 # run-agent-request.sh does: a bare python3 is the system 3.9 on the ops host.
 RB_PYTHON="${REBALANCE_PYTHON:-}"
 if [ -z "$RB_PYTHON" ]; then
@@ -200,7 +200,7 @@ rb_thread_id() { # <proposal id>
 
 # Parses the notify JSON once. Prints one tab-separated line per event:
 #   index, id, kind, proposalId, telegram pending (0/1), discord pending (0/1), prior Discord attempts
-# and writes the text fields to <dir>/<index>.{telegram,discord,title,prompt} (only the non-null ones),
+# and writes the text fields to <dir>/<index>.{telegram,discord,title,material,prompt} (only the non-null ones),
 # so multi-line text never has to survive a shell split.
 rb_index_events() { # <json> <dir>
   RB_IN="$1" RB_DIR="$2" RB_ATT="$RB_ATTEMPTS_FILE" node -e '
@@ -209,7 +209,7 @@ rb_index_events() { # <json> <dir>
     let attempts = {}
     try { attempts = JSON.parse(fs.readFileSync(process.env.RB_ATT, "utf8")).attempts || {} } catch {}
     const clean = (s) => String(s).replace(/[\t\n\r]/g, " ")
-    const files = { telegram: "telegram", discord: "discord", threadTitle: "title", threadPrompt: "prompt" }
+    const files = { telegram: "telegram", discord: "discord", threadTitle: "title", threadMaterial: "material", threadPrompt: "prompt" }
     events.forEach((e, i) => {
       for (const [field, name] of Object.entries(files)) {
         if (e[field] != null) fs.writeFileSync(path.join(process.env.RB_DIR, `${i}.${name}`), String(e[field]))
@@ -219,6 +219,37 @@ rb_index_events() { # <json> <dir>
       process.stdout.write([i, clean(e.id), clean(e.kind), clean(e.proposalId), tg, ch.includes("discord") ? 1 : 0, Number(attempts[e.id]) || 0].join("\t") + "\n")
     })
   '
+}
+
+# The opening prompt for a proposal's thread, printed to stdout. With the control plane's
+# shared opening contract (gateway/scripts/nudge_prompt.py) it is that contract, then a
+# blank line, then the proposal's facts (<dir>/<index>.material): the contract carries
+# the fleet's opening rules, including the verified Korean copy block every opening is
+# checked for. Without the script, or when it fails or prints nothing usable, it is the
+# CLI's own fallback prompt (<dir>/<index>.prompt) exactly as before.
+RB_SUBJECT_LINE_FMT='Subject: rebalancing proposal %s from the Stock Observatory. Its facts follow; the page is the place to approve, close or reject it.'
+RB_STEP_THREE='Your read of the proposal: what it suggests and why, in two or three lines (decision, outlook, triggers, and any loss-harvest figure exactly as given), which ideas look worth researching, and what to check first on its page. Approval happens on the page, not in this thread. Do not invent figures; this is input to the maintainer'"'"'s own decision, not advice.'
+rb_opening_prompt() { # <cp> <dir> <index> <proposal id>
+  local cp="$1" dir="$2" i="$3" pid="$4" script="$1/gateway/scripts/nudge_prompt.py" json subject contract=""
+  if [ -f "$script" ] && [ -s "$dir/$i.material" ]; then
+    # shellcheck disable=SC2059
+    subject="$(printf "$RB_SUBJECT_LINE_FMT" "$pid")"
+    # The script prints one JSON line; anything else it might print first is ignored.
+    json="$("$RB_PYTHON" "$script" contract --origin sweep --subject-line "$subject" --step-three "$RB_STEP_THREE" 2>/dev/null)" || json=""
+    json="$(printf '%s\n' "$json" | grep -E '^\{' | tail -1)"
+    # JSON.parse turns the contract's \uXXXX escapes back into the Korean text they stand for.
+    [ -n "$json" ] && contract="$(RB_IN="$json" node -e '
+      let d; try { d = JSON.parse(process.env.RB_IN) } catch { process.exit(3) }
+      const lines = d && Array.isArray(d.lines) ? d.lines : null
+      if (!lines || !lines.length || !lines.every((l) => typeof l === "string")) process.exit(3)
+      process.stdout.write(lines.join("\n"))
+    ' 2>/dev/null)" || contract=""
+  fi
+  if [ -n "${contract//[[:space:]]/}" ]; then
+    printf '%s\n\n%s' "$contract" "$(cat "$dir/$i.material")"
+  else
+    cat "$dir/$i.prompt" 2>/dev/null
+  fi
 }
 
 # Applies this run's Discord outcomes (lines "<id>\t<n>|ok|gaveup") to the attempts
@@ -311,7 +342,7 @@ rb_notify_flow() {
     n=$((att + 1))
     if [ "$kind" = created ]; then
       if "$rar" --kind proposal --key "proposal:$pid" --title "$(cat "$RB_TMP/$i.title" 2>/dev/null)" \
-        --prompt "$(cat "$RB_TMP/$i.prompt" 2>/dev/null)" --origin sweep >/dev/null 2>&1; then
+        --prompt "$(rb_opening_prompt "$cp" "$RB_TMP" "$i" "$pid")" --origin sweep >/dev/null 2>&1; then
         rb_mark "$id" discord || unmarked=1
         printf '%s\tok\n' "$id" >> "$updates"
       else

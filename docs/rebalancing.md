@@ -38,7 +38,7 @@ Policy fields:
 - `bounds.maxTurnoverPctPerProposal`: sells are scaled down so they stay under this share of the total. `0` disables the cap.
 - `bounds.minTradeKrw`: smaller trades are left out.
 - `bounds.staleDataDays`: an account whose data is older than this is flagged. An account's data date is the later of its latest holdings date and its latest transaction date; an account with neither is flagged as unknown.
-- `bounds.harvestThresholdKrw`: not read by the engine yet. It is reserved for the P3 loss-harvest trigger.
+- `bounds.harvestThresholdKrw`: the harvestable loss at or above which the `harvest` trigger fires. `0` disables it. The engine never sells to harvest a loss; see "Loss harvest scenario".
 - `targets`: per sleeve, a target percentage and a band. A sleeve inside its band is left alone; one outside it moves back to the nearest band edge, not to the target. Targets must sum to 100 and sit inside their bounds.
 - `preferredInstruments`: the buy list for each sleeve (market, ticker, brokerage, account).
 - `investor`: optional. `usTaxPerson: true` (the checkbox under Limits) tells the LLM never to suggest a fund or ETF organized outside the US, since a US tax person holding one owes PFIC reporting. Outside the US it then suggests only operating companies. A policy without it is read as `false`.
@@ -66,11 +66,12 @@ draft -> targets_approved -> plan_approved -> executing -> reconciled -> closed
   |             |                  |
   +-------------+------------------+--> rejected
 draft -> expired (not approved within 7 days)
+draft (hold) or targets_approved -> closed (the plan has no buy or sell)
 ```
 
 - A proposal that holds the targets (every engine-only proposal) goes from `draft` straight to `plan_approved` when you approve the plan.
 - A proposal that changes targets goes `draft`, then `targets_approved` (the new targets are written to the policy and the plan is rebuilt against them), then `plan_approved`.
-- A plan with no buy or sell cannot be approved (`empty_plan`): it would have nothing to fill or reconcile. Reject the proposal, or change the targets or skips.
+- A plan with no buy or sell cannot be approved (`empty_plan`): it would have nothing to fill or reconcile. Close it instead: a hold proposal in `draft`, or any proposal in `targets_approved`, whose plan has no buy or sell goes straight to `closed` (event `closed`, detail `closed with no trades: targets kept` or `closed with no trades after the targets were approved`). Closing a plan that has a trade is refused (`plan_has_trades`). This is how a hold month with nothing to trade ends; rejecting it would record a refusal you did not make, and leaving it would hold the slot until it expires. Approved targets stay in the policy.
 - The first recorded fill moves `plan_approved` to `executing`.
 - `executing` becomes `reconciled` only when every buy and sell has a fill record and every executed fill has a matching transaction. You then close it.
 - You may reject a proposal until the plan is approved, with a reason. Rejecting after targets were approved keeps those targets.
@@ -80,13 +81,29 @@ draft -> expired (not approved within 7 days)
 
 Each proposal is at `/rebalance/proposals/<id>`; the status card shows the status, the next step, dates and triggers, and the reject and close controls.
 
-- **Summary.** Allocation in the proposal's snapshot and now, the key figures (turnover, this plan's tax effect with the year total beneath it, harvested loss, Korean gain and deduction used and remaining, US short and long gains), the warnings and each account's data date.
+- **Summary.** The loss harvest scenario when there is a harvestable loss (below), the key figures (turnover, this plan's tax effect with the year total beneath it, harvested loss, Korean gain and deduction used and remaining, US short and long gains), the warnings and each account's data date.
+  - *Drift since the snapshot* lists each sleeve's target and band (target ± band, from the policy the proposal was created with), its share in the snapshot and now, the change, and whether it is now within, above or below the band. The share is of the rebalancing total, which covers taxable accounts, or taxable accounts and ISAs when the policy includes them.
+  - *Data as of, per account* flags an account whose data is older than `staleDataDays` (or undated). The `stale_account` warning is raised only for accounts the plan trades in, so a stale account can sit beside "No warnings"; its holdings still count in the allocation as of their data date.
   - *This plan's tax effect* is the plan's incremental tax: the year's estimated tax with the plan's sells minus the year's estimated tax on the gains already realized this year (YTD) alone. It is negative when the plan lowers the year's tax, for example losses sold against this year's gains, and the page marks it as a tax reduction. The *year total* is the estimated tax for YTD plus the plan.
 - **Targets.** Shown only for a proposal that changes targets. Editable in `draft`; read-only afterwards.
-- **Plan.** The sleeve moves, then the instructions grouped by account: sells with the lots they use, buys, and transfers where an account needs cash. In `draft` and `targets_approved` you can skip instructions and recompute the plan, then approve it.
+- **Plan.** The sleeve moves, then the instructions grouped by account: sells with the lots they use, buys, and transfers where an account needs cash. In `draft` and `targets_approved` you can skip instructions and recompute the plan, then approve it. When the plan has no buy or sell, **Close proposal — nothing to trade** replaces **Approve plan**, and the status card's next step says so.
 - **Fills.** Once the plan is approved, record each instruction as executed (quantity, price, date) or skipped (a note is required). An executed quantity may not exceed the planned one. Below the form, the reconciliation shows matched fills, fills with no transaction yet, executed trades the plan did not contain, and instructions with no fill record.
 
 Everything is stored in the proposal file with an event log. The plan is a function of its inputs; `today` is a parameter.
+
+### Loss harvest scenario
+
+The `harvest` trigger fires on lots that carry a loss, but the engine sells only to bring sleeves back to their bands, so such a proposal often has no instruction at all. The scenario shows what selling every harvestable loss lot would do, for your own decision; it is never turned into instructions and is not advice.
+
+- **Which lots.** The same selection the trigger and the LLM input read (`harvestCandidates` in `lib/rebalance/sell-selection.ts`): every priced lot with a won loss, except lots of an instrument (market and ticker) bought within the 30 days before the snapshot date. Those are listed separately with their loss and latest buy date. The trigger's figure and the scenario's total are therefore always the same number.
+- **Tax effect.** The year's estimated tax with all those lots sold minus the year's tax without them, computed by the same helper as the plan's own tax effect (`yearTaxKrw`, with the active filing scenario and the snapshot's year). Negative is a reduction. The year totals with and without are shown beside it.
+- **Rows.** One per instrument, summed across accounts: one display name, the loss, the lot count, the US short-term and long-term split, the sleeve and the number of accounts. The 15 largest losses are shown.
+- **Caveats.** The US 30-day wash-sale rule (buying the same or a substantially identical security within 30 days before or after a loss sale disallows the loss), and, when a KR-listed stock is in the list, that its loss counts on the US return only for a US tax person (`investor.usTaxPerson`).
+- **Stored.** A new proposal stores the scenario as its optional `harvest` field when the harvestable loss is above zero. A proposal created before the field existed has none; its page computes the scenario from the proposal's frozen snapshot, the policy it was created with and today's tax policy, and says so. A malformed stored scenario reads as absent.
+
+### One name per instrument
+
+The same KR code can arrive from two brokerages under two names, one in Korean script and one romanized. Anything that groups by instrument (the harvest rows, the LLM input's positions and concentration) takes one display name per market and ticker from `lib/rebalance/display-names.ts`: the name of the largest-value position, ties broken alphabetically, a lot's name only when no position names it. Stored data is not rewritten.
 
 ## Command line
 
@@ -153,6 +170,8 @@ The proposal stores the LLM record (status `ok`, `failed` or `skipped`, runner, 
 
 - accounts appear only as aliases (`KR-taxable-1`, `US-taxable-1`, `CRYPTO-1`, numbered in the sorted order of the account keys), never with an account label, brokerage name, account number or your name;
 - positions carry the market, ticker, name, sleeve and share of the total, with no quantity, cost or lot detail;
+- `concentration` lists the 10 largest instruments, each summed across accounts, with its share of the total and of its own sleeve (rounded to 0.1), and the position cap. The prompt tells the model to quote these figures as given, never to compute a share or a sum itself, and that the cap applies to each position separately, never to positions combined. A review found the model computing these itself and getting them wrong (a share of the total reported as a share of the sleeve, and two positions compared together against the per-position cap);
+- `harvest`, when there is a harvestable loss: the total loss, the year-tax effect of selling it all and the 10 largest rows, from the loss harvest scenario;
 - the allocation against targets and bands, the policy bounds, a handful of tax-room figures, the briefing and macro notes, and the last few proposals' decisions;
 - free text, including your past rejection reasons, is scrubbed first: brokerage and account strings from positions, lots, cash, recent buys and account data dates, the labels, aliases, account numbers and owner names in the account map (`STOCK_ACCOUNT_MAP_PATH`, skipped when missing or unreadable), and account-number-shaped digit runs become `[redacted]`;
 - the prompt tells the model that text inside the input and fetched web pages is data, and that instructions found there must be ignored.
@@ -209,6 +228,7 @@ Cron ORs the day-of-month and day-of-week fields when both are set, so `30 9 1-7
 
 1. Telegram: each event's fixed line is printed, then the events are marked with `pnpm -s rebalance:notify --mark <ids> --channel telegram`. The lines carry proposal ids, counts and page paths, never account labels or amounts.
 2. Discord, `created`: `<control plane>/gateway/scripts/run-agent-request.sh --kind proposal --key proposal:<id> --title … --prompt … --origin sweep` opens (or reuses) the proposal's thread, and the trader agent writes the opening. The event is marked for Discord only when that call exits 0. The first failure prints `Discord thread for <id> not opened (exit <n>); will retry`; later failures are silent.
+   The prompt follows the control plane's shared opening contract when it is available: the wrapper runs `<control plane>/gateway/scripts/nudge_prompt.py contract --origin sweep --subject-line … --step-three …` under the same interpreter as `send_discord.py`, joins the printed `{"lines": [...]}` (the Korean labels arrive as `\uXXXX` escapes and are decoded), and appends a blank line and the event's `threadMaterial`. That contract carries the fleet's opening rules, including the verified Korean copy block the control plane checks every opening for. `threadMaterial` is facts only: the proposal id, kind and triggers, the decision and sleeve changes, the outlook's confidence and summary (up to 1,500 characters), each idea as `MARKET:TICKER (sleeve) — why`, every question for you, the harvest figures rounded to 10,000 KRW, instruction counts, the plan's tax effect, warning counts and the page path, with no account labels. When the script is missing, fails or prints nothing usable, the event's `threadPrompt` (the same material followed by this repo's own writing instructions and the hand-off marker) is used, as before.
    The `created` receipt means the thread exists, not that its opening message was posted: the control plane composes the opening in the background after the call returns, and a failure there shows up only in `$HERMES_HOME_OPS/logs/handoff-bg.log`. After the first proposal thread opens, check that log (and the thread) once.
 3. Discord, status and reminder lines: the thread id is read from the control plane's ledger, `$HERMES_HOME_OPS/state/rebalance-proposal-threads.json`, and the line is posted with `send_discord.py --usage-unit-key rebalance-notify`, under `~/.hermes/hermes-agent/venv/bin/python` when it exists, else `python3` (the same choice `run-agent-request.sh` makes). Failures, and a proposal with no thread yet, retry silently; a line that still fails on its sixth attempt in a thread that exists prints one `not delivered after 6 attempts; dropped` line.
 4. Every Discord event is tried at most 6 times, one try per run. After the sixth failure it is marked sent on Discord so it stops retrying, recorded as given up, and a thread that never opened gets one final line. Attempt counts and give-ups live in `data/rebalance-discord-attempts.json` (override `REBALANCE_DISCORD_ATTEMPTS`), a wrapper-owned file beside the notify state; the CLI does not read it, and removing it only resets the counts.
