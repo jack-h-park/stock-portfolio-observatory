@@ -48,7 +48,7 @@ Each entry says what the app does today, where that lives, and what changes if t
 - **Status:** open
 - **What the app does:** a lot rebuilt from transactions (`basis_source=replay`) has no wash-sale adjustment. A lot from a broker's 1099-B uses the broker's filed gain, and `adjustment_usd` is the difference between that gain and proceeds minus cost.
 - **Open point:** whether the filer has any replacement purchases within the window on replayed lots that need a manual adjustment.
-- **Check that is still undone:** no 1099-B row in the current data has a non-zero adjustment (five rows, all sales in 2025, none with a wash sale), so the path that shows a broker's adjustment has only been exercised in tests. The first real wash-sale row should be compared against the broker's form.
+- **Check that is still undone:** no 1099-B row seen so far has a non-zero adjustment, so the path that shows a broker's adjustment has only been exercised in tests. The first real wash-sale row should be compared against the broker's form.
 
 ### 7. Form 8949 boxes and covered status
 
