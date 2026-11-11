@@ -3,11 +3,12 @@ import type { WashSaleReview } from '@/lib/adapters/portfolio-db'
 import { fmtMoney } from '@/lib/format'
 import type { getPageCopy } from '@/lib/ui-copy'
 import type { WashSaleMatchedBuy } from '@/lib/wash-sale'
+import { maskAccountLabel } from '@/lib/account-label'
 
 type WashSaleCopy = ReturnType<typeof getPageCopy<'washSale'>>
 
 function buyDates(buys: WashSaleMatchedBuy[], copy: WashSaleCopy) {
-  return buys.map((buy) => `${buy.date} ${buy.account}${buy.reinvested ? ` · ${copy.reinvested}` : ''}`).join(', ')
+  return buys.map((buy) => `${buy.date} ${maskAccountLabel(buy.account)}${buy.reinvested ? ` · ${copy.reinvested}` : ''}`).join(', ')
 }
 
 /**

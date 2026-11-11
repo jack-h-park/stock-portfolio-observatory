@@ -11,10 +11,11 @@ import { CardRow } from '@/components/layout'
 import { dbAvailable, portfolioToday } from '@/lib/adapters/portfolio-db'
 import { getRebalanceInput } from '@/lib/adapters/rebalance-input'
 import { fmtDateShort, fmtDateTime, fmtKrw, fmtMoney, fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
+import { displayAccount, displayAccountKey, maskAccountsIn } from '@/lib/account-label'
 import { getLanguage } from '@/lib/i18n-server'
 import { routeSection } from '@/lib/page-names'
 import { SLEEVES, accountKey, getAllocationPolicy, rebalanceWrappers, type AllocationPolicy, type Sleeve } from '@/lib/rebalance/allocation-policy'
-import { computeAllocation } from '@/lib/rebalance/allocation'
+import { bandEdges, computeAllocation } from '@/lib/rebalance/allocation'
 import type { EngineWarning, Instruction, SleeveMove } from '@/lib/rebalance/engine'
 import { buildHarvestScenario, type HarvestScenario } from '@/lib/rebalance/harvest'
 import { getInstrumentClasses, type InstrumentClasses } from '@/lib/rebalance/instrument-classes'
@@ -28,12 +29,13 @@ import {
   policyChangedSince,
   isProposalErrorCode,
 } from '@/lib/rebalance/proposal-actions'
-import { getProposal, planHasTrades, type Proposal } from '@/lib/rebalance/proposal-store'
+import { MAX_ANSWER, getProposal, planHasTrades, type Proposal } from '@/lib/rebalance/proposal-store'
 import { getTaxPolicyState } from '@/lib/tax-policy'
 import { llmStatusLine, safeSourceHref } from '@/lib/rebalance/proposal-view'
 import { getPageCopy } from '@/lib/ui-copy'
 import {
   addIdeaAction,
+  answerQuestionAction,
   approvePlan,
   approveTargets,
   closeProposal,
@@ -67,15 +69,9 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: getPageCopy('rebalanceProposal', await getLanguage()).metaTitle(id) }
 }
 
-function accountLabel(brokerage: string | null | undefined, account: string | undefined) {
-  if (!account) return ''
-  return brokerage ? `${brokerage} · ${account}` : account
-}
-
-function labelFromKey(key: string) {
-  const at = key.indexOf('::')
-  return at === -1 ? key : accountLabel(key.slice(0, at) || null, key.slice(at + 2))
-}
+// Display only: the account identifier is cut to its last four characters (lib/account-label.ts).
+const accountLabel = displayAccount
+const labelFromKey = displayAccountKey
 
 function policyFor(proposal: Proposal): AllocationPolicy {
   return getAllocationPolicy().policy ?? proposal.policyAtCreation
@@ -110,10 +106,11 @@ function Warnings({ warnings, copy }: { warnings: EngineWarning[]; copy: Copy })
     <ul className="space-y-3">
       {[...groups.entries()].map(([code, items]) => {
         const title = copy.warnings.codes[code]
+        const first = items[0]
         return (
           <li key={code} className="rounded-md border border-line-subtle px-3 py-2">
             <div className="flex items-start justify-between gap-3">
-              <span className="text-caption font-medium text-ink">{title ?? items[0].message}</span>
+              <span className="text-caption font-medium text-ink">{title ?? maskAccountsIn(first.message, [first.account])}</span>
               <Badge tone="warning">{copy.warnings.count(items.length)}</Badge>
             </div>
             <ul className="mt-1 space-y-0.5 text-label text-ink-3">
@@ -123,7 +120,7 @@ function Warnings({ warnings, copy }: { warnings: EngineWarning[]; copy: Copy })
                   <li key={index}>
                     {context && <span className="font-mono text-ink-2">{context}</span>}
                     {context && title ? ' — ' : null}
-                    {title ? w.message : !context && index === 0 ? null : w.message}
+                    {title ? maskAccountsIn(w.message, [w.account]) : !context && index === 0 ? null : maskAccountsIn(w.message, [w.account])}
                   </li>
                 )
               })}
@@ -259,12 +256,34 @@ function OutlookSection({ proposal, copy, language }: { proposal: Proposal; copy
         </Card>
       )}
       {questions.length > 0 && (
-        <Card title={copy.outlook.questionsTitle} className="mb-5">
-          <ul className="list-disc space-y-0.5 pl-5 text-caption text-ink-2">
-            {questions.map((q, i) => (
-              <li key={i}>{q}</li>
-            ))}
-          </ul>
+        <Card title={copy.outlook.questionsTitle} info={copy.outlook.questionsNote} className="mb-5">
+          <ol className="list-decimal space-y-4 pl-5 text-caption text-ink-2">
+            {questions.map((q, i) => {
+              const saved = proposal.answers?.find((a) => a.index === i)
+              return (
+                <li key={i}>
+                  <span>{q}</span>
+                  <form action={answerQuestionAction} className="mt-2 space-y-1.5">
+                    <input type="hidden" name="proposalId" value={proposal.id} />
+                    <input type="hidden" name="questionIndex" value={i} />
+                    <textarea
+                      name="answer"
+                      rows={2}
+                      maxLength={MAX_ANSWER}
+                      defaultValue={saved?.answer ?? ''}
+                      placeholder={copy.outlook.answerPlaceholder}
+                      aria-label={copy.outlook.answerLabel(i + 1)}
+                      className="w-full rounded-md border border-line bg-card px-3 py-2 text-caption text-ink focus:outline-none focus-visible:border-info focus-visible:ring-2 focus-visible:ring-info/30"
+                    />
+                    <div className="flex flex-wrap items-center gap-3">
+                      <SubmitButton>{copy.outlook.answerSave}</SubmitButton>
+                      {saved && <span className="text-label text-ink-3">{copy.outlook.answeredAt(fmtDateShort(saved.at, language))}</span>}
+                    </div>
+                  </form>
+                </li>
+              )
+            })}
+          </ol>
         </Card>
       )}
     </>
@@ -381,8 +400,8 @@ function SummaryTab({ proposal, copy, language }: { proposal: Proposal; copy: Co
         return {
           sleeve,
           target: known ? t.target : null,
-          lower: known ? t.target - t.band : null,
-          upper: known ? t.target + t.band : null,
+          lower: known ? bandEdges(t.target, t.band).lower : null,
+          upper: known ? bandEdges(t.target, t.band).upper : null,
           then: then.sleeves.find((r) => r.sleeve === sleeve)?.pct ?? 0,
           now: now.sleeves.find((r) => r.sleeve === sleeve)?.pct ?? 0,
         }

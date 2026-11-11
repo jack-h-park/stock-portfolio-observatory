@@ -44,8 +44,15 @@ export type ProposalEvent = {
     | 'expired'
     | 'closed'
     | 'trigger_appended'
+    // The maintainer answered (or cleared the answer to) one of the LLM's questions. Never notified (notify.ts).
+    | 'answered'
   detail: string
 }
+/**
+ * The maintainer's answer to one of the LLM's questions. `index` is the question's position in
+ * questionsForMaintainer; the question text is stored beside it so the answer still reads on its own.
+ */
+export type ProposalAnswer = { index: number; question: string; answer: string; at: string }
 export type ReconciliationResult = {
   at: string
   matched: { instructionId: string; txDate: string }[]
@@ -86,6 +93,11 @@ export type Proposal = {
    * written before it existed and on ones with nothing to harvest; never turned into instructions.
    */
   harvest?: HarvestScenario
+  /**
+   * The maintainer's answers to questionsForMaintainer, one per answered question, in question order. Absent until
+   * the first answer. The next proposal's LLM input carries them (llm-input.ts `context.priorAnswers`).
+   */
+  answers?: ProposalAnswer[]
   fills: Record<string, Fill>
   reconciliation: ReconciliationResult | null
   events: ProposalEvent[]
@@ -100,6 +112,8 @@ const CLOSED_STATUSES: ProposalStatus[] = ['rejected', 'expired', 'closed']
  */
 export const OPEN_STATUSES: readonly ProposalStatus[] = ['draft', 'targets_approved', 'plan_approved', 'executing']
 const QTY_SLACK = 1.0001
+/** The longest answer to one question the maintainer may store. */
+export const MAX_ANSWER = 2000
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
@@ -137,6 +151,33 @@ function isOutlookShape(value: unknown): boolean {
   return OUTLOOK_LISTS.every((key) => Array.isArray(o[key]))
 }
 
+const isAnswer = (value: unknown): value is ProposalAnswer => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const a = value as Record<string, unknown>
+  return (
+    Number.isInteger(a.index) &&
+    (a.index as number) >= 0 &&
+    typeof a.question === 'string' &&
+    a.question.trim() !== '' &&
+    typeof a.answer === 'string' &&
+    a.answer.trim() !== '' &&
+    a.answer.length <= MAX_ANSWER &&
+    typeof a.at === 'string' &&
+    !Number.isNaN(Date.parse(a.at))
+  )
+}
+
+/** Well-formed answers, one per question index (the last wins), in question order; null when none survive. */
+function readAnswers(raw: unknown): ProposalAnswer[] | null {
+  if (!Array.isArray(raw)) return null
+  const byIndex = new Map<number, ProposalAnswer>()
+  for (const entry of raw) {
+    if (!isAnswer(entry)) continue
+    byIndex.set(entry.index, { index: entry.index, question: entry.question, answer: entry.answer, at: entry.at })
+  }
+  return byIndex.size ? [...byIndex.values()].sort((a, b) => a.index - b.index) : null
+}
+
 function fromFile(text: string): Proposal {
   const p = JSON.parse(text) as Proposal
   if (!isOutlookShape(p.outlook)) p.outlook = null
@@ -144,6 +185,11 @@ function fromFile(text: string): Proposal {
   if (!Array.isArray(p.ideas)) p.ideas = []
   if (!Array.isArray(p.questionsForMaintainer)) p.questionsForMaintainer = []
   if (p.harvest !== undefined && !isHarvestScenario(p.harvest)) delete p.harvest
+  if (p.answers !== undefined) {
+    const answers = readAnswers(p.answers)
+    if (answers) p.answers = answers
+    else delete p.answers
+  }
   return p
 }
 
@@ -189,7 +235,18 @@ function commit(p: Proposal, events: ProposalEvent[], now: Date, dir: string): P
 
 type ProposalInput = Omit<
   Proposal,
-  'schemaVersion' | 'status' | 'createdAt' | 'updatedAt' | 'expiresAt' | 'events' | 'fills' | 'reconciliation' | 'ideas' | 'questionsForMaintainer' | 'harvest'
+  | 'schemaVersion'
+  | 'status'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'expiresAt'
+  | 'events'
+  | 'fills'
+  | 'reconciliation'
+  | 'ideas'
+  | 'questionsForMaintainer'
+  | 'harvest'
+  | 'answers'
 > &
   Partial<Pick<Proposal, 'ideas' | 'questionsForMaintainer' | 'harvest'>>
 
@@ -336,6 +393,26 @@ export function appendTrigger(id: string, trigger: string, now: Date, dir?: stri
   if (CLOSED_STATUSES.includes(p.status)) throw new Error(`Proposal is ${p.status}; triggers can no longer be added`)
   if (!p.triggers.includes(trigger)) p.triggers.push(trigger)
   return commit(p, [{ at: now.toISOString(), type: 'trigger_appended', detail: trigger }], now, d)
+}
+
+/**
+ * Stores, replaces or (with an empty answer) clears the maintainer's answer to question `index`. Allowed in every
+ * status, closed ones included: the answers are context for the next proposal, not a step in this one, and they
+ * change nothing the proposal trades on. Throws on an unknown question or an answer over MAX_ANSWER characters.
+ */
+export function setAnswer(id: string, index: number, answer: string, now: Date, dir?: string): Proposal {
+  const d = resolveDir(dir)
+  const p = load(id, d)
+  const question = Number.isInteger(index) && index >= 0 ? p.questionsForMaintainer[index] : undefined
+  if (question === undefined) throw new Error(`Unknown question: ${index}`)
+  const text = answer.trim()
+  if (text.length > MAX_ANSWER) throw new Error(`An answer is at most ${MAX_ANSWER} characters`)
+  const at = now.toISOString()
+  const rest = (p.answers ?? []).filter((a) => a.index !== index)
+  const next = text ? [...rest, { index, question, answer: text, at }].sort((a, b) => a.index - b.index) : rest
+  if (next.length) p.answers = next
+  else delete p.answers
+  return commit(p, [{ at, type: 'answered', detail: `question ${index + 1} ${text ? 'answered' : 'cleared'}` }], now, d)
 }
 
 export function expireStale(now: Date, dir?: string): string[] {

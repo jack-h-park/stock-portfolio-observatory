@@ -53,6 +53,7 @@ import { AssetViewLink } from '@/components/LanguageSwitcher'
 import { WashSaleBanner } from '@/components/WashSaleBanner'
 import { TrendRangeLinks } from '@/components/TrendRangeLinks'
 import { resolveTrendRange, trendRangeDays } from '@/lib/trend-ranges'
+import { maskAccountLabel } from '@/lib/account-label'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/')
@@ -319,7 +320,7 @@ export default async function OverviewPage({
                   {/* A class read from a dated snapshot, held at cost or (cash) from an older balance carries its date here. */}
                   {netWorth.asOfNotes.some((note) => note.assetClass === key) ? (
                     <span className="ml-2 text-label">
-                      {netWorth.asOfNotes.filter((note) => note.assetClass === key).map((note) => copy.asOfNote(note.label, fmtDate(note.asOf))).join(' · ')}
+                      {netWorth.asOfNotes.filter((note) => note.assetClass === key).map((note) => copy.asOfNote(maskAccountLabel(note.label), fmtDate(note.asOf))).join(' · ')}
                     </span>
                   ) : null}
                 </span>
@@ -685,7 +686,7 @@ export default async function OverviewPage({
             <ul className="divide-y divide-line-subtle">
               {accounts.map((a) => (
                 <li key={a.account} className="flex items-center gap-3 py-2">
-                  <div className="min-w-0 flex-1 truncate text-body text-ink">{a.account}</div>
+                  <div className="min-w-0 flex-1 truncate text-body text-ink">{maskAccountLabel(a.account)}</div>
                   <div className="text-caption tabular-nums text-ink-3">{copy.holdingRows(a.count)}</div>
                   <div className="w-36 text-right text-caption font-medium tabular-nums text-ink">{money(a.value, a.currency)}</div>
                 </li>

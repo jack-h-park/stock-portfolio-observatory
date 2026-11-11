@@ -8,6 +8,7 @@ import { getAllocationPolicy, type AllocationPolicy } from '../lib/rebalance/all
 import type { Instruction, TradePlan } from '../lib/rebalance/engine'
 import { createProposal, getProposal, transition, type TargetChange } from '../lib/rebalance/proposal-store'
 import {
+  answerProposalQuestion,
   approvedTargets,
   approveProposalPlan,
   approveProposalTargets,
@@ -160,6 +161,8 @@ test('describeInstruction names side, security and account, from the plan or fro
   assert.equal(describeInstruction('buy:BrokerB::acct-2:KR:KRX1', [], side), 'BUY KR:KRX1 · BrokerB · acct-2')
   assert.equal(describeInstruction('transfer:BrokerB::acct-2:USD', [], side), 'TRANSFER USD · BrokerB · acct-2')
   assert.equal(describeInstruction('odd-id', [], side), 'odd-id')
+  // The account identifier is masked for display; the id keeps the raw value.
+  assert.equal(describeInstruction('sell:BrokerC::XY-1234567:US:AAA', [], side), 'SELL US:AAA · BrokerC · …4567')
 })
 
 test('policyChangedSince reports a history head newer than the proposal', () => {
@@ -386,4 +389,43 @@ test('every proposal done and error code has en and ko copy; the close-without-t
   const en = getPageCopy('rebalanceProposal', 'en')
   assert.doesNotMatch(en.drift.info(en.drift.scopes.taxable), /share of the taxable total/)
   assert.match(en.dataAsOf.info, /only when the plan trades in it/)
+})
+
+test('answerProposalQuestion saves, clears and refuses with fixed codes, in an open or a rejected proposal', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rb-answers-'))
+  const paths = { proposals: dir }
+  const p = createProposal(
+    {
+      id: 'rb-2026-10',
+      kind: 'monthly',
+      triggers: [],
+      policyAtCreation: example(),
+      inputSnapshot: snapshot(),
+      outlook: null,
+      llm: null,
+      questionsForMaintainer: ['Is any cash earmarked for a near-term expense?'],
+      targetChange: { decision: 'hold', sleeves: {}, boundsErrors: [] },
+      plan: { moves: [], instructions: [], warnings: [], taxSummary: {} } as unknown as TradePlan,
+      planSkips: [],
+    },
+    T0,
+    dir,
+  )
+  const saved = answerProposalQuestion(p.id, form({ questionIndex: '0', answer: ' About a quarter of it. ' }), T0, paths)
+  assert.equal(saved.ok, true)
+  assert.equal(saved.cleared, false)
+  assert.equal(getProposal(p.id, dir)?.answers?.[0].answer, 'About a quarter of it.')
+
+  assert.deepEqual(answerProposalQuestion(p.id, form({ questionIndex: '1', answer: 'x' }), T0, paths), { ok: false, code: 'question_invalid', detail: undefined })
+  assert.equal((answerProposalQuestion(p.id, form({ questionIndex: '-1', answer: 'x' }), T0, paths) as { code?: string }).code, 'question_invalid')
+  assert.equal((answerProposalQuestion(p.id, form({ questionIndex: '', answer: 'x' }), T0, paths) as { code?: string }).code, 'question_invalid')
+  assert.equal((answerProposalQuestion(p.id, form({ questionIndex: '0', answer: 'x'.repeat(2001) }), T0, paths) as { code?: string }).code, 'answer_too_long')
+  assert.equal((answerProposalQuestion('rb-missing', form({ questionIndex: '0', answer: 'x' }), T0, paths) as { code?: string }).code, 'not_found')
+
+  transition(p.id, 'rejected', 'not now', T0, dir)
+  const cleared = answerProposalQuestion(p.id, form({ questionIndex: '0', answer: '' }), T0, paths)
+  assert.equal(cleared.ok, true)
+  assert.equal(cleared.cleared, true)
+  assert.equal(getProposal(p.id, dir)?.answers, undefined)
+  assert.equal(getProposal(p.id, dir)?.status, 'rejected')
 })

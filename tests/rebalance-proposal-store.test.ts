@@ -13,6 +13,7 @@ import {
   openProposal,
   proposalId,
   recordFill,
+  setAnswer,
   setPlan,
   transition,
   type Fill,
@@ -32,6 +33,7 @@ const plan = (): TradePlan =>
 
 function base(decision: 'change' | 'hold' = 'change', id = 'rb-2026-11'): Parameters<typeof createProposal>[0] {
   return {
+    questionsForMaintainer: ['Is the emergency fund held outside these accounts?', 'Any large outflow planned this year?'],
     id,
     kind: 'monthly',
     triggers: [],
@@ -257,4 +259,65 @@ test('a plan with no buy or sell may close: a hold draft, or after its targets a
   createProposal(base('change'), T0, d4)
   transition('rb-2026-11', 'targets_approved', '', T0, d4)
   assert.throws(() => transition('rb-2026-11', 'closed', '', T0, d4), /targets_approved -> closed/)
+})
+
+test('setAnswer stores, replaces and clears an answer with the question text, in any status', () => {
+  const dir = tmp()
+  const p = createProposal(base(), T0, dir)
+  assert.equal(p.answers, undefined)
+  let q = setAnswer(p.id, 1, '  Not this year.  ', at(1), dir)
+  assert.deepEqual(q.answers, [{ index: 1, question: 'Any large outflow planned this year?', answer: 'Not this year.', at: at(1).toISOString() }])
+  assert.deepEqual(q.events.at(-1), { at: at(1).toISOString(), type: 'answered', detail: 'question 2 answered' })
+  q = setAnswer(p.id, 0, 'Yes, six months of expenses.', at(2), dir)
+  assert.deepEqual(q.answers?.map((a) => a.index), [0, 1])
+  q = setAnswer(p.id, 1, 'A tuition payment in March.', at(3), dir)
+  assert.equal(q.answers?.find((a) => a.index === 1)?.answer, 'A tuition payment in March.')
+  assert.equal(q.answers?.length, 2)
+
+  // Closed proposals still take answers: they are context for the next one.
+  transition(p.id, 'rejected', 'no', at(4), dir)
+  q = setAnswer(p.id, 0, '', at(5), dir)
+  assert.equal(q.status, 'rejected')
+  assert.deepEqual(q.answers?.map((a) => a.index), [1])
+  assert.equal(q.events.at(-1)?.detail, 'question 1 cleared')
+  q = setAnswer(p.id, 1, '   ', at(6), dir)
+  assert.equal(q.answers, undefined)
+  assert.equal(getProposal(p.id, dir)?.answers, undefined)
+  for (const status of ['expired', 'closed'] as const) {
+    const d = tmp()
+    // A hold draft with nothing to trade may close; any draft may expire.
+    createProposal({ ...base('hold'), plan: { ...plan(), instructions: [] } }, T0, d)
+    transition('rb-2026-11', status, 'x', at(1), d)
+    assert.equal(setAnswer('rb-2026-11', 0, 'ok', at(2), d).answers?.length, 1, status)
+  }
+})
+
+test('setAnswer refuses an unknown question or an answer over 2,000 characters', () => {
+  const dir = tmp()
+  const p = createProposal(base(), T0, dir)
+  assert.throws(() => setAnswer(p.id, 2, 'x', at(1), dir), /Unknown question/)
+  assert.throws(() => setAnswer(p.id, -1, 'x', at(1), dir), /Unknown question/)
+  assert.throws(() => setAnswer(p.id, 0.5, 'x', at(1), dir), /Unknown question/)
+  assert.throws(() => setAnswer(p.id, 0, 'x'.repeat(2001), at(1), dir), /at most 2000/)
+  assert.equal(setAnswer(p.id, 0, 'x'.repeat(2000), at(1), dir).answers?.[0].answer.length, 2000)
+})
+
+test('malformed answers are dropped on read', () => {
+  const dir = tmp()
+  const p = createProposal(base(), T0, dir)
+  const file = path.join(dir, `${p.id}.json`)
+  const write = (answers: unknown) => fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), answers }))
+  write('nope')
+  assert.equal(getProposal(p.id, dir)?.answers, undefined)
+  write([{ index: 0, question: 'q', answer: '', at: T0.toISOString() }, { index: 'x', question: 'q', answer: 'a', at: T0.toISOString() }])
+  assert.equal(getProposal(p.id, dir)?.answers, undefined)
+  const good = { index: 1, question: 'q', answer: 'a', at: T0.toISOString() }
+  write([
+    null,
+    { index: -1, question: 'q', answer: 'a', at: T0.toISOString() },
+    { index: 0, question: 'q', answer: 'a', at: 'not a date' },
+    { index: 0, question: 'q', answer: 'x'.repeat(2001), at: T0.toISOString() },
+    { ...good, extra: true },
+  ])
+  assert.deepEqual(getProposal(p.id, dir)?.answers, [good])
 })

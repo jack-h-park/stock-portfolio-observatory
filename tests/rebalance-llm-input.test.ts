@@ -307,3 +307,35 @@ test('constraints carry the investor profile and the wash-sale windows', () => {
   })
   assert.deepEqual(out.constraints, { usTaxPerson: true, washSaleBlockedBuys: [{ ticker: 'AAA', blockedThrough: '2026-11-01' }] })
 })
+
+const answer = (index: number, at: string, text = `answer ${index}`) => ({ index, question: `question ${index}`, answer: text, at })
+
+test('context.priorAnswers: newest proposals with answers first, at most 3 proposals and 10 items', () => {
+  const past = [
+    proposal('p0', '2026-05-01T00:00:00Z', { answers: [answer(0, '2026-05-02T00:00:00Z')] }),
+    proposal('p1', '2026-06-01T00:00:00Z', { answers: [answer(0, '2026-06-02T00:00:00Z'), answer(1, '2026-06-03T00:00:00Z')] }),
+    proposal('none', '2026-09-15T00:00:00Z'),
+    proposal('p2', '2026-07-01T00:00:00Z', { answers: Array.from({ length: 6 }, (_, i) => answer(i, `2026-07-0${i + 2}T00:00:00Z`)) }),
+    proposal('p3', '2026-08-01T00:00:00Z', { answers: [answer(2, '2026-10-20T09:30:00Z', 'latest'), answer(0, '2026-08-02T00:00:00Z')] }),
+  ]
+  const out = build({ past }).context.priorAnswers
+  // p3, p2, p1 (p0 is the fourth proposal with answers; 'none' has none).
+  assert.equal(out.length, 10)
+  assert.deepEqual([...new Set(out.map((a) => a.proposalId))], ['p3', 'p2', 'p1'])
+  assert.deepEqual(out[0], { proposalId: 'p3', date: '2026-10-20', question: 'question 2', answer: 'latest' })
+  assert.equal(out[1].question, 'question 0')
+  // Within a proposal, newest answer first.
+  assert.deepEqual(out.filter((a) => a.proposalId === 'p2').map((a) => a.question), ['question 5', 'question 4', 'question 3', 'question 2', 'question 1', 'question 0'])
+  assert.deepEqual(out.filter((a) => a.proposalId === 'p1').map((a) => a.question), ['question 1', 'question 0'])
+  assert.deepEqual(build({ past: [proposal('x', '2026-08-01T00:00:00Z')] }).context.priorAnswers, [])
+})
+
+test('context.priorAnswers is scrubbed like other free text and capped', () => {
+  const past = [proposal('p', '2026-09-01T00:00:00Z', { answers: [answer(0, '2026-09-02T00:00:00Z', dirty), answer(1, '2026-09-03T00:00:00Z', 'z'.repeat(2500))] })]
+  const out = build({ past })
+  const text = JSON.stringify(out.context.priorAnswers)
+  for (const s of mustGo) assert.ok(!text.includes(s), s)
+  const scrubbed = out.context.priorAnswers.find((a) => a.question === 'question 0')!
+  for (const s of mustStay) assert.ok(scrubbed.answer.includes(s), s)
+  assert.equal(out.context.priorAnswers.find((a) => a.question === 'question 1')!.answer.length, 2000)
+})

@@ -141,7 +141,7 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
                 { key: 'sleeve', label: ac.sleeve, render: (r: SleeveRow) => <span className="font-medium text-ink">{proposalCopy.sleeves[r.sleeve]}</span> },
                 { key: 'pct', label: ac.current, align: 'right', render: (r: SleeveRow) => fmtPct(r.pct) },
                 { key: 'target', label: ac.target, align: 'right', render: (r: SleeveRow) => fmtPct(r.target) },
-                { key: 'band', label: ac.band, align: 'right', render: (r: SleeveRow) => `${fmtNumber(Math.max(0, r.lower), 1)}–${fmtNumber(Math.min(100, r.upper), 1)}%` },
+                { key: 'band', label: ac.band, align: 'right', render: (r: SleeveRow) => `${fmtNumber(r.lower, 1)}–${fmtNumber(r.upper, 1)}%` },
                 { key: 'status', label: ac.status, render: (r: SleeveRow) => <Badge tone={SLEEVE_TONE[r.status]}>{ac.statuses[r.status]}</Badge> },
               ]}
             />

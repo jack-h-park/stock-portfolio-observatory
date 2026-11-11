@@ -15,6 +15,7 @@ import { bucketTone } from '@/lib/tone'
 import { Input, Select } from '@/components/form'
 import { DataTable } from '@/components/DataTable'
 import { SubmitButton } from '@/components/SubmitButton'
+import { maskAccountLabel } from '@/lib/account-label'
 
 const PAGE_SIZE = 50
 
@@ -368,7 +369,7 @@ export function TaxPlanTimeline({
                     render: (row: any) => (
                       <>
                         {row.brokerage}
-                        <div className="mt-1 text-micro text-ink-3">{row.account}</div>
+                        <div className="mt-1 text-micro text-ink-3">{maskAccountLabel(row.account)}</div>
                       </>
                     ),
                   },

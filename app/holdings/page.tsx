@@ -13,6 +13,7 @@ import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { applyFilters, applySearch, filterOptions, readFilters, withParam, type FilterGroup } from '@/lib/table-filter'
 import { formatSort, parseSort, sortRows, type TableSort } from '@/lib/table-sort'
 import { routeMetadata, routeSection } from '@/lib/page-names'
+import { maskAccountLabel } from '@/lib/account-label'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/holdings')
@@ -113,7 +114,7 @@ export default async function HoldingsPage({
             columns={[
               { key: 'market', label: copy.market, sortable: true, sortFirst: 'asc', nowrap: true, render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
               { key: 'brokerage', label: copy.broker, sortable: true, sortFirst: 'asc', priority: 'secondary' },
-              { key: 'account', label: copy.account, sortable: true, sortFirst: 'asc', priority: 'secondary' },
+              { key: 'account', label: copy.account, sortable: true, sortFirst: 'asc', priority: 'secondary', render: (r) => maskAccountLabel(r.account) },
               {
                 key: 'ticker',
                 label: copy.instrument,

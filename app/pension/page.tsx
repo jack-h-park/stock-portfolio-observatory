@@ -12,6 +12,7 @@ import { routeMetadata, routeSection } from '@/lib/page-names'
 import { contributionsAgainstLimits, type ContributionLimitRow } from '@/lib/pension'
 import { getTaxPolicyState } from '@/lib/tax-policy'
 import { getPageCopy } from '@/lib/ui-copy'
+import { maskAccountLabel } from '@/lib/account-label'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/pension')
@@ -40,7 +41,7 @@ export default async function PensionPage() {
     <>
       <CardRow columns={2}>
         {list.map((account: PensionAccount) => (
-          <Card key={`${account.wrapper}:${account.account}`} title={account.account} action={<Badge tone="info">{copy.wrappers[account.wrapper] ?? account.wrapper}</Badge>}>
+          <Card key={`${account.wrapper}:${account.account}`} title={maskAccountLabel(account.account)} action={<Badge tone="info">{copy.wrappers[account.wrapper] ?? account.wrapper}</Badge>}>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <MetricField
                 label={copy.value}
@@ -66,7 +67,7 @@ export default async function PensionPage() {
           rows={list.flatMap((account) => account.holdings.map((holding, index) => ({ ...holding, account: account.account, key: `${account.account}:${index}` })))}
           getRowKey={(row: PensionHolding & { account: string; key: string }) => row.key}
           columns={[
-            { key: 'account', label: wrapperReviewCopy.account, priority: 'secondary', render: (row: PensionHolding & { account: string }) => row.account },
+            { key: 'account', label: wrapperReviewCopy.account, priority: 'secondary', render: (row: PensionHolding & { account: string }) => maskAccountLabel(row.account) },
             { key: 'name', label: copy.columns.name, render: (row: PensionHolding) => <span className="text-ink">{row.name}</span> },
             { key: 'kind', label: copy.columns.kind, nowrap: true, render: (row: PensionHolding) => <Badge tone="neutral">{copy.kinds[row.kind] ?? row.kind}</Badge> },
             {

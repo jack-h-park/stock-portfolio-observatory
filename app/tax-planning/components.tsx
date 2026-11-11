@@ -13,6 +13,7 @@ import type { getPageCopy } from '@/lib/ui-copy'
 type TaxPlanningCopy = ReturnType<typeof getPageCopy<'taxPlanning'>>
 import { Input } from '@/components/form'
 import { SubmitButton } from '@/components/SubmitButton'
+import { displayAccount } from '@/lib/account-label'
 
 type MoneyFormatter = ReturnType<typeof createMoneyFormatter>
 
@@ -37,7 +38,7 @@ export function CandidateTable({ rows, copy, money }: { rows: TaxPlanCandidate[]
       rows={rows}
       columns={[
         { key: 'ticker', label: copy.candidateTable.position, render: (r) => <PositionCell row={r} /> },
-        { key: 'account', label: copy.candidateTable.account, render: (r) => <span className="max-w-[12rem] truncate">{r.brokerage} · {r.account}</span> },
+        { key: 'account', label: copy.candidateTable.account, render: (r) => <span className="max-w-[12rem] truncate">{displayAccount(r.brokerage, r.account)}</span> },
         { key: 'acquired_date', label: copy.candidateTable.acquired },
         { key: 'holdingBucket', label: copy.candidateTable.term, render: (r) => <Badge tone={bucketTone(r.holdingBucket)}>{r.holdingBucket}</Badge> },
         { key: 'open_quantity', label: copy.candidateTable.quantity, align: 'right', render: (r) => fmtQuantity(r.open_quantity, 4) },
