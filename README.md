@@ -677,6 +677,8 @@ Run `pnpm test` to verify holding-period boundaries, progressive US gain/loss ta
 
 See [docs/tax-realization-planner.md](docs/tax-realization-planner.md) for the rule model, official-source baseline, manual adjustment design, and implementation stages.
 
+Treatment choices the app makes without a confirmed position (gold commissions, the collectible rate, lot identification, currency conversion, wash sales) are listed for a tax preparer in [docs/tax-preparer-questions.md](docs/tax-preparer-questions.md).
+
 ### Read-only CLIs
 
 Five commands answer tax and data questions from the database without opening the app. An agent calls them so it can quote figures the engine computed instead of recomputing them in a session.
