@@ -66,7 +66,7 @@ const tsv = (columns: string[], rows: Record<string, string | number>[]) =>
   [columns.join('\t'), ...rows.map((r) => columns.map((c) => String(r[c] ?? '')).join('\t'))].join('\n') + '\n'
 
 const GOLD = '미래에셋증권(금현물)'
-const SOURCE = 'mirae-gold-transactions-20230101-20261027.pdf'
+const SOURCE = 'mirae-gold-transactions-20250101-20251231.pdf'
 const txn = (row: Record<string, string | number>) => ({
   Account: GOLD, Ticker: 'M04020000', Name: 'Gold 99.99 1Kg', Currency: 'KRW', 'FX Rate': 1, Fee: 0, Tax: 0, Balance: 0, Source: SOURCE, Page: 1, ...row,
 })
