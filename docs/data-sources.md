@@ -1213,6 +1213,14 @@ double, nothing errors, and every check passes. The procedure that avoids it:
    the open-lot and realized-row totals have to come out identical on both sides.
 4. `push-sources.sh --dry-run` should then show only `.d..t.... kr-statements/`,
    a directory mtime, and no file transfers.
+5. The push ends by listing what the host still holds that the laptop no longer
+   does (`far side still has N file(s) this machine no longer has`). It only
+   reports, and `--delete` stays off. After a rename or a move to `_superseded/`,
+   the old name stays in that list until it is moved on the host as well, so
+   use it to find the leftover instead of discovering it from a doubled total.
+   Several readers already skip a leftover (the newest snapshot per key, a
+   period contained by another statement), but that is a property of each
+   reader, not of the push, and the list is what shows a leftover no rule covers.
 
 Re-filing these through the inbox later is safe either way: the content hash is
 compared against the whole destination directory, so a document already there
