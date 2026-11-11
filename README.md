@@ -2,6 +2,8 @@
 
 Read-only portfolio monitoring dashboard for manually curated financial-records data.
 
+The project is evolving into **Personal Finance Observatory**, a personally operated, publicly reusable view of assets, cash flow, and KR/US tax evidence. See the [product definition](docs/product/personal-finance-observatory.md), [current support matrix](docs/product/support-matrix.md), and [compatibility inventory](docs/architecture/compatibility-inventory.md). Tax filing/payment history is planned; the current tax engine provides bounded investment planning. Repository and production-path renames are separate operational steps.
+
 This repository is intended to contain application code only. Real brokerage exports,
 tax documents, generated databases, price snapshots, and mapping overrides should stay
 outside git or in ignored local files.
