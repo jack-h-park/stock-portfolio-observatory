@@ -226,3 +226,35 @@ test('listProposals names an unreadable file by its basename, without its conten
       error.message.includes('rb-2026-10-15-manual.json') && !error.message.includes(bad) && !error.message.includes('12345')
   )
 })
+
+test('a plan with no buy or sell may close: a hold draft, or after its targets are approved', () => {
+  const empty = (decision: 'change' | 'hold', id = 'rb-2026-11') => ({
+    ...base(decision, id),
+    plan: { moves: [], instructions: [ins('transfer:a:KRW', 'transfer', 0)], warnings: [], taxSummary: {} } as unknown as TradePlan,
+  })
+  // Hold draft with nothing to trade: closes, freeing the open slot.
+  const dir = tmp()
+  createProposal(empty('hold'), T0, dir)
+  const closed = transition('rb-2026-11', 'closed', 'closed with no trades: targets kept', at(1), dir)
+  assert.equal(closed.status, 'closed')
+  assert.deepEqual(closed.events.at(-1), { at: at(1).toISOString(), type: 'closed', detail: 'closed with no trades: targets kept' })
+  assert.equal(openProposal(dir), null)
+  assert.throws(() => transition('rb-2026-11', 'plan_approved', '', at(1), dir))
+  assert.throws(() => appendTrigger('rb-2026-11', 'band:cash', at(2), dir), /closed/)
+
+  // A change draft must approve its targets first; then it may close.
+  const d2 = tmp()
+  createProposal(empty('change'), T0, d2)
+  assert.throws(() => transition('rb-2026-11', 'closed', '', T0, d2))
+  transition('rb-2026-11', 'targets_approved', '', T0, d2)
+  assert.equal(transition('rb-2026-11', 'closed', 'closed with no trades after the targets were approved', T0, d2).status, 'closed')
+
+  // A plan with a sell may not close from draft or targets_approved.
+  const d3 = tmp()
+  createProposal(base('hold'), T0, d3)
+  assert.throws(() => transition('rb-2026-11', 'closed', '', T0, d3), /draft -> closed/)
+  const d4 = tmp()
+  createProposal(base('change'), T0, d4)
+  transition('rb-2026-11', 'targets_approved', '', T0, d4)
+  assert.throws(() => transition('rb-2026-11', 'closed', '', T0, d4), /targets_approved -> closed/)
+})
