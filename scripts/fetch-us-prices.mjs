@@ -1,3 +1,4 @@
+import { financeFile } from './finance-paths.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { loadLocalEnv } from './env.mjs'
@@ -5,9 +6,9 @@ import { readUsHoldingTickers, resolveUsHoldingFiles } from './source-files.mjs'
 
 loadLocalEnv()
 
-const dataDir = process.env.STOCK_DATA_DIR || path.join(process.cwd(), 'private-data')
-const evidencePath = process.env.STOCK_US_PDF_EVIDENCE_PATH || path.join(process.cwd(), 'data/us-pdf-evidence.json')
-const outPath = process.env.STOCK_US_PRICES_PATH || path.join(process.cwd(), 'data/us-prices.json')
+const dataDir = financeFile('STOCK_DATA_DIR')
+const evidencePath = financeFile('STOCK_US_PDF_EVIDENCE_PATH')
+const outPath = financeFile('STOCK_US_PRICES_PATH')
 
 // Same resolver the ingest uses, so a re-downloaded holdings export is priced
 // from the current file rather than a stale hardcoded name. Entries are

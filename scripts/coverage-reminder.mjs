@@ -1,3 +1,4 @@
+import { financeFile } from './finance-paths.mjs'
 // coverage-reminder.mjs — the weekly "which statements to download next" message.
 //
 // Most of this app's data refreshes itself. The broker statements do not: they
@@ -229,7 +230,7 @@ async function main() {
   loadLocalEnv()
   const summaryPath =
     arg('--summary') ||
-    process.env.STOCK_BRIEFING_SUMMARY_PATH ||
+    financeFile('STOCK_BRIEFING_SUMMARY_PATH') ||
     path.join(os.homedir(), 'workspace/data/financial-records/outputs/stock-portfolio-observatory/briefing-summary.json')
   let message
   try {

@@ -1,3 +1,4 @@
+import { financeFile, financeEnvironment } from './finance-paths.mjs'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -5,7 +6,7 @@ import { loadLocalEnv } from './env.mjs'
 
 loadLocalEnv()
 
-const historyPath = process.env.STOCK_REFRESH_RUNS_PATH || path.join(process.cwd(), 'data/refresh-runs.json')
+const historyPath = financeFile('STOCK_REFRESH_RUNS_PATH')
 const maxRuns = Number(process.env.STOCK_REFRESH_RUNS_LIMIT || 30)
 // The launchd refresh and a manual/deploy-triggered refresh can otherwise run
 // together. Both rewrite generated snapshots and the database, so the later
@@ -14,10 +15,11 @@ const maxRuns = Number(process.env.STOCK_REFRESH_RUNS_LIMIT || 30)
 // also remove .next while the server is starting). Use a recoverable directory
 // lock: a dead owner's stale lock is safe to reclaim, while a live owner makes
 // this run a no-op rather than corrupting the current refresh.
-const refreshLockPath = process.env.STOCK_REFRESH_LOCK_PATH || path.join(process.cwd(), '.refresh.lock')
+const refreshLockPath = financeFile('STOCK_REFRESH_LOCK_PATH')
 
 function acquireRefreshLock() {
   try {
+    fs.mkdirSync(path.dirname(refreshLockPath), { recursive: true })
     fs.mkdirSync(refreshLockPath)
     fs.writeFileSync(path.join(refreshLockPath, 'pid'), `${process.pid}\n`)
     process.on('exit', () => {
@@ -155,7 +157,7 @@ function runStep(step) {
   return new Promise((resolve) => {
     const child = spawn('pnpm', step.args, {
       cwd: process.cwd(),
-      env: process.env,
+      env: financeEnvironment(),
       stdio: ['ignore', 'pipe', 'pipe'],
     })
 

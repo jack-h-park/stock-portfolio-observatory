@@ -1,3 +1,4 @@
+import { financeFile } from './finance-paths.mjs'
 // fetch-toss.mjs — pull the Toss Securities account straight from its Open API.
 //
 // Toss is 36 of the 47 Korean holdings and 84% of the Korean trades, and until
@@ -24,7 +25,7 @@ loadLocalEnv()
 const BASE = process.env.TOSS_OPENAPI_BASE || 'https://openapi.tossinvest.com'
 const CLIENT_ID = process.env.TOSS_OPENAPI_CLIENT_ID
 const CLIENT_SECRET = process.env.TOSS_OPENAPI_CLIENT_SECRET
-const OUT_PATH = process.env.STOCK_TOSS_SNAPSHOT_PATH || path.join(process.cwd(), 'data/toss-snapshot.json')
+const OUT_PATH = financeFile('STOCK_TOSS_SNAPSHOT_PATH')
 
 if (!CLIENT_ID || !CLIENT_SECRET) {
   console.error('ERROR: TOSS_OPENAPI_CLIENT_ID / TOSS_OPENAPI_CLIENT_SECRET are not set (.env.local)')

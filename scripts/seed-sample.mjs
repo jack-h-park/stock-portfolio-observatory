@@ -2,22 +2,42 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
+import { financeFile, resolveFinancePaths } from './finance-paths.mjs'
 
 const root = process.cwd()
-const sampleDataDir = path.join(root, 'private-data')
-const dbPath =
-  process.env.SAMPLE_STOCK_DB_PATH ||
-  path.join(sampleDataDir, 'outputs/stock-portfolio-observatory/stock-portfolio-observatory.db')
+const roots = resolveFinancePaths({ ...process.env, FINANCE_MODE: 'sample' }, root)
+const sampleDataDir = roots.recordsDir
+const dbPath = roots.dbPath
 const sampleSourceDir = path.join(sampleDataDir, 'sample-source')
 const now = new Date().toISOString()
 const fxRate = 1300
 
-if (fs.existsSync(path.join(root, '.env.local')) && process.env.SAMPLE_FORCE !== '1') {
+if (fs.existsSync(path.join(root, '.env.local'))) {
   console.error('Refusing to seed sample data while .env.local exists.')
-  console.error('This protects private-mode runtime snapshots in data/*.json.')
-  console.error('Run SAMPLE_FORCE=1 pnpm seed:sample only when you intentionally want to overwrite local ignored sample files.')
+  console.error('Sample force flags cannot bypass private-mode protection.')
   process.exit(1)
 }
+
+if (process.env.SAMPLE_STOCK_DB_PATH) throw new Error('SAMPLE_STOCK_DB_PATH is retired; isolate samples with a temporary working directory')
+const sampleRoot = path.dirname(roots.recordsDir)
+const marker = path.join(sampleRoot, '.finance-sample.json')
+// Check every existing component before writing; a symlink could redirect an
+// otherwise safe lexical path into real records, including a DB/WAL file.
+function checkSampleTree(dir) {
+  if (!fs.existsSync(dir)) return
+  if (fs.lstatSync(dir).isSymbolicLink()) throw new Error('Sample output refuses symlinks')
+  if (fs.statSync(dir).isDirectory()) for (const entry of fs.readdirSync(dir)) checkSampleTree(path.join(dir, entry))
+}
+for (const part of [path.join(root, 'private-data'), sampleRoot]) {
+  if (fs.existsSync(part) && fs.lstatSync(part).isSymbolicLink()) throw new Error('Sample root refuses symlinks')
+}
+checkSampleTree(sampleRoot)
+if (fs.existsSync(sampleRoot) && fs.readdirSync(sampleRoot).length &&
+    (!fs.existsSync(marker) || fs.readFileSync(marker, 'utf8') !== '{"mode":"sample","schemaVersion":1}\n')) {
+  throw new Error('Sample root is not owned by the sample seeder')
+}
+fs.mkdirSync(sampleRoot, { recursive: true })
+fs.writeFileSync(marker, '{"mode":"sample","schemaVersion":1}\n')
 
 function writeJson(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
@@ -67,14 +87,14 @@ fs.writeFileSync(sourceFiles.transactions, 'date\tmarket\tticker\ttype\tquantity
 fs.writeFileSync(sourceFiles.dividends, 'date\tmarket\tticker\tamount\n2026-01-10\tKR\t005930\t15000\n2026-02-10\tUS\tAAPL\t6\n')
 fs.writeFileSync(sourceFiles.realized, 'market\tticker\tquantity_sold\trealized_gl_krw\nUS\tMSFT\t1\t52000\n')
 
-writeJson(path.join(root, 'data/fx-rates.json'), {
+writeJson(path.join(roots.runtimeDir, 'fx-rates.json'), {
   baseCurrency: 'KRW',
   rates: [
     { from: 'USD', to: 'KRW', rate: fxRate, asOfDate: '2026-01-01', source: 'Synthetic sample', sourceUrl: '', note: 'Sample FX rate' },
     { from: 'KRW', to: 'KRW', rate: 1, asOfDate: '2026-01-01', source: 'Synthetic sample', sourceUrl: '', note: 'Base currency' },
   ],
 })
-writeJson(path.join(root, 'data/kr-prices.json'), {
+writeJson(path.join(roots.runtimeDir, 'kr-prices.json'), {
   generatedAt: now,
   source: 'Synthetic sample',
   sourceUrl: '',
@@ -82,7 +102,7 @@ writeJson(path.join(root, 'data/kr-prices.json'), {
   prices: [{ ticker: '005930', symbol: '005930.KS', price: 82000, currency: 'KRW', exchangeName: 'KSC', instrumentType: 'EQUITY', asOfDate: '2026-01-01', regularMarketTime: null, shortName: 'Sample Electronics', longName: 'Sample Electronics Co Ltd' }],
   missing: [],
 })
-writeJson(path.join(root, 'data/us-prices.json'), {
+writeJson(path.join(roots.runtimeDir, 'us-prices.json'), {
   generatedAt: now,
   source: 'Synthetic sample',
   sourceUrl: '',
@@ -92,7 +112,7 @@ writeJson(path.join(root, 'data/us-prices.json'), {
 })
 // Crypto: one KRW-quoted venue and one USD-quoted venue, because that pairing is
 // the whole reason the crypto market cannot be modelled as a single currency.
-writeJson(path.join(root, 'data/crypto-prices.json'), {
+writeJson(path.join(roots.runtimeDir, 'crypto-prices.json'), {
   generatedAt: now,
   source: 'Synthetic sample',
   sourceUrl: '',
@@ -105,7 +125,7 @@ writeJson(path.join(root, 'data/crypto-prices.json'), {
   historical: [],
   missingHistorical: [],
 })
-writeJson(path.join(root, 'data/crypto-activity.json'), {
+writeJson(path.join(roots.runtimeDir, 'crypto-activity.json'), {
   generatedAt: now,
   source: 'Synthetic sample',
   documents: [
@@ -119,18 +139,18 @@ writeJson(path.join(root, 'data/crypto-activity.json'), {
 // guard above already stops this on a configured machine, but that guard is
 // bypassable with SAMPLE_FORCE=1 and says nothing about mappings specifically.
 // Writing elsewhere means sample mode cannot touch the real rules at all.
-writeJson(path.join(root, 'data/manual-mappings.sample.json'), {
+writeJson(financeFile('STOCK_MANUAL_MAPPINGS_PATH'), {
   version: 1,
   description: 'Synthetic sample mappings.',
   incomeRules: [{ match: { typeIncludes: 'interest' }, category: 'interest', note: 'Sample interest classification.' }],
   dividendOverrides: [],
 })
-writeJson(path.join(root, 'data/us-pdf-evidence.json'), {
+writeJson(path.join(roots.runtimeDir, 'us-pdf-evidence.json'), {
   generatedAt: now,
   source: 'Synthetic sample',
   reports: [{ name: 'gain_loss:sample', category: 'us_gain_loss_pdf', filename: 'sample-gain-loss.pdf', path: path.join(sampleSourceDir, 'sample-gain-loss.pdf'), account_hint: '', account: 'Sample Broker', pages: 1, row_count: 1, metrics: { tax_cost_usd: 1000, units: 5, ticker_count: 1, terms: { lt: 1 } }, lots: [] }],
 })
-writeJson(path.join(root, 'data/refresh-runs.json'), {
+writeJson(path.join(roots.runtimeDir, 'refresh-runs.json'), {
   runs: [{ id: now, startedAt: now, finishedAt: now, durationMs: 1200, status: 'success', steps: [{ name: 'seed:sample', command: 'pnpm seed:sample', startedAt: now, finishedAt: now, durationMs: 1200, status: 'success', exitCode: 0, stdoutTail: 'Wrote synthetic sample database.', stderrTail: '' }] }],
 })
 fs.writeFileSync(path.join(sampleSourceDir, 'sample-gain-loss.pdf'), 'Synthetic PDF placeholder for source inventory only.\n')
@@ -176,12 +196,12 @@ insertMany(db, 'meta', [
   { key: 'ingested_at', value: now },
   { key: 'data_dir', value: sampleDataDir },
   { key: 'payload_dir', value: sampleSourceDir },
-  { key: 'fx_rates_path', value: path.join(root, 'data/fx-rates.json') },
-  { key: 'kr_prices_path', value: path.join(root, 'data/kr-prices.json') },
-  { key: 'us_prices_path', value: path.join(root, 'data/us-prices.json') },
-  { key: 'us_pdf_evidence_path', value: path.join(root, 'data/us-pdf-evidence.json') },
-  { key: 'manual_mappings_path', value: path.join(root, 'data/manual-mappings.sample.json') },
-  { key: 'refresh_runs_path', value: path.join(root, 'data/refresh-runs.json') },
+  { key: 'fx_rates_path', value: path.join(roots.runtimeDir, 'fx-rates.json') },
+  { key: 'kr_prices_path', value: path.join(roots.runtimeDir, 'kr-prices.json') },
+  { key: 'us_prices_path', value: path.join(roots.runtimeDir, 'us-prices.json') },
+  { key: 'us_pdf_evidence_path', value: path.join(roots.runtimeDir, 'us-pdf-evidence.json') },
+  { key: 'manual_mappings_path', value: financeFile('STOCK_MANUAL_MAPPINGS_PATH') },
+  { key: 'refresh_runs_path', value: path.join(roots.runtimeDir, 'refresh-runs.json') },
 ], ['key', 'value'])
 
 insertMany(db, 'source_files', Object.entries(sourceFiles).map(([name, file]) => ({ name, ...fingerprint(file), row_count: name === 'holdings' || name === 'taxlots' ? 2 : 2 })), ['name', 'filename', 'path', 'bytes', 'mtime_ms', 'sha256', 'row_count'])
@@ -301,7 +321,7 @@ console.log(`Wrote sample database: ${dbPath}`)
 // Real documents are written by the briefing cron on the private host; these
 // mirror that schema (fully derived: rows parsed, aggregates precomputed, one
 // block per market).
-const briefingArchiveDir = path.join(sampleDataDir, 'briefing-archive')
+const briefingArchiveDir = financeFile('STOCK_BRIEFING_ARCHIVE_DIR')
 
 const MARKET_META = {
   US: { id: 'US', label: 'US', flag: '\u{1F1FA}\u{1F1F8}', currency: 'USD', symbol: '$', priceDigits: 2, moverMinCost: 300 },

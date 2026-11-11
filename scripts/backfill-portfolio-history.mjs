@@ -1,3 +1,4 @@
+import { financeFile } from './finance-paths.mjs'
 import Database from 'better-sqlite3'
 import path from 'node:path'
 import { loadLocalEnv } from './env.mjs'
@@ -6,7 +7,7 @@ import { valuePortfolio } from './portfolio-snapshot.mjs'
 
 loadLocalEnv()
 
-const dbPath = process.env.STOCK_DB_PATH || path.join(process.cwd(), 'private-data/outputs/stock-portfolio-observatory/stock-portfolio-observatory.db')
+const dbPath = financeFile('STOCK_DB_PATH')
 const db = new Database(dbPath)
 
 function monthEnds(firstDate, lastDate) {

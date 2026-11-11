@@ -1,3 +1,4 @@
+import { financeFile } from './finance-paths.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
@@ -7,11 +8,11 @@ import { fxWindowStart, fxCoversIncome } from './fx-window.mjs'
 
 loadLocalEnv()
 
-const dbPath = process.env.STOCK_DB_PATH || path.join(process.cwd(), 'private-data/outputs/stock-portfolio-observatory/stock-portfolio-observatory.db')
-const pricesPath = process.env.STOCK_HISTORICAL_PRICES_PATH || path.join(process.cwd(), 'data/historical-prices.json')
-const fxPath = process.env.STOCK_HISTORICAL_FX_RATES_PATH || path.join(process.cwd(), 'data/historical-fx-rates.json')
-const manualMappingsPath = process.env.STOCK_MANUAL_MAPPINGS_PATH || path.join(process.cwd(), 'data/manual-mappings.json')
-const tossSnapshotPath = process.env.STOCK_TOSS_SNAPSHOT_PATH || path.join(process.cwd(), 'data/toss-snapshot.json')
+const dbPath = financeFile('STOCK_DB_PATH')
+const pricesPath = financeFile('STOCK_HISTORICAL_PRICES_PATH')
+const fxPath = financeFile('STOCK_HISTORICAL_FX_RATES_PATH')
+const manualMappingsPath = financeFile('STOCK_MANUAL_MAPPINGS_PATH')
+const tossSnapshotPath = financeFile('STOCK_TOSS_SNAPSHOT_PATH')
 // Skip the refetch when the file already covers the newest session it could —
 // measured in sessions, not in hours.
 //

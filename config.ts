@@ -1,12 +1,15 @@
 import path from 'node:path'
+import { FINANCE_FILES, financeFile, resolveFinancePaths } from './scripts/finance-paths.mjs'
 
 const repoPath = (...parts: string[]) => path.join(process.cwd(), ...parts)
 
 function env(name: string, fallback: string): string {
+  if (name === 'STOCK_DATA_DIR' || name in FINANCE_FILES) return financeFile(name)
   return process.env[name] && process.env[name]!.length > 0 ? process.env[name]! : fallback
 }
 
 export const config = {
+  finance: resolveFinancePaths(),
   stockDataDir: env('STOCK_DATA_DIR', repoPath('private-data')),
   stockDbPath: env(
     'STOCK_DB_PATH',

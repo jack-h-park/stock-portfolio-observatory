@@ -17,7 +17,7 @@ Status describes source-level implementation, not production freshness or accept
 | Returns/assessments/payments/refunds | Planned | Versioned evidence-linked historical records; no completion inferred from file names |
 | Foreign-account reporting preparation | Partial | Maximum-balance reference tables, not filed FBAR/Form 8938; [FBAR helpers](../../lib/fbar.ts) |
 | PFIC and unresolved tax treatments | Partial evidence/review only | [Preparer questions](../tax-preparer-questions.md); comprehensive automated calculation is unsupported |
-| Public synthetic execution | Implemented, isolation upgrade planned | [Sample seed](../../scripts/seed-sample.mjs), [CI](../../.github/workflows/ci.yml) |
+| Public synthetic execution | Implemented with isolated sample roots | [Sample seed](../../scripts/seed-sample.mjs), [CI](../../.github/workflows/ci.yml) |
 | Automatic trade/tax execution | Unsupported | No order placement, tax submission, or payment authorization |
 
 For tax comparisons, match tax unit, year, authority, currency, and calculation scope. Do not compare investment-incremental estimates with annual-total return liability as if the difference were estimation error. Published rules, projected rules, manual assumptions, and undecided treatments remain distinct.

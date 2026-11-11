@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { financeFile } from './finance-paths.mjs'
 // publish-kr-sheet.mjs — write the Korean 미실현수익 정리 tab from the database.
 //
 // This is the second thing this app publishes rather than reads (the first is
@@ -66,9 +67,7 @@ import Database from 'better-sqlite3'
 
 const KEY_PATH = process.env.STOCK_SHEETS_SA_KEY
   || join(homedir(), '.config', 'stock-portfolio-briefing', 'gcp-sheets-sa.json')
-const DB_PATH = process.env.STOCK_DB_PATH
-  || join(homedir(), 'workspace', 'data', 'financial-records', 'outputs',
-    'stock-portfolio-observatory', 'stock-portfolio-observatory.db')
+const DB_PATH = financeFile('STOCK_DB_PATH')
 
 const argv = process.argv.slice(2)
 const has = (f) => argv.includes(f)
@@ -407,8 +406,7 @@ console.error(`[${LABEL}] wrote ${rowCount} positions + 합계`)
 // limit that buys: this records what was PUBLISHED, not what the tab holds now,
 // so a tab someone deleted or edited by hand still looks published. The failure
 // being guarded is "nobody ran the publisher", and for that the receipt is exact.
-const receiptPath = process.env.STOCK_KR_SHEET_RECEIPT_PATH
-  || new URL(`../data/${CONFIG.receipt}`, import.meta.url).pathname
+const receiptPath = financeFile(`STOCK_${MARKET}_SHEET_RECEIPT_PATH`)
 try {
   mkdirSync(new URL('.', `file://${receiptPath}`).pathname, { recursive: true })
   writeFileSync(receiptPath, `${JSON.stringify({
