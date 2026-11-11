@@ -12,6 +12,7 @@ export const ASSET_CLASSES: readonly AssetClassKey[] = ['stocks', 'crypto', 'cas
  */
 export type AsOfNote = { assetClass: AssetClassKey; label: string; asOf: string }
 export type NetWorth = {
+  coverage?: { omittedAssetCount: number; sourceCoverageConfirmed: boolean; liabilitiesSupported: false }
   totalKrw: number
   byClass: Record<AssetClassKey, number>
   asOfNotes: AsOfNote[]

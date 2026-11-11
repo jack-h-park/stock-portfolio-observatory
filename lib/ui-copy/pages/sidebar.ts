@@ -5,8 +5,8 @@ export const sidebar = defineCopy({
     openMenu: 'Open menu',
     closeMenu: 'Close menu',
     navLabel: 'Main navigation',
-    tagline: 'Portfolio monitoring',
-    readOnly: 'Read-only portfolio',
+    tagline: 'Assets, cash flow and taxes',
+    readOnly: 'Local financial records',
     source: 'Generated from local sources',
     language: 'Language',
     currency: 'Currency',
@@ -16,7 +16,7 @@ export const sidebar = defineCopy({
       {
         label: 'Core Workflows',
         items: [
-          { href: '/', label: 'Portfolio Overview' },
+          { href: '/', label: 'Financial Overview' },
           { href: '/daily-briefing', label: "Today's Briefing" },
           { href: '/holdings', label: 'Holdings' },
           { href: '/review', label: 'Portfolio Review' },
@@ -28,6 +28,8 @@ export const sidebar = defineCopy({
       {
         label: 'Tax',
         items: [
+          { href: '/taxes', label: 'Tax Overview' },
+          { href: '/taxes/history', label: 'Tax History' },
           { href: '/tax-planning', label: 'Tax Planning' },
           { href: '/tax-settings', label: 'Tax Settings' },
           { href: '/lots', label: 'Tax Lots' },
@@ -51,7 +53,7 @@ export const sidebar = defineCopy({
         label: 'All assets',
         supplementary: true,
         items: [
-          { href: '/net-worth', label: 'Net Worth' },
+          { href: '/net-worth', label: 'Total Assets' },
           { href: '/pension', label: 'Pension' },
         ],
       },
@@ -73,7 +75,7 @@ export const sidebar = defineCopy({
     closeMenu: '메뉴 닫기',
     navLabel: '주요 메뉴',
     tagline: '자산 모니터링',
-    readOnly: '조회 전용 포트폴리오',
+    readOnly: '로컬 재무 기록',
     source: '로컬 원본에서 생성됨',
     language: '언어',
     currency: '화폐',
@@ -83,7 +85,7 @@ export const sidebar = defineCopy({
       {
         label: '핵심 업무',
         items: [
-          { href: '/', label: '포트폴리오 개요' },
+          { href: '/', label: '재무 개요' },
           { href: '/daily-briefing', label: '오늘의 브리핑' },
           { href: '/holdings', label: '보유종목' },
           { href: '/review', label: '포트폴리오 검토' },
@@ -95,6 +97,8 @@ export const sidebar = defineCopy({
       {
         label: '세금',
         items: [
+          { href: '/taxes', label: '세금 개요' },
+          { href: '/taxes/history', label: '세금 이력' },
           { href: '/tax-planning', label: '세금 계획' },
           { href: '/tax-settings', label: '세금 설정' },
           { href: '/lots', label: '세금 계산 단위' },
@@ -116,7 +120,7 @@ export const sidebar = defineCopy({
         label: '전체 자산',
         supplementary: true,
         items: [
-          { href: '/net-worth', label: '순자산' },
+          { href: '/net-worth', label: '총자산' },
           { href: '/pension', label: '연금' },
         ],
       },

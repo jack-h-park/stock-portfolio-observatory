@@ -28,7 +28,7 @@ export function Sidebar({
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const isActive = (href: string) =>
-    href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(href + '/')
+    href === '/' ? pathname === '/' : href === '/taxes' ? pathname === href || pathname.startsWith('/taxes/records/') : pathname === href || pathname.startsWith(href + '/')
 
   useEffect(() => {
     setOpen(false)
@@ -66,12 +66,12 @@ export function Sidebar({
           </svg>
         </button>
         <div className="flex min-w-0 items-baseline gap-1.5">
-          <Label as="span" size="micro" variant="eyebrow">Stock</Label>
+          <Label as="span" size="micro" variant="eyebrow">Personal</Label>
           <span
             className="bg-clip-text text-body-lg font-semibold leading-tight tracking-tight text-transparent"
             style={{ backgroundImage: 'var(--gradient-text)' }}
           >
-            Portfolio Observatory
+            Finance Observatory
           </span>
         </div>
       </header>
@@ -100,21 +100,21 @@ export function Sidebar({
 
         <div className="flex items-center gap-2.5 px-1">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line-subtle bg-surface text-caption font-semibold text-ink">
-            SO
+            PF
           </div>
           <div className="min-w-0">
-            <div className="truncate text-body font-medium leading-tight text-ink">Stock Portfolio</div>
+            <div className="truncate text-body font-medium leading-tight text-ink">Personal Finance</div>
             <div className="mt-0.5 text-micro font-medium tracking-[0.08em] text-ink-3">{copy.tagline}</div>
           </div>
         </div>
 
         <div className="mt-3 px-1">
-          <Label size="micro" variant="eyebrow">Stock</Label>
+          <Label size="micro" variant="eyebrow">Personal</Label>
           <div
             className="bg-clip-text text-title font-semibold leading-tight tracking-tight text-transparent"
             style={{ backgroundImage: 'var(--gradient-text)' }}
           >
-            Portfolio Observatory
+            Finance Observatory
           </div>
         </div>
 

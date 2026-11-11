@@ -7,7 +7,11 @@ import test from 'node:test'
 
 const script = path.resolve(import.meta.dirname, '../scripts/seed-sample.mjs')
 function run(cwd, extra = {}) {
-  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('STOCK_') && !k.startsWith('FINANCE_') && !k.startsWith('SAMPLE_')))
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([k]) => !k.startsWith('STOCK_') && !k.startsWith('FINANCE_') && !k.startsWith('SAMPLE_'),
+    ),
+  )
   return spawnSync(process.execPath, [script], { cwd, env: { ...env, ...extra }, encoding: 'utf8' })
 }
 test('sample seed refuses private configuration even with force and preserves files', () => {
@@ -23,7 +27,9 @@ test('sample seed refuses private configuration even with force and preserves fi
     writeFileSync(path.join(dir, '.env.local'), 'STOCK_DB_PATH=private.db\n')
     assert.notEqual(run(dir, { SAMPLE_FORCE: '1' }).status, 0)
     assert.equal(readFileSync(db, 'utf8'), 'private sentinel')
-  } finally { rmSync(dir, { recursive: true, force: true }) }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 test('sample seed owns only its marked root and refuses symlinked output', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'finance-sample-'))
@@ -41,5 +47,7 @@ test('sample seed owns only its marked root and refuses symlinked output', () =>
     symlinkSync(outside, path.join(base, 'runtime'))
     assert.notEqual(run(dir, { SAMPLE_FORCE: '1' }).status, 0)
     assert.equal(readFileSync(path.join(outside, 'fx-rates.json'), 'utf8'), 'private sentinel')
-  } finally { rmSync(dir, { recursive: true, force: true }) }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

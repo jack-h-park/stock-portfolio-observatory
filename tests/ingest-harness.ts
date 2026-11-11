@@ -71,7 +71,7 @@ const INGEST_PATHS: Record<string, string> = {
 export function ingestEnv(dir: string, overrides: Record<string, string> = {}) {
   const env: Record<string, string> = {}
   for (const [key, value] of Object.entries(process.env)) {
-    if (value === undefined || key.startsWith('STOCK_')) continue
+    if (value === undefined || key.startsWith('STOCK_') || key.startsWith('FINANCE_')) continue
     env[key] = value
   }
   env.STOCK_DATA_DIR = dir

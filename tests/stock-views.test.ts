@@ -50,7 +50,7 @@ test('the sample seed writes the same stock-only views over *_all tables', () =>
   const dir = mkdtempSync(path.join(tmpdir(), 'stock-views-seed-'))
   const dbPath = path.join(dir, 'private-data/personal-finance-sample/runtime/observatory.db')
   const env: Record<string, string> = {}
-  for (const [key, value] of Object.entries(process.env)) if (value !== undefined && !key.startsWith('STOCK_')) env[key] = value
+  for (const [key, value] of Object.entries(process.env)) if (value !== undefined && !key.startsWith('STOCK_') && !key.startsWith('FINANCE_')) env[key] = value
   execFileSync(process.execPath, [path.join(REPO_ROOT, 'scripts/seed-sample.mjs')], {
     cwd: dir,
     stdio: 'pipe',

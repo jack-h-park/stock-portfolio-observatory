@@ -439,3 +439,14 @@ for (const [date, label, opts] of [
   writeJson(path.join(briefingArchiveDir, `${date}.json`), sampleBriefing(date, label, opts))
 }
 console.log(`Wrote sample briefing archive: ${briefingArchiveDir}`)
+
+// Seed tax history exclusively inside the owned synthetic state/evidence roots.
+const taxHistory = JSON.parse(fs.readFileSync(new URL('../examples/tax-history.synthetic.json', import.meta.url), 'utf8'))
+for (const evidence of taxHistory.evidence) {
+  const bytes = Buffer.from(`Synthetic ${evidence.id}; this is not a financial or tax document.\n`)
+  const file = path.join(evidence.root === 'tax' ? roots.taxDir : roots.recordsDir, evidence.relativePath)
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(file, bytes)
+  evidence.sha256 = crypto.createHash('sha256').update(bytes).digest('hex')
+}
+writeJson(path.join(roots.stateDir, 'tax-history.json'), taxHistory)

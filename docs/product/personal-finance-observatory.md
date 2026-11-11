@@ -6,7 +6,7 @@ Personal Finance Observatory connects assets, cash flow, KR/US investment tax es
 
 The application preserves source records and supports local configuration, saved plans, review decisions, and reconciliation. Existing exports and file-management utilities have explicit write boundaries. It is not accurate to describe every operation as read-only.
 
-The primary workflow is to understand financial position, investigate a figure's sources and coverage, compare planning scenarios, and review the resulting decisions. Historical returns, assessments, tax payments, and refunds are the next functional extension; they must remain separate from calculated estimates.
+The primary workflow is to understand financial position, investigate a figure's sources and coverage, compare planning scenarios, and review the resulting decisions. Historical returns, assessments, tax payments, and refunds use a separate versioned store and remain separate from calculated estimates. Private historical-year acceptance is still required.
 
 ## Organization
 
@@ -14,7 +14,7 @@ The primary workflow is to understand financial position, investigate a figure's
 | --- | --- | --- |
 | Overview | What is the financial position and what is missing? | Portfolio overview, total-assets series, valuation coverage |
 | Assets and cash flow | What is held, where, and how did money move? | Holdings, accounts, deposits, pensions, gold, income, transactions |
-| Taxes | What is estimated, reported, paid, and unresolved? | Investment scenarios, annual assumptions, lots, saved plans; history is planned |
+| Taxes | What is estimated, reported, paid, and unresolved? | Investment scenarios, annual assumptions, lots, saved plans, filing and payment history |
 | Review and data | What needs attention and why trust a figure? | Rebalancing, reconciliation, freshness, source inventory |
 
 Asset ownership, account regime, economic exposure, and tax-unit membership are separate dimensions. Preserve the existing default owner's scope; a household view must explicitly select its members. Label covered asset totals accurately and preserve missing values. Complete net worth requires supported liabilities, which are not currently implemented.

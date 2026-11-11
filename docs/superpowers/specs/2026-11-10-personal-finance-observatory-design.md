@@ -1,7 +1,7 @@
 # Personal Finance Observatory Product and Architecture Design
 
 **Date:** 2026-11-10 (America/Los_Angeles)
-**Status:** Draft for owner review; the direction was accepted in discussion, but implementation and operational migration have not started.
+**Status:** Direction accepted for implementation. The bounded synthetic implementation is in progress; private acceptance and operational migration are separate. See [execution status](../../product/implementation-status.md).
 **Companion:** [Implementation plan](../plans/2026-11-10-personal-finance-observatory.md)
 
 ## 1. Decision and purpose
