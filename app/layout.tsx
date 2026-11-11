@@ -6,6 +6,8 @@ import '@/styles/globals.css'
 import { LanguageProvider } from '@/components/LanguageProvider'
 import { Sidebar } from '@/components/Sidebar'
 import { DevCopyBadge } from '@/components/DevCopyBadge'
+import { PrivateAccessNotice } from '@/components/PrivateAccessNotice'
+import { config } from '@/config'
 import { getLanguage } from '@/lib/i18n-server'
 import { getAssetView } from '@/lib/asset-view-server'
 import { getCurrencyPreferences } from '@/lib/currency-server'
@@ -58,6 +60,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             */}
             <main id="main-content" tabIndex={-1} className="jp-stagger min-w-0 flex-1 px-4 py-5 max-sm:overflow-x-clip lg:px-8 lg:py-6">
               <DevCopyBadge language={language} />
+              <PrivateAccessNotice language={language} mode={config.finance.mode} notice={process.env.FINANCE_ACCESS_NOTICE} />
               {children}
             </main>
           </div>

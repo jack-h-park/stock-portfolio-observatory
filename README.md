@@ -44,6 +44,8 @@ Existing `STOCK_*` file overrides remain supported. New installations can config
 
 Tax history lives in durable `tax-history.json` under the state root, independently of the generated portfolio SQLite database. `FINANCE_STATE_WRITABLE` defaults to `0` privately. Enable it only on the single writing host after backup/restore verification. Other hosts are read-only; source sync must not carry writable state. Keep existing source archives in place and use their configured root aliases.
 
+The owner-operated private website intentionally allows only approved owner devices over Tailscale, including for taxes and evidence. Normal web access does not require an SSH tunnel; new devices require an explicit access review. This is a deployment constraint enforced at the finance gateway, not authentication supplied by private mode. See [private web access](docs/operations/private-web-access.md).
+
 Follow the [storage contract](docs/architecture/private-storage.md), [tax-history import/review guide](docs/operations/tax-history.md), [backup/restore guide](docs/operations/finance-state-backup-and-restore.md), and [cutover checklist](docs/operations/personal-finance-cutover.md). Do not run sample seeding in a private installation. Refresh, sheet publishing, and operational jobs have their own external effects; use the documented operating procedures on the owning host.
 
 ## Develop and verify
