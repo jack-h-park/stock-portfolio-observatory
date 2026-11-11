@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "revision": 0,
+  "taxUnits": [
+    {"id":"self-2025","recordRevision":1,"year":2025,"kind":"individual","ownerIds":["synthetic-owner"]},
+    {"id":"self-2024","recordRevision":1,"year":2024,"kind":"individual","ownerIds":["synthetic-owner"]}
+  ],
+  "obligations": [
+    {"id":"us-2025","recordRevision":1,"taxUnitId":"self-2025","taxYear":2025,"authority":"US:federal","taxType":"income","currency":"USD","coverageConfirmed":true,"effectiveBasis":{"kind":"assessment","id":"assessment-1","recordRevision":1,"reviewedAt":"2026-04-01","evidenceIds":["doc-1"]}},
+    {"id":"us-2024","recordRevision":1,"taxUnitId":"self-2024","taxYear":2024,"authority":"US:federal","taxType":"income","currency":"USD","coverageConfirmed":false},
+    {"id":"kr-2025","recordRevision":1,"taxUnitId":"self-2025","taxYear":2025,"authority":"KR:national","taxType":"income","currency":"KRW","coverageConfirmed":false}
+  ],
+  "returns": [
+    {"id":"return-original","recordRevision":1,"obligationId":"us-2025","status":"accepted","liability":{"currency":"USD","minor":"10000"},"evidenceIds":["doc-1"]},
+    {"id":"return-amended","recordRevision":1,"obligationId":"us-2025","supersedesId":"return-original","status":"submitted","liability":{"currency":"USD","minor":"12000"},"evidenceIds":["doc-1"]}
+  ],
+  "assessments": [
+    {"id":"assessment-1","recordRevision":1,"obligationId":"us-2025","liability":{"currency":"USD","minor":"11000"},"date":"2026-03-15","evidenceIds":["doc-1"]}
+  ],
+  "events": [
+    {"id":"withholding","recordRevision":1,"kind":"withholding","date":"2025-12-31","currency":"USD","principal":"3000","interest":"0","penalty":"0","review":"authority-confirmed","evidenceIds":["doc-1"]},
+    {"id":"payment","recordRevision":1,"kind":"filing-payment","date":"2026-04-10","postingDate":"2026-04-12","currency":"USD","principal":"10000","interest":"100","penalty":"50","review":"authority-confirmed","evidenceIds":["doc-1","doc-2"]},
+    {"id":"refund","recordRevision":1,"kind":"refund","date":"2026-05-01","currency":"USD","principal":"-1000","interest":"0","penalty":"0","review":"authority-confirmed","evidenceIds":["doc-2"]},
+    {"id":"reversal","recordRevision":1,"kind":"reversal","date":"2026-05-02","currency":"USD","principal":"-500","interest":"0","penalty":"0","review":"authority-confirmed","evidenceIds":["doc-2"]}
+  ],
+  "allocations": [
+    {"id":"alloc-w","recordRevision":1,"eventId":"withholding","obligationId":"us-2025","principal":"3000","interest":"0","penalty":"0","effectiveDate":"2025-12-31","evidenceIds":["doc-1"]},
+    {"id":"alloc-p25","recordRevision":1,"eventId":"payment","obligationId":"us-2025","principal":"8000","interest":"100","penalty":"50","effectiveDate":"2026-04-12","evidenceIds":["doc-1"]},
+    {"id":"alloc-p24","recordRevision":1,"eventId":"payment","obligationId":"us-2024","principal":"2000","interest":"0","penalty":"0","effectiveDate":"2026-04-12","evidenceIds":["doc-1"]},
+    {"id":"alloc-r","recordRevision":1,"eventId":"refund","obligationId":"us-2025","principal":"-1000","interest":"0","penalty":"0","effectiveDate":"2026-05-01","evidenceIds":["doc-2"]},
+    {"id":"alloc-v","recordRevision":1,"eventId":"reversal","obligationId":"us-2025","principal":"-500","interest":"0","penalty":"0","effectiveDate":"2026-05-02","evidenceIds":["doc-2"]}
+  ],
+  "adjustments": [],
+  "evidence": [
+    {"id":"doc-1","recordRevision":1,"root":"tax","relativePath":"synthetic/return.pdf","sha256":"0000000000000000000000000000000000000000000000000000000000000000"},
+    {"id":"doc-2","recordRevision":1,"root":"records","relativePath":"synthetic/receipt.pdf","sha256":"1111111111111111111111111111111111111111111111111111111111111111"}
+  ],
+  "changes": []
+}

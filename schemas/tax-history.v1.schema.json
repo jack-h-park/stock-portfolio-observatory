@@ -1,0 +1,650 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:personal-finance-observatory:tax-history:v1",
+  "title": "Tax history version 1",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "taxUnits": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/taxUnits"
+      }
+    },
+    "obligations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/obligations"
+      }
+    },
+    "returns": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/returns"
+      }
+    },
+    "assessments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/assessments"
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/events"
+      }
+    },
+    "allocations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/allocations"
+      }
+    },
+    "adjustments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/adjustments"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/change"
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "revision",
+    "taxUnits",
+    "obligations",
+    "returns",
+    "assessments",
+    "events",
+    "allocations",
+    "adjustments",
+    "evidence",
+    "changes"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "money": {
+      "type": "object",
+      "properties": {
+        "currency": {
+          "type": "string",
+          "enum": [
+            "USD",
+            "KRW"
+          ]
+        },
+        "minor": {
+          "type": "string",
+          "pattern": "^(0|-?[1-9][0-9]{0,39})$"
+        }
+      },
+      "required": [
+        "currency",
+        "minor"
+      ],
+      "additionalProperties": false
+    },
+    "basis": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "return",
+            "assessment"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+        },
+        "recordRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reviewedAt": {
+          "type": "string",
+          "format": "date"
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "recordRevision",
+        "reviewedAt",
+        "evidenceIds"
+      ],
+      "additionalProperties": false
+    },
+    "taxUnits": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+        },
+        "recordRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deleted": {
+          "type": "boolean"
+        },
+        "year": {
+          "type": "integer",
+          "minimum": 1900,
+          "maximum": 2200
+        },
+        "kind": {
+          "enum": [
+            "individual",
+            "joint"
+          ]
+        },
+        "ownerIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "id",
+        "recordRevision",
+        "year",
+        "kind",
+        "ownerIds"
+      ],
+      "additionalProperties": false
+    },
+    "obligations": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+        },
+        "recordRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deleted": {
+          "type": "boolean"
+        },
+        "taxUnitId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+        },
+        "taxYear": {
+          "type": "integer",
+          "minimum": 1900,
+          "maximum": 2200
+        },
+        "authority": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "taxType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "currency": {
+          "type": "string",
+          "enum": [
+            "USD",
+            "KRW"
+          ]
+        },
+        "coverageConfirmed": {
+          "type": "boolean"
+        },
+        "effectiveBasis": {
+          "$ref": "#/$defs/basis"
+        }
+      },
+      "required": [
+        "id",
+        "recordRevision",
+        "taxUnitId",
+        "taxYear",
+        "authority",
+        "taxType",
+        "currency",
+        "coverageConfirmed"
+      ],
+      "additionalProperties": false
+    },
+    "returns": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+        },
+        "recordRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deleted": {
+          "type": "boolean"
+        },
+        "obligationId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "submitted",
+            "accepted",
+            "rejected"
+          ]
+        },
+        "liability": {
+          "$ref": "#/$defs/money"
+        },
+        "supersedesId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "recordRevision",
+        "obligationId",
+        "status",
+        "liability",
+        "evidenceIds"
+      ],
+      "additionalProperties": false
+    },
+    "assessments": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+        },
+        "recordRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deleted": {
+          "type": "boolean"
+        },
+        "obligationId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+        },
+        "liability": {
+          "$ref": "#/$defs/money"
+        },
+        "date": {
+          "type": "string",
+          "format": "date"
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "recordRevision",
+        "obligationId",
+        "liability",
+        "date",
+        "evidenceIds"
+      ],
+      "additionalProperties": false
+    },
+    "events": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+        },
+        "recordRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deleted": {
+          "type": "boolean"
+        },
+        "kind": {
+          "enum": [
+            "withholding",
+            "estimated-payment",
+            "filing-payment",
+            "additional-payment",
+            "refund",
+            "reversal",
+            "credit-transfer"
+          ]
+        },
+        "date": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "postingDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "currency": {
+          "type": "string",
+          "enum": [
+            "USD",
+            "KRW"
+          ]
+        },
+        "principal": {
+          "type": "string",
+          "pattern": "^(0|-?[1-9][0-9]{0,39})$"
+        },
+        "interest": {
+          "type": "string",
+          "pattern": "^(0|-?[1-9][0-9]{0,39})$"
+        },
+        "penalty": {
+          "type": "string",
+          "pattern": "^(0|-?[1-9][0-9]{0,39})$"
+        },
+        "review": {
+          "enum": [
+            "unreviewed",
+            "evidenced",
+            "authority-confirmed"
+          ]
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "recordRevision",
+        "kind",
+        "date",
+        "currency",
+        "principal",
+        "interest",
+        "penalty",
+        "review",
+        "evidenceIds"
+      ],
+      "additionalProperties": false
+    },
+    "allocations": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+        },
+        "recordRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deleted": {
+          "type": "boolean"
+        },
+        "eventId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+        },
+        "obligationId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+        },
+        "principal": {
+          "type": "string",
+          "pattern": "^(0|-?[1-9][0-9]{0,39})$"
+        },
+        "interest": {
+          "type": "string",
+          "pattern": "^(0|-?[1-9][0-9]{0,39})$"
+        },
+        "penalty": {
+          "type": "string",
+          "pattern": "^(0|-?[1-9][0-9]{0,39})$"
+        },
+        "effectiveDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "recordRevision",
+        "eventId",
+        "obligationId",
+        "principal",
+        "interest",
+        "penalty",
+        "effectiveDate",
+        "evidenceIds"
+      ],
+      "additionalProperties": false
+    },
+    "adjustments": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+        },
+        "recordRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deleted": {
+          "type": "boolean"
+        },
+        "obligationId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+        },
+        "amount": {
+          "$ref": "#/$defs/money"
+        },
+        "effectiveDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "recordRevision",
+        "obligationId",
+        "amount",
+        "effectiveDate",
+        "evidenceIds"
+      ],
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+        },
+        "recordRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deleted": {
+          "type": "boolean"
+        },
+        "root": {
+          "enum": [
+            "records",
+            "tax"
+          ]
+        },
+        "relativePath": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      },
+      "required": [
+        "id",
+        "recordRevision",
+        "root",
+        "relativePath",
+        "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "change": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+        },
+        "storeRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "changedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "actor": {
+          "enum": [
+            "local-user",
+            "import"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "records": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "collection": {
+                "enum": [
+                  "taxUnits",
+                  "obligations",
+                  "returns",
+                  "assessments",
+                  "events",
+                  "allocations",
+                  "adjustments",
+                  "evidence"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,119}$"
+              },
+              "before": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "after": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "collection",
+              "id",
+              "before",
+              "after"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "id",
+        "storeRevision",
+        "changedAt",
+        "actor",
+        "reason",
+        "records"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
