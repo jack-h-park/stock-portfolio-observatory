@@ -20,6 +20,7 @@ import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow, KpiBand } from '@/components/layout'
+import { maskAccountLabel } from '@/lib/account-label'
 
 type PageCopy = ReturnType<typeof getPageCopy<'dailyBriefing'>>
 
@@ -430,7 +431,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                       <Td align="right" className="tabular-nums">
                         {fmtQuantity(p.quantity, 2)}
                       </Td>
-                      <Td className="text-label text-ink-3">{p.accounts.join(', ')}</Td>
+                      <Td className="text-label text-ink-3">{p.accounts.map(maskAccountLabel).join(', ')}</Td>
                     </Tr>
                   ))}
                 </Tbody>

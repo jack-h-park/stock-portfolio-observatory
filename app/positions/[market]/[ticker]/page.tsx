@@ -16,6 +16,7 @@ import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
 import { CardRow, KpiBand } from '@/components/layout'
 import { routeSection } from '@/lib/page-names'
+import { displayAccount, maskAccountLabel } from '@/lib/account-label'
 
 export const dynamic = 'force-dynamic'
 
@@ -344,7 +345,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             rows={detail.holdings}
             columns={[
               { key: 'brokerage', label: 'Broker' },
-              { key: 'account', label: 'Account' },
+              { key: 'account', label: 'Account', render: (r: { account: string }) => maskAccountLabel(r.account) },
               { key: 'quantity', label: copy.columns.quantity, align: 'right', render: (r) => fmtQuantity(r.quantity, 4) },
               { key: 'native_cost', label: copy.columns.cost, align: 'right', render: (r) => money(r.native_cost, r.currency) },
               { key: 'native_market_value', label: copy.columns.market, align: 'right', render: (r) => moneyOrNa(copy, money, r.native_market_value, r.currency) },
@@ -368,7 +369,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             rows={accountLotProfile}
             columns={[
               { key: 'brokerage', label: 'Broker' },
-              { key: 'account', label: 'Account' },
+              { key: 'account', label: 'Account', render: (r: { account: string }) => maskAccountLabel(r.account) },
               { key: 'quantity', label: copy.columns.quantity, align: 'right', render: (r) => fmtQuantity(r.quantity, 4) },
               { key: 'lot_count', label: copy.columns.lots, align: 'right', render: (r) => fmtNumber(r.lot_count) },
               { key: 'long_count', label: copy.columns.long, align: 'right', render: (r) => fmtNumber(r.long_count) },
@@ -389,7 +390,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
                 <span className="tabular-nums text-ink-3">{event.date}</span>
                 <Badge tone={eventTone(event.kind)}>{copy.eventKinds[event.kind] ?? event.kind}</Badge>
                 <span className="min-w-0 truncate text-ink">
-                  {event.brokerage} · {event.account} · {event.detail}
+                  {displayAccount(event.brokerage, event.account)} · {event.detail}
                 </span>
                 <span className="text-right tabular-nums text-ink-3">{event.quantity == null ? 'n/a' : fmtQuantity(event.quantity, 4)}</span>
                 <span className="text-right tabular-nums text-ink">{event.amount == null ? 'n/a' : money(event.amount, event.currency)}</span>
@@ -443,7 +444,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               rows={taxPlan.recommended.slice(0, 8)}
               columns={[
                 { key: 'brokerage', label: 'Broker' },
-                { key: 'account', label: 'Account' },
+                { key: 'account', label: 'Account', render: (r: { account: string }) => maskAccountLabel(r.account) },
                 { key: 'acquired_date', label: 'Acquired' },
                 { key: 'holdingBucket', label: copy.columns.term, render: (r) => <Badge tone={bucketTone(r.holdingBucket)}>{r.holdingBucket}</Badge> },
                 { key: 'open_quantity', label: copy.columns.quantity, align: 'right', render: (r) => fmtQuantity(r.open_quantity, 4) },
@@ -472,7 +473,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               rows={detail.lots}
               columns={[
                 { key: 'brokerage', label: 'Broker' },
-                { key: 'account', label: 'Account' },
+                { key: 'account', label: 'Account', render: (r: { account: string }) => maskAccountLabel(r.account) },
                 { key: 'acquired_date', label: 'Acquired' },
                 { key: 'tax_term', label: 'Term' },
                 { key: 'open_quantity', label: copy.columns.quantity, align: 'right', render: (r) => fmtQuantity(r.open_quantity, 4) },
@@ -493,7 +494,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               columns={[
                 { key: 'date', label: 'Date' },
                 { key: 'brokerage', label: 'Broker' },
-                { key: 'account', label: 'Account' },
+                { key: 'account', label: 'Account', render: (r: { account: string }) => maskAccountLabel(r.account) },
                 { key: 'type', label: copy.columns.type, render: (r) => <Badge tone={r.type === 'SELL' ? 'warning' : r.type === 'DIVIDEND' ? 'success' : 'info'}>{r.type}</Badge> },
                 { key: 'quantity', label: copy.columns.quantity, align: 'right', render: (r) => fmtQuantity(r.quantity, 4) },
                 { key: 'native_amount', label: copy.columns.amount, align: 'right', render: (r) => moneyOrNa(copy, money, r.native_amount, r.currency) },
@@ -514,7 +515,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               columns={[
                 { key: 'date', label: 'Date' },
                 { key: 'brokerage', label: 'Broker' },
-                { key: 'account', label: 'Account' },
+                { key: 'account', label: 'Account', render: (r: { account: string }) => maskAccountLabel(r.account) },
                 { key: 'native_amount', label: copy.columns.amount, align: 'right', render: (r) => money(r.native_amount, r.currency) },
                 { key: 'native_tax_withheld', label: copy.columns.tax, align: 'right', render: (r) => moneyOrNa(copy, money, r.native_tax_withheld, r.currency) },
                 { key: 'amount_krw', label: copy.columns.baseAmount, align: 'right', render: (r) => money(r.amount_krw, 'KRW') },

@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, MetricField, TextLink, marketTone } from '@/components/ui'
 import { CardRow } from '@/components/layout'
 import { getAccountDataRanges, getMeta } from '@/lib/adapters/portfolio-db'
+import { maskAccountLabel } from '@/lib/account-label'
 import { summarizeAccountRanges, type AccountDataRange, type DateRange } from '@/lib/account-ranges'
 import { fmtDate, fmtDateTime, fmtNumber } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
@@ -94,10 +95,10 @@ export default async function AccountsPage() {
                     <span className="font-medium text-ink">{row.brokerage}</span>
                   </div>
                   <div className="mt-1 text-label text-ink-2">
-                    {row.name}
+                    {maskAccountLabel(row.name)}
                     {row.accountType && !row.name.includes(row.accountType) ? <span className="text-ink-3"> · {row.accountType}</span> : null}
                   </div>
-                  {row.aliases.length ? <div className="text-label text-ink-3">{copy.alsoStoredAs(row.aliases.join(', '))}</div> : null}
+                  {row.aliases.length ? <div className="text-label text-ink-3">{copy.alsoStoredAs(row.aliases.map(maskAccountLabel).join(', '))}</div> : null}
                 </div>
               ),
             },
@@ -114,7 +115,7 @@ export default async function AccountsPage() {
                         transactions={row.ranges.transactions}
                         dividends={row.ranges.dividends}
                         holdings={row.ranges.holdings}
-                        label={copy.timelineLabel(row.name, fmtDate(row.firstDate), fmtDate(row.lastDate))}
+                        label={copy.timelineLabel(maskAccountLabel(row.name), fmtDate(row.firstDate), fmtDate(row.lastDate))}
                       />
                     ),
                   },

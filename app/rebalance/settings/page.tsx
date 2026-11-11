@@ -7,6 +7,7 @@ import { Checkbox, Field, Input, Select } from '@/components/form'
 import { CardRow } from '@/components/layout'
 import { dbAvailable, portfolioToday } from '@/lib/adapters/portfolio-db'
 import { getRebalanceInput } from '@/lib/adapters/rebalance-input'
+import { displayAccount } from '@/lib/account-label'
 import { getLanguage } from '@/lib/i18n-server'
 import { SLEEVES, accountKey, defaultAccountRule, getAllocationPolicy, rebalanceWrappers, type AccountRule, type Sleeve } from '@/lib/rebalance/allocation-policy'
 import { classify, getInstrumentClasses, instrumentKey, type InstrumentClasses } from '@/lib/rebalance/instrument-classes'
@@ -78,14 +79,14 @@ export default async function RebalanceSettingsPage({ searchParams }: { searchPa
   const addAccount = (brokerage: string | null, account: string, market: string) => {
     const key = accountKey(brokerage, account)
     if (accountRows.has(key)) return
-    accountRows.set(key, { key, label: brokerage ? `${brokerage} · ${account}` : account, rule: policy.accounts[key] ?? defaultAccountRule(market) })
+    accountRows.set(key, { key, label: displayAccount(brokerage, account), rule: policy.accounts[key] ?? defaultAccountRule(market) })
   }
   for (const position of input?.positions ?? []) addAccount(position.brokerage, position.account, position.market)
   for (const cash of input?.cash ?? []) addAccount(cash.brokerage, cash.account, 'KR')
   for (const [key, rule] of Object.entries(policy.accounts)) {
     if (accountRows.has(key)) continue
     const [brokerage, ...rest] = key.split('::')
-    accountRows.set(key, { key, label: brokerage ? `${brokerage} · ${rest.join('::')}` : rest.join('::'), rule })
+    accountRows.set(key, { key, label: displayAccount(brokerage || null, rest.join('::')), rule })
   }
   const accounts = Array.from(accountRows.values())
 

@@ -46,7 +46,11 @@ export type LlmInput = {
     usTaxPerson: boolean
     washSaleBlockedBuys: { ticker: string; blockedThrough: string }[]
   }
-  context: BriefingContext
+  /**
+   * The briefing context, plus the maintainer's answers to earlier proposals' questions (newest first). The prompt
+   * treats the answers as standing context: a question already answered is not asked again unless something changed.
+   */
+  context: BriefingContext & { priorAnswers: PriorAnswer[] }
   pastDecisions: {
     id: string
     status: string
@@ -57,12 +61,43 @@ export type LlmInput = {
   }[]
 }
 
+/** One answered question from an earlier proposal. `date` is the day it was answered. */
+export type PriorAnswer = { proposalId: string; date: string; question: string; answer: string }
+
 const NAME_MAX = 80
 const PAST_DECISIONS = 3
 const REASON_MAX = 500
 const MACRO_MAX = 2000
 const CONCENTRATION_TOP = 10
 const HARVEST_TOP = 10
+/** Answers come from at most this many of the newest proposals that have any, and at most PRIOR_ANSWER_ITEMS in all. */
+const PRIOR_ANSWER_PROPOSALS = 3
+const PRIOR_ANSWER_ITEMS = 10
+const QUESTION_MAX = 500
+const ANSWER_MAX = 2000
+
+const byCreatedDesc = (a: Proposal, b: Proposal) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)
+
+/**
+ * The newest answered questions across the newest proposals that carry answers, newest first. Both the question and
+ * the answer pass through `scrub`: the answer is free text the maintainer typed.
+ */
+export function priorAnswers(past: Proposal[], scrub: (text: string) => string): PriorAnswer[] {
+  const answered = past.filter((p) => (p.answers?.length ?? 0) > 0).sort(byCreatedDesc).slice(0, PRIOR_ANSWER_PROPOSALS)
+  const out: PriorAnswer[] = []
+  for (const p of answered) {
+    const answers = [...(p.answers ?? [])].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : a.index - b.index))
+    for (const a of answers) {
+      out.push({
+        proposalId: p.id,
+        date: a.at.slice(0, 10),
+        question: scrub(a.question).slice(0, QUESTION_MAX),
+        answer: scrub(a.answer).slice(0, ANSWER_MAX),
+      })
+    }
+  }
+  return out.slice(0, PRIOR_ANSWER_ITEMS)
+}
 
 /** A share for the model, to one decimal place, so it quotes the figure rather than re-deriving it. */
 const pct1 = (value: number) => Math.round(value * 10) / 10
@@ -244,7 +279,7 @@ export function buildLlmInput(args: {
         }
       : null
 
-  const newest = [...args.past].sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)).slice(0, PAST_DECISIONS)
+  const newest = [...args.past].sort(byCreatedDesc).slice(0, PAST_DECISIONS)
   const pastDecisions = newest.map((p) => {
     const sleeves: LlmInput['pastDecisions'][number]['sleeves'] = {}
     let edited = false
@@ -294,6 +329,7 @@ export function buildLlmInput(args: {
     context: {
       macro: context.macro.map((n) => ({ date: n.date, macro: scrub(n.macro).slice(0, MACRO_MAX) })),
       benchmarks: sanitizeBenchmarks(context.benchmarks),
+      priorAnswers: priorAnswers(args.past, scrub),
     },
     pastDecisions,
   }

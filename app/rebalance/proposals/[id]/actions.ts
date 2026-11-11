@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { getProposal, recordFill, transition, type Proposal } from '@/lib/rebalance/proposal-store'
 import {
   addIdeaToBuyList,
+  answerProposalQuestion,
   approveProposalPlan,
   approveProposalTargets,
   closeProposalWithoutTrades,
@@ -128,4 +129,11 @@ export async function addIdeaAction(formData: FormData) {
   const outcome = addIdeaToBuyList(p.id, formData)
   if (outcome.ok) revalidatePath('/rebalance/settings')
   finish(p.id, 'summary', outcome, 'summary', 'idea_added')
+}
+
+/** Saves (or, when empty, clears) the maintainer's answer to one of the LLM's questions; any status, closed included. */
+export async function answerQuestionAction(formData: FormData) {
+  const p = loadProposal(formData)
+  const outcome = answerProposalQuestion(p.id, formData, new Date())
+  finish(p.id, 'summary', outcome, 'summary', outcome.ok && outcome.cleared ? 'answer_cleared' : 'answer_saved')
 }

@@ -3,6 +3,7 @@ import { DataTable } from '@/components/DataTable'
 import type { WrapperReviewRow } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtNumber } from '@/lib/format'
 import type { getPageCopy } from '@/lib/ui-copy'
+import { maskAccountLabel } from '@/lib/account-label'
 
 type WrapperReviewCopy = ReturnType<typeof getPageCopy<'taxPlanning'>>['wrapperReview']
 
@@ -44,7 +45,7 @@ export function WrapperReviewCard({ rows, copy }: { rows: WrapperReviewRow[]; co
         rows={rows}
         getRowKey={(row: WrapperReviewRow) => `${row.wrapper}:${row.account}`}
         columns={[
-          { key: 'account', label: copy.account, render: (row: WrapperReviewRow) => <span className="text-ink">{row.account}</span> },
+          { key: 'account', label: copy.account, render: (row: WrapperReviewRow) => <span className="text-ink">{maskAccountLabel(row.account)}</span> },
           { key: 'wrapper', label: copy.wrapper, nowrap: true, render: (row: WrapperReviewRow) => copy.wrappers[row.wrapper] ?? row.wrapper },
           {
             key: 'usTreatment',

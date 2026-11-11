@@ -5,6 +5,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { accountKey, type AllocationPolicy } from '../lib/rebalance/allocation-policy'
 import {
+  bandEdges,
   computeAllocation,
   type RebalanceCash,
   type RebalancePosition,
@@ -121,6 +122,26 @@ test('status uses target±band', () => {
   assert.equal(run(40).status, 'within')
   assert.equal(run(39).status, 'below')
   assert.equal(run(50).status, 'within')
+})
+
+test('band edges are held inside 0-100 and the status is unchanged', () => {
+  assert.deepEqual(bandEdges(0, 0.5), { lower: 0, upper: 0.5 })
+  assert.deepEqual(bandEdges(99.8, 0.5), { lower: 99.3, upper: 100 })
+  assert.deepEqual(bandEdges(30, 5), { lower: 25, upper: 35 })
+  const p = policy()
+  // A sleeve with a 0 target: its lower edge reads 0, not -0.5, and a 0 share is within the band.
+  p.targets.bonds = { target: 0, band: 0.5 }
+  p.targets.cash = { target: 15, band: 5 }
+  const a = computeAllocation({ positions: [pos({})], cash: [] }, p, classes)
+  const bonds = a.sleeves.find((r) => r.sleeve === 'bonds')!
+  assert.equal(bonds.lower, 0)
+  assert.equal(bonds.upper, 0.5)
+  assert.equal(bonds.status, 'within')
+  // A sleeve holding everything: its upper edge reads at most 100.
+  const all = computeAllocation({ positions: [pos({})], cash: [] }, { ...p, targets: { ...p.targets, us_equity: { target: 98, band: 5 } } }, classes)
+  const us = all.sleeves.find((r) => r.sleeve === 'us_equity')!
+  assert.equal(us.upper, 100)
+  assert.equal(us.status, 'within')
 })
 
 test('percentages sum to 100 over classified value', () => {

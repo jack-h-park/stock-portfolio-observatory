@@ -41,6 +41,15 @@ export type Allocation = {
   positionsBySleeve: Record<Sleeve, RebalancePosition[]>
 }
 
+/**
+ * A sleeve's band edges as shown and checked: target ± band, held inside 0-100. A share is never below 0 or above
+ * 100, so the clamp changes no within/above/below verdict; it only stops a target of 0 reading as `-0.5–0.5%`. The
+ * engine computes its own edges for trade sizing (engine.ts) and is not affected.
+ */
+export function bandEdges(target: number, band: number): { lower: number; upper: number } {
+  return { lower: Math.max(0, target - band), upper: Math.min(100, target + band) }
+}
+
 export function computeAllocation(
   input: { positions: RebalancePosition[]; cash: RebalanceCash[] },
   policy: AllocationPolicy,
@@ -76,8 +85,7 @@ export function computeAllocation(
   const sleeves = SLEEVES.map((sleeve): SleeveRow => {
     const { target, band } = policy.targets[sleeve]
     const pct = totalKrw > 0 ? (values[sleeve] / totalKrw) * 100 : 0
-    const lower = target - band
-    const upper = target + band
+    const { lower, upper } = bandEdges(target, band)
     const status = pct < lower ? 'below' : pct > upper ? 'above' : 'within'
     return { sleeve, valueKrw: values[sleeve], pct, target, band, lower, upper, status }
   })

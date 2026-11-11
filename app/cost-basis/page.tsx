@@ -14,6 +14,7 @@ import { applyFilters, applySearch, filterOptions, readFilters, withParam, type 
 import { formatSort, parseSort, sortRows, type TableSort } from '@/lib/table-sort'
 import { COST_BASIS_STATUS_TONE } from '@/lib/tone'
 import { routeMetadata, routeSection } from '@/lib/page-names'
+import { maskAccountLabel } from '@/lib/account-label'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/cost-basis')
@@ -158,7 +159,7 @@ export default async function CostBasisPage({
               },
               { key: 'name', label: copy.columns.name, sortable: true, sortFirst: 'asc', render: (r) => <div className="min-w-[14rem] max-w-[20rem] truncate text-ink">{r.name}</div> },
               { key: 'brokerage', label: copy.columns.broker, sortable: true, sortFirst: 'asc', priority: 'secondary' },
-              { key: 'account', label: copy.columns.account, sortable: true, sortFirst: 'asc', nowrap: true, priority: 'secondary' },
+              { key: 'account', label: copy.columns.account, sortable: true, sortFirst: 'asc', nowrap: true, priority: 'secondary', render: (r) => maskAccountLabel(r.account) },
               { key: 'quantity', label: copy.columns.shares, align: 'right', sortable: true, render: (r) => fmtQuantity(r.quantity, 6) },
               { key: 'native_price', label: copy.columns.price, align: 'right', sortable: true, render: (r) => (r.native_price == null ? 'n/a' : money(r.native_price, r.currency)) },
               { key: 'native_market_value', label: copy.columns.value, align: 'right', sortable: true, render: (r) => (r.native_market_value == null ? 'n/a' : money(r.native_market_value, r.currency)) },

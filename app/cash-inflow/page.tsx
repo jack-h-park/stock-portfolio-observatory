@@ -31,6 +31,7 @@ import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow, KpiBand } from '@/components/layout'
+import { maskAccountLabel } from '@/lib/account-label'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/cash-inflow')
@@ -163,7 +164,7 @@ export default async function CashInflowPage({
             { key: 'date', label: copy.columns.date, nowrap: true },
             ...(detailCategory ? [] : [{ key: 'category', label: copy.columns.category, render: (r: CashInflowRow) => copy.categories[r.category] }]),
             { key: 'label', label: copy.columns.label },
-            { key: 'account', label: copy.columns.account, priority: 'tertiary' as const },
+            { key: 'account', label: copy.columns.account, priority: 'tertiary' as const, render: (r: CashInflowRow) => maskAccountLabel(r.account) },
             { key: 'native', label: copy.columns.native, align: 'right' as const, priority: 'secondary' as const, render: (r: CashInflowRow) => `${fmtNumber(r.native, r.currency === 'KRW' ? 0 : 2)} ${r.currency}` },
             { key: 'amount', label: copy.columns.amount, align: 'right' as const, render: (r: CashInflowRow) => money(r.amount, data.currency) },
             // Broker rows only: what the dividend paid before withholding, and what was withheld.
@@ -342,9 +343,9 @@ export default async function CashInflowPage({
                     <summary className="flex cursor-pointer list-none flex-wrap items-baseline justify-between gap-2 text-body">
                       <span className="flex items-baseline gap-1.5 font-medium text-ink">
                         <span aria-hidden className="inline-block text-caption text-ink-3 transition-transform group-open:rotate-90">▸</span>
-                        {g.description || g.account}
+                        {g.description || maskAccountLabel(g.account)}
                       </span>
-                      <span className="text-caption text-ink-3">{g.account} · {copy.triage.group(fmtNumber(g.count), money(g.total, data.currency), g.first, g.last)}</span>
+                      <span className="text-caption text-ink-3">{maskAccountLabel(g.account)} · {copy.triage.group(fmtNumber(g.count), money(g.total, data.currency), g.first, g.last)}</span>
                     </summary>
                     <ul className="mt-2 flex flex-col gap-1 text-caption text-ink-2">
                       {g.rows.map((r, i) => (

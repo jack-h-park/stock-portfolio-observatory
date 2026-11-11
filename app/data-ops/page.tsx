@@ -14,6 +14,7 @@ import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { priorityTone } from '@/lib/tone'
 import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow, KpiBand } from '@/components/layout'
+import { maskAccountLabel } from '@/lib/account-label'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/data-ops')
@@ -131,7 +132,7 @@ export default async function DataOpsPage() {
                       <Badge tone={coverageTone(row.status)}>{coverageCopy.status[row.status]}</Badge>
                       <span className="font-medium text-ink">{row.brokerage}</span>
                     </div>
-                    <div className="mt-1 text-label text-ink-3">{row.account}</div>
+                    <div className="mt-1 text-label text-ink-3">{maskAccountLabel(row.account)}</div>
                   </>
                 ),
               },
@@ -387,7 +388,7 @@ export default async function DataOpsPage() {
                   ),
                 },
                 { key: 'name', label: copy.columns.name },
-                { key: 'account', label: copy.columns.account },
+                { key: 'account', label: copy.columns.account, render: (r) => maskAccountLabel(r.account) },
                 { key: 'native_cost', label: copy.columns.nativeCost, align: 'right', render: (r) => money(r.native_cost, r.currency) },
                 { key: 'base_cost', label: copy.columns.baseCost, align: 'right', render: (r) => (r.base_cost == null ? 'n/a' : money(r.base_cost)) },
                 { key: 'reason', label: copy.columns.reason },

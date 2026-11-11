@@ -20,6 +20,7 @@ import { TrendRangeLinks } from '@/components/TrendRangeLinks'
 import { DEFAULT_TREND_RANGE, resolveTrendRange, trendRangeDays, type TrendRange } from '@/lib/trend-ranges'
 import type { AllocationClass, AllocationWrapper } from '@/lib/asset-allocation'
 import { getPageCopy } from '@/lib/ui-copy'
+import { maskAccountLabel } from '@/lib/account-label'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/net-worth')
@@ -117,7 +118,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
     monthEnds.set(point.date.slice(0, 7), { ...point, month: point.date.slice(0, 7), ...(includeChildren ? { children: childrenOn.get(point.date) ?? null } : {}) })
   const history = [...monthEnds.values()]
   const notesFor = (key: (typeof ASSET_CLASSES)[number]) =>
-    netWorth.asOfNotes.filter((note) => note.assetClass === key).map((note) => copy.asOfNote(note.label, fmtDate(note.asOf))).join(' · ')
+    netWorth.asOfNotes.filter((note) => note.assetClass === key).map((note) => copy.asOfNote(maskAccountLabel(note.label), fmtDate(note.asOf))).join(' · ')
   const amount = (value: number | null) => <span className="tabular-nums">{value == null ? copy.none : money(value)}</span>
   const kindLabel = (kind: string) => (kind in copy.kinds ? copy.kinds[kind as keyof typeof copy.kinds] : kind)
   // FBAR: the last complete year unless ?fbarYear= names another offered year.
@@ -129,7 +130,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
   const fbarCopy = copy.fbar
   const fbarColumns: DataTableColumn<ForeignAccountRow>[] = [
     { key: 'institution', label: fbarCopy.columns.institution, render: (row: ForeignAccountRow) => <span className="font-medium text-ink">{row.institution}</span> },
-    { key: 'account', label: fbarCopy.columns.account, render: (row: ForeignAccountRow) => row.account },
+    { key: 'account', label: fbarCopy.columns.account, render: (row: ForeignAccountRow) => maskAccountLabel(row.account) },
     { key: 'kind', label: fbarCopy.columns.kind, priority: 'secondary', render: (row: ForeignAccountRow) => fbarCopy.kinds[row.kind] },
     {
       key: 'coverage',
@@ -302,7 +303,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
             emptyMessage={childCopy.empty}
             columns={[
               { key: 'owner', label: childCopy.columns.owner, render: (row: ChildRow) => <span className="font-medium text-ink">{row.owner}</span> },
-              { key: 'account', label: childCopy.columns.account, render: (row: ChildRow) => (row.subtotal ? <span className="font-medium text-ink">{row.account}</span> : row.account) },
+              { key: 'account', label: childCopy.columns.account, render: (row: ChildRow) => (row.subtotal ? <span className="font-medium text-ink">{row.account}</span> : maskAccountLabel(row.account)) },
               { key: 'asOf', label: childCopy.columns.asOf, nowrap: true, render: (row: ChildRow) => <span className="tabular-nums">{row.asOf ? fmtDate(row.asOf) : ''}</span> },
               {
                 key: 'value',
@@ -319,7 +320,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
       <Card title={copy.balances}>
         {netWorth.unpricedCash.length ? (
           <div className="border-b border-line-subtle bg-surface px-4 py-3 text-label leading-relaxed text-ink-3">
-            <p>{copy.unpriced(netWorth.unpricedCash.join(', '))}</p>
+            <p>{copy.unpriced(netWorth.unpricedCash.map(maskAccountLabel).join(', '))}</p>
           </div>
         ) : null}
         <DataTable
@@ -329,7 +330,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
           emptyMessage={copy.empty}
           columns={[
             { key: 'institution', label: copy.columns.institution, render: (row: CashRow) => <span className="font-medium text-ink">{row.institution}</span> },
-            { key: 'account', label: copy.columns.account, render: (row: CashRow) => row.account },
+            { key: 'account', label: copy.columns.account, render: (row: CashRow) => maskAccountLabel(row.account) },
             { key: 'kind', label: copy.columns.kind, priority: 'secondary', render: (row: CashRow) => kindLabel(row.kind) },
             {
               key: 'asOf',
@@ -435,7 +436,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
           <p>{fbarCopy.understatedNote}</p>
           <p>{fbarCopy.cashNote}</p>
           {fbar.rows.some((row) => row.maxKrw == null) ? (
-            <p>{fbarCopy.unpriced(fbar.rows.filter((row) => row.maxKrw == null).map((row) => `${row.institution} ${row.account}`).join(', '))}</p>
+            <p>{fbarCopy.unpriced(fbar.rows.filter((row) => row.maxKrw == null).map((row) => `${row.institution} ${maskAccountLabel(row.account)}`).join(', '))}</p>
           ) : null}
         </div>
         <DataTable caption={fbarCopy.title} rows={fbar.rows} getRowKey={(row: ForeignAccountRow) => row.id} emptyMessage={fbarCopy.empty(fbarYear)} columns={fbarColumns} />

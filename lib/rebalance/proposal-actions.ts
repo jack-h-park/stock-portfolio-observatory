@@ -1,3 +1,4 @@
+import { displayAccount } from '@/lib/account-label'
 import { getTaxPolicyState, type TaxPolicy } from '@/lib/tax-policy'
 import {
   SLEEVES,
@@ -15,9 +16,11 @@ import {
 import { buildTradePlan, type Instruction, type TradePlan } from './engine'
 import { classify, getInstrumentClasses, instrumentKey, saveInstrumentClasses } from './instrument-classes'
 import {
+  MAX_ANSWER,
   editTargets,
   getProposal,
   planHasTrades,
+  setAnswer,
   setPlan,
   transition,
   type Fill,
@@ -67,6 +70,10 @@ export const PROPOSAL_ERROR_CODES = [
   'idea_account_invalid',
   // The instrument is already classified into a different sleeve than the idea names.
   'idea_class_conflict',
+  // The question is missing from the proposal (a stale form, or a hand-edited index).
+  'question_invalid',
+  // An answer is longer than MAX_ANSWER characters.
+  'answer_too_long',
 ] as const
 export type ProposalErrorCode = (typeof PROPOSAL_ERROR_CODES)[number]
 
@@ -81,6 +88,8 @@ export const PROPOSAL_DONE_CODES = [
   'closed',
   'closed_no_trades',
   'idea_added',
+  'answer_saved',
+  'answer_cleared',
 ] as const
 export type ProposalDoneCode = (typeof PROPOSAL_DONE_CODES)[number]
 
@@ -234,7 +243,8 @@ export function describeInstruction(
   instructions: Instruction[],
   sideLabel: (kind: Instruction['kind']) => string,
 ): string {
-  const label = (brokerage: string, account: string) => (brokerage ? `${brokerage} · ${account}` : account)
+  // Display only: the account identifier is masked (lib/account-label.ts); the id itself keeps the raw value.
+  const label = (brokerage: string, account: string) => displayAccount(brokerage, account)
   const i = instructions.find((x) => x.id === id)
   if (i) {
     const security = i.kind === 'transfer' ? i.currency : `${i.market}:${i.ticker}`
@@ -516,4 +526,25 @@ export function addIdeaToBuyList(id: string, form: FormData, paths: ProposalPath
     return failed('write_failed', error)
   }
   return { ok: true, proposal: p }
+}
+
+export type AnswerOutcome = StepOutcome & { cleared?: boolean }
+
+/**
+ * Saves the maintainer's answer to one of the proposal's questions (`questionIndex`, `answer`), or clears it when
+ * the answer is empty. Works in every status, closed ones included: the answer is context for the next proposal.
+ */
+export function answerProposalQuestion(id: string, form: FormData, now: Date, paths: ProposalPaths = {}): AnswerOutcome {
+  const p = loadFor(id, paths)
+  if (!p) return failed('not_found')
+  const rawIndex = text(form, 'questionIndex')
+  const index = /^\d+$/.test(rawIndex) ? Number(rawIndex) : -1
+  if (index < 0 || index >= p.questionsForMaintainer.length) return failed('question_invalid')
+  const answer = text(form, 'answer')
+  if (answer.length > MAX_ANSWER) return failed('answer_too_long')
+  try {
+    return { ok: true, proposal: setAnswer(p.id, index, answer, now, paths.proposals), cleared: answer === '' }
+  } catch (error) {
+    return failed('write_failed', error)
+  }
 }

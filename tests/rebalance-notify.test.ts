@@ -266,3 +266,24 @@ test('threadMaterial has no account label', async () => {
   assert.ok(e?.threadMaterial)
   assert.doesNotMatch(e.threadMaterial, /Secret Broker|ACC-1|AAA|BBB|123456789|987654321/)
 })
+
+test('an answered question sends nothing, and answers stay out of the thread material', async () => {
+  const { pendingEvents, seedState } = await import('../lib/rebalance/notify')
+  const before = proposal({ status: 'rejected' }, [{ at: T0.toISOString(), type: 'rejected', detail: 'no' }])
+  const state = seedState([before], T0)
+  const after = proposal(
+    {
+      status: 'rejected',
+      questionsForMaintainer: ['Any planned withdrawal this year?'],
+      answers: [{ index: 0, question: 'Any planned withdrawal this year?', answer: 'ANSWER-MARKER', at: T0.toISOString() }],
+    } as Partial<Proposal>,
+    [
+      { at: T0.toISOString(), type: 'rejected', detail: 'no' },
+      { at: T0.toISOString(), type: 'answered', detail: 'question 1 answered' },
+    ],
+  )
+  assert.deepEqual(pendingEvents([after], state, T0), [])
+  const fresh = pendingEvents([after], { version: 1, seeded: true, announced: {} }, T0)
+  assert.ok(!fresh.some((e) => JSON.stringify(e).includes('ANSWER-MARKER')))
+  assert.ok(!fresh.some((e) => e.id.includes('answered')))
+})

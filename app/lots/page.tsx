@@ -14,6 +14,7 @@ import { applyFilters, applySearch, filterOptions, readFilters, withParam, type 
 import { formatSort, parseSort, sortRows, type TableSort } from '@/lib/table-sort'
 import { bucketTone } from '@/lib/tone'
 import { routeMetadata, routeSection } from '@/lib/page-names'
+import { maskAccountLabel } from '@/lib/account-label'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/lots')
@@ -105,7 +106,7 @@ export default async function LotsPage({
             columns={[
               { key: 'market', label: copy.columns.market, sortable: true, sortFirst: 'asc', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
               { key: 'brokerage', label: copy.columns.broker, sortable: true, sortFirst: 'asc' },
-              { key: 'account', label: copy.columns.account, sortable: true, sortFirst: 'asc', priority: 'secondary' },
+              { key: 'account', label: copy.columns.account, sortable: true, sortFirst: 'asc', priority: 'secondary', render: (r) => maskAccountLabel(r.account) },
               {
                 key: 'ticker',
                 label: copy.columns.instrument,
