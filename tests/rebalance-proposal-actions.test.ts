@@ -11,6 +11,8 @@ import {
   approvedTargets,
   approveProposalPlan,
   approveProposalTargets,
+  canCloseWithoutTrades,
+  closeProposalWithoutTrades,
   describeInstruction,
   parseFillForm,
   parseRejectReason,
@@ -327,4 +329,61 @@ test('approveProposalPlan: a change proposal still in draft is the wrong status'
   const { id, paths } = setup()
   assert.equal(approveProposalPlan(id, T0, paths).ok, false)
   assert.equal(getProposal(id, paths.proposals)!.status, 'draft')
+})
+
+test('closeProposalWithoutTrades: a hold draft with nothing to trade closes; one with a trade is refused', () => {
+  for (const instructions of [[], [ins(TRANSFER, 'transfer', 0)]]) {
+    const { id, paths } = setupHold(instructions)
+    assert.equal(canCloseWithoutTrades(getProposal(id, paths.proposals)!), true)
+    const out = closeProposalWithoutTrades(id, T0, paths)
+    assert.equal(out.ok, true)
+    const p = getProposal(id, paths.proposals)!
+    assert.equal(p.status, 'closed')
+    assert.equal(p.events.at(-1)?.detail, 'closed with no trades: targets kept')
+    assert.deepEqual(closeProposalWithoutTrades(id, T0, paths), { ok: false, code: 'wrong_status', detail: undefined })
+  }
+  const { id, paths } = setupHold([ins(SELL, 'sell', 10)])
+  assert.equal(canCloseWithoutTrades(getProposal(id, paths.proposals)!), false)
+  assert.deepEqual(closeProposalWithoutTrades(id, T0, paths), { ok: false, code: 'plan_has_trades', detail: undefined })
+  assert.equal(getProposal(id, paths.proposals)!.status, 'draft')
+  assert.deepEqual(closeProposalWithoutTrades('rb-none', T0, paths), { ok: false, code: 'not_found', detail: undefined })
+})
+
+test('closeProposalWithoutTrades: a change proposal closes only after its targets are approved', () => {
+  const { id, paths } = setup()
+  assert.equal(canCloseWithoutTrades(getProposal(id, paths.proposals)!), false)
+  assert.equal(closeProposalWithoutTrades(id, T0, paths).ok, false)
+  transition(id, 'targets_approved', 'ok', T0, paths.proposals)
+  const p = getProposal(id, paths.proposals)!
+  assert.equal(p.plan.instructions.length, 0)
+  assert.equal(canCloseWithoutTrades(p), true)
+  assert.equal(closeProposalWithoutTrades(id, T0, paths).ok, true)
+  assert.equal(getProposal(id, paths.proposals)!.events.at(-1)?.detail, 'closed with no trades after the targets were approved')
+})
+
+test('every proposal done and error code has en and ko copy; the close-without-trades copy exists', async () => {
+  const { getPageCopy } = await import('../lib/ui-copy')
+  const { PROPOSAL_DONE_CODES, PROPOSAL_ERROR_CODES } = await import('../lib/rebalance/proposal-actions')
+  for (const language of ['en', 'ko'] as const) {
+    const copy = getPageCopy('rebalanceProposal', language)
+    for (const code of PROPOSAL_DONE_CODES) assert.ok(copy.done[code]?.trim(), `${language} done.${code}`)
+    for (const code of PROPOSAL_ERROR_CODES) assert.ok(copy.errors[code]?.trim(), `${language} errors.${code}`)
+    for (const text of [
+      copy.plan.closeNoTrades,
+      copy.plan.closeNoTradesNote,
+      copy.statusCard.next.draft_hold_empty,
+      copy.statusCard.next.targets_approved_empty,
+      copy.harvest.title,
+      copy.harvest.caveatWashSale,
+      copy.harvest.notInstructions,
+      copy.drift.statuses.within,
+      copy.drift.scopes.taxableIsa,
+    ]) {
+      assert.ok(text.trim(), language)
+    }
+    assert.ok(copy.drift.info(copy.drift.scopes.taxable).includes(copy.drift.scopes.taxable), `${language} drift info names the scope`)
+  }
+  const en = getPageCopy('rebalanceProposal', 'en')
+  assert.doesNotMatch(en.drift.info(en.drift.scopes.taxable), /share of the taxable total/)
+  assert.match(en.dataAsOf.info, /only when the plan trades in it/)
 })

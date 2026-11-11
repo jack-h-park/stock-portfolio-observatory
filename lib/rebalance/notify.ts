@@ -16,6 +16,12 @@ export type NotifyEvent = {
   telegram: string | null
   discord: string | null
   threadTitle: string | null
+  /**
+   * `created` only: the proposal's facts for the thread opening, no instructions. The cron wrapper puts the
+   * control plane's shared opening contract in front of it when that contract is available.
+   */
+  threadMaterial: string | null
+  /** `created` only: threadMaterial plus this repo's own writing instructions; the fallback when the contract is not. */
   threadPrompt: string | null
 }
 /** eventId -> ISO time it was sent, per channel. Host-owned, never pushed. */
@@ -39,8 +45,21 @@ const pagePath = (id: string) => `/rebalance/proposals/${id}`
 /** The marker the control plane's hand-off script requires before it delivers a composed message. */
 const HANDOFF_MARKER = '<<<HANDOFF>>>'
 
-/** Instruction counts by kind, the plan's tax effect to the nearest 10,000 KRW and warning counts: no account labels. */
-function threadPrompt(p: Proposal): string {
+const SUMMARY_MAX = 1_500
+const WHY_MAX = 200
+
+/** Cut to `limit` characters, marking the cut so the reader knows it is partial. */
+const cut = (text: string, limit: number) => (text.length > limit ? `${text.slice(0, limit - 1).trimEnd()}…` : text)
+
+/** A KRW figure to the nearest 10,000, as the tax line has always been rounded. */
+const round10k = (value: number) => Math.round(value / 10_000) * 10_000
+
+/**
+ * The proposal's facts for a thread opening: id, kind and triggers, the decision and sleeve changes, the outlook in
+ * full (capped), every idea and question, the harvest figures when there are any, instruction counts, the plan's
+ * tax effect and warning counts. No account labels, and no amounts beyond the rounded tax and harvest figures.
+ */
+function threadMaterial(p: Proposal): string {
   const counts = (items: string[]) => {
     const n: Record<string, number> = {}
     for (const item of items) n[item] = (n[item] ?? 0) + 1
@@ -51,22 +70,50 @@ function threadPrompt(p: Proposal): string {
     .filter(([, c]) => Number.isFinite(c?.from) && Number.isFinite(c?.to))
     .map(([sleeve, c]) => `${sleeve} ${c?.from}% -> ${c?.to}%`)
     .join('; ')
-  const tax = Math.round(p.plan.taxSummary.estimatedTaxKrw / 10_000) * 10_000
+  const ideas = Array.isArray(p.ideas) ? p.ideas : []
+  const questions = Array.isArray(p.questionsForMaintainer) ? p.questionsForMaintainer : []
   const lines = [
     `Proposal ${p.id} (${p.kind}); triggers: ${p.triggers.join(', ') || 'none'}.`,
     `Decision: ${p.targetChange.decision}${sleeves ? ` (${sleeves})` : ''}.`,
-    p.outlook ? `Outlook (${p.outlook.confidence} confidence): ${p.outlook.summary.slice(0, 600)}` : 'Outlook: none.',
+    p.outlook ? `Outlook (${p.outlook.confidence} confidence): ${cut(p.outlook.summary, SUMMARY_MAX)}` : 'Outlook: none.',
+  ]
+  if (ideas.length) {
+    lines.push('Ideas to research (never traded automatically):')
+    for (const idea of ideas) {
+      const security = idea.market ? `${idea.market}:${idea.ticker}` : idea.ticker
+      lines.push(`- ${security} (${idea.sleeve}) — ${cut(String(idea.why ?? ''), WHY_MAX)}`)
+    }
+  } else {
+    lines.push('Ideas: none.')
+  }
+  if (questions.length) {
+    lines.push('Questions for the maintainer:')
+    for (const q of questions) lines.push(`- ${q}`)
+  }
+  if (p.harvest && p.harvest.totalLossKrw > 0) {
+    lines.push(
+      `Loss harvest scenario (not in the plan; the engine never sells for it): selling every harvestable loss lot would realize about ${round10k(p.harvest.totalLossKrw)} KRW of losses, a tax effect of about ${round10k(p.harvest.taxEffectKrw)} KRW for the year.`,
+    )
+  }
+  lines.push(
     `Instructions by kind: ${counts(p.plan.instructions.map((i) => i.kind))}.`,
-    `Estimated tax effect of the plan: about ${tax} KRW.`,
+    `Estimated tax effect of the plan: about ${round10k(p.plan.taxSummary.estimatedTaxKrw)} KRW.`,
     `Warnings by code: ${counts(p.plan.warnings.map((w) => w.code))}.`,
     `Page: ${pagePath(p.id)}`,
+  )
+  return lines.join('\n')
+}
+
+/** The fallback opening prompt: the material, then this repo's own writing instructions. */
+function threadPrompt(p: Proposal): string {
+  return [
+    threadMaterial(p),
     'Write a short opening (≤ 1,200 chars) for the maintainer: what this proposal suggests and why, what to check first, and that approval happens on the page. Do not invent figures. This is not advice.',
     // The control plane's run-handoff.sh delivers only output carrying this marker and
     // drops the rest, posting a "couldn't compose" stand-in instead. Same wording as its
     // own nudge prompts.
     `Prefix the whole message with the exact marker ${HANDOFF_MARKER} on its own line; output nothing else.`,
-  ]
-  return lines.join('\n')
+  ].join('\n')
 }
 
 function threadTitle(p: Proposal): string {
@@ -84,6 +131,7 @@ function ev(p: Proposal, kind: NotifyEvent['kind'], detail: string, channels: No
     telegram: null,
     discord: null,
     threadTitle: null,
+    threadMaterial: null,
     threadPrompt: null,
     ...rest,
   }
@@ -97,6 +145,7 @@ function allEvents(proposals: Proposal[], now: Date, announcedMismatch: (id: str
       ev(p, 'created', 'new', ['telegram', 'discord'], {
         telegram: `🧭 Rebalance proposal ${p.id} (${p.kind}) is ready for review — ${p.plan.instructions.length} instructions, decision ${p.targetChange.decision}. Discuss in its Discord thread; approve on ${pagePath(p.id)}.`,
         threadTitle: threadTitle(p),
+        threadMaterial: threadMaterial(p),
         threadPrompt: threadPrompt(p),
       }),
     )
@@ -164,6 +213,7 @@ export function pendingEvents(proposals: Proposal[], state: NotifyState, now: Da
       telegram: channels.includes('telegram') ? e.telegram : null,
       discord: channels.includes('discord') ? e.discord : null,
       threadTitle: channels.includes('discord') ? e.threadTitle : null,
+      threadMaterial: channels.includes('discord') ? e.threadMaterial : null,
       threadPrompt: channels.includes('discord') ? e.threadPrompt : null,
     })
   }

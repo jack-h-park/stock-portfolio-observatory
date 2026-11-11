@@ -17,6 +17,7 @@ import { classify, getInstrumentClasses, instrumentKey, saveInstrumentClasses } 
 import {
   editTargets,
   getProposal,
+  planHasTrades,
   setPlan,
   transition,
   type Fill,
@@ -58,6 +59,8 @@ export const PROPOSAL_ERROR_CODES = [
   'targets_saved_not_advanced',
   // The target edits are saved, but the plan was not rebuilt against them; recompute or save again.
   'targets_saved_plan_stale',
+  // The plan has a buy or a sell, so it cannot be closed without trades; approve or reject it instead.
+  'plan_has_trades',
   // The idea is missing, or was stored before ideas carried a market.
   'idea_invalid',
   // The chosen account is not one the proposal's snapshot holds that market in.
@@ -76,6 +79,7 @@ export const PROPOSAL_DONE_CODES = [
   'rejected',
   'fill_recorded',
   'closed',
+  'closed_no_trades',
   'idea_added',
 ] as const
 export type ProposalDoneCode = (typeof PROPOSAL_DONE_CODES)[number]
@@ -391,9 +395,40 @@ export function approveProposalPlan(id: string, now: Date, paths: ProposalPaths 
   if (!p) return failed('not_found')
   const allowed = p.status === 'targets_approved' || (p.status === 'draft' && p.targetChange.decision === 'hold')
   if (!allowed) return failed('wrong_status')
-  if (!p.plan.instructions.some((i) => i.kind === 'buy' || i.kind === 'sell')) return failed('empty_plan')
+  if (!planHasTrades(p.plan)) return failed('empty_plan')
   try {
     return { ok: true, proposal: transition(p.id, 'plan_approved', 'plan approved by the maintainer', now, paths.proposals) }
+  } catch (error) {
+    return failed('wrong_status', error)
+  }
+}
+
+/**
+ * Whether the proposal's next step is closing it without trades: a hold proposal in draft, or any proposal whose
+ * targets are approved, with a plan that has no buy or sell. The page shows the close button instead of
+ * "Approve plan" exactly when this is true.
+ */
+export function canCloseWithoutTrades(p: Pick<Proposal, 'status' | 'targetChange' | 'plan'>): boolean {
+  return closeReachable(p) && !planHasTrades(p.plan)
+}
+
+/** The statuses a plan is approved from: draft for a hold proposal, else targets_approved. */
+const closeReachable = (p: Pick<Proposal, 'status' | 'targetChange'>) =>
+  (p.status === 'draft' && p.targetChange.decision === 'hold') || p.status === 'targets_approved'
+
+/**
+ * Closes a proposal whose plan has nothing to buy or sell, from draft (hold) or targets_approved. Such a plan
+ * cannot be approved (`empty_plan`), and rejecting it would record a refusal the maintainer did not make.
+ * Approved targets stay in the policy.
+ */
+export function closeProposalWithoutTrades(id: string, now: Date, paths: ProposalPaths = {}): StepOutcome {
+  const p = loadFor(id, paths)
+  if (!p) return failed('not_found')
+  if (!closeReachable(p)) return failed('wrong_status')
+  if (planHasTrades(p.plan)) return failed('plan_has_trades')
+  const detail = p.status === 'draft' ? 'closed with no trades: targets kept' : 'closed with no trades after the targets were approved'
+  try {
+    return { ok: true, proposal: transition(p.id, 'closed', detail, now, paths.proposals) }
   } catch (error) {
     return failed('wrong_status', error)
   }

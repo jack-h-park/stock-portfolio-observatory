@@ -7,6 +7,7 @@ import {
   addIdeaToBuyList,
   approveProposalPlan,
   approveProposalTargets,
+  closeProposalWithoutTrades,
   parseFillForm,
   parseRejectReason,
   parseSkipForm,
@@ -113,6 +114,12 @@ export async function closeProposal(formData: FormData) {
     fail(p.id, 'fills', 'wrong_status', error)
   }
   done(p.id, 'summary', 'closed')
+}
+
+/** Ends a proposal whose plan has nothing to buy or sell; approving such a plan is refused as empty_plan. */
+export async function closeWithoutTrades(formData: FormData) {
+  const p = loadProposal(formData)
+  finish(p.id, 'plan', closeProposalWithoutTrades(p.id, new Date()), 'summary', 'closed_no_trades')
 }
 
 /** Puts one idea on its sleeve's buy list, in the account the maintainer picked. */

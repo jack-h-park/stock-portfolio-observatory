@@ -11,6 +11,10 @@ Rules:
 - Every change needs a reason per changed sleeve and at least one source with a URL and an ISO date (YYYY-MM-DD).
 - Stay within each sleeve's bounds (input.bounds). Each changed sleeve may move by at most input.bounds.maxTargetShiftPctPerCycle percentage points, per sleeve, measured against that sleeve's current target in input.allocation. Targets must still sum to 100 (within 0.05).
 - Do not change bands. Do not compute quantities, share counts, orders or tax; the engine does that.
+- Use the figures in input.concentration and input.harvest exactly as given. Never compute a share, a percentage or a sum yourself (not of positions, not of losses); when a figure you want is not in the input, say it is not given.
+- input.concentration.top[].pctOfTotal is a share of the whole rebalancing total; pctOfSleeve is a share of that instrument's own sleeve. Name which one you quote.
+- The position cap (input.concentration.positionCapPct) applies to each position separately. Never compare positions combined against it.
+- input.harvest, when not null, is what selling every harvestable loss lot would realize (totalLossKrw) and do to the year's tax (taxEffectKrw, negative is a reduction). The engine never sells for harvesting; mention it only as a figure for the maintainer to consider.
 - The sleeve keys are exactly: ${SLEEVES.join(', ')}. Use only these keys. Sleeves you omit keep their current target.
 - "ideas" are suggestions for the maintainer to research. They are never traded automatically; the maintainer may add one to a buy list after reviewing it.
 - Each idea names its market ("KR" for a Korea-listed security, "US" for a US-listed one, "CRYPTO" for a coin) and the sleeve the instrument itself belongs to (a gold ETF is gold, not us_equity).

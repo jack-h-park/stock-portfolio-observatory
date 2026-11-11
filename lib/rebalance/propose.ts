@@ -3,6 +3,7 @@ import { getRebalanceInput, type RebalanceInput } from '@/lib/adapters/rebalance
 import { readBriefingContext } from '@/lib/adapters/rebalance-context'
 import { getAllocationPolicy, rebalanceWrappers, SLEEVES, type AllocationPolicy, type Sleeve, type SleeveTarget } from '@/lib/rebalance/allocation-policy'
 import { buildTradePlan } from '@/lib/rebalance/engine'
+import { buildHarvestScenario, type HarvestScenario } from '@/lib/rebalance/harvest'
 import { getInstrumentClasses, type InstrumentClasses } from '@/lib/rebalance/instrument-classes'
 import { parseLlmJson, validateLlmOutput, type LlmOutput, type LlmRecord } from '@/lib/rebalance/llm-contract'
 import { buildLlmInput } from '@/lib/rebalance/llm-input'
@@ -32,6 +33,21 @@ const DEFAULT_TIMEOUT_MS = 600_000
 const ERROR_MAX = 500
 const SAME = 1e-9
 const hold = (): TargetChange => ({ decision: 'hold', sleeves: {}, boundsErrors: [] })
+
+/**
+ * The loss-harvest scenario stored on a new proposal, or nothing when there is no harvestable loss. It is shown
+ * beside the plan and never becomes an instruction. A failure here never stops a proposal: it is logged and the
+ * page computes the scenario from the frozen snapshot instead.
+ */
+function harvestField(args: Parameters<typeof buildHarvestScenario>[0]): { harvest?: HarvestScenario } {
+  try {
+    const harvest = buildHarvestScenario(args)
+    return harvest.totalLossKrw > 0 ? { harvest } : {}
+  } catch (error) {
+    console.error('[rebalance] harvest scenario:', error instanceof Error ? error.message : error)
+    return {}
+  }
+}
 
 /** The checks every proposal shares, then the snapshot. A failure returns before anything else runs. */
 function prepare(today: string, now: Date, paths: ProposePaths): Prepared | Extract<ProposeResult, { ok: false }> {
@@ -74,7 +90,8 @@ export function proposeEngineOnly(args: {
   const prep = prepare(args.today, args.now, args.paths ?? {})
   if (!prep.ok) return prep
   const { dir, policy, input, classes } = prep
-  const plan = buildTradePlan({ input, policy, targets: policy.targets, classes, taxPolicy: getTaxPolicyState().policy })
+  const taxPolicy = getTaxPolicyState().policy
+  const plan = buildTradePlan({ input, policy, targets: policy.targets, classes, taxPolicy })
   const proposal = createProposal(
     {
       id: proposalId(args.kind, args.today, args.suffix),
@@ -87,6 +104,7 @@ export function proposeEngineOnly(args: {
       targetChange: hold(),
       plan,
       planSkips: [],
+      ...harvestField({ input, policy, classes, taxPolicy, today: input.asOf }),
     },
     args.now,
     dir
@@ -217,6 +235,7 @@ export async function proposeMonthly(args: {
       targetChange,
       plan,
       planSkips: [],
+      ...harvestField({ input, policy, classes, taxPolicy, today: input.asOf }),
     },
     args.now,
     dir

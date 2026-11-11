@@ -4,8 +4,10 @@ import { sanitizeBenchmarks, type BriefingContext } from '@/lib/adapters/rebalan
 import { accountKey, SLEEVES, type AllocationPolicy, type Sleeve } from './allocation-policy'
 import { computeAllocation } from './allocation'
 import type { InstrumentClasses } from './instrument-classes'
-import { classify } from './instrument-classes'
-import { harvestableLossKrw, prepareSellContext } from './sell-selection'
+import { classify, instrumentKey } from './instrument-classes'
+import { displayName, snapshotDisplayNames } from './display-names'
+import { buildHarvestScenario } from './harvest'
+import { prepareSellContext } from './sell-selection'
 import type { Proposal } from './proposal-store'
 import { loadAccountMap } from '@/scripts/account-map.mjs'
 
@@ -16,6 +18,22 @@ export type LlmInput = {
   allocation: { sleeve: Sleeve; pct: number; target: number; band: number; lower: number; upper: number; status: string }[]
   bounds: AllocationPolicy['bounds']
   positions: { alias: string; market: string; ticker: string; name: string; sleeve: Sleeve; pctOfTotal: number }[]
+  /**
+   * The largest instruments, each summed across accounts, with their shares already computed. The prompt tells
+   * the model to quote these and never to compute a share or a sum itself: it got both wrong when left to.
+   */
+  concentration: {
+    /** The cap applies to each position separately, never to positions combined. */
+    positionCapPct: number
+    top: { market: string; ticker: string; name: string; sleeve: Sleeve; pctOfTotal: number; pctOfSleeve: number }[]
+  }
+  /** What selling every harvestable loss lot would realize and do to the year's tax; null when there is no loss. */
+  harvest: {
+    totalLossKrw: number
+    /** The year's tax with those sells minus without them; negative is a reduction. */
+    taxEffectKrw: number
+    top: { market: string; ticker: string; name: string; lossKrw: number; lotCount: number }[]
+  } | null
   tax: {
     krDeductionRemainingKrw: number
     ytdKrTaxableGainKrw: number
@@ -43,6 +61,11 @@ const NAME_MAX = 80
 const PAST_DECISIONS = 3
 const REASON_MAX = 500
 const MACRO_MAX = 2000
+const CONCENTRATION_TOP = 10
+const HARVEST_TOP = 10
+
+/** A share for the model, to one decimal place, so it quotes the figure rather than re-deriving it. */
+const pct1 = (value: number) => Math.round(value * 10) / 10
 
 const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
@@ -160,7 +183,11 @@ export function buildLlmInput(args: {
   for (const secret of accountMapSecrets(args.accountMapPath)) secrets.add(secret)
   const scrub = (text: string) => scrubText(text, secrets)
 
+  // One name per instrument: the same KR code can come from two brokerages under two spellings.
+  const names = snapshotDisplayNames(input)
+  const nameOf = (market: string, ticker: string) => scrub(displayName(names, market, ticker)).slice(0, NAME_MAX)
   const positions: LlmInput['positions'] = []
+  const byInstrument = new Map<string, { market: string; ticker: string; sleeve: Sleeve; valueKrw: number }>()
   for (const p of input.positions) {
     const sleeve = classify(p, classes)
     if (!sleeve) continue
@@ -169,15 +196,53 @@ export function buildLlmInput(args: {
       alias: aliases.get(`${p.market}|${accountKey(p.brokerage, p.account)}`) as string,
       market: p.market,
       ticker: p.ticker,
-      name: scrub(String(p.name ?? '')).slice(0, NAME_MAX),
+      name: nameOf(p.market, p.ticker),
       sleeve,
       pctOfTotal: allocation.totalKrw > 0 ? (value / allocation.totalKrw) * 100 : 0,
     })
+    const key = instrumentKey(p.market, p.ticker)
+    const entry = byInstrument.get(key) ?? { market: p.market, ticker: p.ticker, sleeve, valueKrw: 0 }
+    entry.valueKrw += value
+    byInstrument.set(key, entry)
+  }
+  // Same values as the allocation (at cost when unpriced), so the shares add up against input.allocation.
+  const sleeveValue = new Map(allocation.sleeves.map((row) => [row.sleeve, row.valueKrw]))
+  const concentration: LlmInput['concentration'] = {
+    positionCapPct: policy.bounds.positionCapPct,
+    top: [...byInstrument.values()]
+      .sort((a, b) => b.valueKrw - a.valueKrw || a.market.localeCompare(b.market) || a.ticker.localeCompare(b.ticker))
+      .slice(0, CONCENTRATION_TOP)
+      .map((e) => {
+        const ofSleeve = sleeveValue.get(e.sleeve) ?? 0
+        return {
+          market: e.market,
+          ticker: e.ticker,
+          name: nameOf(e.market, e.ticker),
+          sleeve: e.sleeve,
+          pctOfTotal: allocation.totalKrw > 0 ? pct1((e.valueKrw / allocation.totalKrw) * 100) : 0,
+          pctOfSleeve: ofSleeve > 0 ? pct1((e.valueKrw / ofSleeve) * 100) : 0,
+        }
+      }),
   }
 
   // The engine's own context: same deduction assumption, same pinned planning rate.
   const ctx = prepareSellContext({ input, policy, classes, taxPolicy: args.taxPolicy })
-  const harvestable = harvestableLossKrw(ctx, input.asOf)
+  const scenario = buildHarvestScenario({ input, policy, classes, taxPolicy: args.taxPolicy, today: input.asOf })
+  const harvestable = scenario.totalLossKrw
+  const harvest: LlmInput['harvest'] =
+    harvestable > 0
+      ? {
+          totalLossKrw: Math.round(harvestable),
+          taxEffectKrw: Math.round(scenario.taxEffectKrw),
+          top: scenario.rows.slice(0, HARVEST_TOP).map((r) => ({
+            market: r.market,
+            ticker: r.ticker,
+            name: scrub(r.name).slice(0, NAME_MAX),
+            lossKrw: Math.round(r.lossKrw),
+            lotCount: r.lotCount,
+          })),
+        }
+      : null
 
   const newest = [...args.past].sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)).slice(0, PAST_DECISIONS)
   const pastDecisions = newest.map((p) => {
@@ -213,6 +278,8 @@ export function buildLlmInput(args: {
     })),
     bounds: policy.bounds,
     positions,
+    concentration,
+    harvest,
     tax: {
       krDeductionRemainingKrw: ctx.krDeductionRemainingKrw,
       ytdKrTaxableGainKrw: input.ytd.krTaxableGainKrw,

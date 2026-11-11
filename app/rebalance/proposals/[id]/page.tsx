@@ -16,9 +16,11 @@ import { routeSection } from '@/lib/page-names'
 import { SLEEVES, accountKey, getAllocationPolicy, rebalanceWrappers, type AllocationPolicy, type Sleeve } from '@/lib/rebalance/allocation-policy'
 import { computeAllocation } from '@/lib/rebalance/allocation'
 import type { EngineWarning, Instruction, SleeveMove } from '@/lib/rebalance/engine'
-import { getInstrumentClasses } from '@/lib/rebalance/instrument-classes'
+import { buildHarvestScenario, type HarvestScenario } from '@/lib/rebalance/harvest'
+import { getInstrumentClasses, type InstrumentClasses } from '@/lib/rebalance/instrument-classes'
 import {
   PROPOSAL_STATUS_TONE,
+  canCloseWithoutTrades,
   describeInstruction,
   ideaAccountOptions,
   ideaListed,
@@ -26,7 +28,8 @@ import {
   policyChangedSince,
   isProposalErrorCode,
 } from '@/lib/rebalance/proposal-actions'
-import { getProposal, type Proposal } from '@/lib/rebalance/proposal-store'
+import { getProposal, planHasTrades, type Proposal } from '@/lib/rebalance/proposal-store'
+import { getTaxPolicyState } from '@/lib/tax-policy'
 import { llmStatusLine, safeSourceHref } from '@/lib/rebalance/proposal-view'
 import { getPageCopy } from '@/lib/ui-copy'
 import {
@@ -34,6 +37,7 @@ import {
   approvePlan,
   approveTargets,
   closeProposal,
+  closeWithoutTrades,
   recomputePlan,
   recordFillAction,
   rejectProposal,
@@ -267,6 +271,90 @@ function OutlookSection({ proposal, copy, language }: { proposal: Proposal; copy
   )
 }
 
+const HARVEST_ROWS = 15
+
+/**
+ * The stored loss-harvest scenario, or one computed now from the proposal's frozen snapshot for a proposal created
+ * before the scenario was stored (`live`). Null when it cannot be computed.
+ */
+function harvestFor(proposal: Proposal, classes: InstrumentClasses | null): { scenario: HarvestScenario; live: boolean } | null {
+  if (proposal.harvest) return { scenario: proposal.harvest, live: false }
+  if (!classes) return null
+  try {
+    const snapshot = proposal.inputSnapshot
+    const scenario = buildHarvestScenario({
+      input: snapshot,
+      policy: proposal.policyAtCreation,
+      classes,
+      taxPolicy: getTaxPolicyState().policy,
+      today: snapshot.asOf,
+    })
+    return { scenario, live: true }
+  } catch (error) {
+    console.error('[rebalance-proposal] harvest scenario:', error)
+    return null
+  }
+}
+
+function HarvestCard({ scenario, live, copy, language }: { scenario: HarvestScenario; live: boolean; copy: Copy; language: 'en' | 'ko' }) {
+  const h = copy.harvest
+  const rows = scenario.rows.slice(0, HARVEST_ROWS)
+  type Row = (typeof rows)[number]
+  const hasKr = [...scenario.rows, ...scenario.excludedForWashSale].some((r) => r.market === 'KR')
+  return (
+    <Card title={h.title} info={h.info} className="mb-5">
+      {live && <p className="mb-3 text-label text-ink-3">{h.computedLive}</p>}
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line-subtle bg-line-subtle md:grid-cols-4">
+        <Figure label={h.totalLoss} sub={h.lots(scenario.lotCount)}>
+          {fmtKrw(scenario.totalLossKrw)}
+        </Figure>
+        <Figure label={h.taxEffect}>
+          {scenario.taxEffectKrw < 0 ? `${fmtKrw(scenario.taxEffectKrw)} ${h.taxReduction}` : fmtKrw(scenario.taxEffectKrw)}
+        </Figure>
+        <Figure label={h.yearWith}>{fmtKrw(scenario.yearTotalWithKrw)}</Figure>
+        <Figure label={h.yearWithout}>{fmtKrw(scenario.yearTotalWithoutKrw)}</Figure>
+      </div>
+      <div className="mt-4">
+        <DataTable
+          minWidth="44rem"
+          rows={rows}
+          getRowKey={(r: Row) => `${r.market}:${r.ticker}`}
+          columns={[
+            { key: 'security', label: h.security, render: (r: Row) => <span className="font-mono text-caption text-ink">{`${r.market}:${r.ticker}`}</span> },
+            { key: 'name', label: h.name, render: (r: Row) => <span className="text-ink-2">{r.name}</span> },
+            { key: 'sleeve', label: h.sleeve, render: (r: Row) => <span className="text-ink-3">{r.sleeve ? copy.sleeves[r.sleeve] : h.unclassified}</span> },
+            { key: 'loss', label: h.loss, align: 'right', render: (r: Row) => fmtKrw(r.lossKrw) },
+            { key: 'lots', label: h.lotCount, align: 'right', render: (r: Row) => fmtNumber(r.lotCount) },
+            { key: 'short', label: h.shortTerm, align: 'right', render: (r: Row) => (r.shortLossKrw > 0 ? fmtKrw(r.shortLossKrw) : '—') },
+            { key: 'long', label: h.longTerm, align: 'right', render: (r: Row) => (r.longLossKrw > 0 ? fmtKrw(r.longLossKrw) : '—') },
+            { key: 'accounts', label: h.accounts, align: 'right', render: (r: Row) => fmtNumber(r.accountCount) },
+          ]}
+        />
+        {scenario.rows.length > rows.length && <p className="mt-2 text-label text-ink-3">{h.topNote(rows.length, scenario.rows.length)}</p>}
+      </div>
+      {scenario.excludedForWashSale.length > 0 && (
+        <div className="mt-4">
+          <h3 className="text-label font-medium text-ink">{h.excludedTitle}</h3>
+          <ul className="mt-1 space-y-0.5 text-label text-ink-2">
+            {scenario.excludedForWashSale.map((e) => (
+              <li key={`${e.market}:${e.ticker}`}>
+                <span className="font-mono text-ink">{`${e.market}:${e.ticker}`}</span> {e.name} · {fmtKrw(e.lossKrw)} ·{' '}
+                <span className="text-ink-3">{h.excludedItem(fmtDateShort(e.lastBuy, language))}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <ul className="mt-4 list-disc space-y-0.5 pl-5 text-label text-ink-3">
+        <li>{h.caveatWashSale}</li>
+        {hasKr && <li>{scenario.usTaxPerson ? h.caveatKrUs : h.caveatKrNotUs}</li>}
+        <li className="text-ink-2">{h.notInstructions}</li>
+      </ul>
+      <p className="mt-2 text-label text-ink-3">{h.asOf(fmtDateShort(scenario.asOf, language))}</p>
+    </Card>
+  )
+}
+
 function SummaryTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy; language: 'en' | 'ko' }) {
   const tax = proposal.plan.taxSummary
   const snapshot = proposal.inputSnapshot
@@ -277,24 +365,38 @@ function SummaryTab({ proposal, copy, language }: { proposal: Proposal; copy: Co
     return { key, label: labelFromKey(key), date, stale: age == null || (typeof staleDays === 'number' && age > staleDays) }
   })
 
-  // Drift: the same rules (current policy, current classes) over the snapshot and over today's data.
-  let drift: { sleeve: Sleeve; then: number; now: number }[] | null = null
+  // Drift: the same rules (current policy, current classes) over the snapshot and over today's data, read against
+  // the target and band the proposal was created with.
+  type DriftRow = { sleeve: Sleeve; target: number | null; lower: number | null; upper: number | null; then: number; now: number }
+  let drift: DriftRow[] | null = null
   const classes = loadClasses()
+  const driftPolicy = policyFor(proposal)
   if (classes && dbAvailable()) {
     try {
-      const policy = policyFor(proposal)
-      const then = computeAllocation(snapshot, policy, classes)
-      const now = computeAllocation(getRebalanceInput(portfolioToday(), undefined, rebalanceWrappers(policy)), policy, classes)
-      drift = SLEEVES.map((sleeve) => ({
-        sleeve,
-        then: then.sleeves.find((r) => r.sleeve === sleeve)?.pct ?? 0,
-        now: now.sleeves.find((r) => r.sleeve === sleeve)?.pct ?? 0,
-      }))
+      const then = computeAllocation(snapshot, driftPolicy, classes)
+      const now = computeAllocation(getRebalanceInput(portfolioToday(), undefined, rebalanceWrappers(driftPolicy)), driftPolicy, classes)
+      drift = SLEEVES.map((sleeve) => {
+        const t = proposal.policyAtCreation?.targets?.[sleeve]
+        const known = t != null && Number.isFinite(t.target) && Number.isFinite(t.band)
+        return {
+          sleeve,
+          target: known ? t.target : null,
+          lower: known ? t.target - t.band : null,
+          upper: known ? t.target + t.band : null,
+          then: then.sleeves.find((r) => r.sleeve === sleeve)?.pct ?? 0,
+          now: now.sleeves.find((r) => r.sleeve === sleeve)?.pct ?? 0,
+        }
+      })
     } catch (error) {
       console.error('[rebalance-proposal] drift:', error)
       drift = null
     }
   }
+  const driftScope = rebalanceWrappers(driftPolicy).includes('isa') ? copy.drift.scopes.taxableIsa : copy.drift.scopes.taxable
+  // The engine's band check: edges inclusive.
+  const bandStatus = (r: DriftRow): 'below' | 'within' | 'above' | null =>
+    r.lower == null || r.upper == null ? null : r.now < r.lower ? 'below' : r.now > r.upper ? 'above' : 'within'
+  const harvest = harvestFor(proposal, classes)
 
   return (
     <>
@@ -317,6 +419,8 @@ function SummaryTab({ proposal, copy, language }: { proposal: Proposal; copy: Co
           <Figure label={copy.figures.usLong}>{fmtMoney(tax.usLongUsd, 'USD')}</Figure>
         </div>
       </Card>
+
+      {harvest && harvest.scenario.totalLossKrw > 0 && <HarvestCard scenario={harvest.scenario} live={harvest.live} copy={copy} language={language} />}
 
       <CardRow>
         <Card title={copy.warnings.title}>
@@ -344,7 +448,7 @@ function SummaryTab({ proposal, copy, language }: { proposal: Proposal; copy: Co
         </Card>
       </CardRow>
 
-      <Card title={copy.drift.title} info={copy.drift.info} className="mb-5">
+      <Card title={copy.drift.title} info={copy.drift.info(driftScope)} className="mb-5">
         {classes === null ? (
           <EmptyState>
             <span className="block text-warning">{copy.classesUnreadable}</span>
@@ -355,11 +459,18 @@ function SummaryTab({ proposal, copy, language }: { proposal: Proposal; copy: Co
         ) : (
           <>
             <DataTable
-              minWidth="24rem"
+              minWidth="36rem"
               rows={drift}
               getRowKey={(r) => r.sleeve}
               columns={[
                 { key: 'sleeve', label: copy.drift.sleeve, render: (r) => <span className="font-medium text-ink">{copy.sleeves[r.sleeve as Sleeve]}</span> },
+                { key: 'target', label: copy.drift.target, align: 'right', render: (r) => (r.target == null ? '—' : fmtPct(r.target)) },
+                {
+                  key: 'band',
+                  label: copy.drift.band,
+                  align: 'right',
+                  render: (r) => <span className="text-ink-3">{r.lower == null || r.upper == null ? '—' : `${fmtNumber(r.lower, 1)}–${fmtNumber(r.upper, 1)}%`}</span>,
+                },
                 { key: 'then', label: copy.drift.snapshot, align: 'right', render: (r) => fmtPct(r.then) },
                 { key: 'now', label: copy.drift.now, align: 'right', render: (r) => fmtPct(r.now) },
                 {
@@ -367,6 +478,15 @@ function SummaryTab({ proposal, copy, language }: { proposal: Proposal; copy: Co
                   label: copy.drift.change,
                   align: 'right',
                   render: (r) => <Signed value={r.now - r.then} format={(m) => copy.drift.points(fmtNumber(m, 2))} />,
+                },
+                {
+                  key: 'status',
+                  label: copy.drift.status,
+                  render: (r) => {
+                    const status = bandStatus(r)
+                    if (!status) return <span className="text-ink-3">—</span>
+                    return <Badge tone={status === 'within' ? 'success' : 'warning'}>{copy.drift.statuses[status]}</Badge>
+                  },
                 },
               ]}
             />
@@ -538,7 +658,10 @@ function KindBadge({ kind, copy }: { kind: Instruction['kind']; copy: Copy }) {
 
 function PlanTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy; language: 'en' | 'ko' }) {
   const editable = proposal.status === 'draft' || proposal.status === 'targets_approved'
-  const canApprove = proposal.status === 'targets_approved' || (proposal.status === 'draft' && proposal.targetChange.decision === 'hold')
+  // A plan with no buy or sell cannot be approved (empty_plan); its step is closing the proposal instead.
+  const closeInstead = canCloseWithoutTrades(proposal)
+  const canApprove =
+    planHasTrades(proposal.plan) && (proposal.status === 'targets_approved' || (proposal.status === 'draft' && proposal.targetChange.decision === 'hold'))
   const instructions = proposal.plan.instructions
   const present = new Set(instructions.map((i) => i.id))
   const skippedOut = proposal.planSkips.filter((id) => !present.has(id))
@@ -670,6 +793,13 @@ function PlanTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy;
             <input type="hidden" name="proposalId" value={proposal.id} />
             <SubmitButton variant="solid">{copy.plan.approve}</SubmitButton>
             <span className="text-label text-ink-3">{copy.plan.approveNote}</span>
+          </form>
+        )}
+        {closeInstead && (
+          <form action={closeWithoutTrades} className="mt-4 flex flex-wrap items-center gap-3 border-t border-line-subtle pt-4">
+            <input type="hidden" name="proposalId" value={proposal.id} />
+            <SubmitButton variant="solid">{copy.plan.closeNoTrades}</SubmitButton>
+            <span className="text-label text-ink-3">{copy.plan.closeNoTradesNote}</span>
           </form>
         )}
       </Card>
@@ -809,6 +939,13 @@ function ReconList({ title, items, warn }: { title: string; items: string[]; war
   )
 }
 
+/** Which "Next:" line the status card shows; a plan with nothing to trade says to close the proposal instead. */
+function proposalNextKey(proposal: Proposal): keyof Copy['statusCard']['next'] {
+  if (canCloseWithoutTrades(proposal)) return proposal.status === 'draft' ? 'draft_hold_empty' : 'targets_approved_empty'
+  if (proposal.status === 'draft') return proposal.targetChange.decision === 'hold' ? 'draft_hold' : 'draft_change'
+  return proposal.status
+}
+
 export default async function RebalanceProposalPage({
   params,
   searchParams,
@@ -829,8 +966,7 @@ export default async function RebalanceProposalPage({
   const tab: Tab = (tabs as string[]).includes(query.tab ?? '') ? (query.tab as Tab) : 'summary'
   const doneMessage = isProposalDoneCode(query.done) ? copy.done[query.done] : null
   const errorMessage = isProposalErrorCode(query.error) ? copy.errors[query.error] : null
-  const nextKey =
-    proposal.status === 'draft' ? (hold ? 'draft_hold' : 'draft_change') : (proposal.status as Exclude<typeof proposal.status, 'draft'>)
+  const nextKey = proposalNextKey(proposal)
   const base = `/rebalance/proposals/${encodeURIComponent(proposal.id)}`
   // Approving targets wrote them to the policy; rejecting afterwards leaves them there.
   const targetsWritten = proposal.status === 'targets_approved' || (proposal.status === 'plan_approved' && !hold)

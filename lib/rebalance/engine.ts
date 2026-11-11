@@ -1,4 +1,4 @@
-import { summarizeTaxCandidates, usGainUsd } from '@/lib/tax-planning'
+import { usGainUsd } from '@/lib/tax-planning'
 import type { TaxPolicy } from '@/lib/tax-policy'
 import type { RebalanceInput } from '@/lib/adapters/rebalance-input'
 import { accountKey, type AllocationPolicy, type Sleeve, type SleeveTarget } from './allocation-policy'
@@ -15,6 +15,7 @@ import {
   sellAmounts,
   staleWarning,
   warningKey,
+  yearTaxKrw,
   type CapExcess,
   type SellContext,
   type SellPick,
@@ -158,17 +159,9 @@ function summarize(ctx: SellContext, picks: SellPick[], totalKrw: number): TaxSu
     candidates.filter((c) => c.holdingBucket === bucket).reduce((sum, c) => sum + usGainUsd(c, ctx.usdKrwRate), 0)
   const proceeds = candidates.reduce((sum, c) => sum + Number(c.proceedsKrw ?? 0), 0)
   // The aggregate includes the year's realized gains (YTD), so the plan's own effect is the
-  // difference between the year with the plan and the year without it. Both sides run the same
-  // aggregate; the YTD-only side simply has no candidates.
-  const yearTax = (rows: typeof candidates) =>
-    summarizeTaxCandidates({
-      candidates: rows,
-      policy: ctx.taxPolicy,
-      scenario: ctx.taxPolicy.activeScenario,
-      year: Number(ctx.input.asOf.slice(0, 4)),
-    }).combinedTaxAfterCreditsKrw
-  const yearTotalTaxKrw = yearTax(candidates)
-  const estimatedTaxKrw = yearTotalTaxKrw - yearTax([])
+  // difference between the year with the plan and the year without it.
+  const yearTotalTaxKrw = yearTaxKrw(ctx, candidates)
+  const estimatedTaxKrw = yearTotalTaxKrw - yearTaxKrw(ctx, [])
   return {
     krGainKrw,
     krDeductionUsedKrw: used,

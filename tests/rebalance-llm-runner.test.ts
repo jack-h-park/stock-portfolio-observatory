@@ -269,3 +269,11 @@ test('prompt states the idea constraints: market, PFIC for a US tax person, wash
   assert.match(p, /PFIC/)
   assert.match(p, /input\.constraints\.washSaleBlockedBuys/)
 })
+
+test('prompt tells the model to quote the concentration and harvest figures, never to compute shares, and that the cap is per position', () => {
+  const p = buildPrompt(input())
+  assert.match(p, /Use the figures in input\.concentration and input\.harvest exactly as given\. Never compute a share, a percentage or a sum yourself/)
+  assert.match(p, /pctOfTotal is a share of the whole rebalancing total; pctOfSleeve is a share of that instrument's own sleeve/)
+  assert.match(p, /The position cap \(input\.concentration\.positionCapPct\) applies to each position separately\. Never compare positions combined against it\./)
+  assert.match(p, /The engine never sells for harvesting/)
+})
