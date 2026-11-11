@@ -194,6 +194,31 @@ if [ -z "$DRY" ]; then
     || echo "note: heartbeat write failed (the push itself still succeeded)" >&2
 fi
 
+# Drift report: what the far side still holds that this machine no longer does.
+# --delete is absent on purpose (above), so a file moved, renamed or retired here
+# stays on the refresh host. The readers tolerate leftovers by design (newest per
+# key, period containment, overlap resolution), but nothing said how many there
+# were or when a new one appeared, and a leftover whose name matches no reader
+# rule is the case worth seeing. This asks rsync what --delete WOULD remove
+# (-n: it touches nothing), prints it, and never deletes. Directories are listed
+# with a trailing slash and their files individually, so only files are counted.
+# Non-fatal for the same reason as the heartbeat: the push already succeeded.
+stale="$(rsync -an --delete --itemize-changes \
+  --exclude '.DS_Store' \
+  --exclude '~$*' \
+  "${present[@]}" \
+  "$HOST:$REMOTE_DIR/" 2>/dev/null \
+  | sed -n 's/^\*deleting  *//p' | grep -v '/$' || true)"
+if [ -n "$stale" ]; then
+  stale_count="$(printf '%s\n' "$stale" | wc -l | tr -d ' ')"
+  echo
+  echo "far side still has $stale_count file(s) this machine no longer has (kept: --delete is off on purpose):"
+  printf '%s\n' "$stale" | head -20 | sed 's/^/  /'
+  if [ "$stale_count" -gt 20 ]; then
+    echo "  ... and $((stale_count - 20)) more"
+  fi
+fi
+
 # Config, second because a failure here must not cost the source push that
 # already succeeded. Same one-way rule, two differences:
 #
