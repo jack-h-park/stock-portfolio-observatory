@@ -59,6 +59,12 @@ const ROUTES = [
   // nothing — which is exactly what happened to position detail.
   '/positions/KR/005930',
   '/tax-planning/plans/none',
+  // The surfaces R2's primitives touch that the net never checked.
+  '/cash-inflow',
+  '/rebalance/settings',
+  '/taxes',
+  '/taxes/history',
+  '/taxes/records/us-2025',
 ]
 
 // The stock view is the default and covers every route. One extra pass puts the

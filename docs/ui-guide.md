@@ -186,10 +186,21 @@ pnpm ui:snap --base http://127.0.0.1:3143 --out /tmp/after
 pnpm ui:compare /tmp/before /tmp/after
 ```
 
-Every route × two languages × two widths, plus one extra Overview pass per
-language and width in the all-assets view (`--all` files), diffed by content
-hash. A refactor that should change nothing must report **0 changed**; that is
-the whole claim of most of the phases in this refactor.
+29 routes × two languages × two widths, plus one extra Overview pass per
+language and width in the all-assets view (`--all` files): 120 files, diffed by
+content hash. A refactor that should change nothing must report **0 changed**;
+that is the whole claim of most of the phases in this refactor.
+
+The 29 are every page that renders its own content on the sample database
+(`/tax-planning/plans/none` is in on purpose: its not-found page is the empty
+state). Routes that only redirect (`/positions`, `/positions/KR`,
+`/tax-planning/plans`) are not visited, since they would capture `/holdings`
+and `/tax-planning` twice. Nor is the rebalance proposal detail
+(`/rebalance/proposals/[id]`): the sample state holds no proposal, so there is
+nothing for it to render. Its markup is pinned instead by the class-string
+assertions in `tests/ui-primitives.test.ts`, added in R2. `a11y-audit` and
+`mobile-audit` keep the same list in the same order; add a new page to all
+three.
 
 Three things will waste your afternoon otherwise:
 
