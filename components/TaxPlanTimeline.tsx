@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { updateSavedInstructionExecutionAction } from '@/app/tax-planning/actions'
 import { getPageCopy } from '@/lib/ui-copy'
 import { Badge, Button, Card, EmptyState, Label, Signed, marketTone } from '@/components/ui'
-import { fmtDateShort, fmtMonth, fmtNumber, localeFor } from '@/lib/format'
+import { fmtDateShort, fmtMonth, fmtNumber, fmtSigned, localeFor } from '@/lib/format'
 import { useMoneyFormatter } from '@/components/LanguageProvider'
 import type { Language } from '@/lib/i18n'
 import { positionHref } from '@/lib/position-url'
@@ -127,7 +127,7 @@ function MonthSummary({
         [copy.plannedSales, money(month.proceedsKrw, 'KRW'), 'text-ink'],
         [copy.position, fmtNumber(month.positionCount), 'text-ink'],
         [copy.grossGains, money(grossGainKrw, 'KRW'), 'text-success'],
-        [copy.pairedLosses, `-${money(month.lossKrw, 'KRW')}`, 'text-danger'],
+        [copy.pairedLosses, fmtSigned(-month.lossKrw, (n) => money(n, 'KRW')), 'text-danger'],
         [copy.netGainLoss, money(month.gainKrw, 'KRW'), month.gainKrw >= 0 ? 'text-success' : 'text-danger'],
       ].map(([label, value, tone]) => (
         <div key={label} className="bg-card px-3 py-2.5">

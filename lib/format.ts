@@ -1,7 +1,7 @@
 import { formatKrw, formatUsd } from '@/lib/currency'
 import type { Language } from '@/lib/i18n'
 
-/** What a date or duration helper prints when there is no value. */
+/** What every formatter and page prints when there is no value. */
 export const EMPTY_VALUE = '—'
 
 /** The BCP 47 tag for a dashboard language. The one place a locale is chosen. */
@@ -27,16 +27,42 @@ export function fmtMoney(value: number | null | undefined, currency: string | nu
  * Five pages defined this, three of them byte-identical, and they disagreed on
  * the two things that matter: whether null reads as "n/a" and whether a
  * positive value carries a "+". Both are options here so the disagreement
- * cannot come back.
+ * cannot come back. `signed` follows fmtSigned: a "+" for a gain only, never
+ * for zero. `unit: 'pp'` prints percentage points as "%p".
  */
 export function fmtPct(
   value: number | null | undefined,
-  { digits = 2, signed = false, nullText = 'n/a' }: { digits?: number; signed?: boolean; nullText?: string } = {}
+  {
+    digits = 2,
+    signed = false,
+    unit = '%',
+    nullText = EMPTY_VALUE,
+  }: { digits?: number; signed?: boolean; unit?: '%' | 'pp'; nullText?: string } = {}
 ) {
   if (value == null) return nullText
   const n = Number(value)
-  const sign = signed && n > 0 ? '+' : ''
-  return `${sign}${fmtNumber(n, digits)}%`
+  const body = signed ? fmtSigned(n, (m) => fmtNumber(m, digits)) : fmtNumber(n, digits)
+  return `${body}${unit === 'pp' ? '%p' : '%'}`
+}
+
+/** A percentage band, "1.0–2.5%": one percent sign after the upper bound. */
+export function fmtPctRange(lower: number, upper: number, digits: number) {
+  return `${fmtNumber(lower, digits)}–${fmtNumber(upper, digits)}%`
+}
+
+/**
+ * A signed figure: "+" and the formatted magnitude for a gain, "-" and the
+ * formatted magnitude for a loss, the formatted zero with no sign, and
+ * EMPTY_VALUE for a missing value. A value that rounds to zero in `format` is
+ * zero here too, so it never reads "+0" or "-0". The one sign rule; `Signed` in
+ * components/ui.tsx renders the same text with a tone.
+ */
+export function fmtSigned(value: number | null | undefined, format: (n: number) => string): string {
+  if (value == null || Number.isNaN(Number(value))) return EMPTY_VALUE
+  const n = Number(value)
+  const body = format(Math.abs(n))
+  if (n === 0 || !/[1-9]/.test(body)) return body
+  return `${n > 0 ? '+' : '-'}${body}`
 }
 
 /**
@@ -58,11 +84,15 @@ export function fmtBytes(value: number | null | undefined) {
   return `${fmtNumber(n)} B`
 }
 
-export function fmtNumber(value: number | null | undefined, digits = 0) {
+/**
+ * A plain number with grouping, at a fixed precision by default. `minDigits`
+ * lets trailing zeros drop (a chart tick reads "12", not "12.0").
+ */
+export function fmtNumber(value: number | null | undefined, digits = 0, minDigits = digits) {
   const n = Number(value ?? 0)
   return n.toLocaleString('ko-KR', {
     maximumFractionDigits: digits,
-    minimumFractionDigits: digits,
+    minimumFractionDigits: minDigits,
   })
 }
 

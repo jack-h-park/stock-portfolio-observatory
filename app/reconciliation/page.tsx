@@ -3,7 +3,7 @@ import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, TextLink, marketTone, type Tone } from '@/components/ui'
 import { getReconciliationReview, type ReconciliationReview } from '@/lib/adapters/portfolio-db'
-import { fmtNumber, fmtQuantity } from '@/lib/format'
+import { EMPTY_VALUE, fmtNumber, fmtQuantity } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
@@ -182,8 +182,8 @@ export default async function ReconciliationPage({
               },
               { key: 'holding_quantity', sortable: true, label: copy.columns.holdingQty, align: 'right', render: (r) => fmtQuantity(r.holding_quantity, 4) },
               { key: 'lot_quantity', sortable: true, label: copy.columns.lotQty, align: 'right', render: (r) => fmtQuantity(r.lot_quantity, 4) },
-              { key: 'quantity_diff', sortable: true, label: copy.columns.qtyDiff, align: 'right', render: (r) => (r.quantity_diff == null ? 'n/a' : fmtQuantity(r.quantity_diff, 4)) },
-              { key: 'base_cost_diff', sortable: true, label: copy.columns.costDiff, align: 'right', render: (r) => (r.base_cost_diff == null ? 'n/a' : money(r.base_cost_diff)) },
+              { key: 'quantity_diff', sortable: true, label: copy.columns.qtyDiff, align: 'right', render: (r) => (r.quantity_diff == null ? EMPTY_VALUE : fmtQuantity(r.quantity_diff, 4)) },
+              { key: 'base_cost_diff', sortable: true, label: copy.columns.costDiff, align: 'right', render: (r) => (r.base_cost_diff == null ? EMPTY_VALUE : money(r.base_cost_diff)) },
             ]}
           />
         )}
@@ -226,7 +226,7 @@ export default async function ReconciliationPage({
                 },
                 { key: 'brokerage', label: copy.columns.brokerage },
                 { key: 'native_cost', label: copy.columns.nativeCost, align: 'right', render: (r) => money(r.native_cost, r.currency) },
-                { key: 'base_cost', label: copy.columns.baseCost, align: 'right', render: (r) => (r.base_cost == null ? 'n/a' : money(r.base_cost)) },
+                { key: 'base_cost', label: copy.columns.baseCost, align: 'right', render: (r) => (r.base_cost == null ? EMPTY_VALUE : money(r.base_cost)) },
               ]}
             />
           )}

@@ -9,6 +9,7 @@ import { live } from '@/lib/domain/taxes/history'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeSection } from '@/lib/page-names'
+import { EMPTY_VALUE } from '@/lib/format'
 
 export type TaxSearch = Record<string, string | string[] | undefined>
 export async function TaxHistoryScreen({
@@ -150,7 +151,7 @@ export async function TaxHistoryScreen({
                       {view.cashEvents.map((event) => (
                         <tr key={event.id}>
                           <td className="p-3">{event.date ?? copy.none}</td>
-                          <td className="p-3">{event.postingDate ?? '—'}</td>
+                          <td className="p-3">{event.postingDate ?? EMPTY_VALUE}</td>
                           <td className="p-3">
                             {event.kind}
                             <div className="text-caption text-ink-2">{event.taxUnitIds.join(' · ')}</div>

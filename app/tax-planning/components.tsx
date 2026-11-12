@@ -3,7 +3,7 @@ import { createSavedTaxPlanAction } from '@/app/tax-planning/actions'
 import { DataTable } from '@/components/DataTable'
 import { Badge, Card, EmptyState, Label, MetricField, Signed, marketTone, type Tone } from '@/components/ui'
 import type { createMoneyFormatter } from '@/lib/currency'
-import { fmtDateShort, fmtDateTime, fmtDurationDays, fmtNumber, fmtQuantity } from '@/lib/format'
+import { fmtDateShort, fmtDateTime, fmtDurationDays, fmtNumber, fmtPct, fmtQuantity, fmtSigned } from '@/lib/format'
 import type { Language } from '@/lib/i18n'
 import { positionHref } from '@/lib/position-url'
 import type { MonthlySaleMasterPlan, MonthlySalePlanSet, TaxPlanCandidate, MasterPlanStrategyKey } from '@/lib/tax-planning'
@@ -150,7 +150,7 @@ export function MasterPlanOverview({
         />
         <PlanMetric
           label={copy.overview.inputCoverage}
-          value={`${fmtNumber(coveragePct, 1)}%`}
+          value={fmtPct(coveragePct, { digits: 1 })}
           hint={copy.overview.coverageHint(fmtNumber(inputIssueCount), fmtNumber(planSet.coverage.missingValuationCount))}
           info={copy.overview.inputCoverageInfo}
           tone={inputIssueCount ? 'warning' : 'success'}
@@ -275,7 +275,7 @@ export function MasterScenarioComparison({
                   {fmtDateShort(scenarioRow.summary.startDate, language)} {copy.comparison.to} {fmtDateShort(scenarioRow.summary.endDate, language)}
                 </dd>
                 <dt className="text-ink-3">{copy.comparison.longTermSales}</dt>
-                <dd className="text-right tabular-nums text-ink">{fmtNumber(scenarioRow.summary.longTermSalePct, 1)}%</dd>
+                <dd className="text-right tabular-nums text-ink">{fmtPct(scenarioRow.summary.longTermSalePct, { digits: 1 })}</dd>
                 <dt className="text-ink-3">{copy.comparison.averageWait}</dt>
                 <dd className="text-right tabular-nums text-ink">{fmtDurationDays(scenarioRow.summary.averageWaitDays, language)}</dd>
                 <dt className="text-ink-3">{copy.comparison.krTopUp}</dt>
@@ -363,7 +363,7 @@ export function SavedPlansPanel({
                     </div>
                     <div>
                       <div className="flex justify-between text-micro text-ink-3">
-                        <span>{copy.savedPlans.execution}</span><span>{fmtNumber(progress.completionPct, 1)}%</span>
+                        <span>{copy.savedPlans.execution}</span><span>{fmtPct(progress.completionPct, { digits: 1 })}</span>
                       </div>
                       <div className="mt-1 h-1.5 overflow-hidden rounded-pill bg-line-subtle">
                         <div className="h-full bg-success" style={{ width: `${progress.completionPct}%` }} />
@@ -411,7 +411,7 @@ export function MasterPlanAnnualTax({ plan, copy, money }: { plan: MonthlySaleMa
           { key: 'gain', label: copy.annualTax.netGainLoss, align: 'right', render: (y: any) => <Signed value={y.gainKrw} format={(m) => money(m, 'KRW')} /> },
           { key: 'usGross', label: copy.annualTax.usGross, align: 'right', priority: 'secondary', render: (y: any) => money(y.usGrossTaxKrw ?? 0) },
           { key: 'krGross', label: copy.annualTax.krGross, align: 'right', priority: 'secondary', render: (y: any) => money(y.krGrossTaxKrw ?? 0) },
-          { key: 'credit', label: copy.annualTax.credit, align: 'right', priority: 'secondary', render: (y: any) => <span className="text-success">-{money(y.estimatedCrossBorderTaxCreditKrw)}</span> },
+          { key: 'credit', label: copy.annualTax.credit, align: 'right', priority: 'secondary', render: (y: any) => <span className="text-success">{fmtSigned(-y.estimatedCrossBorderTaxCreditKrw, (n) => money(n))}</span> },
           { key: 'netTax', label: copy.annualTax.netTax, align: 'right', render: (y: any) => <span className="font-medium text-ink">{money(y.estimatedTaxKrw)}</span> },
           { key: 'afterTax', label: copy.annualTax.afterTaxCash, align: 'right', render: (y: any) => money(y.afterTaxKrw) },
           {
@@ -425,8 +425,8 @@ export function MasterPlanAnnualTax({ plan, copy, money }: { plan: MonthlySaleMa
                 <span>{copy.annualTax.niit} <strong className="font-medium text-ink">{money(y.usNiitTaxKrw ?? 0)}</strong></span>
                 <span>{copy.annualTax.california} <strong className="font-medium text-ink">{money(y.usStateTaxKrw ?? 0)}</strong></span>
                 <span>{copy.annualTax.usFtcLimit} <strong className="font-medium text-ink">{money(y.usForeignTaxCreditLimitKrw ?? 0)}</strong></span>
-                <span>{copy.annualTax.usFtcUsed} <strong className="font-medium text-success">-{money(y.usForeignTaxCreditKrw ?? 0)}</strong></span>
-                <span>{copy.annualTax.krCreditUsed} <strong className="font-medium text-success">-{money(y.krForeignTaxCreditKrw ?? 0)}</strong></span>
+                <span>{copy.annualTax.usFtcUsed} <strong className="font-medium text-success">{fmtSigned(-(y.usForeignTaxCreditKrw ?? 0), (n) => money(n))}</strong></span>
+                <span>{copy.annualTax.krCreditUsed} <strong className="font-medium text-success">{fmtSigned(-(y.krForeignTaxCreditKrw ?? 0), (n) => money(n))}</strong></span>
               </div>
             ),
           },

@@ -7,7 +7,7 @@ import { getRealizedLots } from '@/lib/adapters/portfolio-db'
 import { todayLosAngeles } from '@/lib/cli/common'
 import { NOT_COVERED_LINES, selectTaxExportRows, summarizeTaxExport } from '@/lib/tax-export'
 import { formatKrw, formatUsd } from '@/lib/currency'
-import { fmtNumber, fmtQuantity } from '@/lib/format'
+import { EMPTY_VALUE, fmtNumber, fmtQuantity } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
 import { ALL_YEARS, sumRealized, type RealizedLotView } from '@/lib/realized-lots'
@@ -206,7 +206,7 @@ export default async function RealizedLotsPage({
                 label: copy.columns.cost,
                 align: 'right',
                 sortable: true,
-                render: (r: RealizedLotView) => money(r.cost_basis_krw, r.cost_usd) ?? '—',
+                render: (r: RealizedLotView) => money(r.cost_basis_krw, r.cost_usd) ?? EMPTY_VALUE,
               },
               {
                 key: usd ? 'proceeds_usd' : 'proceeds_krw',
@@ -215,7 +215,7 @@ export default async function RealizedLotsPage({
                 sortable: true,
                 render: (r: RealizedLotView) => (
                   <span title={usd && r.rate_approximate ? copy.approximateRate : undefined}>
-                    {money(r.proceeds_krw, r.proceeds_usd) ?? '—'}
+                    {money(r.proceeds_krw, r.proceeds_usd) ?? EMPTY_VALUE}
                     {usd && r.rate_approximate ? '*' : ''}
                   </span>
                 ),

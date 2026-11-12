@@ -10,7 +10,7 @@ import { Checkbox, Input, Select } from '@/components/form'
 import { CardRow } from '@/components/layout'
 import { dbAvailable, portfolioToday } from '@/lib/adapters/portfolio-db'
 import { getRebalanceInput } from '@/lib/adapters/rebalance-input'
-import { fmtDateShort, fmtDateTime, fmtKrw, fmtMoney, fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
+import { EMPTY_VALUE, fmtDateShort, fmtDateTime, fmtKrw, fmtMoney, fmtNumber, fmtPct, fmtPctRange, fmtQuantity, fmtSigned } from '@/lib/format'
 import { displayAccount, displayAccountKey, maskAccountsIn } from '@/lib/account-label'
 import { getLanguage } from '@/lib/i18n-server'
 import { routeSection } from '@/lib/page-names'
@@ -345,8 +345,8 @@ function HarvestCard({ scenario, live, copy, language }: { scenario: HarvestScen
             { key: 'sleeve', label: h.sleeve, render: (r: Row) => <span className="text-ink-3">{r.sleeve ? copy.sleeves[r.sleeve] : h.unclassified}</span> },
             { key: 'loss', label: h.loss, align: 'right', render: (r: Row) => fmtKrw(r.lossKrw) },
             { key: 'lots', label: h.lotCount, align: 'right', render: (r: Row) => fmtNumber(r.lotCount) },
-            { key: 'short', label: h.shortTerm, align: 'right', render: (r: Row) => (r.shortLossKrw > 0 ? fmtKrw(r.shortLossKrw) : '—') },
-            { key: 'long', label: h.longTerm, align: 'right', render: (r: Row) => (r.longLossKrw > 0 ? fmtKrw(r.longLossKrw) : '—') },
+            { key: 'short', label: h.shortTerm, align: 'right', render: (r: Row) => (r.shortLossKrw > 0 ? fmtKrw(r.shortLossKrw) : EMPTY_VALUE) },
+            { key: 'long', label: h.longTerm, align: 'right', render: (r: Row) => (r.longLossKrw > 0 ? fmtKrw(r.longLossKrw) : EMPTY_VALUE) },
             { key: 'accounts', label: h.accounts, align: 'right', render: (r: Row) => fmtNumber(r.accountCount) },
           ]}
         />
@@ -427,7 +427,7 @@ function SummaryTab({ proposal, copy, language }: { proposal: Proposal; copy: Co
           <Figure label={copy.figures.turnover}>{fmtPct(tax.turnoverPct)}</Figure>
           <Figure
             label={copy.figures.estimatedTax}
-            sub={`${copy.figures.yearTotalTax} ${tax.yearTotalTaxKrw == null ? '—' : fmtKrw(tax.yearTotalTaxKrw)}`}
+            sub={`${copy.figures.yearTotalTax} ${tax.yearTotalTaxKrw == null ? EMPTY_VALUE : fmtKrw(tax.yearTotalTaxKrw)}`}
           >
             {tax.estimatedTaxKrw < 0 ? `${fmtKrw(tax.estimatedTaxKrw)} ${copy.figures.taxReduction}` : fmtKrw(tax.estimatedTaxKrw)}
           </Figure>
@@ -484,12 +484,12 @@ function SummaryTab({ proposal, copy, language }: { proposal: Proposal; copy: Co
               getRowKey={(r) => r.sleeve}
               columns={[
                 { key: 'sleeve', label: copy.drift.sleeve, render: (r) => <span className="font-medium text-ink">{copy.sleeves[r.sleeve as Sleeve]}</span> },
-                { key: 'target', label: copy.drift.target, align: 'right', render: (r) => (r.target == null ? '—' : fmtPct(r.target)) },
+                { key: 'target', label: copy.drift.target, align: 'right', render: (r) => (r.target == null ? EMPTY_VALUE : fmtPct(r.target)) },
                 {
                   key: 'band',
                   label: copy.drift.band,
                   align: 'right',
-                  render: (r) => <span className="text-ink-3">{r.lower == null || r.upper == null ? '—' : `${fmtNumber(r.lower, 1)}–${fmtNumber(r.upper, 1)}%`}</span>,
+                  render: (r) => <span className="text-ink-3">{r.lower == null || r.upper == null ? EMPTY_VALUE : fmtPctRange(r.lower, r.upper, 1)}</span>,
                 },
                 { key: 'then', label: copy.drift.snapshot, align: 'right', render: (r) => fmtPct(r.then) },
                 { key: 'now', label: copy.drift.now, align: 'right', render: (r) => fmtPct(r.now) },
@@ -504,7 +504,7 @@ function SummaryTab({ proposal, copy, language }: { proposal: Proposal; copy: Co
                   label: copy.drift.status,
                   render: (r) => {
                     const status = bandStatus(r)
-                    if (!status) return <span className="text-ink-3">—</span>
+                    if (!status) return <span className="text-ink-3">{EMPTY_VALUE}</span>
                     return <Badge tone={status === 'within' ? 'success' : 'warning'}>{copy.drift.statuses[status]}</Badge>
                   },
                 },
@@ -536,7 +536,7 @@ function TargetsTab({ proposal, copy }: { proposal: Proposal; copy: Copy }) {
       edited: proposed?.editedBy === 'maintainer',
       llm: llmProposed && change.decision === 'change' && proposed != null && proposed.editedBy !== 'maintainer',
       changed: proposed != null && proposed.to !== proposed.from,
-      bounds: `${fmtNumber(bounds.min, 1)}–${fmtNumber(bounds.max, 1)}%`,
+      bounds: fmtPctRange(bounds.min, bounds.max, 1),
     }
   })
   type Row = (typeof rows)[number]
@@ -648,12 +648,12 @@ function MovesTable({ moves, copy }: { moves: SleeveMove[]; copy: Copy }) {
           label: copy.plan.gap,
           align: 'right',
           render: (r: SleeveMove) => {
-            if (r.intendedAmountKrw == null) return <span className="text-ink-3">—</span>
+            if (r.intendedAmountKrw == null) return <span className="text-ink-3">{EMPTY_VALUE}</span>
             // What the plan does minus what the band asked: positive is more bought (or less sold)
             // than the band needed, negative is less.
             const gap = r.amountKrw - r.intendedAmountKrw
-            if (Math.abs(gap) < 1) return <span className="text-ink-3">—</span>
-            return <Badge tone="warning">{`${gap > 0 ? '+' : '−'}${fmtKrw(Math.abs(gap))}`}</Badge>
+            if (Math.abs(gap) < 1) return <span className="text-ink-3">{EMPTY_VALUE}</span>
+            return <Badge tone="warning">{fmtSigned(gap, fmtKrw)}</Badge>
           },
         },
       ]}
@@ -717,7 +717,7 @@ function PlanTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy;
       label: copy.plan.lots,
       render: (r: Instruction) =>
         r.lots.length === 0 ? (
-          <span className="text-ink-3">—</span>
+          <span className="text-ink-3">{EMPTY_VALUE}</span>
         ) : (
           <details className="text-label">
             <summary className="cursor-pointer text-ink-2">{copy.plan.lotCount(r.lots.length)}</summary>
@@ -732,7 +732,7 @@ function PlanTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy;
           </details>
         ),
     },
-    { key: 'quantity', label: copy.plan.quantity, align: 'right' as const, render: (r: Instruction) => (r.kind === 'transfer' ? '—' : fmtQuantity(r.quantity)) },
+    { key: 'quantity', label: copy.plan.quantity, align: 'right' as const, render: (r: Instruction) => (r.kind === 'transfer' ? EMPTY_VALUE : fmtQuantity(r.quantity)) },
     { key: 'estimatedKrw', label: copy.plan.krw, align: 'right' as const, render: (r: Instruction) => fmtKrw(r.estimatedKrw) },
     {
       key: 'gain',
@@ -740,7 +740,7 @@ function PlanTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy;
       align: 'right' as const,
       render: (r: Instruction) =>
         r.gainKrw == null && r.usGainUsd == null ? (
-          <span className="text-ink-3">—</span>
+          <span className="text-ink-3">{EMPTY_VALUE}</span>
         ) : (
           <div className="tabular-nums">
             {r.gainKrw != null && <Signed value={r.gainKrw} format={(m) => fmtKrw(m)} />}
@@ -752,7 +752,7 @@ function PlanTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy;
           </div>
         ),
     },
-    { key: 'tier', label: copy.plan.tier, render: (r: Instruction) => (r.tier ? <Badge tone={r.tier === 'loss' ? 'success' : r.tier === 'short_term' ? 'warning' : 'neutral'}>{copy.tiers[r.tier]}</Badge> : <span className="text-ink-3">—</span>) },
+    { key: 'tier', label: copy.plan.tier, render: (r: Instruction) => (r.tier ? <Badge tone={r.tier === 'loss' ? 'success' : r.tier === 'short_term' ? 'warning' : 'neutral'}>{copy.tiers[r.tier]}</Badge> : <span className="text-ink-3">{EMPTY_VALUE}</span>) },
     { key: 'notes', label: copy.plan.notes, render: (r: Instruction) => <span className="text-label text-ink-3">{r.notes.join(' · ')}</span> },
   ]
 

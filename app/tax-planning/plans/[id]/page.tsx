@@ -4,7 +4,7 @@ import { getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
 import { Badge, Card, Label, TextLink } from '@/components/ui'
-import { fmtDateShort, fmtDateTime, fmtKrw, fmtNumber } from '@/lib/format'
+import { fmtDateShort, fmtDateTime, fmtKrw, fmtNumber, fmtPct, fmtSigned } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { buildMonthlySalePlanSet } from '@/lib/tax-planning'
 import { getSavedTaxPlan, savedTaxPlanProgress, type SavedTaxPlanStatus } from '@/lib/tax-plan-store'
@@ -35,7 +35,7 @@ const STATUS_TONE: Record<SavedTaxPlanStatus, 'neutral' | 'info' | 'success' | '
 
 function deltaLabel(value: number, noChange: string, formatter: (amount: number) => string = fmtKrw) {
   if (Math.abs(value) < 0.5) return noChange
-  return `${value > 0 ? '+' : '-'}${formatter(Math.abs(value))}`
+  return fmtSigned(value, formatter)
 }
 
 export default async function SavedTaxPlanPage({
@@ -102,7 +102,7 @@ export default async function SavedTaxPlanPage({
                 [copy.plannedSales, fmtKrw(saved.plan.summary.proceedsKrw)],
                 [copy.estimatedTax, fmtKrw(saved.plan.summary.estimatedTaxKrw)],
                 [copy.instructions, fmtNumber(progress.total)],
-                [copy.complete, `${fmtNumber(progress.completionPct, 1)}%`],
+                [copy.complete, fmtPct(progress.completionPct, { digits: 1 })],
               ].map(([label, value]) => (
                 <div key={label} className="bg-card px-3 py-3">
                   <Label size="micro">{label}</Label>

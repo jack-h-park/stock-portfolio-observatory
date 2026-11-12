@@ -38,7 +38,7 @@ import { config } from '@/config'
 import { ASSET_CLASSES } from '@/lib/net-worth'
 import { chartMarkers, snapEventDates } from '@/lib/asset-events'
 import { AssetEventList } from '@/components/AssetEventList'
-import { dividendChartAmount, fmtDate, fmtDateTime, fmtNumber } from '@/lib/format'
+import { EMPTY_VALUE, dividendChartAmount, fmtDate, fmtDateTime, fmtNumber, fmtPct, fmtSigned } from '@/lib/format'
 import { freshnessLabel } from '@/lib/freshness-text'
 import { convertMoney, createMoneyFormatter } from '@/lib/currency'
 import { getAssetView } from '@/lib/asset-view-server'
@@ -231,10 +231,10 @@ export default async function OverviewPage({
   const latestTrendCoverage = latestSnapshot?.[selectedCoverageField] ?? null
   const latestPositionCoverage = selectedScope === 'global' ? latestSnapshot?.position_coverage ?? null : null
   const missingTrendPoints = trendData.length - valuedTrendData.length
-  const trendValueLabel = (value: number) => selectedMetric.key === 'return_pct' ? `${fmtNumber(value, 1)}%` : money(value * 1_000_000, currencyPreferences.displayCurrency)
+  const trendValueLabel = (value: number) => selectedMetric.key === 'return_pct' ? fmtPct(value, { digits: 1 }) : money(value * 1_000_000, currencyPreferences.displayCurrency)
   const trendChangeLabel = selectedMetric.key === 'return_pct'
-    ? `${trendChange >= 0 ? '+' : ''}${fmtNumber(trendChange, 1)}%p`
-    : `${trendChange >= 0 ? '+' : ''}${trendValueLabel(trendChange)}${trendChangePct == null ? '' : ` · ${trendChangePct >= 0 ? '+' : ''}${fmtNumber(trendChangePct, 1)}%`}`
+    ? fmtPct(trendChange, { digits: 1, unit: 'pp', signed: true })
+    : `${fmtSigned(trendChange, trendValueLabel)}${trendChangePct == null ? '' : ` · ${fmtPct(trendChangePct, { digits: 1, signed: true })}`}`
 
   return (
     <>
@@ -276,7 +276,7 @@ export default async function OverviewPage({
             />
             <MetricField
               label={copy.returnOnPricedCost}
-              value={`${fmtNumber(globalUnrealizedPct, 2)}%`}
+              value={fmtPct(globalUnrealizedPct, { digits: 2 })}
               info={`${glossary.unrealizedGl.description} ${copy.returnOnPricedCostInfo}`}
               tone={signTone(globalUnrealizedPct)}
               valueClassName="text-title"
@@ -327,7 +327,7 @@ export default async function OverviewPage({
                 </span>
                 <span className="tabular-nums text-ink">
                   {money(netWorth.byClass[key], 'KRW')}
-                  <span className="ml-2 text-ink-3">{fmtNumber(netWorth.totalKrw > 0 ? (netWorth.byClass[key] / netWorth.totalKrw) * 100 : 0, 1)}%</span>
+                  <span className="ml-2 text-ink-3">{fmtPct(netWorth.totalKrw > 0 ? (netWorth.byClass[key] / netWorth.totalKrw) * 100 : 0, { digits: 1 })}</span>
                 </span>
               </li>
             ))}
@@ -354,7 +354,7 @@ export default async function OverviewPage({
                 <div key={market.key} className="flex items-center gap-1.5 text-caption text-ink-3">
                   <span className="h-2 w-2 rounded-pill" style={{ backgroundImage: market.barStyle }} />
                   <span>{market.label}</span>
-                  <span className="font-medium tabular-nums text-ink">{market.share}%</span>
+                  <span className="font-medium tabular-nums text-ink">{fmtPct(market.share, { digits: 0 })}</span>
                 </div>
               ))}
             </div>
@@ -364,7 +364,7 @@ export default async function OverviewPage({
               <div
                 key={market.key}
                 className="h-full"
-                title={`${market.label} ${market.share}%`}
+                title={`${market.label} ${fmtPct(market.share, { digits: 0 })}`}
                 style={{
                   width: `${Math.max(market.share > 0 ? 1 : 0, market.share)}%`,
                   backgroundImage: market.barStyle,
@@ -382,7 +382,7 @@ export default async function OverviewPage({
                   <Badge tone={market.tone}>{market.key}</Badge>
                   <span className="text-body font-medium text-ink">{market.label}</span>
                 </div>
-                <span className="text-caption tabular-nums text-ink-3">{copy.share} {market.share}%</span>
+                <span className="text-caption tabular-nums text-ink-3">{copy.share} {fmtPct(market.share, { digits: 0 })}</span>
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-caption">
                 <MetricField label={copy.marketValue} value={money(market.marketValue, 'KRW')} labelClassName="normal-case tracking-normal" />
@@ -396,7 +396,7 @@ export default async function OverviewPage({
                 />
                 <MetricField
                   label={copy.return}
-                  value={`${fmtNumber(market.returnPct, 2)}%`}
+                  value={fmtPct(market.returnPct, { digits: 2 })}
                   tone={signTone(market.returnPct)}
                   labelClassName="normal-case tracking-normal"
                 />
@@ -420,7 +420,7 @@ export default async function OverviewPage({
       <CardRow>
         <Card title={copy.concentration} info={copy.concentrationInfo}>
           <div className="flex h-full min-h-[190px] flex-col justify-center">
-            <div className="text-hero font-medium leading-none tabular-nums text-ink">{topFiveShare}%</div>
+            <div className="text-hero font-medium leading-none tabular-nums text-ink">{fmtPct(topFiveShare, { digits: 0 })}</div>
             <div className="mt-1 text-caption text-ink-3">{copy.concentrationHint}</div>
             <div className="mt-5 space-y-2">
               {largestPositions.map((p) => (
@@ -439,8 +439,8 @@ export default async function OverviewPage({
 
         <Card title={copy.termMix} info={copy.termMixInfo}>
           <div className="flex h-full min-h-[190px] flex-col justify-center">
-            <div className="text-hero font-medium leading-none tabular-nums text-ink">{termCoveragePct}%</div>
-            <div className="mt-1 text-caption text-ink-3">{copy.termCoverage} · {copy.shortTermExposure} {shortTermExposurePct}%</div>
+            <div className="text-hero font-medium leading-none tabular-nums text-ink">{fmtPct(termCoveragePct, { digits: 0 })}</div>
+            <div className="mt-1 text-caption text-ink-3">{copy.termCoverage} · {copy.shortTermExposure} {fmtPct(shortTermExposurePct, { digits: 0 })}</div>
             <div className="mt-5 flex h-2 overflow-hidden rounded-pill bg-surface">
               <div className="h-full bg-success" style={{ width: `${termSegmentWidth(termLongValue)}%` }} />
               <div className="h-full bg-warning" style={{ width: `${termSegmentWidth(termShortValue)}%` }} />
@@ -496,7 +496,7 @@ export default async function OverviewPage({
                     return (
                       <div key={metric.key}>
                         <div className="flex items-center gap-1.5 text-label text-ink-3"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: metric.color }} />{copy.metricLabels[metric.key]}</div>
-                        <div className="mt-0.5 text-title font-medium tabular-nums text-ink">{typeof latest === 'number' ? money(latest * 1_000_000, currencyPreferences.displayCurrency) : '—'}</div>
+                        <div className="mt-0.5 text-title font-medium tabular-nums text-ink">{typeof latest === 'number' ? money(latest * 1_000_000, currencyPreferences.displayCurrency) : EMPTY_VALUE}</div>
                       </div>
                     )
                   })}
@@ -580,6 +580,7 @@ export default async function OverviewPage({
             valuePrefix={selectedMetric.key === 'return_pct' ? '' : displayPrefix}
             valueSuffix={selectedMetric.key === 'return_pct' ? '%' : 'M'}
             axisLabel={selectedMetric.key === 'return_pct' ? copy.chartAxisReturn : displayAxisLabel}
+            valueName={copy.chartValueName}
           />
         )}
         <div className="mt-1 text-label text-ink-3">

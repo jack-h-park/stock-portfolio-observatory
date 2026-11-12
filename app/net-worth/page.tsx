@@ -8,7 +8,7 @@ import { StackedAssetChart } from '@/components/charts'
 import { getAssetAllocation, getAssetEvents, getChildAssets, getForeignAccountMaxima, getMeta, getNetWorth, getSnapshotDates, getTotalAssetsSeries, portfolioToday } from '@/lib/adapters/portfolio-db'
 import { convertMoney, createMoneyFormatter, formatKrw, formatUsd } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
-import { fmtDate, fmtDateTime } from '@/lib/format'
+import { fmtDate, fmtDateTime, fmtNumber } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { routeMetadata, routeSection } from '@/lib/page-names'
 import { lastCompleteYear, type ForeignAccountRow } from '@/lib/fbar'
@@ -430,7 +430,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
           <p>{fbarCopy.method}</p>
           <p>
             {fbar.rate
-              ? fbarCopy.rate(fbar.rate.krwPerUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), fmtDate(fbar.rate.date, language))
+              ? fbarCopy.rate(fmtNumber(fbar.rate.krwPerUsd, 2), fmtDate(fbar.rate.date, language))
               : fbarCopy.noRate(fbarYear)}
           </p>
           <p>{fbarCopy.understatedNote}</p>

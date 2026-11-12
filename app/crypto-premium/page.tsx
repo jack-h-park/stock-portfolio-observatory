@@ -3,7 +3,7 @@ import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, Signed } from '@/components/ui'
 import { getCryptoPremium } from '@/lib/adapters/portfolio-db'
-import { fmtDateTime, fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
+import { EMPTY_VALUE, fmtDateTime, fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
@@ -76,7 +76,7 @@ export default async function CryptoPremiumPage() {
               title={copy.weightedPremium}
               info={copy.weightedPremiumInfo}
               eyebrow={copy.premiumHeadline}
-              value={weighted == null ? 'n/a' : `${weighted >= 0 ? '+' : ''}${fmtNumber(weighted, 2)}%`}
+              value={fmtPct(weighted, { signed: true })}
               hint={copy.weightedHint}
             >
               <KpiBand>
@@ -114,7 +114,7 @@ export default async function CryptoPremiumPage() {
                   <div className="h-px bg-line-subtle" />
                   <MetricField
                     label={copy.coverage}
-                    value={coverageStart && coverageEnd ? `${coverageStart} → ${coverageEnd}` : 'n/a'}
+                    value={coverageStart && coverageEnd ? `${coverageStart} → ${coverageEnd}` : EMPTY_VALUE}
                     info={glossary.coverage.description}
                     hint={copy.coverageHint}
                     valueClassName="text-title"
@@ -150,13 +150,13 @@ export default async function CryptoPremiumPage() {
                     key: 'heldQuantity',
                     label: copy.columns.held,
                     align: 'right',
-                    render: (r) => (r.heldQuantity > 0 ? fmtQuantity(r.heldQuantity) : '—'),
+                    render: (r) => (r.heldQuantity > 0 ? fmtQuantity(r.heldQuantity) : EMPTY_VALUE),
                   },
                   {
                     key: 'premiumValueKrw',
                     label: copy.columns.valueFromPremium,
                     align: 'right',
-                    render: (r) => (r.heldQuantity > 0 ? <Signed value={r.premiumValueKrw} format={(m) => money(m, 'KRW')} /> : '—'),
+                    render: (r) => (r.heldQuantity > 0 ? <Signed value={r.premiumValueKrw} format={(m) => money(m, 'KRW')} /> : EMPTY_VALUE),
                   },
                 ]}
               />

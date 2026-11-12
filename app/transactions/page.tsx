@@ -5,7 +5,7 @@ import { Badge, Card, marketTone } from '@/components/ui'
 import { getRecentTransactions } from '@/lib/adapters/portfolio-db'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
-import { fmtNumber, fmtQuantity } from '@/lib/format'
+import { EMPTY_VALUE, fmtNumber, fmtQuantity } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { applyFilters, applySearch, filterOptions, readFilters, withParam, type FilterGroup } from '@/lib/table-filter'
@@ -90,7 +90,7 @@ export default async function TransactionsPage({
               { key: 'name', label: copy.columns.name, sortable: true, sortFirst: 'asc' },
               { key: 'quantity', label: copy.columns.quantity, align: 'right', sortable: true, render: (r) => fmtQuantity(r.quantity, 2) },
               { key: 'native_amount', label: copy.columns.amount, align: 'right', sortable: true, render: (r) => money(r.native_amount, r.currency) },
-              { key: 'amount_krw', label: copy.columns.baseAmount, align: 'right', sortable: true, render: (r) => (r.amount_krw == null ? 'n/a' : money(r.amount_krw, 'KRW')) },
+              { key: 'amount_krw', label: copy.columns.baseAmount, align: 'right', sortable: true, render: (r) => (r.amount_krw == null ? EMPTY_VALUE : money(r.amount_krw, 'KRW')) },
               { key: 'source', label: copy.columns.source, priority: 'tertiary' },
               { key: 'page', label: copy.columns.page, align: 'right', priority: 'tertiary' },
             ]}

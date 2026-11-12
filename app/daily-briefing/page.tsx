@@ -10,7 +10,7 @@ import {
   type BriefingPosition,
   type BriefingSessionMove,
 } from '@/lib/adapters/briefing-archive'
-import { fmtPct, fmtQuantity } from '@/lib/format'
+import { EMPTY_VALUE, fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
 import { getGlossary } from '@/lib/glossary'
 import { positionHref } from '@/lib/position-url'
 import { signTone } from '@/lib/tone'
@@ -32,7 +32,7 @@ export const generateMetadata = routeMetadata('/daily-briefing')
 // misstates both sides at once.
 function amount(value: number, market: BriefingMarket, digits = 0) {
   const sign = value < 0 ? '-' : ''
-  return `${sign}${market.symbol}${Math.abs(value).toLocaleString('en-US', { maximumFractionDigits: digits, minimumFractionDigits: digits })}`
+  return `${sign}${market.symbol}${fmtNumber(Math.abs(value), digits)}`
 }
 
 function priceOf(value: number, market: BriefingMarket) {
@@ -305,7 +305,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                 <KpiBand>
                   <MetricField
                     label={copy.sessionReturn}
-                    value={session ? fmtPct(session.totals!.plPct, { signed: true }) : '—'}
+                    value={session ? fmtPct(session.totals!.plPct, { signed: true }) : EMPTY_VALUE}
                     hint={session ? copy.priorValueHint(amount(session.totals!.priorMarketValue, m)) : noValue}
                     tone={session ? signTone(session.totals!.plPct) : 'neutral'}
                     valueClassName="text-title"

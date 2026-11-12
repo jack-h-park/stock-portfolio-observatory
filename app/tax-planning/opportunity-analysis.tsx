@@ -1,5 +1,5 @@
 import { Badge, Card, EmptyState, Label, MetricField, Signed, marketTone } from '@/components/ui'
-import { fmtKrw, fmtNumber, fmtPct } from '@/lib/format'
+import { EMPTY_VALUE, fmtKrw, fmtNumber, fmtPct, fmtSigned } from '@/lib/format'
 import {
   buildTaxPlan,
   summarizeTaxCandidates,
@@ -260,7 +260,7 @@ export function DecisionSummary({
     ? copy.opportunity.reviewTimingSignals
     : tiedTax
       ? copy.opportunity.noTaxDifference
-      : copy.opportunity.currentLowestTaxPath(bestScenario?.label ?? 'n/a')
+      : copy.opportunity.currentLowestTaxPath(bestScenario?.label ?? EMPTY_VALUE)
   const body = !hasPlanningTarget
     ? copy.opportunity.noPlanningTargetBody
     : tiedTax
@@ -458,7 +458,7 @@ function OpportunityTable({
           { key: 'usTaxIfAllSoldKrw', label: copy.opportunity.usEstimate, description: copy.opportunity.usEstimateInfo, align: 'right', render: (r: any) => fmtKrw(r.usTaxIfAllSoldKrw) },
           { key: 'krTaxIfAllSoldKrw', label: copy.opportunity.krEstimate, description: copy.opportunity.krEstimateInfo, align: 'right', render: (r: any) => fmtKrw(r.krTaxIfAllSoldKrw) },
           { key: 'combinedTaxBeforeCreditsKrw', label: copy.opportunity.beforeCredits, description: copy.opportunity.beforeCreditsInfo, align: 'right', priority: 'secondary', render: (r: any) => fmtKrw(r.combinedTaxBeforeCreditsKrw) },
-          { key: 'estimatedCrossBorderTaxCreditKrw', label: copy.opportunity.estimatedCredit, description: copy.opportunity.estimatedCreditInfo, align: 'right', priority: 'secondary', render: (r: any) => <span className="text-success">-{fmtKrw(r.estimatedCrossBorderTaxCreditKrw)}</span> },
+          { key: 'estimatedCrossBorderTaxCreditKrw', label: copy.opportunity.estimatedCredit, description: copy.opportunity.estimatedCreditInfo, align: 'right', priority: 'secondary', render: (r: any) => <span className="text-success">{fmtSigned(-r.estimatedCrossBorderTaxCreditKrw, fmtKrw)}</span> },
           { key: 'combinedTaxAfterCreditsKrw', label: copy.opportunity.afterCredit, description: copy.opportunity.afterCreditInfo, align: 'right', render: (r: any) => <span className="font-medium text-ink">{fmtKrw(r.combinedTaxAfterCreditsKrw)}</span> },
           {
             key: 'readout',
