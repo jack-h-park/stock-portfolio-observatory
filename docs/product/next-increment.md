@@ -1,14 +1,14 @@
 # Next Personal Finance Observatory increments
 
-**Status:** Proposed scope for review, November 12, 2026 (America/Los_Angeles). This document defines follow-up PR boundaries; it does not implement them or authorize a deployment or financial-data mutation.
+**Status:** First increment authorized and implemented on a review branch; not deployed. Second increment remains proposed. Updated November 12, 2026 (America/Los_Angeles). Deployment and financial-data mutation require separate authorization.
 
-The [operating status](implementation-status.md) records the completed foundation and bounded adoption. The read-only review changes the immediate priority: resolve the historical gold calculation gap before expanding the overview or annual tax engine. Private examples, account inventory, dates, balances and evidence remain in the operator's private review.
+The [operating status](implementation-status.md) records the completed foundation and bounded adoption. The read-only review established the immediate priority: resolve the historical gold calculation gap before expanding the overview or annual tax engine. Private examples, account inventory, dates, balances and evidence remain in the operator's private review.
 
 ## First PR: sale-aware historical gold
 
 **Suggested title:** `fix(assets): reconcile historical gold quantities after sales`.
 
-Problem: [getTotalAssetsSeries](../../lib/adapters/portfolio-db.ts) supplies only gold purchases to [totalAssetsSeries](../../lib/net-worth.ts). The latter accumulates those purchased grams on every later historical date. The current endpoint is independently replaced with current covered assets, so agreement at that endpoint cannot detect historical gold retained after a sale.
+Original defect: [getTotalAssetsSeries](../../lib/adapters/portfolio-db.ts) supplied only gold purchases to [totalAssetsSeries](../../lib/net-worth.ts), which accumulated purchased grams on every later historical date. The review-branch correction reads purchases and sales per account and uses the existing FIFO matcher for remaining grams and fee-inclusive cost. The current endpoint is independently replaced with current covered assets, so agreement at that endpoint cannot detect historical gold retained after a sale.
 
 Scope:
 
@@ -21,6 +21,8 @@ Scope:
 Likely files: `lib/adapters/portfolio-db.ts`, `lib/net-worth.ts`, their existing historical-assets tests, and the affected explanatory copy if its algorithm description changes. Reuse the current code structure; no broad adapter/module extraction is necessary for this correction.
 
 Out of scope: rewriting source statements, refreshing prices, reimporting tax history, changing asset classifications, applying transactions, renaming repositories or enabling web writes. Deployment requires its own applicable authorization and a read-only operating recheck.
+
+Correction boundary: unknown quantities and oversold account histories remain null; missing purchase basis blocks cost fallback only for unknown lots still open. A known closed account remains zero even without price/basis. An unresolved account makes that date's gold class unknown rather than reporting an unlabeled partial gold total. The shared matcher and investment/tax calculations are unchanged. The service is still running the pre-correction code until separately authorized deployment.
 
 ## Second PR: explain the coverage behind current assets
 
