@@ -248,7 +248,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
             <Link
               href={hrefWith({ children: !includeChildren })}
               scroll={false}
-              aria-label={`${childCopy.toggle}: ${includeChildren ? (language === 'ko' ? '포함됨' : 'included') : (language === 'ko' ? '제외됨' : 'excluded')}`}
+              aria-label={childCopy.toggleAria(includeChildren)}
               title={childCopy.toggleHint}
               className={`rounded-sm border px-2 py-1 text-label font-medium ${includeChildren ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
             >

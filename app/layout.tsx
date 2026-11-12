@@ -12,6 +12,7 @@ import { getLanguage } from '@/lib/i18n-server'
 import { getAssetView } from '@/lib/asset-view-server'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { APP_NAME } from '@/lib/page-names'
+import { getUiCopy, UI_COPY_BY_LANG } from '@/lib/ui-copy'
 import { hasSupplementaryAssets } from '@/lib/adapters/portfolio-db'
 
 export const metadata: Metadata = {
@@ -19,7 +20,8 @@ export const metadata: Metadata = {
     default: APP_NAME,
     template: `%s · ${APP_NAME}`,
   },
-  description: 'Assets, cash flow and KR/US tax history with private local evidence.',
+  // Static metadata has no request, so it stays English by design.
+  description: UI_COPY_BY_LANG.en.common.appDescription,
   applicationName: APP_NAME,
   icons: {
     icon: '/favicon.ico',
@@ -37,7 +39,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   } catch {
     showAllAssets = false
   }
-  const skipLabel = language === 'ko' ? '본문으로 바로가기' : 'Skip to main content'
+  const skipLabel = getUiCopy(language).common.skipToContent
 
   return (
     <html lang={language} data-theme="jp" className={`${geistSans.variable} ${geistMono.variable}`}>

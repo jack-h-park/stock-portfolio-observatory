@@ -6,6 +6,8 @@ export const netWorth = defineCopy({
     emphasis: 'Assets',
     subtitle: (asOf: string) => `Securities, crypto, bank deposits, pensions and gold in one KRW figure. Portfolio data as of ${asOf}.`,
     total: 'Covered total assets',
+    coverageNote: (count: number) =>
+      `Covered assets owned by self. ${count} missing, unpriced or conflicting asset record(s) are excluded; overall source coverage is unconfirmed. Liabilities are excluded, so this is not complete net worth. Review each balance date. Historical cash coverage can differ from current balances.`,
     byClass: 'By asset class',
     classes: { stocks: 'Stocks', crypto: 'Crypto', cash: 'Cash', pensions: 'Pensions', gold: 'Gold' },
     asOfNotesHint: "A dated class is valued from a snapshot, at cost, or from a balance older than today, not from today's price.",
@@ -45,6 +47,7 @@ export const netWorth = defineCopy({
     empty: 'No deposit balances collected yet',
     children: {
       toggle: 'Include children',
+      toggleAria: (included: boolean) => (included ? 'Include children: included' : 'Include children: excluded'),
       toggleHint: "Off: every figure is the maintainer's own. On: the children's accounts are added beside them, never inside a total.",
       title: "Children's accounts",
       note: "Each child's own accounts, held for them. They are not in Covered total assets, the class totals or FBAR above.",
@@ -87,6 +90,8 @@ export const netWorth = defineCopy({
     emphasis: '총자산',
     subtitle: (asOf: string) => `증권, 암호화폐, 은행 예금, 연금, 금을 원화 한 숫자로 보여줍니다. 포트폴리오 기준일: ${asOf}.`,
     total: '확인 가능한 총자산',
+    coverageNote: (count: number) =>
+      `본인 소유의 확인 가능한 자산 합계입니다. 누락·평가 불가·출처 충돌 ${count}건은 제외했으며, 원본 커버리지는 전체 확인 전입니다. 부채를 반영한 순자산이 아닙니다. 각 잔액의 기준일을 확인하세요. 과거 추세의 현금 커버리지는 현재 잔액과 다를 수 있습니다.`,
     byClass: '자산군별',
     classes: { stocks: '주식', crypto: '암호화폐', cash: '현금', pensions: '연금', gold: '금' },
     asOfNotesHint: '날짜가 붙은 자산군은 오늘 시세가 아니라 snapshot, 취득원가 또는 오늘 이전 잔고 기준입니다.',
@@ -126,6 +131,7 @@ export const netWorth = defineCopy({
     empty: '아직 수집된 예금 잔고가 없습니다',
     children: {
       toggle: '자녀 포함',
+      toggleAria: (included: boolean) => (included ? '자녀 포함: 포함됨' : '자녀 포함: 제외됨'),
       toggleHint: '끄면 모든 숫자가 본인 것만입니다. 켜면 자녀 계좌를 옆에 따로 보여주며, 어떤 합계에도 더하지 않습니다.',
       title: '자녀 계좌',
       note: '자녀 명의로 보유한 계좌입니다. 위의 확인 가능한 총자산, 자산군 합계, FBAR에는 포함되지 않습니다.',

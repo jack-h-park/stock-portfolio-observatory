@@ -245,7 +245,7 @@ export default async function HealthPage() {
           {fx ? (
             <div className="space-y-2 text-body text-ink-2">
               <div className="flex items-center justify-between gap-3">
-                <span>USD/KRW</span>
+                <span>{copy.usdKrw}</span>
                 <span className="font-medium tabular-nums text-ink">{fmtNumber(fx.rate, 2)}</span>
               </div>
               <div className="flex items-center justify-between gap-3">

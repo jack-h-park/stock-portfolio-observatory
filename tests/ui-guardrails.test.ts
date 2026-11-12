@@ -317,6 +317,32 @@ test('G12 catches an English word in the Korean half of a copy module', () => {
   assert.deepEqual(findEnglishInKoreanCopy("export const x = { label: 'Sort' }"), [])
 })
 
+test('G12 lets SSH and Tailscale stand in a Korean sentence', () => {
+  const module = ['export const page = defineCopy({', '  ko: {', "    access: 'Tailscale에서 SSH 없이',", '  },', '})'].join('\n')
+  assert.deepEqual(findEnglishInKoreanCopy(module), [])
+})
+
+test('G12 skips an object key in the Korean half but still reads the same words as a value', () => {
+  const module = [
+    'export const page = defineCopy({',
+    '  ko: {',
+    "    names: { 'Hana Bank': '하나은행' } as Record<string, string>,",
+    "    fallback: 'Hana Bank',",
+    "    pick: (on: boolean) => (on ? 'Hana Bank' : '하나은행'),",
+    '  },',
+    '})',
+  ].join('\n')
+  const hits = findEnglishInKoreanCopy(module) as Hit[]
+  // The key on line 3 is a raw database value; lines 4 and 5 render the words.
+  assert.deepEqual(
+    hits.map((h) => [h.line, h.snippet.split(':')[0]]),
+    [
+      [4, 'Hana, Bank'],
+      [5, 'Hana, Bank'],
+    ],
+  )
+})
+
 test('the counted checks are registered in order with their scopes', () => {
   type Check = { code: string; id: string; roots: string[]; exclude: string[]; include: RegExp | null }
   const checks = CHECKS as Check[]

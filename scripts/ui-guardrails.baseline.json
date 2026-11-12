@@ -59,12 +59,10 @@
     "lib/ui-copy/pages/dataMap.ts": 6,
     "lib/ui-copy/pages/dataOps.ts": 6,
     "lib/ui-copy/pages/health.ts": 1,
-    "lib/ui-copy/pages/lots.ts": 2,
     "lib/ui-copy/pages/netWorth.ts": 6,
     "lib/ui-copy/pages/overview.tsx": 10,
     "lib/ui-copy/pages/pension.tsx": 3,
-    "lib/ui-copy/pages/positionDetail.ts": 2,
-    "lib/ui-copy/pages/realized.ts": 2,
+    "lib/ui-copy/pages/positionDetail.ts": 1,
     "lib/ui-copy/pages/rebalanceProposal.ts": 2,
     "lib/ui-copy/pages/rebalanceSettings.ts": 7,
     "lib/ui-copy/pages/reconciliation.ts": 2,
@@ -78,12 +76,7 @@
     "app/crypto-premium/page.tsx": 11,
     "app/daily-briefing/page.tsx": 10,
     "app/data-ops/page.tsx": 2,
-    "app/fx/page.tsx": 3,
-    "app/health/page.tsx": 1,
-    "app/layout.tsx": 1,
-    "app/manifest.ts": 2,
-    "app/positions/[market]/[ticker]/page.tsx": 2,
-    "components/Sidebar.tsx": 3
+    "app/positions/[market]/[ticker]/page.tsx": 2
   },
   "hand-written-grid": {
     "app/cost-basis/page.tsx": 2,
@@ -111,23 +104,11 @@
     "components/WashSaleBanner.tsx": 1
   },
   "hangul-literal": {
-    "app/data-ops/page.tsx": 28,
-    "app/fx/page.tsx": 32,
-    "app/layout.tsx": 1,
-    "app/net-worth/page.tsx": 1,
-    "app/page.tsx": 1,
-    "components/AssetCoverageNote.tsx": 1,
-    "components/PrivateAccessNotice.tsx": 2
+    "app/data-ops/page.tsx": 28
   },
   "inline-language-branch": {
     "app/data-ops/page.tsx": 7,
-    "app/fx/page.tsx": 30,
-    "app/layout.tsx": 1,
-    "app/net-worth/page.tsx": 2,
-    "app/page.tsx": 2,
-    "components/AssetCoverageNote.tsx": 1,
     "components/AutoRefresh.tsx": 1,
-    "components/PrivateAccessNotice.tsx": 2,
     "components/TaxPlanTimeline.tsx": 3
   },
   "inline-sign-tone": {

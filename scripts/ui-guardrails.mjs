@@ -593,6 +593,7 @@ export function findBareFootnote(source, file = '<source>') {
 const KO_LATIN_ALLOW = new Set([
   'FX', 'API', 'ISA', 'IRP', 'ETF', 'CSV', 'PDF', 'DB', 'URL', 'USD', 'KRW', 'US', 'KR', 'ID', 'PFIC',
   'FBAR', 'IRS', 'CMA', 'RP', 'LLM', 'JSON', 'Form', 'W', 'EUR', 'JPY', 'CLI', 'OK',
+  'SSH', 'Tailscale',
 ])
 
 /** `{placeholder}` and `${…}` are filled in at run time, so their names are not copy. */
@@ -618,7 +619,9 @@ function withoutInterpolations(body) {
  * one hit per string literal there holding a Latin word of two or more letters
  * outside KO_LATIN_ALLOW, with the offending words first in the snippet. A
  * literal inside a `${…}` is read on its own (it is shown too), while the
- * interpolation's code is not.
+ * interpolation's code is not. A literal followed directly by `:` is an object
+ * key (`'Hana Bank': '하나은행'`), a raw value the map translates, so it is
+ * skipped; a ternary writes ` : ` with spaces and is still read.
  */
 export function findEnglishInKoreanCopy(source, file = '<source>') {
   const hits = []
@@ -626,7 +629,10 @@ export function findEnglishInKoreanCopy(source, file = '<source>') {
   eachLine(source, (text, line) => {
     if (!inKorean && /^\s*ko:\s*\{/.test(text)) inKorean = true
     if (!inKorean) return
-    for (const literal of literalsIn(text)) {
+    const literals = [...text.matchAll(STRING_LITERAL)]
+      .filter((match) => text[match.index + match[0].length] !== ':')
+      .flatMap((match) => literalsIn(match[0]))
+    for (const literal of literals) {
       const words = (withoutInterpolations(literal.slice(1, -1)).match(/\b[A-Za-z]{2,}\b/g) ?? []).filter(
         (word) => !KO_LATIN_ALLOW.has(word),
       )
