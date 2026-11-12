@@ -37,6 +37,10 @@ transaction.run('US', 'Robinhood', 'Agentic', 'Robinhood Agentic', daysAgo(57))
 transaction.run('US', 'Robinhood', 'Mid-term', 'Robinhood Mid-term', daysAgo(59))
 // Long-term has trades but nothing open: no holdings row, still one account.
 transaction.run('US', 'Robinhood', 'Long-term', 'Robinhood Long-term', daysAgo(3))
+// A Korean account outside the named brokerages, filed under a label that carries
+// a full (made-up) account number: the certificate branch.
+const KR_RAW_ACCOUNT = 'Example Securities AB-12345678'
+holding.run('KR', 'Example Securities', null, KR_RAW_ACCOUNT, daysAgo(10))
 db.close()
 
 writeFileSync(
@@ -112,6 +116,20 @@ test('a missing disposal marks only its own account, even when that account\'s C
     cleanup.exec('drop table missing_disposals')
     cleanup.close()
   }
+})
+
+test('a Korean certificate row names its account only masked in the text that leaves the machine', async () => {
+  const { getAccountCoverage } = await import('../lib/adapters/portfolio-db')
+  const row = getAccountCoverage().rows.find((r) => r.market === 'KR' && r.brokerage === 'Example Securities')
+  assert.ok(row, 'the certificate row is present')
+  assert.equal(row.artifacts[0]?.code, 'KR_CERTIFICATE')
+  // The account itself stays raw: identity, keys and the typed codes need it.
+  assert.equal(row.account, KR_RAW_ACCOUNT)
+  // The printed text is what the summary, the reminder and the CLI carry.
+  assert.ok(!row.requiredArtifact.includes('12345678'), row.requiredArtifact)
+  assert.ok(!row.requiredArtifact.includes(KR_RAW_ACCOUNT), row.requiredArtifact)
+  assert.match(row.requiredArtifact, /…5678/)
+  for (const source of row.sources) assert.ok(!source.requiredArtifact.includes('12345678'))
 })
 
 test('without a snapshot to tie them, holdings and transaction labels stay apart rather than being guessed together', async () => {
