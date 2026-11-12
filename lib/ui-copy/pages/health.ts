@@ -76,6 +76,7 @@ export const health = defineCopy({
     latestErrorTail: 'Latest error tail',
 
     fxSnapshot: 'FX snapshot',
+    usdKrw: 'USD/KRW',
     asOf: 'As of',
     noFxRate: 'No FX rate configured',
 
@@ -144,6 +145,7 @@ export const health = defineCopy({
     latestErrorTail: '최근 오류 로그',
 
     fxSnapshot: '환율 스냅샷',
+    usdKrw: 'USD/KRW',
     asOf: '기준일',
     noFxRate: '설정된 환율이 없습니다.',
 

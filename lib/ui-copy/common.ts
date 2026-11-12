@@ -19,6 +19,13 @@ export const UI_COPY_BY_LANG = {
       closeHelp: 'Press Esc to close.',
       notRecorded: 'Not recorded',
       elapsed: 'elapsed',
+      skipToContent: 'Skip to main content',
+      appDescription: 'Assets, cash flow and KR/US tax history with private local evidence.',
+      privateAccess: {
+        title: 'Approved owner devices only',
+        description:
+          'This website, including assets, taxes and evidence, is limited to approved owner devices on Tailscale. New or re-enrolled devices require review. No SSH tunnel is needed for normal browser access.',
+      },
     },
     freshness: {
       labels: {
@@ -101,6 +108,13 @@ export const UI_COPY_BY_LANG = {
       closeHelp: 'Esc 키를 누르면 닫힙니다.',
       notRecorded: '기록 없음',
       elapsed: '경과',
+      skipToContent: '본문으로 바로가기',
+      appDescription: '자산, 현금 흐름, 한·미 세금 이력을 비공개 로컬 증빙과 함께 봅니다.',
+      privateAccess: {
+        title: '승인된 본인 기기만 접근 가능',
+        description:
+          '이 웹사이트의 자산·세금·증빙은 Tailscale에서 승인된 본인 기기에서만 볼 수 있습니다. 새 기기나 재등록한 기기는 접근 검토가 필요합니다. SSH 연결 없이 브라우저로 이용할 수 있습니다.',
+      },
     },
     freshness: {
       labels: {

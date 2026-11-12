@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import type { Language } from '@/lib/i18n'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
+import { APP_NAME } from '@/lib/brand'
 
 /**
  * One name per route, taken from the sidebar.
@@ -46,14 +47,7 @@ export const ROUTE_HREFS = [
 
 export type RouteHref = (typeof ROUTE_HREFS)[number]
 
-/**
- * The product name, in one place. The root layout builds its title template
- * from this, and `/` has to spell the template out itself: Next applies a
- * template to child segments only, and `app/page.tsx` shares a segment with
- * `app/layout.tsx`, so without this the home tab was the one tab missing the
- * product name.
- */
-export const APP_NAME = 'Personal Finance Observatory'
+export { APP_NAME, BRAND } from '@/lib/brand'
 
 /** The sidebar's label for a route, in one language. */
 export function routeName(href: RouteHref, language: Language): string {

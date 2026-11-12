@@ -317,6 +317,11 @@ test('G12 catches an English word in the Korean half of a copy module', () => {
   assert.deepEqual(findEnglishInKoreanCopy("export const x = { label: 'Sort' }"), [])
 })
 
+test('G12 lets SSH and Tailscale stand in a Korean sentence', () => {
+  const module = ['export const page = defineCopy({', '  ko: {', "    access: 'Tailscale에서 SSH 없이',", '  },', '})'].join('\n')
+  assert.deepEqual(findEnglishInKoreanCopy(module), [])
+})
+
 test('G12 skips an object key in the Korean half but still reads the same words as a value', () => {
   const module = [
     'export const page = defineCopy({',

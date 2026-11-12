@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 
-import { ROUTE_HREFS, routeName, routeSection } from '@/lib/page-names'
+import { APP_NAME, BRAND, ROUTE_HREFS, routeName, routeSection } from '@/lib/page-names'
 import { getPageCopy } from '@/lib/ui-copy'
 
 const LANGUAGES = ['en', 'ko'] as const
@@ -71,4 +71,11 @@ test('no route resolves to an empty section', () => {
       assert.ok(routeSection(href, language).trim().length > 0, `${href} (${language}) has an empty section`)
     }
   }
+})
+
+// The sidebar wordmark and the manifest read the brand in parts; this keeps the
+// parts spelling the one product name.
+test('the brand parts spell the product name', () => {
+  assert.equal(`${BRAND.eyebrow} ${BRAND.wordmark}`, APP_NAME)
+  assert.ok(APP_NAME.startsWith(BRAND.short))
 })

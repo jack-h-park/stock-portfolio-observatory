@@ -276,7 +276,7 @@ export default async function OverviewPage({
             <MetricField
               label={copy.returnOnPricedCost}
               value={`${fmtNumber(globalUnrealizedPct, 2)}%`}
-              info={`${glossary.unrealizedGl.description} This percentage is measured against priced cost basis.`}
+              info={`${glossary.unrealizedGl.description} ${copy.returnOnPricedCostInfo}`}
               tone={signTone(globalUnrealizedPct)}
               valueClassName="text-title"
             />
@@ -599,7 +599,7 @@ export default async function OverviewPage({
               <Link
                 href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}${includeChildren ? '' : '&children=1'}`}
                 scroll={false}
-                aria-label={`${childCopy.toggle}: ${includeChildren ? (language === 'ko' ? '포함됨' : 'included') : (language === 'ko' ? '제외됨' : 'excluded')}`}
+                aria-label={childCopy.toggleAria(includeChildren)}
                 title={childCopy.toggleHint}
                 className={`rounded-sm border px-2 py-1 text-label font-medium ${includeChildren ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
               >
