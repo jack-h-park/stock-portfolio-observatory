@@ -367,13 +367,210 @@ export function findEnglishProseLiteral(source, file = '<source>') {
   return hits.sort((a, b) => a.line - b.line)
 }
 
+/** The one file whose job is to write grid columns, so pages need not. */
+const GRID_OWNER = 'components/layout.tsx'
+
+const GRID_ALLOW = 'guardrail:allow grid'
+
+/**
+ * G4. A page that writes its own `grid-cols-*` makes a layout the shared
+ * primitives in components/layout.tsx do not know about, so the next change to
+ * the column rhythm misses it and pages drift apart one breakpoint at a time.
+ * Nothing flags it: it is a valid class. One hit per string literal holding
+ * such a class (under any variant, `grid-cols-[…]` included). A deliberate one
+ * is marked with the comment `guardrail:allow grid` on its line or the line
+ * above; the marker is read from the raw source, since the strip blanks it.
+ */
+export function findHandWrittenGrid(source, file = '<source>') {
+  if (file === GRID_OWNER) return []
+  const hits = []
+  const raw = source.split('\n')
+  eachLine(source, (text, line) => {
+    if (raw[line - 1]?.includes(GRID_ALLOW) || raw[line - 2]?.includes(GRID_ALLOW)) return
+    for (const match of text.matchAll(STRING_LITERAL)) {
+      const classes = match[0].slice(1, -1).split(/\s+/)
+      if (classes.some((cls) => bareOf(cls).startsWith('grid-cols-'))) hits.push(hit(file, line, match[0]))
+    }
+  })
+  return hits
+}
+
+/**
+ * G5. A gain/loss colour picked by an inline ternary
+ * (`x > 0 ? 'text-success' : 'text-danger'`) instead of `signTone` from
+ * lib/tone.ts or `Signed` from components/ui.tsx. Each copy decides zero,
+ * null and the threshold its own way, so the same number can read green on one
+ * page and grey on another. It type-checks either way.
+ */
+const INLINE_SIGN_TONE = [
+  /['"]text-(?:success|danger)['"]\s*:\s*['"]text-(?:danger|success)['"]/g,
+  /['"](?:success|danger)['"]\s*:\s*['"](?:danger|warning|success)['"]/g,
+]
+
+export function findInlineSignTone(source, file = '<source>') {
+  const hits = []
+  eachLine(source, (text, line) => {
+    for (const re of INLINE_SIGN_TONE) {
+      for (const match of text.matchAll(re)) hits.push(hit(file, line, match[0]))
+    }
+  })
+  return hits
+}
+
+const NULL_LITERALS = new Set(['n/a', 'N/A', '—'])
+
+/**
+ * G6. A missing value written by hand as `'n/a'`, `'N/A'` or `'—'`. The
+ * formatters in lib/format.ts already render a null one way; a hand-written
+ * placeholder renders it another, in one language only, and to anything that
+ * checks for null it is a real value. A valid string, so nothing objects.
+ */
+export function findNullLiteral(source, file = '<source>') {
+  const hits = []
+  eachLine(source, (text, line) => {
+    for (const match of text.matchAll(STRING_LITERAL)) {
+      if (NULL_LITERALS.has(match[0].slice(1, -1))) hits.push(hit(file, line, match[0]))
+    }
+  })
+  return hits
+}
+
+/**
+ * G7. A font size passed to a metric through `valueClassName`. The metric
+ * components own the size of their value; an override makes one card on a row
+ * larger or smaller than its neighbours, and next to the component's own size
+ * class the two fight by emit order, which the conflict check cannot see
+ * because the classes sit in two different literals.
+ */
+const METRIC_VALUE_SIZE = /valueClassName=(?:["']|\{\s*["'`])\s*text-/g
+
+export function findMetricValueSize(source, file = '<source>') {
+  const hits = []
+  eachLine(source, (text, line) => {
+    for (const _ of text.matchAll(METRIC_VALUE_SIZE)) hits.push(hit(file, line, text))
+  })
+  return hits
+}
+
+/**
+ * G8. The `accent` prop marks the one figure a page wants read first. With two
+ * or more on a page none of them stands out, and no tool notices. The target is
+ * at most one per page; the baseline records where pages stand. Only the bare
+ * prop counts, not a class token such as `accent-danger`. Read over the whole
+ * source rather than line by line, so a bare `accent` alone on a line of a
+ * wrapped tag still has its newline to match.
+ */
+const ACCENT_PROP = /(?<=\s)accent(?=[\s=>}])/g
+
+export function findAccentProp(source, file = '<source>') {
+  const text = stripComments(source)
+  const lines = text.split('\n')
+  return [...text.matchAll(ACCENT_PROP)].map((match) => {
+    const line = text.slice(0, match.index).split('\n').length
+    return hit(file, line, lines[line - 1])
+  })
+}
+
+/**
+ * Walk `text` from `start`, calling `visit(ch, index, depth)` for every
+ * character outside a quoted string, with `depth` the bracket nesting after
+ * that character. Quotes are skipped so a comma or bracket inside a string is
+ * not read as structure. Stops when `visit` returns true; returns that index.
+ */
+function scanStructure(text, start, visit) {
+  let depth = 0
+  let quote = null
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]
+    if (quote) {
+      if (ch === '\\') i++
+      else if (ch === quote) quote = null
+      continue
+    }
+    if (ch === "'" || ch === '"' || ch === '`') quote = ch
+    else if (ch === '(' || ch === '[' || ch === '{') depth++
+    else if (ch === ')' || ch === ']' || ch === '}') depth--
+    if (visit(ch, i, depth)) return i
+  }
+  return -1
+}
+
+/** The text between the `(` at `open` and its matching `)`, or null if it never closes. */
+function callArguments(text, open) {
+  const close = scanStructure(text, open, (ch, _, depth) => depth === 0)
+  return close === -1 ? null : text.slice(open + 1, close)
+}
+
+/** A top-level comma followed by more than whitespace (a trailing comma is not a second argument). */
+function hasSecondArgument(args) {
+  return scanStructure(args, 0, (ch, i, depth) => ch === ',' && depth === 0 && args.slice(i + 1).trim() !== '') !== -1
+}
+
+/**
+ * G9. `fmtDateTime` and `fmtDateShort` take the language as their second
+ * argument and default it to English. A call with one argument prints an
+ * English date on the Korean page, and since the argument is optional the type
+ * checker has nothing to say. A call may wrap over lines, so the argument list
+ * is read from the whole stripped source with a small parenthesis matcher.
+ */
+export function findDateFormatWithoutLanguage(source, file = '<source>') {
+  const hits = []
+  const text = stripComments(source)
+  for (const match of text.matchAll(/\b(?:fmtDateTime|fmtDateShort)\(/g)) {
+    const args = callArguments(text, match.index + match[0].length - 1)
+    if (args === null || hasSecondArgument(args)) continue
+    const line = text.slice(0, match.index).split('\n').length
+    hits.push(hit(file, line, `${match[0]}${args})`.replace(/\s+/g, ' ')))
+  }
+  return hits
+}
+
+/**
+ * G10. `toLocaleString()` and `toLocaleDateString()` format in whatever locale
+ * the runtime has: the server's during render and the browser's after
+ * hydration, so the same figure can change shape on load and differ between
+ * readers. The formatters in lib/format.ts pin the locale to the page language.
+ */
+export function findBrowserLocaleNumber(source, file = '<source>') {
+  const hits = []
+  eachLine(source, (text, line) => {
+    for (const _ of text.matchAll(/toLocale(?:Date)?String\(/g)) hits.push(hit(file, line, text))
+  })
+  return hits
+}
+
+/**
+ * G11. A footnote written as a bare `<p className="… text-ink-3">`. Each one
+ * picks its own size, spacing and colour step, so footnotes on two pages never
+ * look alike, and a change to how notes read has no single place to land. The
+ * tag is read from `<p ` to its closing `>`, which may be lines later; the hit
+ * is reported on the line of `<p `.
+ */
+const CLASS_NAME_LITERAL = /\bclassName=(?:\{\s*)?("[^"]*"|'[^']*'|`[^`]*`)/
+
+export function findBareFootnote(source, file = '<source>') {
+  const hits = []
+  const text = stripComments(source)
+  for (const match of text.matchAll(/<p\s/g)) {
+    const rest = text.slice(match.index)
+    const end = rest.search(/(?<!=)>/)
+    const tag = end === -1 ? rest : rest.slice(0, end + 1)
+    const cls = tag.match(CLASS_NAME_LITERAL)
+    if (!cls || !/text-ink-3(?![\w-])/.test(cls[1])) continue
+    const line = text.slice(0, match.index).split('\n').length
+    hits.push(hit(file, line, tag.replace(/\s+/g, ' ')))
+  }
+  return hits
+}
+
 const BILINGUAL_BY_DESIGN = ['app/global-error.tsx']
 
 /**
  * The counted checks. A counted check may have hits; the baseline records how
  * many each file had when the check arrived, and a run fails only when a file
  * gets worse. `roots` defaults to app and components; `exclude` lists exact
- * paths relative to the repo root. Add a check by appending to this list.
+ * paths relative to the repo root; `include`, when set, is a pattern a path must
+ * match to be read at all. Add a check by appending to this list.
  */
 export const CHECKS = [
   {
@@ -397,7 +594,58 @@ export const CHECKS = [
     exclude: BILINGUAL_BY_DESIGN,
     find: findEnglishProseLiteral,
   },
-].map((check) => ({ roots: ['app', 'components'], exclude: [], ...check }))
+  {
+    code: 'G4',
+    id: 'hand-written-grid',
+    title: 'grid columns written by hand instead of with the layout primitives',
+    find: findHandWrittenGrid,
+  },
+  {
+    code: 'G5',
+    id: 'inline-sign-tone',
+    title: 'gain/loss colour chosen inline instead of with signTone or Signed',
+    find: findInlineSignTone,
+  },
+  {
+    code: 'G6',
+    id: 'null-literal',
+    title: 'missing value written as n/a or a dash instead of by a formatter',
+    find: findNullLiteral,
+  },
+  {
+    code: 'G7',
+    id: 'metric-value-size',
+    title: 'font size passed to a metric value',
+    find: findMetricValueSize,
+  },
+  {
+    code: 'G8',
+    id: 'accent-per-page',
+    title: 'accent prop on a page (target: at most one per page)',
+    roots: ['app'],
+    include: /(?:^|\/)page\.tsx$/,
+    find: findAccentProp,
+  },
+  {
+    code: 'G9',
+    id: 'date-format-without-language',
+    title: 'date formatted without the page language',
+    find: findDateFormatWithoutLanguage,
+  },
+  {
+    code: 'G10',
+    id: 'browser-locale-number',
+    title: 'number or date formatted in the runtime locale',
+    find: findBrowserLocaleNumber,
+  },
+  {
+    code: 'G11',
+    id: 'bare-footnote',
+    title: 'footnote written as a bare text-ink-3 paragraph',
+    roots: ['app'],
+    find: findBareFootnote,
+  },
+].map((check) => ({ roots: ['app', 'components'], exclude: [], include: null, ...check }))
 
 /**
  * Compare per-file counts against the baseline. Both arguments map a check id
@@ -466,6 +714,7 @@ function scanCounted() {
       for (const file of walk(root).sort()) {
         const rel = file.split(path.sep).join('/')
         if (/\.test\.tsx?$/.test(rel) || check.exclude.includes(rel)) continue
+        if (check.include && !check.include.test(rel)) continue
         hits.push(...check.find(fs.readFileSync(file, 'utf8'), rel))
       }
     }

@@ -4,11 +4,19 @@ import { test } from 'node:test'
 import {
   CHECKS,
   compareToBaseline,
+  findAccentProp,
+  findBareFootnote,
+  findBrowserLocaleNumber,
   findConflicts,
+  findDateFormatWithoutLanguage,
   findDeadOpacity,
   findEnglishProseLiteral,
+  findHandWrittenGrid,
   findHangulLiteral,
   findInlineLanguageBranch,
+  findInlineSignTone,
+  findMetricValueSize,
+  findNullLiteral,
   stripComments,
 } from '../scripts/ui-guardrails.mjs'
 
@@ -174,15 +182,131 @@ test('G3 counts each line of a paragraph wrapped inside a JSX element', () => {
   assert.deepEqual(findEnglishProseLiteral(ternary), [])
 })
 
-test('every counted check scans app and components and skips the bilingual error page', () => {
+test('G4 catches grid columns written by hand, outside the layout primitives', () => {
+  assert.deepEqual(snippets(findHandWrittenGrid('<div className="grid gap-4 lg:grid-cols-3">', 'app/a/page.tsx')), [
+    '"grid gap-4 lg:grid-cols-3"',
+  ])
+  assert.equal(findHandWrittenGrid("const c = 'grid grid-cols-[7rem_1fr]'", 'app/a/page.tsx').length, 1)
+  // The layout primitives are where columns belong.
+  assert.deepEqual(findHandWrittenGrid("const COLUMNS = { 2: 'xl:grid-cols-2' }", 'components/layout.tsx'), [])
+  // A marked exception, on the line or the line above.
+  assert.deepEqual(findHandWrittenGrid('<div className="grid grid-cols-7"> {/* guardrail:allow grid */}', 'app/a/page.tsx'), [])
   assert.deepEqual(
-    CHECKS.map((c: { code: string; id: string }) => `${c.code} ${c.id}`),
-    ['G1 inline-language-branch', 'G2 hangul-literal', 'G3 english-prose-literal'],
+    findHandWrittenGrid('// guardrail:allow grid: a calendar has seven days\n<div className="grid grid-cols-7">', 'app/a/page.tsx'),
+    [],
   )
-  for (const check of CHECKS as Array<{ roots: string[]; exclude: string[] }>) {
-    assert.deepEqual(check.roots, ['app', 'components'])
-    assert.ok(check.exclude.includes('app/global-error.tsx'))
+  // A grid without columns, and other grid utilities.
+  assert.deepEqual(findHandWrittenGrid('<div className="grid gap-4 col-span-2 grid-rows-2">', 'app/a/page.tsx'), [])
+})
+
+test('G5 catches a gain/loss colour chosen by an inline ternary', () => {
+  assert.equal(findInlineSignTone("const c = v >= 0 ? 'text-success' : 'text-danger'").length, 1)
+  assert.equal(findInlineSignTone('const t = broken ? "danger" : "warning"').length, 1)
+  assert.equal(findInlineSignTone("const t = ok ? 'success' : 'danger'").length, 1)
+  // The shared helper, and a ternary between unrelated tones.
+  assert.deepEqual(findInlineSignTone('const c = signTone(value)'), [])
+  assert.deepEqual(findInlineSignTone("const t = open ? 'info' : 'neutral'"), [])
+  assert.deepEqual(findInlineSignTone("// ok ? 'text-success' : 'text-danger'"), [])
+})
+
+test('G6 catches a missing value written by hand', () => {
+  assert.deepEqual(snippets(findNullLiteral("const v = x ?? 'n/a'")), ["'n/a'"])
+  assert.deepEqual(snippets(findNullLiteral('const v = x ?? "N/A"')), ['"N/A"'])
+  assert.deepEqual(snippets(findNullLiteral("const v = x ?? '—'")), ["'—'"])
+  // A longer string that contains one, and a formatter call.
+  assert.deepEqual(findNullLiteral("const v = 'n/a for this account'"), [])
+  assert.deepEqual(findNullLiteral("const v = '— since then'"), [])
+  assert.deepEqual(findNullLiteral('const v = fmtNumber(x, language)'), [])
+})
+
+test('G7 catches a font size passed to a metric value', () => {
+  assert.equal(findMetricValueSize('<Metric label={l} value={v} valueClassName="text-body" />').length, 1)
+  assert.equal(findMetricValueSize("<Metric valueClassName={'text-hero'} />").length, 1)
+  assert.equal(findMetricValueSize('<Metric valueClassName={` text-title`} />').length, 1)
+  // A colour or weight that is not the first class, and no override.
+  assert.deepEqual(findMetricValueSize('<Metric valueClassName="font-medium" />'), [])
+  assert.deepEqual(findMetricValueSize('<Metric valueClassName={tone} />'), [])
+})
+
+test('G8 counts the accent prop, not an accent class', () => {
+  const page = [
+    '<Card title={copy.a} accent>',
+    '<Card title={copy.b} accent={count > 0}>',
+    '<Card',
+    '  accent',
+    '/>',
+  ].join('\n')
+  assert.deepEqual(
+    (findAccentProp(page) as Hit[]).map((h) => h.line),
+    [1, 2, 4],
+  )
+  assert.deepEqual(findAccentProp('<span className="text-accent-danger accent-info">'), [])
+  assert.deepEqual(findAccentProp('<div className="border accent-danger">'), [])
+  assert.deepEqual(findAccentProp('const accentTone = tone'), [])
+})
+
+test('G9 catches a date formatted without the page language', () => {
+  assert.deepEqual(snippets(findDateFormatWithoutLanguage('<p>{fmtDateTime(meta.at)}</p>')), ['fmtDateTime(meta.at)'])
+  assert.deepEqual(snippets(findDateFormatWithoutLanguage('const d = fmtDateTime(toIso(x))')), ['fmtDateTime(toIso(x))'])
+  assert.equal(findDateFormatWithoutLanguage('const d = fmtDateShort(\n  plan.start,\n)').length, 1)
+  // Two arguments, including when the first is itself a call with arguments.
+  assert.deepEqual(findDateFormatWithoutLanguage('const d = fmtDateShort(plan.start, language)'), [])
+  assert.deepEqual(findDateFormatWithoutLanguage('const d = fmtDateTime(row.at(0), language)'), [])
+  assert.deepEqual(findDateFormatWithoutLanguage("const d = fmtDateTime(pick(a, 'b,c'), language)"), [])
+  assert.deepEqual(findDateFormatWithoutLanguage('const d = fmtDateTime(\n  saved.at,\n  language,\n)'), [])
+})
+
+test('G10 catches a number or date formatted in the runtime locale', () => {
+  assert.equal(findBrowserLocaleNumber('const s = value.toLocaleString()').length, 1)
+  assert.equal(findBrowserLocaleNumber("const s = d.toLocaleDateString('en-US')").length, 1)
+  assert.deepEqual(findBrowserLocaleNumber('const s = fmtNumber(value, language)'), [])
+  assert.deepEqual(findBrowserLocaleNumber('// value.toLocaleString()'), [])
+})
+
+test('G11 catches a footnote written as a bare text-ink-3 paragraph', () => {
+  assert.deepEqual(
+    (findBareFootnote('<div>\n  <p className="mt-2 text-label text-ink-3">{copy.note}</p>\n</div>') as Hit[]).map((h) => h.line),
+    [2],
+  )
+  // The className may sit on a later line of the tag.
+  assert.equal(findBareFootnote('<p\n  key={k}\n  className="text-ink-3"\n>').length, 1)
+  // Another element, another colour step, and a paragraph with no class.
+  assert.deepEqual(findBareFootnote('<span className="text-label text-ink-3">x</span>'), [])
+  assert.deepEqual(findBareFootnote('<p className="text-label text-ink-2">x</p>'), [])
+  assert.deepEqual(findBareFootnote('<p className="text-ink-30">x</p>'), [])
+  assert.deepEqual(findBareFootnote('<p>{copy.note}</p>'), [])
+})
+
+test('the counted checks are registered in order with their scopes', () => {
+  type Check = { code: string; id: string; roots: string[]; exclude: string[]; include: RegExp | null }
+  const checks = CHECKS as Check[]
+  assert.deepEqual(
+    checks.map((c) => `${c.code} ${c.id}`),
+    [
+      'G1 inline-language-branch',
+      'G2 hangul-literal',
+      'G3 english-prose-literal',
+      'G4 hand-written-grid',
+      'G5 inline-sign-tone',
+      'G6 null-literal',
+      'G7 metric-value-size',
+      'G8 accent-per-page',
+      'G9 date-format-without-language',
+      'G10 browser-locale-number',
+      'G11 bare-footnote',
+    ],
+  )
+  const byCode = Object.fromEntries(checks.map((c) => [c.code, c]))
+  for (const code of ['G1', 'G2', 'G3']) assert.ok(byCode[code].exclude.includes('app/global-error.tsx'))
+  for (const code of ['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G9', 'G10']) {
+    assert.deepEqual(byCode[code].roots, ['app', 'components'], code)
+    assert.equal(byCode[code].include, null, code)
   }
+  assert.deepEqual(byCode.G8.roots, ['app'])
+  assert.ok(byCode.G8.include?.test('app/rebalance/settings/page.tsx'))
+  assert.ok(!byCode.G8.include?.test('app/tax-planning/components.tsx'))
+  assert.deepEqual(byCode.G11.roots, ['app'])
+  assert.equal(byCode.G11.include, null)
 })
 
 // The baseline is what lets a check with existing hits still gate a pull
