@@ -2,6 +2,8 @@
 
 Baseline: `1b88e66`, inspected November 10, 2026 (America/Los_Angeles). The product definition and master plan were merged in PR #274. Existing unrelated worktrees remain untouched. The table records repository-owned interfaces; external jobs and backup coverage require operator confirmation before cutover.
 
+November 12, 2026 update: the owner-operated installation has completed bounded history/evidence adoption and pinned recovery, while broader external-consumer and rename gates remain open. See [current operating status](../product/implementation-status.md). The baseline table retains preserved interface contracts; it is not proof that every external consumer has been reaccepted.
+
 Owner roles: **application operator** owns the serving host and writable state; **source custodian** acquires documents and maintains the pushed mapping allowlist; **consumer operator** owns an external reader. These roles do not assert current host configuration.
 
 | ID | Producer → consumer | Contract/path | Owner | Validation | Migration state |
@@ -23,8 +25,8 @@ Owner roles: **application operator** owns the serving host and writable state; 
 | schedules | launchd/Hermes → refresh, coverage, alerts, rebalance | [deploy](../../deploy/), [Makefile](../../Makefile) | Application operator | Wrapper/plist tests | Preserve labels, paths, venvs, locks; no restart |
 | UI identity | App → browser/PWA | [page names](../../lib/page-names.ts), [manifest](../../app/manifest.ts) | Application operator | Page-name tests, synthetic UI | Branding separate from routes/cookies |
 | asset preference | Browser cookie → asset queries | [asset-view](../../lib/asset-view.ts) | Application operator | Asset-view tests | Preserve explicit legacy preference |
-| backups | Private archive/state → recovery targets | External backup target lists are not owned by this repo | Application operator | Confirm targets, then isolated restore proof | Unresolved; blocks enabling private tax-history writes |
-| tax root | Private tax documents → future evidence reader | No current legacy equivalent | Application operator | Per-root path/hash/relink tests | Add optional root; no archive moves |
+| backups | Private archive/state → recovery targets | External backup target lists are not owned by this repo | Application operator | Actual populated-state/evidence and host-data restore accepted for owner installation | Paired backup/drill whole-data targets reconciled with versioned source; other installations must verify independently |
+| tax root | Private tax documents → hash-checked evidence reader | Optional configured tax root | Application operator | Per-root path/hash/relink tests | Reviewed evidence copies operating; no original archive moves |
 
 ## Configuration inventory rules
 
@@ -34,9 +36,9 @@ Do not assume that a consumer can follow a GitHub redirect, a moved checkout, or
 
 ## Cutover blockers
 
-- Confirm external briefing/trading consumers, scheduler installations, and backup target lists on their owning hosts.
-- Verify the private writing host and backup/restore coverage before enabling tax-history writes.
+- Confirm external briefing/trading consumers and scheduler installations before their migration. The owner installation's bounded backup/restore gate is accepted; preserve that coverage.
+- Preserve the accepted single state authority and private web read-only setting. Each newly authorized CLI import must verify current revision and backup readiness.
 - Audit open PRs, active worktrees, local path references, and unique content before repository/checkout moves.
-- Select the historical acceptance year and evidence scope before reconciling actual returns/payments.
+- Additional historical years or wider settlement claims require their own reviewed evidence scope; bounded adoption does not establish complete authority posting.
 
 These block the dependent operational action, not synthetic development.

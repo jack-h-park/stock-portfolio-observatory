@@ -11,7 +11,7 @@ The shared resolver in [finance-paths.mjs](../../scripts/finance-paths.mjs) is u
 | `FINANCE_TAX_DIR` | Optional tax evidence root; no country inferred from its name |
 | `FINANCE_STATE_DIR` | Durable local policy, review and tax-history state |
 | `FINANCE_RUNTIME_DIR` | Rebuildable query DB, extraction and market snapshots |
-| `FINANCE_STATE_WRITABLE` | `0` by default privately; only the designated writing host uses `1` after backup/restore verification |
+| `FINANCE_STATE_WRITABLE` | `0` for private web services; a reviewed import uses a process-only `1` opt-in on the designated writing host after backup/restore verification |
 
 Each supported `STOCK_*_PATH`/`STOCK_*_DIR` key has a `FINANCE_*` alias, except the records root mapping above. Equivalent aliases are normalized to absolute paths; conflicting nonempty aliases fail without printing their values. Public example paths and operational flags do not select private mode. The exhaustive private-path allowlist is `FINANCE_FILES` in the resolver.
 
@@ -19,4 +19,4 @@ Explicit file overrides win over root-derived defaults. Existing private install
 
 Sample mode owns only `private-data/personal-finance-sample/` in its working directory, with records, tax, state and runtime subdirectories. Its DB is `runtime/observatory.db`. The seed refuses private path configuration, `.env.local`, unowned nonempty roots, and symlinks anywhere in its existing output tree. Force flags cannot bypass these guards. Use a temporary working directory for independent samples; the old arbitrary `SAMPLE_STOCK_DB_PATH` override is retired.
 
-Tax history will be durable state, never a generated DB input that refresh can replace. Other hosts may read it, but source push does not synchronize it. Existing policies and proposals retain their ownership until a reviewed migration switches one authority. Missing tax evidence is shown as missing, never replaced with sample records.
+Tax history is durable state, never a generated DB input that refresh can replace. A bounded reviewed import and populated-state/evidence restore have been accepted for the owner-operated installation; see [implementation status](../product/implementation-status.md). Other hosts may read it, but source push does not synchronize it. Existing policies and proposals retain their ownership until a reviewed migration switches one authority. Missing tax evidence is shown as missing, never replaced with sample records.

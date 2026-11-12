@@ -10,7 +10,7 @@
 
 **Spec:** [Product and architecture design](../specs/2026-11-10-personal-finance-observatory-design.md)
 
-**Status:** Implementation in progress following owner direction. See [execution status](../../product/implementation-status.md) for verified work and remaining gates. Implementation authorization is not authorization to rename GitHub, move archives, push/merge, deploy, or restart services. Revised after review on 2026-11-10: added evidence resolution, relink by content hash, and a single write host.
+**Status:** Foundation implemented and merged; bounded private adoption is accepted. Follow-up asset correctness and coverage work remains proposed. See [execution status](../../product/implementation-status.md) for verified work and remaining gates. Implementation authorization is not authorization to rename GitHub, move archives, push/merge, deploy, or restart services. Revised after review on 2026-11-10: added evidence resolution, relink by content hash, and a single write host.
 
 ## Global Constraints
 
