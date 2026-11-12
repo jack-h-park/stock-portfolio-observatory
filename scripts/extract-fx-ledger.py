@@ -29,6 +29,10 @@ from datetime import datetime, timezone
 
 import pdfplumber
 
+# The Hana Bank USD account as every row and balance names it. A plain label, never the account number: this
+# file is public, and the name is also the account's key in the allocation policy and the database.
+HANA_USD_ACCOUNT = "USD account"
+
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = Path(os.environ.get("STOCK_DATA_DIR", ROOT / "private-data"))
@@ -382,7 +386,7 @@ def hana_events(rows, rates):
         if amount <= 0:
             continue
         direction = "IN" if row["deposit"] else "OUT"
-        base = {"institution": "Hana Bank", "account": "USD ...10938", "date": row["date"],
+        base = {"institution": "Hana Bank", "account": HANA_USD_ACCOUNT, "date": row["date"],
                 "time": row.get("time") or None, "usd_amount": amount, "source": row["source"],
                 "source_path": row["source_path"], "page": row.get("page"), "balance_usd": row.get("balance")}
         if row["kind"] == "원화대가" and "FX마켓" in (row.get("memo") or ""):
@@ -483,7 +487,7 @@ def main():
     events = hana_events(hana_rows, rates) + toss
     events.sort(key=lambda row: (row["date"], row.get("time") or "", row["institution"], row["event_type"]))
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    balances = [{"institution": "Hana Bank", "account": "USD ...10938", "as_of_date": source["snapshotDate"],
+    balances = [{"institution": "Hana Bank", "account": HANA_USD_ACCOUNT, "as_of_date": source["snapshotDate"],
                  "balance_usd": source["snapshotBalanceUsd"], "source": source["filename"]}
                 for source in xls_sources if source.get("snapshotDate") and source.get("snapshotBalanceUsd") is not None]
     document = {"generatedAt": datetime.now(timezone.utc).isoformat(), "policy": {
