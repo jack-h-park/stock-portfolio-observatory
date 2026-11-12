@@ -168,7 +168,7 @@ export default async function CryptoPremiumPage() {
                 <p>{copy.measures.valuation}</p>
                 <p>
                   {copy.measures.riskLead}{' '}
-                  <span className="text-ink">{copy.valueFromPremium}</span>{' '}
+                  <span className="text-ink">{copy.valueFromPremium}</span>
                   {copy.measures.riskTail}
                 </p>
                 <p className="text-ink-3">{copy.measures.timing}</p>
