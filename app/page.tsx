@@ -10,6 +10,7 @@ import {
   dbAvailable,
   getAccountAllocation,
   getAssetEvents,
+  getAssetCoverageReview,
   getChildAssets,
   getDividendByYear,
   getMeta,
@@ -310,7 +311,7 @@ export default async function OverviewPage({
 
       {netWorth ? (
         <Card title={copy.totalAssets} className="mb-5">
-          <AssetCoverageNote summary={netWorth} language={language} />
+          <AssetCoverageNote summary={netWorth} language={language} review={getAssetCoverageReview(netWorth)} />
           <div className="text-metric font-medium tabular-nums text-ink">{money(netWorth.totalKrw, 'KRW')}</div>
           <ul className="mt-3 grid gap-1.5">
             {(['stocks', 'crypto', 'cash', 'pensions', 'gold'] as const).map((key) => (
