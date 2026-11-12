@@ -9,6 +9,12 @@
 const TOKEN = /[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*/g
 const ISO_DATE = /^\d{4}-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?$/
 const YEAR = /^(19|20)\d{2}$/
+/**
+ * Digit groups joined by single spaces (`1234 5678 9012`): one identifier written in blocks, which the per-token
+ * rule would miss because each block is short. Masked as one when the groups hold 8 or more digits together and
+ * are not all years.
+ */
+const SPACED_DIGITS = /(?<![\w-])\d{2,6}(?: \d{2,6})+(?![\w-])/g
 
 /** Whether one token is shaped like an account identifier rather than a word, a short suffix, a year or a date. */
 export function looksLikeAccountId(token: string): boolean {
@@ -31,7 +37,13 @@ const maskToken = (token: string) => `…${token.replace(/-/g, '').slice(-4)}`
  */
 export function maskAccountLabel(label: string | null | undefined): string {
   if (!label) return ''
-  return label.replace(TOKEN, (token) => (looksLikeAccountId(token) ? maskToken(token) : token))
+  return label
+    .replace(SPACED_DIGITS, (run) => {
+      const groups = run.split(' ')
+      if (groups.every((g) => YEAR.test(g)) || groups.join('').length < 8) return run
+      return maskToken(groups.join(''))
+    })
+    .replace(TOKEN, (token) => (looksLikeAccountId(token) ? maskToken(token) : token))
 }
 
 /** `brokerage · account` (or the account alone), masked for display. */

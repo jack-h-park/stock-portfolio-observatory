@@ -43,6 +43,7 @@ import {
   getWashSaleReview,
 } from '@/lib/adapters/portfolio-db'
 import { washSaleLine } from '@/lib/wash-sale'
+import { maskAccountLabel } from '@/lib/account-label'
 
 /**
  * The contract with every consumer.
@@ -111,11 +112,8 @@ const washSale = getWashSaleReview()
  * number. This file is read by other jobs and quoted into chat messages, so it
  * keeps only what tells two accounts apart.
  */
-const maskAccount = (label: string) =>
-  label
-    .split(' ')
-    .map((token) => (token.length > 4 && (token.match(/\d/g) ?? []).length >= 3 ? `••${token.slice(-4)}` : token))
-    .join(' ')
+// The pages' masking rule (lib/account-label.ts), so the summary and the pages cut the same identifiers the same way.
+const maskAccount = (label: string) => maskAccountLabel(label)
 
 // The FX row the ingest actually converted with, read back from the database
 // rather than the snapshot file, so the summary reports the rate baked into these

@@ -6201,7 +6201,7 @@ check(
 check(
   'fx_transfer_destination_coverage',
   fxMissingDestinations.length === 0,
-  fxMissingDestinations.length === 0 ? 'every owned-account transfer has both sides represented' : `${fxMissingDestinations.length} Hana-to-Mirae transfer(s) await the Mirae 9346 statement`,
+  fxMissingDestinations.length === 0 ? 'every owned-account transfer has both sides represented' : `${fxMissingDestinations.length} Hana-to-Mirae transfer(s) await the Mirae USD-account statement`,
   'warning'
 )
 check(

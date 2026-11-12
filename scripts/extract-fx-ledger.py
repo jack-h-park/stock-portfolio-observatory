@@ -488,7 +488,7 @@ def main():
                 for source in xls_sources if source.get("snapshotDate") and source.get("snapshotBalanceUsd") is not None]
     document = {"generatedAt": datetime.now(timezone.utc).isoformat(), "policy": {
         "hanaPreferenceRate": PREFERENCE, "hanaEstimateMethod": "first published daily TT-send spread",
-        "transferRealizesFxGain": False, "mirae9346Coverage": "missing"
+        "transferRealizesFxGain": False, "miraeUsdAccountCoverage": "missing"
     }, "events": events, "balances": balances, "sources": pdf_sources + xls_sources + screenshot_sources + toss_sources,
         "findings": findings + screenshot_findings + rate_findings + toss_findings}
     OUT_PATH.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
