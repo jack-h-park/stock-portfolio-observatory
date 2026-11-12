@@ -40,7 +40,6 @@
     "components/charts.tsx": 6
   },
   "date-format-without-language": {
-    "app/crypto-premium/page.tsx": 1,
     "app/data-map/page.tsx": 2,
     "app/health/page.tsx": 2,
     "app/page.tsx": 1,
@@ -73,7 +72,6 @@
     "lib/ui-copy/pages/washSale.ts": 1
   },
   "english-prose-literal": {
-    "app/crypto-premium/page.tsx": 11,
     "app/data-ops/page.tsx": 2
   },
   "hand-written-grid": {
