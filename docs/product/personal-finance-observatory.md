@@ -6,7 +6,7 @@ Personal Finance Observatory connects assets, cash flow, KR/US investment tax es
 
 The application preserves source records and supports local configuration, saved plans, review decisions, and reconciliation. Existing exports and file-management utilities have explicit write boundaries. It is not accurate to describe every operation as read-only.
 
-The primary workflow is to understand financial position, investigate a figure's sources and coverage, compare planning scenarios, and review the resulting decisions. Historical returns, assessments, tax payments, and refunds use a separate versioned store and remain separate from calculated estimates. Private historical-year acceptance is still required.
+The primary workflow is to understand financial position, investigate a figure's sources and coverage, compare planning scenarios, and review the resulting decisions. Historical returns, assessments, tax payments, and refunds use a separate versioned store and remain separate from calculated estimates. A bounded private historical-year adoption is recorded in the [implementation and operating status](implementation-status.md). Complete settlement coverage and each installation's source coverage require their own evidence.
 
 ## Organization
 
@@ -28,6 +28,8 @@ Asset ownership, account regime, economic exposure, and tax-unit membership are 
 5. Expand annual tax estimation and liabilities only through separately reviewed designs.
 
 Automated trading, tax filing/payment, general budgeting, universal tax support, and multi-user SaaS are outside this expansion. The target product name does not authorize a GitHub rename, archive move, or operational restart.
+
+The next bounded work is [historical gold correctness followed by coverage explanations](next-increment.md). All-assets entry and branding are already implemented; the remaining work is operating acceptance and specific gaps, not another stock-to-assets rewrite.
 
 ## References
 
