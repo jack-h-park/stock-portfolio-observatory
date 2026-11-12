@@ -15,6 +15,7 @@ import { Select } from '@/components/form'
 import type { Metadata } from 'next'
 import { SubmitButton } from '@/components/SubmitButton'
 import { routeSection } from '@/lib/page-names'
+import { savedPlanHeading } from '@/lib/page-headings'
 
 export const dynamic = 'force-dynamic'
 
@@ -73,7 +74,7 @@ export default async function SavedTaxPlanPage({
     <>
       <PageHeader
         eyebrow={routeSection('/tax-planning', language)}
-        title={saved.name}
+        {...savedPlanHeading(saved.name)}
         subtitle={copy.subtitle(fmtDateShort(saved.asOfDate, language), saved.revision)}
         action={
           <span className="flex items-center gap-3">

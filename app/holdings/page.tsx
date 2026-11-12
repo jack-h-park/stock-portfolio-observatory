@@ -67,13 +67,9 @@ export default async function HoldingsPage({
     <>
       <PageHeader
         eyebrow={routeSection('/holdings', language)}
-        title={language === 'ko' ? '보유종목' : 'Holdings'}
-        emphasis={language === 'ko' ? '보유종목' : 'Holdings'}
-        subtitle={
-          language === 'ko'
-            ? `${fmtNumber(rows.length)}개 보유 포지션을 시장·증권사·계좌로 검색합니다.`
-            : `Search ${fmtNumber(rows.length)} open positions by market, broker, or account.`
-        }
+        title={copy.title}
+        emphasis={copy.emphasis}
+        subtitle={copy.subtitle(fmtNumber(rows.length))}
       />
       <Card title={copy.caption}>
         <div className="space-y-3">

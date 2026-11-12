@@ -33,6 +33,7 @@ import { MAX_ANSWER, getProposal, planHasTrades, type Proposal } from '@/lib/reb
 import { getTaxPolicyState } from '@/lib/tax-policy'
 import { llmStatusLine, safeSourceHref } from '@/lib/rebalance/proposal-view'
 import { getPageCopy } from '@/lib/ui-copy'
+import { proposalHeading } from '@/lib/page-headings'
 import {
   addIdeaAction,
   answerQuestionAction,
@@ -995,8 +996,7 @@ export default async function RebalanceProposalPage({
       <PageHeader
         autoRefresh={false}
         eyebrow={routeSection('/rebalance', language)}
-        title={`${copy.title} ${proposal.id}`}
-        emphasis={copy.emphasis}
+        {...proposalHeading(copy, proposal.id)}
         subtitle={copy.subtitle(copy.kinds[proposal.kind], fmtDateShort(proposal.createdAt, language), fmtDateShort(proposal.expiresAt, language))}
         action={<TextLink href="/rebalance">{copy.back}</TextLink>}
       />
