@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, type Tone } from '@/components/ui'
 import { getMeta, getOperationalHealth, getSourceInventory } from '@/lib/adapters/portfolio-db'
 import { fmtBytes, fmtDateTime, fmtNumber, shortHash } from '@/lib/format'
+import { freshnessDetailText } from '@/lib/freshness-text'
 import { getGlossary } from '@/lib/glossary'
 import { formatSort, parseSort, sortRows, type TableSort } from '@/lib/table-sort'
 import { getLanguage } from '@/lib/i18n-server'
@@ -138,7 +139,7 @@ export default async function DataMapPage({
               { key: 'relativePath', label: copy.columns.file, render: (r) => <span className="block max-w-[34rem] truncate">{r.relativePath}</span> },
               { key: 'bytes', label: copy.columns.size, align: 'right', render: (r) => fmtBytes(r.bytes) },
               { key: 'retention', label: copy.columns.retention, render: (r) => <div className="min-w-[14rem]"><Badge tone={retentionTone(r.retention)}>{copy.retentionLabels[r.retention as keyof typeof copy.retentionLabels]}</Badge><div className="mt-1 text-label text-ink-3">{r.retentionReason}</div></div> },
-              { key: 'detail', label: copy.columns.detail, render: (r) => <span className="text-label text-ink-3">{r.detail}</span> },
+              { key: 'detail', label: copy.columns.detail, render: (r) => <span className="text-label text-ink-3">{typeof r.detail === 'string' ? r.detail : freshnessDetailText(r.detail, language)}</span> },
             ]}
           />
         )}

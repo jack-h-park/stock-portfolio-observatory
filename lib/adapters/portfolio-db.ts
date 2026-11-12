@@ -292,15 +292,29 @@ export type PositionDetail = {
 
 export type FreshnessStatus = 'fresh' | 'stale' | 'drift' | 'missing'
 
+/** What a freshness row says, as a code and its values; the sentence is copy (`common.freshness.detail`). */
+export type FreshnessDetail =
+  | { code: 'PRICE_SNAPSHOT'; count: number; marketDate: string | null }
+  | { code: 'CRYPTO_SNAPSHOT'; count: number; quotes: string[] }
+  | { code: 'FX_RATE'; rate: number; source: string }
+  | { code: 'FX_RATE_MISSING' }
+  | { code: 'SOURCE_MISSING' }
+  | { code: 'SOURCE_CHANGED'; recordedBytes: number; currentBytes: number }
+  | { code: 'SOURCE_MTIME_ONLY' }
+  | { code: 'SOURCE_MATCHES' }
+
+export type FreshnessSnapshotKey = 'kr_prices' | 'us_prices' | 'crypto_prices' | 'fx_rates'
+
 export type FreshnessItem = {
   key: string
+  /** A snapshot's key (its name is copy), or a source file's name (data). */
   label: string
   category: 'price' | 'fx' | 'source'
   status: FreshnessStatus
   observedAt: string | null
   thresholdMs: number | null
   ageMs: number | null
-  detail: string
+  detail: FreshnessDetail
   path?: string | null
   rowCount?: number | null
 }
@@ -434,7 +448,8 @@ export type SourceInventoryItem = {
   mtimeMs: number | null
   rowCount: number | null
   sha256: string | null
-  detail: string
+  /** A tracked file carries its freshness code; an untracked file a sentence. */
+  detail: FreshnessDetail | string
   retention: 'active' | 'fallback' | 'archive' | 'derived' | 'review'
   retentionReason: string
 }
@@ -630,6 +645,15 @@ export type RebalanceReview = {
   }[]
 }
 
+export type ActionPriority = 'high' | 'medium' | 'low'
+export type DataOpsQueueKind = 'validation' | 'source_freshness' | 'manual_mappings' | 'valuation'
+export type ReconciliationQueueKind = 'source_freshness' | 'validation' | 'position_breaks' | 'valuation'
+/** One row of an action queue; the page says what the kind means (`dataOps.queue`, `reconciliation.queue`). */
+export type ActionQueueItem<K extends string> = { kind: K; priority: ActionPriority; count: number; href: string }
+export type TickerlessSuggestion = 'keep_interest' | 'keep_stock_lending' | 'keep_other' | 'review_override'
+export type ValuationReason = 'price_snapshot_missing' | 'ticker_missing_from_price_snapshot' | 'source_missing_market_value'
+export type PositionBreakStatus = 'holding_only' | 'lot_only' | 'quantity_break' | 'cost_break'
+
 export type DataOpsReview = {
   manualMappings: {
     path: string
@@ -657,7 +681,7 @@ export type DataOpsReview = {
     row_count: number
     native_income: number
     base_income: number
-    suggestion: string
+    suggestion: TickerlessSuggestion
     suggestedRule: string
   }[]
   missingValuation: {
@@ -670,16 +694,9 @@ export type DataOpsReview = {
     quantity: number
     native_cost: number
     base_cost: number | null
-    reason: string
-    suggestion: string
+    reason: ValuationReason
   }[]
-  actionQueue: {
-    priority: 'high' | 'medium' | 'low'
-    area: string
-    count: number
-    action: string
-    href: string
-  }[]
+  actionQueue: ActionQueueItem<DataOpsQueueKind>[]
   mappingSuggestions: {
     id: string
     market: string
@@ -689,15 +706,14 @@ export type DataOpsReview = {
     row_count: number
     base_income: number
     rule: string
-    note: string
+    note: TickerlessSuggestion
   }[]
   valuationFixes: {
     market: string
     ticker: string
     name: string
     brokerage: string | null
-    reason: string
-    suggestion: string
+    reason: ValuationReason
   }[]
   sourceIssues: FreshnessItem[]
   validationIssues: HealthCheck[]
@@ -739,7 +755,7 @@ export type ReconciliationReview = {
     holding_base_cost: number | null
     lot_base_cost: number | null
     base_cost_diff: number | null
-    status: 'holding_only' | 'lot_only' | 'quantity_break' | 'cost_break'
+    status: PositionBreakStatus
   }[]
   incomeBreaks: {
     market: string
@@ -758,13 +774,7 @@ export type ReconciliationReview = {
     native_cost: number
     base_cost: number | null
   }[]
-  actionQueue: {
-    priority: 'high' | 'medium' | 'low'
-    area: string
-    count: number
-    action: string
-    href: string
-  }[]
+  actionQueue: ActionQueueItem<ReconciliationQueueKind>[]
 }
 
 function db(dbPath: string = config.stockDbPath) {
@@ -2277,25 +2287,23 @@ function freshnessStatus(observedAt: string | null, thresholdMs: number): Freshn
 
 function snapshotFreshness({
   key,
-  label,
   category,
   path,
   observedAt,
   thresholdMs,
   detail,
 }: {
-  key: string
-  label: string
+  key: FreshnessSnapshotKey
   category: 'price' | 'fx'
   path: string
   observedAt: string | null
   thresholdMs: number
-  detail: string
+  detail: FreshnessDetail
 }): FreshnessItem {
   const age = ageMs(observedAt)
   return {
     key,
-    label,
+    label: key,
     category,
     status: freshnessStatus(observedAt, thresholdMs),
     observedAt,
@@ -2316,7 +2324,7 @@ function sourceFreshness(source: any): FreshnessItem {
       observedAt: null,
       thresholdMs: null,
       ageMs: null,
-      detail: 'Source file is missing from disk.',
+      detail: { code: 'SOURCE_MISSING' },
       path: source.path,
       rowCount: source.row_count,
     }
@@ -2344,10 +2352,10 @@ function sourceFreshness(source: any): FreshnessItem {
     ageMs: ageMs(observedAt),
     detail:
       contentChanged
-        ? `Changed since ingest. Recorded ${source.bytes} bytes; current ${stat.size} bytes.`
+        ? { code: 'SOURCE_CHANGED', recordedBytes: Number(source.bytes), currentBytes: stat.size }
         : mtimeChanged
-          ? 'Content matches the SHA-256 captured at ingest; only modified time changed.'
-          : 'Matches the content fingerprint captured at ingest.',
+          ? { code: 'SOURCE_MTIME_ONLY' }
+          : { code: 'SOURCE_MATCHES' },
     path: source.path,
     rowCount: source.row_count,
   }
@@ -2581,41 +2589,49 @@ export function getOperationalHealth(): OperationalHealth {
     const snapshots: FreshnessItem[] = [
       snapshotFreshness({
         key: 'kr_prices',
-        label: 'KR prices',
         category: 'price',
         path: config.stockKrPricesPath,
         observedAt: krPrices?.generatedAt ?? statMtimeIso(config.stockKrPricesPath),
         thresholdMs: priceThresholdMs,
-        detail: `${krPrices?.prices?.length ?? 0} prices · market date ${krPrices?.prices?.[0]?.asOfDate ?? 'n/a'}`,
+        detail: {
+          code: 'PRICE_SNAPSHOT',
+          count: krPrices?.prices?.length ?? 0,
+          marketDate: krPrices?.prices?.[0]?.asOfDate ?? null,
+        },
       }),
       snapshotFreshness({
         key: 'us_prices',
-        label: 'US prices',
         category: 'price',
         path: config.stockUsPricesPath,
         observedAt: usPrices?.generatedAt ?? statMtimeIso(config.stockUsPricesPath),
         thresholdMs: priceThresholdMs,
-        detail: `${usPrices?.prices?.length ?? 0} prices · market date ${usPrices?.prices?.[0]?.asOfDate ?? 'n/a'}`,
+        detail: {
+          code: 'PRICE_SNAPSHOT',
+          count: usPrices?.prices?.length ?? 0,
+          marketDate: usPrices?.prices?.[0]?.asOfDate ?? null,
+        },
       }),
       snapshotFreshness({
         key: 'crypto_prices',
-        label: 'Crypto prices',
         category: 'price',
         path: config.stockCryptoPricesPath,
         observedAt: cryptoPrices?.generatedAt ?? statMtimeIso(config.stockCryptoPricesPath),
         thresholdMs: cryptoPriceThresholdMs,
-        detail: `${cryptoPrices?.prices?.length ?? 0} prices · ${
-          cryptoPrices?.prices?.map((price: any) => `${price.venue} ${price.symbol}`).join(', ') || 'none'
-        }`,
+        detail: {
+          code: 'CRYPTO_SNAPSHOT',
+          count: cryptoPrices?.prices?.length ?? 0,
+          quotes: cryptoPrices?.prices?.map((price: any) => `${price.venue} ${price.symbol}`) ?? [],
+        },
       }),
       snapshotFreshness({
         key: 'fx_rates',
-        label: 'USD/KRW FX',
         category: 'fx',
         path: config.stockFxRatesPath,
         observedAt: fxRate?.asOfDate ? `${fxRate.asOfDate}T00:00:00.000Z` : statMtimeIso(config.stockFxRatesPath),
         thresholdMs: fxThresholdMs,
-        detail: fxRate ? `${fxRate.rate} · ${fxRate.source}` : 'No FX rate configured.',
+        detail: fxRate
+          ? { code: 'FX_RATE', rate: fxRate.rate, source: fxRate.source }
+          : { code: 'FX_RATE_MISSING' },
       }),
     ]
     const sourceDrift = sourceRows.map(sourceFreshness)
@@ -3518,11 +3534,23 @@ export function getRebalanceReview(): RebalanceReview {
   }
 }
 
-function tickerlessSuggestion(category: string | null | undefined) {
-  if (category === 'interest') return 'Keep tickerless; category explains non-position cash interest.'
-  if (category === 'stock_lending') return 'Keep tickerless or add source-specific ticker override only when position identity matters.'
-  if (category === 'other') return 'Keep tickerless as other income unless the source row clearly belongs to a security.'
-  return 'Review source/name and add dividendOverrides entry if this income belongs to a specific ticker.'
+function tickerlessSuggestion(category: string | null | undefined): TickerlessSuggestion {
+  if (category === 'interest') return 'keep_interest'
+  if (category === 'stock_lending') return 'keep_stock_lending'
+  if (category === 'other') return 'keep_other'
+  return 'review_override'
+}
+
+/**
+ * The `note` inside a suggested rule. The rule is JSON the operator pastes into
+ * data/manual-mappings.json, so this is file content, not page copy, and stays
+ * English; the page shows the suggestion through `dataOps.tickerlessSuggestion`.
+ */
+const TICKERLESS_RULE_NOTE: Record<TickerlessSuggestion, string> = {
+  keep_interest: 'Keep tickerless; category explains non-position cash interest.',
+  keep_stock_lending: 'Keep tickerless or add source-specific ticker override only when position identity matters.',
+  keep_other: 'Keep tickerless as other income unless the source row clearly belongs to a security.',
+  review_override: 'Review source/name and add dividendOverrides entry if this income belongs to a specific ticker.',
 }
 
 function compactRuleValue(value: string | null | undefined) {
@@ -3549,7 +3577,7 @@ function mappingRuleSuggestion(row: {
   const payload = {
     match,
     category,
-    note: tickerlessSuggestion(category),
+    note: TICKERLESS_RULE_NOTE[tickerlessSuggestion(category)],
   }
   return JSON.stringify(payload)
 }
@@ -3571,18 +3599,12 @@ function priceSnapshotPathFor(market: string) {
   return config.stockUsPricesPath
 }
 
-function valuationReason(row: { market: string; ticker: string }) {
+function valuationReason(row: { market: string; ticker: string }): ValuationReason {
   const prices = readJson(priceSnapshotPathFor(row.market))
   const tickers = new Set((prices?.prices ?? []).map((price: any) => String(price.ticker ?? '').toUpperCase()))
   if (!prices) return 'price_snapshot_missing'
   if (!tickers.has(String(row.ticker).toUpperCase())) return 'ticker_missing_from_price_snapshot'
   return 'source_missing_market_value'
-}
-
-function valuationSuggestion(reason: string) {
-  if (reason === 'price_snapshot_missing') return 'Run pnpm refresh or restore the local price snapshot file.'
-  if (reason === 'ticker_missing_from_price_snapshot') return 'Check ticker normalization and refresh the relevant price snapshot.'
-  return 'Review source valuation fields; tax-lot-only sources may need external price enrichment.'
 }
 
 function calendarAgeDays(value: string | null) {
@@ -4278,11 +4300,8 @@ export function getDataOpsReview(): DataOpsReview {
          order by coalesce(base_cost, total_cost_krw) desc
          limit 50`
       )
-      .all() as Omit<DataOpsReview['missingValuation'][number], 'reason' | 'suggestion'>[]
-    const missingValuation = missingValuationRows.map((row) => {
-      const reason = valuationReason(row)
-      return { ...row, reason, suggestion: valuationSuggestion(reason) }
-    })
+      .all() as Omit<DataOpsReview['missingValuation'][number], 'reason'>[]
+    const missingValuation = missingValuationRows.map((row) => ({ ...row, reason: valuationReason(row) }))
     const validationIssues = conn
       .prepare("select * from validation_checks where status != 'pass' order by severity, name")
       .all() as HealthCheck[]
@@ -4303,44 +4322,29 @@ export function getDataOpsReview(): DataOpsReview {
       name: row.name,
       brokerage: row.brokerage,
       reason: row.reason,
-      suggestion: row.suggestion,
     }))
     const actionQueue: DataOpsReview['actionQueue'] = []
     if (validationIssues.length > 0) {
-      actionQueue.push({
-        priority: 'high',
-        area: 'Validation',
-        count: validationIssues.length,
-        action: 'Fix failing ingest validation checks before acting on downstream triage.',
-        href: '/health',
-      })
+      actionQueue.push({ kind: 'validation', priority: 'high', count: validationIssues.length, href: '/health' })
     }
     if (operational.staleItems.length > 0) {
       actionQueue.push({
+        kind: 'source_freshness',
         priority: operational.summary.missing || operational.summary.drift ? 'high' : 'medium',
-        area: 'Source freshness',
         count: operational.staleItems.length,
-        action: 'Resolve stale, drifted, or missing inputs and rerun pnpm refresh.',
         href: '/health',
       })
     }
     if (mappingSuggestions.length > 0) {
       actionQueue.push({
+        kind: 'manual_mappings',
         priority: 'medium',
-        area: 'Manual mappings',
         count: mappingSuggestions.reduce((sum, row) => sum + Number(row.row_count ?? 0), 0),
-        action: 'Review suggested read-only mapping rules and apply the useful ones to data/manual-mappings.json.',
         href: '/data-ops',
       })
     }
     if (valuationFixes.length > 0) {
-      actionQueue.push({
-        priority: 'low',
-        area: 'Valuation',
-        count: valuationFixes.length,
-        action: 'Refresh price snapshots or resolve ticker normalization for missing valuation rows.',
-        href: '/data-ops',
-      })
+      actionQueue.push({ kind: 'valuation', priority: 'low', count: valuationFixes.length, href: '/data-ops' })
     }
     return {
       manualMappings: {
@@ -4532,39 +4536,20 @@ export function getReconciliationReview(): ReconciliationReview {
     const actionQueue: ReconciliationReview['actionQueue'] = []
     if (operational.staleItems.length > 0) {
       actionQueue.push({
+        kind: 'source_freshness',
         priority: operational.summary.missing || operational.summary.drift ? 'high' : 'medium',
-        area: 'Source freshness',
         count: operational.staleItems.length,
-        action: 'Resolve stale, drifted, or missing source inputs before trusting reconciliation deltas.',
         href: '/health',
       })
     }
     if (validationIssues.count > 0) {
-      actionQueue.push({
-        priority: 'high',
-        area: 'Validation checks',
-        count: validationIssues.count,
-        action: 'Fix failing validation checks from the latest ingest.',
-        href: '/health',
-      })
+      actionQueue.push({ kind: 'validation', priority: 'high', count: validationIssues.count, href: '/health' })
     }
     if (positionBreaks.length > 0) {
-      actionQueue.push({
-        priority: 'medium',
-        area: 'Holdings vs lots',
-        count: positionBreaks.length,
-        action: 'Review quantity and cost-basis differences by ticker and brokerage.',
-        href: '/reconciliation',
-      })
+      actionQueue.push({ kind: 'position_breaks', priority: 'medium', count: positionBreaks.length, href: '/reconciliation' })
     }
     if (valuationBreaks.length > 0) {
-      actionQueue.push({
-        priority: 'low',
-        area: 'Valuation',
-        count: valuationBreaks.length,
-        action: 'Refresh or map missing market valuation rows.',
-        href: '/data-ops',
-      })
+      actionQueue.push({ kind: 'valuation', priority: 'low', count: valuationBreaks.length, href: '/data-ops' })
     }
 
     const issueCount =

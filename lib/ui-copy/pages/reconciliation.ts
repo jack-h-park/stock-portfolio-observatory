@@ -62,6 +62,30 @@ export const reconciliation = defineCopy({
       nativeCost: 'Native Cost',
       baseCost: 'Base Cost',
     },
+    queue: {
+      source_freshness: {
+        area: 'Source freshness',
+        action: 'Resolve stale, drifted, or missing source inputs before trusting reconciliation deltas.',
+      },
+      validation: {
+        area: 'Validation checks',
+        action: 'Fix failing validation checks from the latest ingest.',
+      },
+      position_breaks: {
+        area: 'Holdings vs lots',
+        action: 'Review quantity and cost-basis differences by ticker and brokerage.',
+      },
+      valuation: {
+        area: 'Valuation',
+        action: 'Refresh or map missing market valuation rows.',
+      },
+    },
+    breakStatus: {
+      holding_only: 'Holding only',
+      lot_only: 'Lot only',
+      quantity_break: 'Quantity break',
+      cost_break: 'Cost break',
+    },
   },
   ko: {
     title: '정합성 확인',
@@ -123,6 +147,30 @@ export const reconciliation = defineCopy({
       baseIncome: '원화 수익',
       nativeCost: '현지 통화 원가',
       baseCost: '원화 원가',
+    },
+    queue: {
+      source_freshness: {
+        area: '원본 최신성',
+        action: '정합성 차이를 신뢰하기 전에 오래되었거나 변경되었거나 누락된 원본 입력을 해결하세요.',
+      },
+      validation: {
+        area: '검증 검사',
+        action: '최근 적재의 실패한 검증 검사를 고치세요.',
+      },
+      position_breaks: {
+        area: '보유 ↔ 세금 단위',
+        action: '종목·증권사별 수량과 취득원가 차이를 검토하세요.',
+      },
+      valuation: {
+        area: '평가',
+        action: '누락된 평가금액 행을 갱신하거나 매핑하세요.',
+      },
+    },
+    breakStatus: {
+      holding_only: '보유만 있음',
+      lot_only: '세금 단위만 있음',
+      quantity_break: '수량 불일치',
+      cost_break: '취득원가 불일치',
     },
   },
 })

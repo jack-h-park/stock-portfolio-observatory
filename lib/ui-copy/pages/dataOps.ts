@@ -73,6 +73,40 @@ export const dataOps = defineCopy({
       nativeCost: 'Native Cost',
       baseCost: 'Base Cost',
     },
+    queue: {
+      validation: {
+        area: 'Validation',
+        action: 'Fix failing ingest validation checks before acting on downstream triage.',
+      },
+      source_freshness: {
+        area: 'Source freshness',
+        action: 'Resolve stale, drifted, or missing inputs and rerun pnpm refresh.',
+      },
+      manual_mappings: {
+        area: 'Manual mappings',
+        action: 'Review suggested read-only mapping rules and apply the useful ones to data/manual-mappings.json.',
+      },
+      valuation: {
+        area: 'Valuation',
+        action: 'Refresh price snapshots or resolve ticker normalization for missing valuation rows.',
+      },
+    },
+    tickerlessSuggestion: {
+      keep_interest: 'Keep tickerless; category explains non-position cash interest.',
+      keep_stock_lending: 'Keep tickerless or add source-specific ticker override only when position identity matters.',
+      keep_other: 'Keep tickerless as other income unless the source row clearly belongs to a security.',
+      review_override: 'Review source/name and add dividendOverrides entry if this income belongs to a specific ticker.',
+    },
+    valuationReason: {
+      price_snapshot_missing: 'Price snapshot missing',
+      ticker_missing_from_price_snapshot: 'Ticker missing from price snapshot',
+      source_missing_market_value: 'Source has no market value',
+    },
+    valuationSuggestion: {
+      price_snapshot_missing: 'Run pnpm refresh or restore the local price snapshot file.',
+      ticker_missing_from_price_snapshot: 'Check ticker normalization and refresh the relevant price snapshot.',
+      source_missing_market_value: 'Review source valuation fields; tax-lot-only sources may need external price enrichment.',
+    },
   },
   ko: {
     title: '조치 센터',
@@ -145,6 +179,40 @@ export const dataOps = defineCopy({
       account: '계좌',
       nativeCost: '현지 통화 원가',
       baseCost: '원화 원가',
+    },
+    queue: {
+      validation: {
+        area: '검증',
+        action: '다운스트림 분류에 앞서 실패한 적재 검증 검사를 고치세요.',
+      },
+      source_freshness: {
+        area: '원본 최신성',
+        action: '오래되었거나 변경되었거나 누락된 입력을 해결하고 갱신을 다시 실행하세요.',
+      },
+      manual_mappings: {
+        area: '수동 매핑',
+        action: '제안된 읽기 전용 매핑 규칙을 검토하고 유용한 것을 data/manual-mappings.json에 적용하세요.',
+      },
+      valuation: {
+        area: '평가',
+        action: '가격 스냅샷을 갱신하거나 평가금액이 없는 행의 종목 코드 정규화를 해결하세요.',
+      },
+    },
+    tickerlessSuggestion: {
+      keep_interest: '종목 없이 두세요. 범주가 포지션 외 현금 이자를 설명합니다.',
+      keep_stock_lending: '종목 없이 두거나, 포지션 식별이 중요할 때만 원본별 종목 코드 재지정을 추가하세요.',
+      keep_other: '원본 행이 분명히 특정 증권에 속하지 않는 한 종목 없는 기타 수입으로 두세요.',
+      review_override: '원본과 이름을 검토하고, 이 수입이 특정 종목에 속하면 배당 재지정 항목을 추가하세요.',
+    },
+    valuationReason: {
+      price_snapshot_missing: '가격 스냅샷 없음',
+      ticker_missing_from_price_snapshot: '가격 스냅샷에 종목 코드 없음',
+      source_missing_market_value: '원본에 평가금액 없음',
+    },
+    valuationSuggestion: {
+      price_snapshot_missing: '갱신을 실행하거나 로컬 가격 스냅샷 파일을 복원하세요.',
+      ticker_missing_from_price_snapshot: '종목 코드 정규화를 확인하고 해당 가격 스냅샷을 갱신하세요.',
+      source_missing_market_value: '원본의 평가 필드를 검토하세요. 세금 단위만 있는 원본은 외부 가격 보강이 필요할 수 있습니다.',
     },
   },
 })

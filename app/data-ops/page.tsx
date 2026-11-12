@@ -3,7 +3,14 @@ import { DataTable } from '@/components/DataTable'
 import { FreshnessRows } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, TextLink, marketTone, type Tone } from '@/components/ui'
-import { getAccountCoverage, getDataOpsReview, type AccountCoverage } from '@/lib/adapters/portfolio-db'
+import {
+  getAccountCoverage,
+  getDataOpsReview,
+  type AccountCoverage,
+  type DataOpsReview,
+  type TickerlessSuggestion,
+  type ValuationReason,
+} from '@/lib/adapters/portfolio-db'
 import { fmtDate, fmtNumber } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
@@ -34,6 +41,8 @@ function coverageDateLabel(row: AccountCoverage): string {
   }
   return date(row.coveredThrough)
 }
+
+type QueueRow = DataOpsReview['actionQueue'][number]
 
 function coverageLagLabel(row: AccountCoverage, language: string): string {
   const days = (value: number | null) => value == null ? (language === 'ko' ? '기준일 없음' : 'No cutoff') : language === 'ko' ? `${fmtNumber(value)}일 전` : `${fmtNumber(value)}d ago`
@@ -250,10 +259,10 @@ export default async function DataOpsPage() {
             rows={ops.actionQueue}
             caption={copy.priorityCaption}
             columns={[
-              { key: 'priority', label: copy.columns.priority, render: (r) => <Badge tone={priorityTone(r.priority)}>{priorityLabels[r.priority as keyof typeof priorityLabels] ?? r.priority}</Badge> },
-              { key: 'area', label: copy.columns.area },
+              { key: 'priority', label: copy.columns.priority, render: (r: QueueRow) => <Badge tone={priorityTone(r.priority)}>{priorityLabels[r.priority] ?? r.priority}</Badge> },
+              { key: 'area', label: copy.columns.area, render: (r: QueueRow) => copy.queue[r.kind]?.area ?? r.kind },
               { key: 'count', label: copy.columns.count, align: 'right', render: (r) => fmtNumber(r.count) },
-              { key: 'action', label: copy.columns.action, render: (r) => <span className="text-caption text-ink-2">{r.action}</span> },
+              { key: 'action', label: copy.columns.action, render: (r: QueueRow) => <span className="text-caption text-ink-2">{copy.queue[r.kind]?.action ?? r.kind}</span> },
               {
                 key: 'href',
                 label: copy.columns.open,
@@ -339,8 +348,8 @@ export default async function DataOpsPage() {
                     </Link>
                   ),
                 },
-                { key: 'reason', label: copy.columns.reason },
-                { key: 'suggestion', label: copy.columns.suggestion, render: (r) => <span className="text-caption text-ink-2">{r.suggestion}</span> },
+                { key: 'reason', label: copy.columns.reason, render: (r: { reason: ValuationReason }) => copy.valuationReason[r.reason] ?? r.reason },
+                { key: 'suggestion', label: copy.columns.suggestion, render: (r: { reason: ValuationReason }) => <span className="text-caption text-ink-2">{copy.valuationSuggestion[r.reason] ?? r.reason}</span> },
               ]}
             />
           )}
@@ -362,7 +371,7 @@ export default async function DataOpsPage() {
               { key: 'row_count', label: copy.columns.rows, align: 'right', render: (r) => fmtNumber(r.row_count) },
               { key: 'native_income', label: copy.columns.native, align: 'right', render: (r) => money(r.native_income, r.currency) },
               { key: 'base_income', label: copy.columns.base, align: 'right', render: (r) => money(r.base_income) },
-              { key: 'suggestion', label: copy.columns.suggestion },
+              { key: 'suggestion', label: copy.columns.suggestion, render: (r: { suggestion: TickerlessSuggestion }) => copy.tickerlessSuggestion[r.suggestion] ?? r.suggestion },
               { key: 'suggestedRule', label: copy.columns.rule, render: (r) => <code className="block max-w-[18rem] whitespace-pre-wrap font-mono text-label text-ink-3">{r.suggestedRule}</code> },
             ]}
           />
@@ -391,8 +400,8 @@ export default async function DataOpsPage() {
                 { key: 'account', label: copy.columns.account, render: (r) => maskAccountLabel(r.account) },
                 { key: 'native_cost', label: copy.columns.nativeCost, align: 'right', render: (r) => money(r.native_cost, r.currency) },
                 { key: 'base_cost', label: copy.columns.baseCost, align: 'right', render: (r) => (r.base_cost == null ? 'n/a' : money(r.base_cost)) },
-                { key: 'reason', label: copy.columns.reason },
-                { key: 'suggestion', label: copy.columns.suggestion },
+                { key: 'reason', label: copy.columns.reason, render: (r: { reason: ValuationReason }) => copy.valuationReason[r.reason] ?? r.reason },
+                { key: 'suggestion', label: copy.columns.suggestion, render: (r: { reason: ValuationReason }) => copy.valuationSuggestion[r.reason] ?? r.reason },
               ]}
             />
           )}

@@ -43,6 +43,7 @@ import {
   getWashSaleReview,
 } from '@/lib/adapters/portfolio-db'
 import { washSaleLine } from '@/lib/wash-sale'
+import { freshnessDetailText, freshnessLabel } from '@/lib/freshness-text'
 import { maskAccountLabel } from '@/lib/account-label'
 
 /**
@@ -176,10 +177,11 @@ const issues: SummaryIssue[] = [
     .filter((item) => item.status !== 'fresh' && !isSupplementarySource(item.key))
     .map((item) => ({
       key: item.key,
-      label: item.label,
+      // The summary leaves the machine in English; the adapter returns codes.
+      label: freshnessLabel(item, 'en'),
       category: item.category,
       status: item.status,
-      detail: item.detail,
+      detail: freshnessDetailText(item.detail, 'en'),
     })),
   ...checks
     .filter((check) => check.status !== 'pass' && check.scope !== 'supplementary')

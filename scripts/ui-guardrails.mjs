@@ -593,7 +593,7 @@ export function findBareFootnote(source, file = '<source>') {
 const KO_LATIN_ALLOW = new Set([
   'FX', 'API', 'ISA', 'IRP', 'ETF', 'CSV', 'PDF', 'DB', 'URL', 'USD', 'KRW', 'US', 'KR', 'ID', 'PFIC',
   'FBAR', 'IRS', 'CMA', 'RP', 'LLM', 'JSON', 'Form', 'W', 'EUR', 'JPY', 'CLI', 'OK',
-  'SSH', 'Tailscale', 'MCP', 'XLSX',
+  'SSH', 'Tailscale', 'MCP', 'XLSX', 'SHA',
 ])
 
 /**

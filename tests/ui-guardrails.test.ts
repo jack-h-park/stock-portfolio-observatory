@@ -361,7 +361,7 @@ test('G12 reads an unspaced ternary branch but still skips an object key', () =>
   )
 })
 
-test('G12 skips path-shaped tokens and lets MCP and XLSX stand, but still reads a plain English word', () => {
+test('G12 skips path-shaped tokens and lets MCP, XLSX and SHA stand, but still reads a plain English word', () => {
   const module = [
     'export const page = defineCopy({',
     '  ko: {',
@@ -370,6 +370,7 @@ test('G12 skips path-shaped tokens and lets MCP and XLSX stand, but still reads 
     "    snapshot: 'MCP 스냅샷',",
     "    formats: 'PDF + XLSX',",
     "    inbox: 'inbox에 넣으세요',",
+    "    hash: 'SHA-256과 일치합니다',",
     '  },',
     '})',
   ].join('\n')
