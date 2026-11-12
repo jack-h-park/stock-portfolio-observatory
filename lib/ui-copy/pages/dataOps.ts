@@ -101,6 +101,8 @@ export const dataOps = defineCopy({
         action: 'Refresh price snapshots or resolve ticker normalization for missing valuation rows.',
       },
     },
+    // Same English as TICKERLESS_RULE_NOTE in lib/adapters/portfolio-db.ts, which
+    // writes the note into the suggested rule's JSON; change both together.
     tickerlessSuggestion: {
       keep_interest: 'Keep tickerless; category explains non-position cash interest.',
       keep_stock_lending: 'Keep tickerless or add source-specific ticker override only when position identity matters.',

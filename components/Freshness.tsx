@@ -12,7 +12,7 @@ const STATUS_TONE: Record<FreshnessStatus, Tone> = {
   missing: 'danger',
 }
 
-export function FreshnessBadge({ status, language = 'en' }: { status: FreshnessStatus; language?: Language }) {
+export function FreshnessBadge({ status, language }: { status: FreshnessStatus; language: Language }) {
   const copy = getUiCopy(language).freshness
   return (
     <span title={copy.descriptions[status]} aria-label={`${copy.labels[status]}: ${copy.descriptions[status]}`}>

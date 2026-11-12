@@ -1,3 +1,4 @@
+import { EMPTY_VALUE } from '@/lib/format'
 import { defineCopy } from '@/lib/ui-copy/define'
 
 export const taxPlanning = defineCopy({
@@ -102,7 +103,7 @@ export const taxPlanning = defineCopy({
       baseGainLoss: 'Base G/L',
       grossLotTax: 'Gross Lot Tax',
       afterTax: 'After Tax',
-      notAvailable: 'n/a',
+      notAvailable: EMPTY_VALUE,
     },
     overview: {
       title: 'Selected plan',
@@ -516,7 +517,7 @@ export const taxPlanning = defineCopy({
       baseGainLoss: '기준 손익',
       grossLotTax: '세금 단위별 총세금',
       afterTax: '세후 금액',
-      notAvailable: '없음',
+      notAvailable: EMPTY_VALUE,
     },
     overview: {
       title: '선택한 계획',

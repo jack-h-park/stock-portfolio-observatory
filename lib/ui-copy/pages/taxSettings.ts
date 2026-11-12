@@ -1,3 +1,4 @@
+import { EMPTY_VALUE } from '@/lib/format'
 import { defineCopy } from '@/lib/ui-copy/define'
 
 export const taxSettings = defineCopy({
@@ -23,7 +24,7 @@ export const taxSettings = defineCopy({
       jurisdictionsHint: 'Enabled tax regimes',
       updated: 'Updated',
       updatedHint: 'Last settings write',
-      notAvailable: 'n/a',
+      notAvailable: EMPTY_VALUE,
     },
     readOrder: {
       title: 'Settings Read Order',
@@ -157,7 +158,7 @@ export const taxSettings = defineCopy({
       jurisdictionsHint: '활성화된 세금 체계',
       updated: '업데이트',
       updatedHint: '마지막 설정 저장일',
-      notAvailable: '없음',
+      notAvailable: EMPTY_VALUE,
     },
     readOrder: {
       title: '설정 확인 순서',

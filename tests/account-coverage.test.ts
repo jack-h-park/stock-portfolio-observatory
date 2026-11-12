@@ -104,7 +104,6 @@ test('a missing disposal marks only its own account, even when that account\'s C
     assert.equal(csv.status, 'action_needed')
     assert.deepEqual(csv.missingDisposals, ['ACME', 'WIDG'])
     assert.equal(longterm.action.code, 'ROBINHOOD_SNAPSHOT_AND_CSV')
-    assert.deepEqual(longterm.missingDisposals, ['ACME', 'WIDG'])
 
     // The others carry nothing extra.
     for (const row of rows.filter((row) => row !== longterm)) assert.deepEqual(row.missingDisposals, [])

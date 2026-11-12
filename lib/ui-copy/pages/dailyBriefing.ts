@@ -223,7 +223,7 @@ export const dailyBriefing = defineCopy({
     bandSince: (date: string | null) => `${date} 이후 가격 변동`,
     bandDayOverDay: '전일 대비 비교',
     marketClosed: (market: string, date: string | null) =>
-      `추적 중인 ${market} 가격이 모두 ${date}와 같습니다 — 휴장했거나 시트의 가격이 갱신되지 않았습니다.`,
+      `추적 중인 ${market} 가격이 모두 ${date} 가격과 같습니다 — 휴장했거나 시트의 가격이 갱신되지 않았습니다.`,
     noComparison: (market: string) => `이 브리핑에는 ${market}의 전일 대비 비교가 없습니다.`,
     pricedHint: (covered: string, uncovered: number) =>
       `가격 반영 ${covered}개${uncovered ? `, 가격 없음 ${uncovered}개` : ''}`,

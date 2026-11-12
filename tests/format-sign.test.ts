@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { EMPTY_VALUE, fmtPct, fmtPctRange, fmtSigned } from '../lib/format'
+import { EMPTY_VALUE, fmtNumber, fmtPct, fmtPctRange, fmtSigned } from '../lib/format'
 import { getUiCopy } from '../lib/ui-copy'
 
 test('fmtSigned puts + on a gain, - on a loss and no sign on zero', () => {
@@ -21,6 +21,16 @@ test('fmtPct keeps its digits and never signs zero', () => {
   assert.equal(fmtPct(0, { signed: true }), '0.00%')
   assert.equal(fmtPct(1.5, { signed: true, digits: 1 }), '+1.5%')
   assert.equal(fmtPct(-1.5, { signed: true, digits: 1 }), '-1.5%')
+})
+
+test('fmtPct never signs a value that rounds to zero', () => {
+  assert.equal(fmtPct(0.001, { signed: true }), '0.00%')
+  assert.equal(fmtPct(-0.001, { signed: true }), '0.00%')
+})
+
+test('fmtNumber drops trailing zeros down to minDigits', () => {
+  assert.equal(fmtNumber(12, 1, 0), '12')
+  assert.equal(fmtNumber(12.34, 1, 0), '12.3')
 })
 
 test('fmtPct prints percentage points as %p', () => {

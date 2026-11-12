@@ -9,6 +9,7 @@
  */
 export const APP_NAME = 'Personal Finance Observatory'
 
-// The product name in the parts the sidebar wordmark and the manifest read, so
-// the name cannot drift; tests/page-names.test.ts checks the parts spell APP_NAME.
+// The product name in the parts the sidebar wordmark reads, so the name cannot
+// drift; tests/page-names.test.ts checks the parts spell APP_NAME. The manifest
+// reads APP_NAME, not BRAND.
 export const BRAND = { eyebrow: 'Personal', wordmark: 'Finance Observatory', short: 'Personal Finance' } as const

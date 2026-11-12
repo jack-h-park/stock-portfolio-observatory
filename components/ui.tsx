@@ -242,13 +242,14 @@ export function Signed({
   nullText?: ReactNode
   className?: string
 }) {
-  if (value == null) return <span className={clsx('text-ink-3', className)}>{nullText}</span>
-  const n = Number(value)
-  // A value that rounds away to zero is not a loss, so it keeps the gain tone.
-  const negative = n < 0 && /[1-9]/.test(format(Math.abs(n)))
+  if (value == null || Number.isNaN(Number(value))) return <span className={clsx('text-ink-3', className)}>{nullText}</span>
+  const text = fmtSigned(Number(value), format)
+  // fmtSigned prints "-" only for a loss that survives rounding, so a value that
+  // rounds away to zero keeps the gain tone.
+  const negative = text.startsWith('-')
   return (
     <span className={clsx(negative ? 'text-danger' : 'text-success', 'tabular-nums', className)}>
-      {fmtSigned(n, format)}
+      {text}
     </span>
   )
 }

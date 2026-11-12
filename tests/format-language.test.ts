@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { EMPTY_VALUE, fmtDate, fmtDateTime, fmtDuration, fmtDurationDays, fmtMonth } from '../lib/format'
+import { EMPTY_VALUE, fmtDate, fmtDateShort, fmtDateTime, fmtDuration, fmtDurationDays, fmtMonth } from '../lib/format'
+
+// A date-only value must not move a day west of UTC, and CI runs in UTC, so pin
+// the zone before anything is formatted. Node re-reads TZ when it changes.
+process.env.TZ = 'America/Los_Angeles'
+
+test('fmtDateShort keeps a date-only value on its day west of UTC', () => {
+  assert.equal(fmtDateShort('2026-08-11', 'en'), 'Aug 11, 2026')
+})
 
 test('fmtMonth names the month in the reader language', () => {
   assert.equal(fmtMonth('2026-03', 'en', { year: true }), 'Mar 2026')

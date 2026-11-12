@@ -83,7 +83,7 @@ export default async function FxPage() {
 
       <Card title={copy.exchangeSource.title} className="mb-5" info={copy.exchangeSource.info}>
         <DataTable rows={exchangeRows} getRowKey={(row: ExchangeSourceRow) => `${row.rowId ?? row.institution}-${row.rateStatus}`} columns={[
-          { key: 'institution', label: copy.exchangeSource.columns.source, render: (r: ExchangeSourceRow) => r.rowId ? copy.exchangeSource.rows[exchangeSourceRowLabel[r.rowId]] : institutionName(r.institution ?? '') },
+          { key: 'institution', label: copy.exchangeSource.columns.source, render: (r: ExchangeSourceRow) => r.rowId ? copy.exchangeSource.rows[exchangeSourceRowLabel[r.rowId]] : r.institution ? institutionName(r.institution) : EMPTY_VALUE },
           { key: 'rateStatus', label: copy.exchangeSource.columns.rateBasis, render: (r: ExchangeSourceRow) => r.rowType === 'inbound' ? <Badge tone="warning">{copy.exchangeSource.inboundEstimated}</Badge> : rateBadge(r.rateStatus) },
           { key: 'exchangeCount', label: copy.exchangeSource.columns.rows, align: 'right', render: (r: ExchangeSourceRow) => r.exchangeCount == null ? EMPTY_VALUE : fmtNumber(r.exchangeCount) },
           { key: 'usdBought', label: copy.exchangeSource.columns.usdExchanged, align: 'right', render: (r: ExchangeSourceRow) => money(r.usdBought, 'USD') },
