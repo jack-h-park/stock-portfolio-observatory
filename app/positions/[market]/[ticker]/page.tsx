@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, Label, MetricField, MetricHeroCard, TextLink } from '@/components/ui'
 import { getOperationalHealth, getPositionDetail, type FreshnessItem } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtNumber, fmtPct, fmtQuantity, shortHash } from '@/lib/format'
+import { freshnessLabel } from '@/lib/freshness-text'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { buildTaxPlan } from '@/lib/tax-planning'
@@ -215,7 +216,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
         <div className="grid gap-2 lg:grid-cols-2">
           {freshnessItems.map((item) => (
             <div key={item.key} className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-              <Label className="mb-1">{item.label}</Label>
+              <Label className="mb-1">{freshnessLabel(item, language)}</Label>
               <FreshnessInline item={item} language={language} />
             </div>
           ))}

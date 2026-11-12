@@ -40,6 +40,25 @@ export const UI_COPY_BY_LANG = {
         drift: 'The source file changed after ingestion and needs review.',
         missing: 'The data has not been collected or is unavailable.',
       },
+      snapshotLabels: {
+        kr_prices: 'KR prices',
+        us_prices: 'US prices',
+        crypto_prices: 'Crypto prices',
+        fx_rates: 'USD/KRW FX',
+      },
+      detail: {
+        PRICE_SNAPSHOT: ({ count, marketDate }: { count: number; marketDate: string | null }) =>
+          `${count} prices · market date ${marketDate ?? 'unknown'}`,
+        CRYPTO_SNAPSHOT: ({ count, quotes }: { count: number; quotes: string[] }) =>
+          `${count} prices · ${quotes.join(', ') || 'none'}`,
+        FX_RATE: ({ rate, source }: { rate: number; source: string }) => `${rate} · ${source}`,
+        FX_RATE_MISSING: () => 'No FX rate configured.',
+        SOURCE_MISSING: () => 'Source file is missing from disk.',
+        SOURCE_CHANGED: ({ recordedBytes, currentBytes }: { recordedBytes: number; currentBytes: number }) =>
+          `Changed since ingest. Recorded ${recordedBytes} bytes; current ${currentBytes} bytes.`,
+        SOURCE_MTIME_ONLY: () => 'Content matches the SHA-256 captured at ingest; only modified time changed.',
+        SOURCE_MATCHES: () => 'Matches the content fingerprint captured at ingest.',
+      },
     },
     devCopy: {
       label: 'Development copy',
@@ -128,6 +147,25 @@ export const UI_COPY_BY_LANG = {
         stale: '마지막 수집 후 시간이 지나 새로고침이 필요합니다.',
         drift: '원본 데이터가 이전과 달라져 확인이 필요합니다.',
         missing: '아직 수집되지 않았거나 사용할 수 없는 데이터입니다.',
+      },
+      snapshotLabels: {
+        kr_prices: '한국 주식 시세',
+        us_prices: '미국 주식 시세',
+        crypto_prices: '가상자산 시세',
+        fx_rates: 'USD/KRW 환율',
+      },
+      detail: {
+        PRICE_SNAPSHOT: ({ count, marketDate }: { count: number; marketDate: string | null }) =>
+          `시세 ${count}건 · 시장 기준일 ${marketDate ?? '미확인'}`,
+        CRYPTO_SNAPSHOT: ({ count, quotes }: { count: number; quotes: string[] }) =>
+          `시세 ${count}건 · ${quotes.join(', ') || '없음'}`,
+        FX_RATE: ({ rate, source }: { rate: number; source: string }) => `${rate} · ${source}`,
+        FX_RATE_MISSING: () => '환율이 설정되지 않았습니다.',
+        SOURCE_MISSING: () => '원본 파일이 디스크에 없습니다.',
+        SOURCE_CHANGED: ({ recordedBytes, currentBytes }: { recordedBytes: number; currentBytes: number }) =>
+          `적재 이후 변경되었습니다. 기록된 크기 ${recordedBytes}바이트, 현재 ${currentBytes}바이트.`,
+        SOURCE_MTIME_ONLY: () => '내용은 적재 시 기록한 SHA-256과 일치하며 수정 시각만 바뀌었습니다.',
+        SOURCE_MATCHES: () => '적재 시 기록한 내용 지문과 일치합니다.',
       },
     },
     devCopy: {

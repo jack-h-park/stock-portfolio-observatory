@@ -593,8 +593,26 @@ export function findBareFootnote(source, file = '<source>') {
 const KO_LATIN_ALLOW = new Set([
   'FX', 'API', 'ISA', 'IRP', 'ETF', 'CSV', 'PDF', 'DB', 'URL', 'USD', 'KRW', 'US', 'KR', 'ID', 'PFIC',
   'FBAR', 'IRS', 'CMA', 'RP', 'LLM', 'JSON', 'Form', 'W', 'EUR', 'JPY', 'CLI', 'OK',
-  'SSH', 'Tailscale',
+  'SSH', 'Tailscale', 'MCP', 'XLSX', 'SHA',
 ])
+
+/**
+ * A literal directly followed by `:` is an object key only when nothing but
+ * `{`, `,` or the start of the line comes before it; `on?'A':'B'` is a branch.
+ */
+function isObjectKey(text, match) {
+  if (text[match.index + match[0].length] !== ':') return false
+  const before = text.slice(0, match.index).trimEnd()
+  return before === '' || before.endsWith('{') || before.endsWith(',')
+}
+
+/** A whitespace-delimited token holding `/` is a path or a route, not a word. */
+function withoutPathTokens(body) {
+  return body
+    .split(/\s+/)
+    .filter((token) => !token.includes('/'))
+    .join(' ')
+}
 
 /** `{placeholder}` and `${…}` are filled in at run time, so their names are not copy. */
 function withoutInterpolations(body) {
@@ -619,9 +637,11 @@ function withoutInterpolations(body) {
  * one hit per string literal there holding a Latin word of two or more letters
  * outside KO_LATIN_ALLOW, with the offending words first in the snippet. A
  * literal inside a `${…}` is read on its own (it is shown too), while the
- * interpolation's code is not. A literal followed directly by `:` is an object
- * key (`'Hana Bank': '하나은행'`), a raw value the map translates, so it is
- * skipped; a ternary writes ` : ` with spaces and is still read.
+ * interpolation's code is not. A literal followed directly by `:` after `{`,
+ * `,` or the start of the line is an object key (`'Hana Bank': '하나은행'`), a
+ * raw value the map translates, so it is skipped; a ternary branch is still
+ * read, spaced or not. A token containing `/` (`data/manual-mappings.json`,
+ * `/lots`) is a path or route and is not read.
  */
 export function findEnglishInKoreanCopy(source, file = '<source>') {
   const hits = []
@@ -630,10 +650,10 @@ export function findEnglishInKoreanCopy(source, file = '<source>') {
     if (!inKorean && /^\s*ko:\s*\{/.test(text)) inKorean = true
     if (!inKorean) return
     const literals = [...text.matchAll(STRING_LITERAL)]
-      .filter((match) => text[match.index + match[0].length] !== ':')
+      .filter((match) => !isObjectKey(text, match))
       .flatMap((match) => literalsIn(match[0]))
     for (const literal of literals) {
-      const words = (withoutInterpolations(literal.slice(1, -1)).match(/\b[A-Za-z]{2,}\b/g) ?? []).filter(
+      const words = (withoutPathTokens(withoutInterpolations(literal.slice(1, -1))).match(/\b[A-Za-z]{2,}\b/g) ?? []).filter(
         (word) => !KO_LATIN_ALLOW.has(word),
       )
       if (words.length > 0) hits.push(hit(file, line, `${[...new Set(words)].join(', ')}: ${literal}`))

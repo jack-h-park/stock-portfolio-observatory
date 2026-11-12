@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, TextLink, marketTone, type Tone } from '@/components/ui'
-import { getReconciliationReview } from '@/lib/adapters/portfolio-db'
+import { getReconciliationReview, type ReconciliationReview } from '@/lib/adapters/portfolio-db'
 import { fmtNumber, fmtQuantity } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
@@ -17,6 +17,9 @@ import { CardRow, KpiBand } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/reconciliation')
+
+type QueueRow = ReconciliationReview['actionQueue'][number]
+type BreakRow = ReconciliationReview['positionBreaks'][number]
 
 function statusTone(status: string): Tone {
   if (status.includes('only')) return 'warning'
@@ -118,10 +121,10 @@ export default async function ReconciliationPage({
           <DataTable
             rows={review.actionQueue}
             columns={[
-              { key: 'priority', label: copy.columns.priority, render: (r) => <Badge tone={priorityTone(r.priority)}>{priorityLabels[r.priority as keyof typeof priorityLabels] ?? r.priority}</Badge> },
-              { key: 'area', label: copy.columns.area },
+              { key: 'priority', label: copy.columns.priority, render: (r: QueueRow) => <Badge tone={priorityTone(r.priority)}>{priorityLabels[r.priority] ?? r.priority}</Badge> },
+              { key: 'area', label: copy.columns.area, render: (r: QueueRow) => copy.queue[r.kind]?.area ?? r.kind },
               { key: 'count', label: copy.columns.count, align: 'right', render: (r) => fmtNumber(r.count) },
-              { key: 'action', label: copy.columns.action, render: (r) => <span className="text-caption text-ink-2">{r.action}</span> },
+              { key: 'action', label: copy.columns.action, render: (r: QueueRow) => <span className="text-caption text-ink-2">{copy.queue[r.kind]?.action ?? r.kind}</span> },
               {
                 key: 'href',
                 label: copy.columns.open,
@@ -162,7 +165,7 @@ export default async function ReconciliationPage({
             sortHref={sortHref}
             rows={sortRows(review.positionBreaks, sort, (row, key) => (row as Record<string, any>)[key])}
             columns={[
-              { key: 'status', label: copy.columns.status, sortable: true, sortFirst: 'asc', render: (r) => <Badge tone={statusTone(r.status)}>{r.status}</Badge> },
+              { key: 'status', label: copy.columns.status, sortable: true, sortFirst: 'asc', render: (r: BreakRow) => <Badge tone={statusTone(r.status)}>{copy.breakStatus[r.status] ?? r.status}</Badge> },
               { key: 'market', label: copy.columns.market, sortable: true, sortFirst: 'asc', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
               { key: 'brokerage', label: copy.columns.brokerage, sortable: true, sortFirst: 'asc' },
               {

@@ -39,6 +39,7 @@ import { ASSET_CLASSES } from '@/lib/net-worth'
 import { chartMarkers, snapEventDates } from '@/lib/asset-events'
 import { AssetEventList } from '@/components/AssetEventList'
 import { dividendChartAmount, fmtDate, fmtDateTime, fmtNumber } from '@/lib/format'
+import { freshnessLabel } from '@/lib/freshness-text'
 import { convertMoney, createMoneyFormatter } from '@/lib/currency'
 import { getAssetView } from '@/lib/asset-view-server'
 import { getCurrencyPreferences } from '@/lib/currency-server'
@@ -409,7 +410,7 @@ export default async function OverviewPage({
         <div className="grid gap-2 lg:grid-cols-3">
           {operational.snapshots.map((item) => (
             <div key={item.key} className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-              <Label className="mb-1">{item.label}</Label>
+              <Label className="mb-1">{freshnessLabel(item, language)}</Label>
               <FreshnessInline item={item} language={language} />
             </div>
           ))}

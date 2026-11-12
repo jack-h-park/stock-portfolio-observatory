@@ -73,6 +73,8 @@ test('one Robinhood row per account, as stale as its transaction CSVs even when 
   assert.equal(midterm.method, 'manual')
   assert.match(midterm.requiredArtifact, /MCP snapshot/)
   assert.match(midterm.requiredArtifact, /transactions CSV/)
+  assert.equal(midterm.detail.code, 'ROBINHOOD_OLDER_OF_TWO')
+  assert.deepEqual(midterm.artifacts.map((a) => a.code), ['ROBINHOOD_MCP_SNAPSHOT', 'ROBINHOOD_TRANSACTIONS_CSV'])
   const [snapshot, csv] = midterm.sources
   assert.equal(snapshot.status, 'current')
   assert.equal(snapshot.coveredThrough, daysAgo(0))
@@ -101,7 +103,8 @@ test('a missing disposal marks only its own account, even when that account\'s C
     const csv = longterm.sources.find((source) => source.label === 'CSV')!
     assert.equal(csv.status, 'action_needed')
     assert.deepEqual(csv.missingDisposals, ['ACME', 'WIDG'])
-    assert.match(longterm.action, /매도 기록 누락 2종목\(ACME, WIDG\)/)
+    assert.equal(longterm.action.code, 'ROBINHOOD_SNAPSHOT_AND_CSV')
+    assert.deepEqual(longterm.missingDisposals, ['ACME', 'WIDG'])
 
     // The others carry nothing extra.
     for (const row of rows.filter((row) => row !== longterm)) assert.deepEqual(row.missingDisposals, [])

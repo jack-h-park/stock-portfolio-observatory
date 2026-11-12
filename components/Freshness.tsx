@@ -1,6 +1,7 @@
 import { Badge, type Tone } from '@/components/ui'
 import { fmtDateTime, fmtDuration } from '@/lib/format'
 import type { FreshnessItem, FreshnessStatus } from '@/lib/adapters/portfolio-db'
+import { freshnessDetailText, freshnessLabel } from '@/lib/freshness-text'
 import type { Language } from '@/lib/i18n'
 import { getUiCopy } from '@/lib/ui-copy'
 
@@ -34,23 +35,23 @@ export function FreshnessRows({ items, language }: { items: FreshnessItem[]; lan
       {items.map((item) => (
         <li key={item.key} className="flex flex-col gap-1 py-2.5 lg:flex-row lg:items-center lg:gap-3">
           <FreshnessBadge status={item.status} language={language} />
-          <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">{item.label}</span>
+          <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">{freshnessLabel(item, language)}</span>
           <span className="text-caption tabular-nums text-ink-3">{item.observedAt ? fmtDateTime(item.observedAt) : copy.notRecorded}</span>
           <span className="text-caption tabular-nums text-ink-3">{fmtDuration(item.ageMs)} {copy.elapsed}</span>
-          <span className="text-caption text-ink-3">{item.detail}</span>
+          <span className="text-caption text-ink-3">{freshnessDetailText(item.detail, language)}</span>
         </li>
       ))}
     </ul>
   )
 }
 
-export function FreshnessInline({ item, language = 'en' }: { item: FreshnessItem; language?: Language }) {
+export function FreshnessInline({ item, language }: { item: FreshnessItem; language: Language }) {
   const copy = getUiCopy(language).common
   return (
     <span className="inline-flex flex-wrap items-center gap-2 text-label text-ink-3">
       <FreshnessBadge status={item.status} language={language} />
       <span className="tabular-nums">{fmtDuration(item.ageMs)} {copy.elapsed}</span>
-      <span>{item.detail}</span>
+      <span>{freshnessDetailText(item.detail, language)}</span>
     </span>
   )
 }

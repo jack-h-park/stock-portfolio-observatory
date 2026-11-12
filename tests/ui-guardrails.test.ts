@@ -343,6 +343,44 @@ test('G12 skips an object key in the Korean half but still reads the same words 
   )
 })
 
+test('G12 reads an unspaced ternary branch but still skips an object key', () => {
+  const module = [
+    'export const page = defineCopy({',
+    '  ko: {',
+    "    pick: (on: boolean) => (on?'Hana Bank':'x'),",
+    "    'Hana Bank': '하나은행',",
+    "    list: { a: '하나', 'Hana Bank': '하나은행' },",
+    '  },',
+    '})',
+  ].join('\n')
+  const hits = findEnglishInKoreanCopy(module) as Hit[]
+  // Line 3 is a branch the reader sees; lines 4 and 5 are keys after `{`, `,` or a line start.
+  assert.deepEqual(
+    hits.map((h) => [h.line, h.snippet.split(':')[0]]),
+    [[3, 'Hana, Bank']],
+  )
+})
+
+test('G12 skips path-shaped tokens and lets MCP, XLSX and SHA stand, but still reads a plain English word', () => {
+  const module = [
+    'export const page = defineCopy({',
+    '  ko: {',
+    "    drop: '받은 자료를 us-transactions/에 넣으세요',",
+    "    route: '/lots',",
+    "    snapshot: 'MCP 스냅샷',",
+    "    formats: 'PDF + XLSX',",
+    "    inbox: 'inbox에 넣으세요',",
+    "    hash: 'SHA-256과 일치합니다',",
+    '  },',
+    '})',
+  ].join('\n')
+  const hits = findEnglishInKoreanCopy(module) as Hit[]
+  assert.deepEqual(
+    hits.map((h) => [h.line, h.snippet.split(':')[0]]),
+    [[7, 'inbox']],
+  )
+})
+
 test('the counted checks are registered in order with their scopes', () => {
   type Check = { code: string; id: string; roots: string[]; exclude: string[]; include: RegExp | null }
   const checks = CHECKS as Check[]
