@@ -2,6 +2,9 @@ import { defineCopy } from '@/lib/ui-copy/define'
 
 export const holdings = defineCopy({
   en: {
+    title: 'Holdings',
+    emphasis: 'Holdings',
+    subtitle: (count: string) => `Search ${count} open positions by market, broker, or account.`,
     searchPlaceholder: 'Ticker, name, account, or broker',
     sortLabel: 'Sort',
     sort: {
@@ -35,6 +38,9 @@ export const holdings = defineCopy({
     lotDescription: 'Number of tax-calculation groups split by purchase date and price.',
   },
   ko: {
+    title: '보유종목',
+    emphasis: '보유종목',
+    subtitle: (count: string) => `${count}개 보유 포지션을 시장·증권사·계좌로 검색합니다.`,
     searchPlaceholder: '종목코드, 종목명, 계좌 또는 증권사',
     sortLabel: '정렬',
     sort: {

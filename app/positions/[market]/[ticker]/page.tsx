@@ -16,6 +16,7 @@ import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
 import { CardRow, KpiBand } from '@/components/layout'
 import { routeSection } from '@/lib/page-names'
+import { positionHeading } from '@/lib/page-headings'
 import { displayAccount, maskAccountLabel } from '@/lib/account-label'
 
 export const dynamic = 'force-dynamic'
@@ -194,8 +195,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
     <>
       <PageHeader
         eyebrow={routeSection('/holdings', language)}
-        title={detail.name}
-        emphasis={detail.ticker}
+        {...positionHeading(detail.name)}
         subtitle={`${fmtNumber(detail.totals.account_count)} accounts · ${fmtNumber(detail.lotTotals.lot_count)} open tax lots · ${fmtNumber(detail.transactions.length)} transactions`}
         action={<TextLink href="/holdings">{copy.backToHoldings}</TextLink>}
       />

@@ -20,8 +20,18 @@ export function PageHeader({
   /** Off on pages with a form to fill in, where a refresh every 30 seconds would reload it mid-entry. */
   autoRefresh?: boolean
 }) {
-  const head = emphasis && title.endsWith(emphasis) ? title.slice(0, title.length - emphasis.length) : title
   const showEmph = Boolean(emphasis && title.endsWith(emphasis))
+  // tests/page-headings.test.ts is the primary net: it checks every copy-driven
+  // heading and the helpers in lib/page-headings.ts. This is the backstop for a
+  // title built from data the test never sees. Outside production a dead
+  // emphasis fails loudly; in production the heading still renders, without
+  // the gradient, rather than taking the page down.
+  if (emphasis && !showEmph && process.env.NODE_ENV !== 'production') {
+    throw new Error(
+      `PageHeader: emphasis "${emphasis}" is not a trailing substring of title "${title}", so the gradient would never render`
+    )
+  }
+  const head = showEmph && emphasis ? title.slice(0, title.length - emphasis.length) : title
 
   return (
     <header className="ai-page-header mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-4">

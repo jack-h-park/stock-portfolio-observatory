@@ -89,7 +89,6 @@
   "hangul-literal": {
     "app/data-ops/page.tsx": 28,
     "app/fx/page.tsx": 32,
-    "app/holdings/page.tsx": 3,
     "app/layout.tsx": 1,
     "app/net-worth/page.tsx": 1,
     "app/page.tsx": 1,
@@ -99,7 +98,6 @@
   "inline-language-branch": {
     "app/data-ops/page.tsx": 7,
     "app/fx/page.tsx": 30,
-    "app/holdings/page.tsx": 3,
     "app/layout.tsx": 1,
     "app/net-worth/page.tsx": 2,
     "app/page.tsx": 2,

@@ -10,6 +10,7 @@ import { live } from '@/lib/domain/taxes/history'
 import { formatMoney } from '@/lib/domain/taxes/reconcile'
 import { getLanguage } from '@/lib/i18n-server'
 import { routeMetadata } from '@/lib/page-names'
+import { taxRecordHeading } from '@/lib/page-headings'
 import { getPageCopy } from '@/lib/ui-copy'
 import { reviewTaxHistory } from '../../actions'
 
@@ -50,7 +51,7 @@ export default async function TaxRecordPage({
   return (
     <>
       <PageHeader
-        title={copy.recordTitle}
+        {...taxRecordHeading(copy)}
         subtitle={`${obligation.authority} · ${obligation.taxYear} · ${obligation.taxUnitId}`}
         autoRefresh={false}
       />
