@@ -44,7 +44,7 @@ import {
 } from '@/lib/adapters/portfolio-db'
 import { washSaleLine } from '@/lib/wash-sale'
 import { freshnessDetailText, freshnessLabel } from '@/lib/freshness-text'
-import { maskAccountLabel } from '@/lib/account-label'
+import { maskAccountLabel, maskAccountsIn } from '@/lib/account-label'
 
 /**
  * The contract with every consumer.
@@ -274,7 +274,9 @@ const summary = {
       maxLagDays: row.maxLagDays,
       overdueDays: row.overdueDays,
       method: row.method,
-      requiredArtifact: row.requiredArtifact,
+      // Masked at the source already; masked again here so a new branch that
+      // forgets cannot publish the raw account through this text.
+      requiredArtifact: maskAccountsIn(row.requiredArtifact, [row.account]),
       destination: row.destination,
       // Tickers whose sale is missing from this account's history: the account
       // needs its CSV whatever its dates say.
@@ -290,7 +292,7 @@ const summary = {
         lagDays: source.lagDays,
         maxLagDays: source.maxLagDays,
         overdueDays: source.overdueDays,
-        requiredArtifact: source.requiredArtifact,
+        requiredArtifact: maskAccountsIn(source.requiredArtifact, [row.account]),
         destination: source.destination,
         missingDisposals: source.missingDisposals ?? [],
       })),

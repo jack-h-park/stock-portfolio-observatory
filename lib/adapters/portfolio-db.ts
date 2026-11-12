@@ -16,6 +16,7 @@ import { ASSET_CLASSES, depositsSeries, totalAssetsSeries, type CashBalanceRow, 
 import type { PensionContributionYear } from '@/lib/pension'
 import { summarizeAllocation, type AssetAllocation } from '@/lib/asset-allocation'
 import { getInstrumentClasses } from '@/lib/rebalance/instrument-classes'
+import { maskAccountLabel } from '@/lib/account-label'
 import { groupAccountRanges, type AccountDataRange, type AssetType, type RangeKind, type RangeRow } from '@/lib/account-ranges'
 import { foreignAccountMaxima, isUsBrokerage, isUsCashInstitution, maxBalance, treasuryRateFor, type BalancePoint, type ForeignAccountInput, type ForeignAccountMaxima } from '@/lib/fbar'
 import treasuryRates from '@/data/treasury-reporting-rates.json'
@@ -420,7 +421,10 @@ export type AccountCoverage = {
   // placed by hand. A Robinhood transactions CSV carries no account, and which
   // account it is exists only in the name someone gives it.
   method: 'inbox' | 'manual' | 'api' | 'mcp' | 'mixed'
-  /** Printed by the briefing summary, the reminder script and the CLI; the page renders `artifacts`. */
+  /**
+   * Printed by the briefing summary, the reminder script and the CLI; the page renders `artifacts`.
+   * It leaves the machine, so any account it names is masked (maskAccountLabel).
+   */
   requiredArtifact: string
   artifacts: CoverageArtifact[]
   format: string
@@ -4015,7 +4019,9 @@ export function getAccountCoverage(): AccountCoverageSummary {
         action = { code: 'SAMSUNG_STOCK_COMP' }
         detail = { code: 'STATEMENT_PERIOD_END', checkDetail: checks.get('samsung_statement_fresh')?.detail }
       } else if (market === 'KR') {
-        requiredArtifact = `${brokerage} ${account} 거래내역증명서`
+        // This text leaves the machine (briefing summary, Telegram reminder, CLI),
+        // so it names the account masked; the typed codes keep the raw label.
+        requiredArtifact = `${brokerage} ${maskAccountLabel(account)} 거래내역증명서`
         artifacts = [{ code: 'KR_CERTIFICATE', brokerage, account }]
         action = { code: 'KR_CERTIFICATE', brokerage, account }
         coveredThrough = statementCoveredThrough ?? coveredThrough
