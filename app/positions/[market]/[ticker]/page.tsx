@@ -391,7 +391,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             {timeline.map((event) => (
               <li key={event.id} className="grid gap-2 py-2.5 text-caption lg:grid-cols-[7rem_6rem_1fr_8rem_8rem] lg:items-center">
                 <span className="tabular-nums text-ink-3">{event.date}</span>
-                <Badge tone={eventTone(event.kind)}>{copy.eventKinds[event.kind as keyof PageCopy['eventKinds']] ?? event.kind}</Badge>
+                <Badge tone={eventTone(event.kind)}>{copy.eventKinds[event.kind as keyof PageCopy['eventKinds']] ?? copy.transactionTypes[event.kind] ?? event.kind}</Badge>
                 <span className="min-w-0 truncate text-ink">
                   {displayAccount(event.brokerage, event.account)} · {event.detail}
                 </span>
