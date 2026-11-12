@@ -42,10 +42,21 @@ function moneyOrNa(copy: PageCopy, money: MoneyFormatter, value: number | null |
   return value == null ? copy.noValue : money(value, currency)
 }
 
+type CopyMap = Record<string, string>
+
+// Translates a raw data value through the first copy map that owns it as a key,
+// falling back to the raw value. Own-key check, so a raw value that happens to
+// name an Object.prototype member (`constructor`) never renders a function.
+function translated<T extends string | null | undefined>(raw: T, ...maps: CopyMap[]): string | T {
+  if (raw == null) return raw
+  for (const map of maps) if (Object.hasOwn(map, raw)) return map[raw]
+  return raw
+}
+
 function eventTone(kind: string) {
-  if (kind === 'Dividend') return 'success'
-  if (kind === 'Sell') return 'warning'
-  if (kind === 'Tax lot') return 'neutral'
+  if (kind === 'dividend') return 'success'
+  if (kind === 'sell') return 'warning'
+  if (kind === 'taxLot') return 'neutral'
   return 'info'
 }
 
@@ -145,7 +156,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
     ...detail.transactions.map((row, index) => ({
       id: `tx:${index}:${row.date}:${row.account}:${row.type}`,
       date: row.date,
-      kind: row.type === 'SELL' ? 'Sell' : row.type === 'BUY' ? 'Buy' : row.type || 'Transaction',
+      kind: row.type === 'SELL' ? 'sell' : row.type === 'BUY' ? 'buy' : row.type || 'transaction',
       account: row.account,
       brokerage: row.brokerage,
       quantity: row.quantity,
@@ -157,26 +168,26 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
     ...detail.dividends.map((row, index) => ({
       id: `div:${index}:${row.date}:${row.account}`,
       date: row.date,
-      kind: 'Dividend',
+      kind: 'dividend',
       account: row.account,
       brokerage: row.brokerage,
       quantity: null,
       amount: row.native_amount,
       currency: row.currency,
       source: row.source,
-      detail: row.type || 'income',
+      detail: row.type || copy.eventDetail.income,
     })),
     ...detail.lots.map((row, index) => ({
       id: `lot:${index}:${row.acquired_date}:${row.account}`,
       date: row.acquired_date,
-      kind: 'Tax lot',
+      kind: 'taxLot',
       account: row.account,
       brokerage: row.brokerage,
       quantity: row.open_quantity,
       amount: row.native_cost_basis,
       currency: row.currency,
       source: row.source,
-      detail: row.tax_term || 'open lot',
+      detail: row.tax_term || copy.eventDetail.openLot,
     })),
   ]
     .filter((event) => event.date)
@@ -188,7 +199,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
     usage: source.usages.join(', '),
     rows: source.file?.row_count ?? null,
     modified: source.file ? new Date(source.file.mtime_ms).toISOString() : null,
-    status: source.file ? 'linked' : 'unlinked',
+    status: source.file ? ('linked' as const) : ('unlinked' as const),
   }))
 
   return (
@@ -196,7 +207,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
       <PageHeader
         eyebrow={routeSection('/holdings', language)}
         {...positionHeading(detail.name)}
-        subtitle={`${fmtNumber(detail.totals.account_count)} accounts · ${fmtNumber(detail.lotTotals.lot_count)} open tax lots · ${fmtNumber(detail.transactions.length)} transactions`}
+        subtitle={copy.subtitle(fmtNumber(detail.totals.account_count), fmtNumber(detail.lotTotals.lot_count), fmtNumber(detail.transactions.length))}
         action={<TextLink href="/holdings">{copy.backToHoldings}</TextLink>}
       />
 
@@ -219,19 +230,22 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               <Badge tone={hasReconIssue ? 'warning' : 'success'}>{hasReconIssue ? copy.needsReview : copy.matched}</Badge>
             </div>
             <div className="text-label leading-relaxed text-ink-3">
-              Quantity difference {fmtQuantity(quantityDiff, 4)} · base cost difference {money(baseCostDiff, 'KRW')}
+              {copy.reconDetail(fmtQuantity(quantityDiff, 4), money(baseCostDiff, 'KRW'))}
             </div>
           </div>
           <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
             <div className="mb-1 text-caption font-medium text-ink">{copy.evidenceLinks}</div>
             <div className="text-label leading-relaxed text-ink-3">
-              {fmtNumber(detail.sources.filter((source) => source.file).length)} source files linked · {fmtNumber(detail.sources.filter((source) => !source.file).length)} unresolved references
+              {copy.evidenceDetail(
+                fmtNumber(detail.sources.filter((source) => source.file).length),
+                fmtNumber(detail.sources.filter((source) => !source.file).length),
+              )}
             </div>
           </div>
           <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
             <div className="mb-1 text-caption font-medium text-ink">{copy.activityCoverage}</div>
             <div className="text-label leading-relaxed text-ink-3">
-              {fmtNumber(detail.transactions.length)} transactions · {fmtNumber(detail.dividends.length)} dividends · {fmtNumber(detail.lots.length)} open tax lots
+              {copy.activityDetail(fmtNumber(detail.transactions.length), fmtNumber(detail.dividends.length), fmtNumber(detail.lots.length))}
             </div>
           </div>
         </div>
@@ -243,7 +257,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
           info={copy.marketValueInfo}
           eyebrow={copy.positionHeadline}
           value={moneyOrNa(copy, money, detail.totals.native_market_value, detail.currency)}
-          hint={`${fmtQuantity(detail.totals.quantity, 4)} shares or units`}
+          hint={copy.quantityHint(fmtQuantity(detail.totals.quantity, 4))}
         >
           <KpiBand>
             <MetricField
@@ -278,20 +292,20 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               <MetricField
                 label={copy.quantity}
                 value={fmtQuantity(detail.totals.quantity, 4)}
-                hint={`${fmtNumber(detail.holdings.length)} account holding row(s)`}
+                hint={copy.holdingRowsHint(fmtNumber(detail.holdings.length))}
                 valueClassName="text-metric"
               />
               <div className="h-px bg-line-subtle" />
               <MetricField
                 label={copy.dividends}
                 value={money(detail.dividendTotals.native_amount, detail.currency)}
-                hint={`${fmtNumber(detail.dividendTotals.count)} rows`}
+                hint={copy.rowCount(fmtNumber(detail.dividendTotals.count))}
                 tone="success"
                 valueClassName="text-title"
               />
             </div>
             <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
-              Read order: value first, then cost and gain/loss, then reconciliation and lot details.
+              {copy.readOrderNote}
             </div>
           </div>
         </Card>
@@ -329,8 +343,8 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             <ul className="divide-y divide-line-subtle">
               {detail.transactionSummary.map((row) => (
                 <li key={row.type} className="flex items-center justify-between gap-3 py-2 text-caption">
-                  <Badge tone={row.type === 'DIVIDEND' ? 'success' : row.type === 'SELL' ? 'warning' : 'info'}>{row.type}</Badge>
-                  <span className="text-ink-3">{fmtNumber(row.count)} rows</span>
+                  <Badge tone={row.type === 'DIVIDEND' ? 'success' : row.type === 'SELL' ? 'warning' : 'info'}>{translated(row.type, copy.transactionTypes)}</Badge>
+                  <span className="text-ink-3">{copy.rowCount(fmtNumber(row.count))}</span>
                   <span className="font-medium tabular-nums text-ink">{row.amount == null ? 'n/a' : money(row.amount, detail.currency)}</span>
                 </li>
               ))}
@@ -344,8 +358,8 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
           <DataTable
             rows={detail.holdings}
             columns={[
-              { key: 'brokerage', label: 'Broker' },
-              { key: 'account', label: 'Account', render: (r: { account: string }) => maskAccountLabel(r.account) },
+              { key: 'brokerage', label: copy.columns.broker },
+              { key: 'account', label: copy.columns.account, render: (r: { account: string }) => maskAccountLabel(r.account) },
               { key: 'quantity', label: copy.columns.quantity, align: 'right', render: (r) => fmtQuantity(r.quantity, 4) },
               { key: 'native_cost', label: copy.columns.cost, align: 'right', render: (r) => money(r.native_cost, r.currency) },
               { key: 'native_market_value', label: copy.columns.market, align: 'right', render: (r) => moneyOrNa(copy, money, r.native_market_value, r.currency) },
@@ -368,8 +382,8 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
           <DataTable
             rows={accountLotProfile}
             columns={[
-              { key: 'brokerage', label: 'Broker' },
-              { key: 'account', label: 'Account', render: (r: { account: string }) => maskAccountLabel(r.account) },
+              { key: 'brokerage', label: copy.columns.broker },
+              { key: 'account', label: copy.columns.account, render: (r: { account: string }) => maskAccountLabel(r.account) },
               { key: 'quantity', label: copy.columns.quantity, align: 'right', render: (r) => fmtQuantity(r.quantity, 4) },
               { key: 'lot_count', label: copy.columns.lots, align: 'right', render: (r) => fmtNumber(r.lot_count) },
               { key: 'long_count', label: copy.columns.long, align: 'right', render: (r) => fmtNumber(r.long_count) },
@@ -388,7 +402,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             {timeline.map((event) => (
               <li key={event.id} className="grid gap-2 py-2.5 text-caption lg:grid-cols-[7rem_6rem_1fr_8rem_8rem] lg:items-center">
                 <span className="tabular-nums text-ink-3">{event.date}</span>
-                <Badge tone={eventTone(event.kind)}>{copy.eventKinds[event.kind] ?? event.kind}</Badge>
+                <Badge tone={eventTone(event.kind)}>{translated(event.kind, copy.eventKinds, copy.transactionTypes)}</Badge>
                 <span className="min-w-0 truncate text-ink">
                   {displayAccount(event.brokerage, event.account)} · {event.detail}
                 </span>
@@ -405,9 +419,9 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
           <DataTable
             rows={lineageSummary}
             columns={[
-              { key: 'status', label: copy.columns.status, render: (r) => <Badge tone={r.status === 'linked' ? 'success' : 'warning'}>{r.status}</Badge> },
+              { key: 'status', label: copy.columns.status, render: (r: { status: 'linked' | 'unlinked' }) => <Badge tone={r.status === 'linked' ? 'success' : 'warning'}>{copy.linkStatus[r.status] ?? r.status}</Badge> },
               { key: 'label', label: copy.columns.file, render: (r) => <span className="max-w-[20rem] break-words">{r.label}</span> },
-              { key: 'usage', label: 'Usage' },
+              { key: 'usage', label: copy.columns.usage },
               { key: 'rows', label: copy.columns.rows, align: 'right', render: (r) => (r.rows == null ? 'n/a' : fmtNumber(r.rows)) },
               { key: 'modified', label: copy.columns.modified, render: (r) => (r.modified ? fmtDateTime(r.modified) : 'n/a') },
             ]}
@@ -443,10 +457,10 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             <DataTable
               rows={taxPlan.recommended.slice(0, 8)}
               columns={[
-                { key: 'brokerage', label: 'Broker' },
-                { key: 'account', label: 'Account', render: (r: { account: string }) => maskAccountLabel(r.account) },
-                { key: 'acquired_date', label: 'Acquired' },
-                { key: 'holdingBucket', label: copy.columns.term, render: (r) => <Badge tone={bucketTone(r.holdingBucket)}>{r.holdingBucket}</Badge> },
+                { key: 'brokerage', label: copy.columns.broker },
+                { key: 'account', label: copy.columns.account, render: (r: { account: string }) => maskAccountLabel(r.account) },
+                { key: 'acquired_date', label: copy.columns.acquired },
+                { key: 'holdingBucket', label: copy.columns.term, render: (r: { holdingBucket: 'long' | 'short' }) => <Badge tone={bucketTone(r.holdingBucket)}>{copy.buckets[r.holdingBucket] ?? r.holdingBucket}</Badge> },
                 { key: 'open_quantity', label: copy.columns.quantity, align: 'right', render: (r) => fmtQuantity(r.open_quantity, 4) },
                 { key: 'proceedsNative', label: copy.columns.proceeds, align: 'right', render: (r) => (r.proceedsNative == null ? 'n/a' : money(r.proceedsNative, r.currency)) },
                 {
@@ -472,14 +486,14 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             <DataTable
               rows={detail.lots}
               columns={[
-                { key: 'brokerage', label: 'Broker' },
-                { key: 'account', label: 'Account', render: (r: { account: string }) => maskAccountLabel(r.account) },
-                { key: 'acquired_date', label: 'Acquired' },
-                { key: 'tax_term', label: 'Term' },
+                { key: 'brokerage', label: copy.columns.broker },
+                { key: 'account', label: copy.columns.account, render: (r: { account: string }) => maskAccountLabel(r.account) },
+                { key: 'acquired_date', label: copy.columns.acquired },
+                { key: 'tax_term', label: copy.columns.term, render: (r) => translated(r.tax_term, copy.terms) },
                 { key: 'open_quantity', label: copy.columns.quantity, align: 'right', render: (r) => fmtQuantity(r.open_quantity, 4) },
                 { key: 'native_cost_basis', label: copy.columns.cost, align: 'right', render: (r) => money(r.native_cost_basis, r.currency) },
                 { key: 'cost_basis_krw', label: copy.columns.baseCost, align: 'right', render: (r) => money(r.cost_basis_krw, 'KRW') },
-                { key: 'source', label: 'Source' },
+                { key: 'source', label: copy.columns.source },
               ]}
             />
           )}
@@ -492,14 +506,14 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             <DataTable
               rows={detail.transactions}
               columns={[
-                { key: 'date', label: 'Date' },
-                { key: 'brokerage', label: 'Broker' },
-                { key: 'account', label: 'Account', render: (r: { account: string }) => maskAccountLabel(r.account) },
-                { key: 'type', label: copy.columns.type, render: (r) => <Badge tone={r.type === 'SELL' ? 'warning' : r.type === 'DIVIDEND' ? 'success' : 'info'}>{r.type}</Badge> },
+                { key: 'date', label: copy.columns.date },
+                { key: 'brokerage', label: copy.columns.broker },
+                { key: 'account', label: copy.columns.account, render: (r: { account: string }) => maskAccountLabel(r.account) },
+                { key: 'type', label: copy.columns.type, render: (r) => <Badge tone={r.type === 'SELL' ? 'warning' : r.type === 'DIVIDEND' ? 'success' : 'info'}>{translated(r.type, copy.transactionTypes)}</Badge> },
                 { key: 'quantity', label: copy.columns.quantity, align: 'right', render: (r) => fmtQuantity(r.quantity, 4) },
                 { key: 'native_amount', label: copy.columns.amount, align: 'right', render: (r) => moneyOrNa(copy, money, r.native_amount, r.currency) },
                 { key: 'native_unit_price', label: copy.columns.unit, align: 'right', render: (r) => moneyOrNa(copy, money, r.native_unit_price, r.currency) },
-                { key: 'source', label: 'Source' },
+                { key: 'source', label: copy.columns.source },
                 { key: 'page', label: copy.columns.page, align: 'right' },
               ]}
             />
@@ -513,13 +527,13 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             <DataTable
               rows={detail.dividends}
               columns={[
-                { key: 'date', label: 'Date' },
-                { key: 'brokerage', label: 'Broker' },
-                { key: 'account', label: 'Account', render: (r: { account: string }) => maskAccountLabel(r.account) },
+                { key: 'date', label: copy.columns.paidDate },
+                { key: 'brokerage', label: copy.columns.broker },
+                { key: 'account', label: copy.columns.account, render: (r: { account: string }) => maskAccountLabel(r.account) },
                 { key: 'native_amount', label: copy.columns.amount, align: 'right', render: (r) => money(r.native_amount, r.currency) },
                 { key: 'native_tax_withheld', label: copy.columns.tax, align: 'right', render: (r) => moneyOrNa(copy, money, r.native_tax_withheld, r.currency) },
                 { key: 'amount_krw', label: copy.columns.baseAmount, align: 'right', render: (r) => money(r.amount_krw, 'KRW') },
-                { key: 'source', label: 'Source' },
+                { key: 'source', label: copy.columns.source },
                 { key: 'page', label: copy.columns.page, align: 'right' },
               ]}
             />

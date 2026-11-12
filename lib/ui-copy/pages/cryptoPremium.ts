@@ -4,7 +4,8 @@ export const cryptoPremium = defineCopy({
   en: {
     title: 'Korea Premium',
     emphasis: 'Premium',
-    subtitleWithData: (asOf: string) => `Domestic versus global pricing for the coins actually held, as of ${asOf}.`,
+    subtitleWithData: (rate: string, fxDate: string, snapshot: string) =>
+      `Won order book against the dollar order book converted at USD/KRW ${rate} (${fxDate}). Snapshot ${snapshot}.`,
     subtitleNoData: 'No crypto price snapshot yet — run pnpm refresh.',
     weightedPremium: 'Weighted Premium',
     weightedPremiumInfo:
@@ -29,6 +30,24 @@ export const cryptoPremium = defineCopy({
     noPairs: 'No coin is quoted on both a KRW and a USD book — nothing to compare.',
     noHistory: 'No overlapping history — run pnpm refresh.',
     axisLabel: 'Premium %',
+    // The count arrives as a string so the page's existing number formatting is unchanged.
+    notableBadge: (count: string, pct: string) => `${count} coin(s) beyond ±${pct}%`,
+    withHistoryHint: (count: string) => `${count} with history`,
+    readOrderNote: 'Portfolio totals use each venue price; this page isolates the hidden venue premium risk.',
+    notHeldBadge: 'not held in KRW',
+    tableFootnote:
+      'Implied KRW is the dollar price at the FX snapshot above. A coin quoted on only one of the two books cannot be compared and is absent rather than shown at zero.',
+    measures: {
+      valuation:
+        "Each venue's holding is valued at that venue's own order book, so the premium never distorts the portfolio total. The cost of that choice is that the exposure becomes invisible everywhere else — this page is where it is visible.",
+      riskLead:
+        'It is a second way to lose money on a Bithumb position: the coin can be flat in dollars and still fall in won if the premium compresses.',
+      riskTail: " is what that would cost at today's prices.",
+      timing:
+        "Both legs are read at the same instant — Bithumb's daily candle closes at 00:00 KST, and the dollar close is taken at that same 15:00 UTC rather than at the end of the UTC day. Comparing the two daily closes instead charges every overnight move to the premium.",
+    },
+    historyInfo: (start: string, end: string) =>
+      `${start} to ${end} — the window is limited by how far Bithumb's candlestick endpoint reaches, not by choice.`,
     columns: {
       coin: 'Coin',
       krwVenue: 'Bithumb (KRW)',
@@ -42,7 +61,8 @@ export const cryptoPremium = defineCopy({
   ko: {
     title: '코리아 프리미엄',
     emphasis: '프리미엄',
-    subtitleWithData: (asOf: string) => `실제 보유한 코인의 국내·해외 가격 비교입니다. 기준 ${asOf}.`,
+    subtitleWithData: (rate: string, fxDate: string, snapshot: string) =>
+      `원화 호가를 USD/KRW ${rate}(${fxDate})로 환산한 달러 호가와 비교합니다. 스냅샷 ${snapshot}.`,
     subtitleNoData: '아직 가상자산 시세 스냅샷이 없습니다 — pnpm refresh를 실행하세요.',
     weightedPremium: '가중 프리미엄',
     weightedPremiumInfo:
@@ -67,6 +87,23 @@ export const cryptoPremium = defineCopy({
     noPairs: '원화·달러 양쪽에 호가가 있는 코인이 없어 비교할 대상이 없습니다.',
     noHistory: '겹치는 이력이 없습니다 — pnpm refresh를 실행하세요.',
     axisLabel: '프리미엄 %',
+    notableBadge: (count: string, pct: string) => `±${pct}% 초과 코인 ${count}개`,
+    withHistoryHint: (count: string) => `이력 있음 ${count}개`,
+    readOrderNote: '포트폴리오 합계는 거래소별 가격을 쓰고, 이 페이지는 그 안에 숨은 거래소 프리미엄 위험만 따로 보여줍니다.',
+    notHeldBadge: '원화 거래소 미보유',
+    tableFootnote:
+      '환산 원화는 위 환율 스냅샷으로 달러 가격을 환산한 값입니다. 두 호가 중 한쪽에만 있는 코인은 비교할 수 없으므로 0으로 표시하지 않고 제외합니다.',
+    measures: {
+      valuation:
+        '각 거래소의 보유분은 그 거래소 자체 호가로 평가하므로 프리미엄이 포트폴리오 합계를 왜곡하지 않습니다. 대신 그 노출은 다른 화면에서는 보이지 않으며, 이 페이지에서만 드러납니다.',
+      riskLead:
+        '빗썸 포지션에서 돈을 잃는 두 번째 경로입니다. 코인 가격이 달러 기준으로 그대로여도 프리미엄이 줄면 원화 기준으로는 떨어질 수 있습니다.',
+      riskTail: '은 오늘 가격 기준으로 그 경우 잃게 될 금액입니다.',
+      timing:
+        '두 가격은 같은 시점에 읽습니다 — 빗썸 일봉은 한국 시간 0시에 마감하고, 달러 종가도 같은 시각(협정 세계시 15시)에 잡으며 협정 세계시 하루 끝에 잡지 않습니다. 두 일봉 종가를 그대로 비교하면 밤사이 변동이 모두 프리미엄으로 잡힙니다.',
+    },
+    historyInfo: (start: string, end: string) =>
+      `${start}부터 ${end}까지 — 이 기간은 임의로 정한 것이 아니라 빗썸 캔들 데이터가 제공하는 범위에 따른 것입니다.`,
     columns: {
       coin: '코인',
       krwVenue: '빗썸 (원화)',

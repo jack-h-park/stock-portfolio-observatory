@@ -51,12 +51,16 @@ export default async function CryptoPremiumPage() {
         emphasis={copy.emphasis}
         subtitle={
           premium.fx
-            ? `Won order book against the dollar order book converted at USD/KRW ${fmtNumber(premium.fx.rate, 2)} (${premium.fx.asOfDate}). Snapshot ${fmtDateTime(premium.generatedAt)}.`
+            ? copy.subtitleWithData(
+                fmtNumber(premium.fx.rate, 2),
+                premium.fx.asOfDate,
+                fmtDateTime(premium.generatedAt, language),
+              )
             : copy.subtitleNoData
         }
         action={
           notable.length ? (
-            <Badge tone="warning">{notable.length} coin(s) beyond ±{NOTABLE_PREMIUM_PCT}%</Badge>
+            <Badge tone="warning">{copy.notableBadge(String(notable.length), String(NOTABLE_PREMIUM_PCT))}</Badge>
           ) : (
             <Badge tone="success">{copy.nearParity}</Badge>
           )
@@ -92,7 +96,7 @@ export default async function CryptoPremiumPage() {
                 <MetricField
                   label={copy.coinsCompared}
                   value={fmtNumber(premium.spot.length)}
-                  hint={`${premium.symbols.length} with history`}
+                  hint={copy.withHistoryHint(String(premium.symbols.length))}
                   valueClassName="text-title"
                 />
               </KpiBand>
@@ -117,7 +121,7 @@ export default async function CryptoPremiumPage() {
                   />
                 </div>
                 <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
-                  Portfolio totals use each venue price; this page isolates the hidden venue premium risk.
+                  {copy.readOrderNote}
                 </div>
               </div>
             </Card>
@@ -134,7 +138,7 @@ export default async function CryptoPremiumPage() {
                     render: (r) => (
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-caption font-medium text-ink">{r.symbol}</span>
-                        {r.heldQuantity > 0 ? null : <Badge tone="neutral">not held in KRW</Badge>}
+                        {r.heldQuantity > 0 ? null : <Badge tone="neutral">{copy.notHeldBadge}</Badge>}
                       </div>
                     ),
                   },
@@ -156,29 +160,18 @@ export default async function CryptoPremiumPage() {
                   },
                 ]}
               />
-              <p className="mt-2 text-label text-ink-3">
-                Implied KRW is the dollar price at the FX snapshot above. A coin quoted on only one of the two books cannot
-                be compared and is absent rather than shown at zero.
-              </p>
+              <p className="mt-2 text-label text-ink-3">{copy.tableFootnote}</p>
             </Card>
 
             <Card title={copy.whatThisMeasures}>
               <div className="space-y-3 text-caption leading-relaxed text-ink-2">
+                <p>{copy.measures.valuation}</p>
                 <p>
-                  Each venue&apos;s holding is valued at that venue&apos;s own order book, so the premium never distorts the
-                  portfolio total. The cost of that choice is that the exposure becomes invisible everywhere else — this page
-                  is where it is visible.
+                  {copy.measures.riskLead}{' '}
+                  <span className="text-ink">{copy.valueFromPremium}</span>
+                  {copy.measures.riskTail}
                 </p>
-                <p>
-                  It is a second way to lose money on a Bithumb position: the coin can be flat in dollars and still fall in
-                  won if the premium compresses. <span className="text-ink">{copy.valueFromPremium}</span> is what that would cost
-                  at today&apos;s prices.
-                </p>
-                <p className="text-ink-3">
-                  Both legs are read at the same instant — Bithumb&apos;s daily candle closes at 00:00 KST, and the dollar
-                  close is taken at that same 15:00 UTC rather than at the end of the UTC day. Comparing the two daily closes
-                  instead charges every overnight move to the premium.
-                </p>
+                <p className="text-ink-3">{copy.measures.timing}</p>
               </div>
             </Card>
           </CardRow>
@@ -186,9 +179,7 @@ export default async function CryptoPremiumPage() {
           <Card
             title={copy.history}
             info={
-              coverageStart && coverageEnd
-                ? `${coverageStart} to ${coverageEnd} — the window is limited by how far Bithumb's candlestick endpoint reaches, not by choice.`
-                : undefined
+              coverageStart && coverageEnd ? copy.historyInfo(coverageStart, coverageEnd) : undefined
             }
           >
             {chartData.length === 0 ? (
