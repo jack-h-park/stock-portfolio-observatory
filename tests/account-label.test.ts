@@ -83,3 +83,16 @@ test('maskAccountsIn replaces only the given raw account values', () => {
   assert.equal(maskAccountsIn(message, [undefined, null, '']), message)
   assert.equal(maskAccountsIn('Robinhood 1234 needs cash', ['Robinhood 1234']), 'Robinhood 1234 needs cash')
 })
+
+test('an identifier written in space-separated digit groups is masked as one', () => {
+  assert.equal(maskAccountLabel('Bank 1234 5678 9012'), 'Bank …9012')
+  assert.equal(maskAccountLabel('Card 12 3456 7890 (joint)'), 'Card …7890 (joint)')
+  assert.equal(maskAccountLabel(maskAccountLabel('Bank 1234 5678 9012')), 'Bank …9012')
+})
+
+test('short or year-only digit groups separated by spaces are left alone', () => {
+  assert.equal(maskAccountLabel('Plan 2024 2025'), 'Plan 2024 2025')
+  assert.equal(maskAccountLabel('Robinhood 1234'), 'Robinhood 1234')
+  assert.equal(maskAccountLabel('Account 12 34'), 'Account 12 34')
+  assert.equal(maskAccountLabel('Fund 2026-01-15 1234'), 'Fund 2026-01-15 1234')
+})

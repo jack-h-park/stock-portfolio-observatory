@@ -118,7 +118,7 @@ export default async function FxPage() {
           { key: 'direction', label: copy.type, render: eventLabel },
           { key: 'usd_amount', label: copy.usd, align: 'right', render: (r) => money(r.usd_amount, 'USD') },
           { key: 'counterparty', label: copy.counterparty, render: (r) => r.counterparty ?? 'Unknown' },
-          { key: 'match_status', label: copy.match, render: () => <Badge tone="warning">{language === 'ko' ? '9346 원장 필요' : 'Needs 9346 ledger'}</Badge> },
+          { key: 'match_status', label: copy.match, render: () => <Badge tone="warning">{language === 'ko' ? '미래에셋 외화 계좌 원장 필요' : 'Needs the Mirae USD-account ledger'}</Badge> },
           { key: 'note', label: copy.note, priority: 'secondary' },
         ]} />
       </Card>
