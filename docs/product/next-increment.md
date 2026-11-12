@@ -1,6 +1,6 @@
 # Next Personal Finance Observatory increments
 
-**Status:** First increment authorized and implemented on a review branch; not deployed. Second increment remains proposed. Updated November 12, 2026 (America/Los_Angeles). Deployment and financial-data mutation require separate authorization.
+**Status:** First increment merged in [#283](https://github.com/jack-h-park/stock-portfolio-observatory/pull/283), not deployed. Second increment authorized and implemented on a review branch, not deployed. Updated November 12, 2026 (America/Los_Angeles). Deployment and financial-data mutation require separate authorization.
 
 The [operating status](implementation-status.md) records the completed foundation and bounded adoption. The read-only review established the immediate priority: resolve the historical gold calculation gap before expanding the overview or annual tax engine. Private examples, account inventory, dates, balances and evidence remain in the operator's private review.
 
@@ -8,7 +8,7 @@ The [operating status](implementation-status.md) records the completed foundatio
 
 **Suggested title:** `fix(assets): reconcile historical gold quantities after sales`.
 
-Original defect: [getTotalAssetsSeries](../../lib/adapters/portfolio-db.ts) supplied only gold purchases to [totalAssetsSeries](../../lib/net-worth.ts), which accumulated purchased grams on every later historical date. The review-branch correction reads purchases and sales per account and uses the existing FIFO matcher for remaining grams and fee-inclusive cost. The current endpoint is independently replaced with current covered assets, so agreement at that endpoint cannot detect historical gold retained after a sale.
+Original defect: [getTotalAssetsSeries](../../lib/adapters/portfolio-db.ts) supplied only gold purchases to [totalAssetsSeries](../../lib/net-worth.ts), which accumulated purchased grams on every later historical date. The merged correction reads purchases and sales per account and uses the existing FIFO matcher for remaining grams and fee-inclusive cost. The current endpoint is independently replaced with current covered assets, so agreement at that endpoint cannot detect historical gold retained after a sale.
 
 Scope:
 
@@ -37,6 +37,14 @@ Build on [finance-overview](../../lib/application/finance-overview.ts), existing
 - Preserve the covered-total amount, owner default, currencies, exclusions and missing-value behavior. Keep a fresh file/status badge from asserting that all balances or tax treatments are current and reconciled.
 
 Acceptance uses synthetic stale-but-readable data, a zero retired balance, missing account evidence, conflicting observations and non-self accounts. Real account names, amounts or screenshots must not be committed as fixtures.
+
+### Second-increment implementation boundary
+
+Both asset overviews share a disclosure that separates self-owned nonzero cash dates, market/snapshot/cost observation dates and the conversion-rate date from configured-account source review. Zero balance observations remain stored and listed; their old dates no longer set the nonzero-cash class note. Zero does not establish account closure.
+
+Configured brokerage/crypto and supplementary coverage, validation failures and file freshness are independent signals and may include other owners; they are not a self-only inventory or completeness percentage. An unavailable or empty coverage/check reader remains unconfirmed. Declared statement period ends remain unconfirmed in this increment: existing KR as-of metadata can be overridden or inferred from transactions, and does not retain declared-period provenance. Neither it nor legacy lot/transaction dates is promoted to a declared period end. A later provenance-preserving extraction change can supply those dates. Read-only links lead to existing review screens. No source acquisition, ingest, classification change or web write is added.
+
+The second increment is not deployed. Observation dates describe evidence used by the existing valuation; they do not certify current market quotes, full statement reconciliation or complete account coverage.
 
 ## Later increments
 

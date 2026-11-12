@@ -14,7 +14,7 @@ Updated November 12, 2026 (America/Los_Angeles). This is the current status of t
 | Private web access | Approved-owner-device restriction documented and deployed in [#278](https://github.com/jack-h-park/stock-portfolio-observatory/pull/278); effective and startup gateway rules verified | New or re-enrolled devices require review; storage mode is not an access-control mechanism |
 | Backup and recovery | Actual populated history, evidence and host configuration recovered from pinned encrypted snapshots in isolation; paired installed backup/drill targets match their versioned source | This is observed manual recovery proof, not proof of every later scheduled run or independent recovery of lost credentials |
 | Current covered asset totals | Read-only operating review verified included-row/class arithmetic, allocation total, current chart endpoint, self-owner scope and unique inclusion keys | Source coverage remains unconfirmed; not every account or original statement has been reconciled |
-| Historical asset totals | Implemented, with a confirmed gold-history correctness gap | Sale-aware historical gold correction is implemented on a review branch, not deployed; the operating reader still has the original gap |
+| Historical asset totals | Implemented, with a confirmed gold-history correctness gap | Sale-aware historical gold correction merged in [#283](https://github.com/jack-h-park/stock-portfolio-observatory/pull/283), not deployed; the operating reader still has the original gap |
 | Annual total tax / liabilities | Deferred | Require separate designs, official-source verification where applicable, and independent acceptance cases |
 
 The operator's private acceptance records retain actual paths, figures, evidence identifiers, hashes and snapshot receipts. None belongs in this public status file. Other installations must establish their own authority, source coverage, access and recovery evidence.
@@ -33,7 +33,7 @@ Verified within the supplied data:
 
 Open findings:
 
-1. The operating historical physical-gold reader reads `BUY` rows only. A sale-aware, account-scoped correction using existing FIFO basis is implemented on a review branch, not deployed; retaining a current endpoint does not validate earlier points.
+1. The operating historical physical-gold reader reads `BUY` rows only. A sale-aware, account-scoped correction using existing FIFO basis merged in #283, not deployed; retaining a current endpoint does not validate earlier points.
 2. File freshness, statement/account coverage, valuation dates and reconciliation checks are different signals. A fresh source-file inventory can coexist with older nonzero balances, overdue account coverage and unresolved checks.
 3. A zero/retired balance can currently supply the oldest cash date shown beside a class. Preserve those records while making dates for nonzero supported balances understandable.
 4. Overall source coverage is explicitly unconfirmed. A zero omission count does not establish complete assets, complete ownership review or complete net worth.
@@ -48,6 +48,6 @@ The foundation's tax-route mobile/accessibility checks and bilingual read-only c
 
 ## Next work and preserved gates
 
-See [next increment scope](next-increment.md). Correct historical gold first, then improve asset-coverage explanations using existing readers. Broader annual tax, liabilities, module extraction and repository/operational renames remain separately designed work packages.
+See [next increment scope](next-increment.md). The gold correction is merged but undeployed. The authorized coverage-display increment is implemented on a review branch, with synthetic verification; it is not deployed. Broader annual tax, liabilities, module extraction and repository/operational renames remain separately designed work packages.
 
 Keep private web tax-history writes disabled. Each later record change needs a reviewed candidate, current revision, one writing authority and applicable execution authorization. Preserve approved-device access, original archives and existing CLI/briefing contracts. Repository rename, archive moves, deployment, restart and legacy removal remain independent execution decisions.

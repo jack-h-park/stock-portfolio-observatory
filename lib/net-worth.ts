@@ -15,6 +15,8 @@ export const ASSET_CLASSES: readonly AssetClassKey[] = ['stocks', 'crypto', 'cas
 export type AsOfNote = { assetClass: AssetClassKey; label: string; asOf: string }
 export type NetWorth = {
   coverage?: { omittedAssetCount: number; sourceCoverageConfirmed: boolean; liabilitiesSupported: false }
+  valuationDates?: Partial<Record<'market' | 'snapshot' | 'cost', { oldest: string | null; newest: string | null; undated: number }>>
+  fxAsOf?: string | null
   totalKrw: number
   byClass: Record<AssetClassKey, number>
   asOfNotes: AsOfNote[]
@@ -38,9 +40,9 @@ export function summarizeNetWorth(input: {
   const cash = input.cash.map((row) => ({ ...row, krw: toKrw(row.currency, row.balance, input.usdKrw) }))
   const cashKrw = cash.reduce((sum, row) => sum + (row.krw ?? 0), 0)
   const byClass = { stocks: input.stocksKrw, crypto: input.cryptoKrw, cash: cashKrw, pensions: input.pensionsKrw ?? 0, gold: input.goldKrw ?? 0 }
-  // Cash is as old as its stalest priced balance: the account whose latest
+  // Nonzero cash is as old as its stalest priced balance: the account whose latest
   // balance is the oldest names the date.
-  const stalest = cash.filter((row) => row.krw != null).sort((a, b) => a.asOfDate.localeCompare(b.asOfDate))[0]
+  const stalest = cash.filter((row) => row.krw != null && row.balance !== 0).sort((a, b) => a.asOfDate.localeCompare(b.asOfDate))[0]
   const cashNote: AsOfNote[] = stalest ? [{ assetClass: 'cash', label: stalest.account, asOf: stalest.asOfDate }] : []
   return {
     totalKrw: byClass.stocks + byClass.crypto + byClass.cash + byClass.pensions + byClass.gold,

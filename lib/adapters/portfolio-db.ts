@@ -1,3 +1,4 @@
+import { collectAssetCoverage, dateRange } from '@/lib/application/asset-coverage'
 import { getFinanceOverview } from '@/lib/application/finance-overview'
 import fs from 'node:fs'
 import { periodEndFromSource } from '@/lib/supplementary'
@@ -358,6 +359,8 @@ export type AccountCoverage = {
   lagDays: number | null
   apiCoveredThrough: string | null
   apiLagDays: number | null
+  /** Only a declared statement period end; never inferred from lots or transactions. */
+  statementPeriodEnd?: string | null
   statementCoveredThrough: string | null
   statementLagDays: number | null
   maxLagDays: number
@@ -1387,11 +1390,13 @@ export function getNetWorth(precomputed?: ReturnType<typeof getOverview>): NetWo
   const summary = getFinanceOverview()
   const dated = summary.included.filter(row => row.assetClass !== 'cash' && row.asOf && ['snapshot', 'cost'].includes(row.method))
   const notes = [...new Map(dated.map(row => [JSON.stringify([row.assetClass, row.account, row.asOf]), { assetClass: row.assetClass, label: row.account ?? row.accountId, asOf: row.asOf! }])).values()].sort((a,b) => a.label.localeCompare(b.label) || a.asOf.localeCompare(b.asOf))
-  const oldestCash = summary.included.filter(row => row.assetClass === 'cash' && row.asOf).sort((a,b) => a.asOf!.localeCompare(b.asOf!))[0]
+  const oldestCash = summary.included.filter(row => row.assetClass === 'cash' && row.valueKrw !== 0 && row.asOf).sort((a,b) => a.asOf!.localeCompare(b.asOf!))[0]
   if (oldestCash) notes.push({ assetClass: 'cash', label: oldestCash.account ?? oldestCash.accountId, asOf: oldestCash.asOf! })
   return {
     totalKrw: summary.totalKrw,
     byClass: summary.byClass,
+    valuationDates: Object.fromEntries(['market', 'snapshot', 'cost'].map(method => [method, dateRange(summary.included.filter(row => row.assetClass !== 'cash' && row.valueKrw !== 0 && row.method === method).map(row => row.asOf))])),
+    fxAsOf: summary.fxAsOf,
     asOfNotes: notes,
     cash: summary.included.filter(row => row.assetClass === 'cash' && row.nativeAmount != null && (row.currency === 'USD' || row.currency === 'KRW')).map(row => ({ institution: row.institution ?? '', account: row.account ?? row.accountId, kind: row.cashKind ?? 'cash', currency: row.currency as 'USD' | 'KRW', asOfDate: row.asOf ?? '', balance: row.nativeAmount!, derived: row.derived ?? false, krw: row.valueKrw })),
     unpricedCash: summary.omissions.filter(row => row.assetKey.startsWith('cash:')).map(row => row.accountId),
@@ -3975,6 +3980,9 @@ export function getAccountCoverage(): AccountCoverageSummary {
         apiCoveredThrough,
         apiLagDays,
         statementCoveredThrough,
+        // Legacy as-of metadata can be pinned or inferred from transactions.
+        // Until declared-period provenance is retained, do not promote it.
+        statementPeriodEnd: null,
         statementLagDays,
         maxLagDays,
         overdueDays,
@@ -5577,4 +5585,12 @@ export function getWashSaleReview(today: string = portfolioToday(), dbPath?: str
 function latestUsTransaction(conn: Database.Database): string | null {
   const row = conn.prepare("select max(date) as date from transactions where market = 'US'").get() as { date: string | null } | undefined
   return row?.date ?? null
+}
+
+/** Configured-account diagnostics can include other owners; totals remain self-only. */
+export function getAssetCoverageReview(summary: NetWorth) {
+  return collectAssetCoverage(summary, {
+    accounts: getAccountCoverage, supplementary: getSupplementaryCoverage,
+    checks: getValidationChecks, files: getOperationalHealth,
+  })
 }

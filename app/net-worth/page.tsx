@@ -5,7 +5,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, MetricField } from '@/components/ui'
 import { CardRow } from '@/components/layout'
 import { StackedAssetChart } from '@/components/charts'
-import { getAssetAllocation, getAssetEvents, getChildAssets, getForeignAccountMaxima, getMeta, getNetWorth, getSnapshotDates, getTotalAssetsSeries, portfolioToday } from '@/lib/adapters/portfolio-db'
+import { getAssetCoverageReview, getAssetAllocation, getAssetEvents, getChildAssets, getForeignAccountMaxima, getMeta, getNetWorth, getSnapshotDates, getTotalAssetsSeries, portfolioToday } from '@/lib/adapters/portfolio-db'
 import { convertMoney, createMoneyFormatter, formatKrw, formatUsd } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { fmtDate, fmtDateTime } from '@/lib/format'
@@ -177,7 +177,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
         emphasis={copy.emphasis}
         subtitle={copy.subtitle(fmtDateTime(meta.ingested_at, language))}
       />
-      <AssetCoverageNote summary={netWorth} language={language} />
+      <AssetCoverageNote summary={netWorth} language={language} review={getAssetCoverageReview(netWorth)} />
 
       <CardRow columns={3}>
         <Card>
