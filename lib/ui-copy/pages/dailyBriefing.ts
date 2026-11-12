@@ -246,7 +246,7 @@ export const dailyBriefing = defineCopy({
     actionsLead: '얼마나 빨리 살펴봐야 하는지에 따라 정렬했습니다:',
     actNowMeaning: '는 날짜가 정해진 계기 때문에 오늘 결정하는 편이 기다리는 것보다 확실히 나은 경우(브리핑당 최대 1개),',
     thisWeekMeaning: '는 가까운 이벤트 전에 내려야 할 결정,',
-    fyiMeaning: '은(는) 조치가 필요 없는 참고 맥락입니다.',
+    fyiMeaning: '는 조치가 필요 없는 참고 맥락입니다.',
     disclaimer: '자동 생성된 해설로 정보 제공용이며, 투자 조언이 아닙니다.',
     noMarkets: '없음',
     footer:
