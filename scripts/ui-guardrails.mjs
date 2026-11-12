@@ -586,6 +586,56 @@ export function findBareFootnote(source, file = '<source>') {
   return hits
 }
 
+/**
+ * Latin words a Korean sentence may carry as they are: codes, units and
+ * acronyms a Korean reader sees in English anyway. Case-sensitive.
+ */
+const KO_LATIN_ALLOW = new Set([
+  'FX', 'API', 'ISA', 'IRP', 'ETF', 'CSV', 'PDF', 'DB', 'URL', 'USD', 'KRW', 'US', 'KR', 'ID', 'PFIC',
+  'FBAR', 'IRS', 'CMA', 'RP', 'LLM', 'JSON', 'Form', 'W', 'EUR', 'JPY', 'CLI', 'OK',
+])
+
+/** `{placeholder}` and `${…}` are filled in at run time, so their names are not copy. */
+function withoutInterpolations(body) {
+  let out = ''
+  for (let i = 0; i < body.length; i++) {
+    if (body[i] === '$' && body[i + 1] === '{') {
+      const inner = callArguments(body, i + 1)
+      if (inner === null) break
+      i += inner.length + 2
+      out += ' '
+    } else out += body[i]
+  }
+  return out.replace(/\{[\w.]+\}/g, ' ')
+}
+
+/**
+ * G12. An English word left in the Korean half of a copy module: a term the
+ * translator kept (`lot`, `ticker`, `snapshot`) or a command pasted into a
+ * sentence. The Korean page then reads half in English, and since `ko` only
+ * has to match the shape of `en`, the type checker is satisfied. The Korean
+ * section is everything from the first `ko: {` line to the end of the file;
+ * one hit per string literal there holding a Latin word of two or more letters
+ * outside KO_LATIN_ALLOW, with the offending words first in the snippet. A
+ * literal inside a `${…}` is read on its own (it is shown too), while the
+ * interpolation's code is not.
+ */
+export function findEnglishInKoreanCopy(source, file = '<source>') {
+  const hits = []
+  let inKorean = false
+  eachLine(source, (text, line) => {
+    if (!inKorean && /^\s*ko:\s*\{/.test(text)) inKorean = true
+    if (!inKorean) return
+    for (const literal of literalsIn(text)) {
+      const words = (withoutInterpolations(literal.slice(1, -1)).match(/\b[A-Za-z]{2,}\b/g) ?? []).filter(
+        (word) => !KO_LATIN_ALLOW.has(word),
+      )
+      if (words.length > 0) hits.push(hit(file, line, `${[...new Set(words)].join(', ')}: ${literal}`))
+    }
+  })
+  return hits
+}
+
 const BILINGUAL_BY_DESIGN = ['app/global-error.tsx']
 
 /**
@@ -667,6 +717,13 @@ export const CHECKS = [
     title: 'footnote written as a bare text-ink-3 paragraph',
     roots: ['app'],
     find: findBareFootnote,
+  },
+  {
+    code: 'G12',
+    id: 'english-in-korean-copy',
+    title: 'English word left in the Korean half of a copy module',
+    roots: ['lib/ui-copy'],
+    find: findEnglishInKoreanCopy,
   },
 ].map((check) => ({ roots: ['app', 'components'], exclude: [], include: null, ...check }))
 

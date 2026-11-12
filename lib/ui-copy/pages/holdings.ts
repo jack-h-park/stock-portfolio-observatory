@@ -6,7 +6,6 @@ export const holdings = defineCopy({
     emphasis: 'Holdings',
     subtitle: (count: string) => `Search ${count} open positions by market, broker, or account.`,
     searchPlaceholder: 'Ticker, name, account, or broker',
-    sortLabel: 'Sort',
     sort: {
       value: 'Market value',
       gain: 'Unrealized G/L',
@@ -42,7 +41,6 @@ export const holdings = defineCopy({
     emphasis: '보유종목',
     subtitle: (count: string) => `${count}개 보유 포지션을 시장·증권사·계좌로 검색합니다.`,
     searchPlaceholder: '종목코드, 종목명, 계좌 또는 증권사',
-    sortLabel: '정렬',
     sort: {
       value: '평가금액',
       gain: '평가손익',

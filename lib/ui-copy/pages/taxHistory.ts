@@ -61,7 +61,6 @@ export const taxHistory = defineCopy({
     back: 'Back to tax history',
     record: 'Inspect record',
     importHint: 'Import is preview-first. See the tax-history guide for the reviewed import workflow.',
-    guide: 'Tax history guide',
   },
   ko: {
     title: '세금 개요',
@@ -122,6 +121,5 @@ export const taxHistory = defineCopy({
     back: '세금 이력으로 돌아가기',
     record: '기록 확인',
     importHint: '가져오기는 미리보기가 기본입니다. 검토 후 적용하는 절차는 세금 이력 안내를 확인하세요.',
-    guide: '세금 이력 안내',
   },
 })

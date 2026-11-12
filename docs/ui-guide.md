@@ -121,6 +121,47 @@ mid-refactor.
 className assembled by `clsx` from variables, or one component's `className`
 prop landing on another's — that is what the screenshot net is for.
 
+## The guardrail baseline
+
+The conflict check above, and the dead-opacity check beside it, allow no
+findings at all. The rest of `pnpm ui:guardrails` is **counted checks**: each
+one looks for a mistake the tree already contains, too many to fix in one pull
+request, so it records how many each file has and stops the count from growing.
+
+| check | catches |
+|---|---|
+| G1 `inline-language-branch` | copy picked with `language === 'ko'` in a component instead of a copy module |
+| G2 `hangul-literal` | Korean written into a component, which the language toggle cannot switch |
+| G3 `english-prose-literal` | English sentences written into a component, which never reach the Korean page |
+| G4 `hand-written-grid` | a `grid-cols-*` class outside `components/layout.tsx` |
+| G5 `inline-sign-tone` | a gain/loss colour picked by a ternary instead of `signTone` or `Signed` |
+| G6 `null-literal` | a missing value written as `'n/a'` or `'—'` instead of by a formatter |
+| G7 `metric-value-size` | a font size passed to a metric through `valueClassName` |
+| G8 `accent-per-page` | `accent` props on a page; the target is at most one |
+| G9 `date-format-without-language` | `fmtDateTime` or `fmtDateShort` called without the language, so it prints English |
+| G10 `browser-locale-number` | `toLocaleString()`, which formats in the server's locale and then the browser's |
+| G11 `bare-footnote` | a footnote written as a bare `<p className="… text-ink-3">` |
+| G12 `english-in-korean-copy` | an English word left in the `ko` half of a copy module (`lot`, `snapshot`, `pnpm refresh`) |
+
+Each check is silent everywhere else: it type-checks, it lints, it builds.
+
+The counts live in `scripts/ui-guardrails.baseline.json`, as check id → file →
+count. A run fails when any file has more hits than its recorded count, and a
+file missing from the baseline counts as zero. So **a pull request may only
+lower a count**. When you fix some, the run passes and prints a hint; lower the
+record in the same pull request so the fix cannot quietly come back:
+
+```bash
+node scripts/ui-guardrails.mjs --update-baseline
+```
+
+Never run that to make a failing check pass. A higher number in the baseline
+diff is the thing a reviewer should stop at.
+
+A grid that really belongs to one page (a layout the primitives have no reason
+to know about) can be marked with a `guardrail:allow grid` comment on its line or
+the line above, and G4 skips it. Say why in the same comment.
+
 ## Checking a change
 
 ```bash

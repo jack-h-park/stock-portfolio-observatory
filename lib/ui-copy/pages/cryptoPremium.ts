@@ -4,11 +4,8 @@ export const cryptoPremium = defineCopy({
   en: {
     title: 'Korea Premium',
     emphasis: 'Premium',
-    subtitleWithData: (asOf: string) => `Domestic versus global pricing for the coins actually held, as of ${asOf}.`,
     subtitleNoData: 'No crypto price snapshot yet — run pnpm refresh.',
     weightedPremium: 'Weighted Premium',
-    weightedPremiumInfo:
-      'KRW-venue crypto premium weighted by the value of held KRW-venue positions. Use this as the headline premium exposure signal.',
     premiumHeadline: 'Premium headline',
     weightedHint: 'Across KRW-venue holdings, weighted by value',
     premiumBearingValue: 'Premium-Bearing Value',
@@ -42,11 +39,8 @@ export const cryptoPremium = defineCopy({
   ko: {
     title: '코리아 프리미엄',
     emphasis: '프리미엄',
-    subtitleWithData: (asOf: string) => `실제 보유한 코인의 국내·해외 가격 비교입니다. 기준 ${asOf}.`,
     subtitleNoData: '아직 가상자산 시세 스냅샷이 없습니다 — pnpm refresh를 실행하세요.',
     weightedPremium: '가중 프리미엄',
-    weightedPremiumInfo:
-      '보유 중인 원화 거래소 포지션의 평가금액으로 가중한 프리미엄입니다. 프리미엄 노출을 보는 대표 지표로 쓰세요.',
     premiumHeadline: '프리미엄 대표값',
     weightedHint: '원화 거래소 보유분 전체를 평가금액으로 가중',
     premiumBearingValue: '프리미엄 적용 금액',

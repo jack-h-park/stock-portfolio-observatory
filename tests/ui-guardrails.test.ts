@@ -10,6 +10,7 @@ import {
   findConflicts,
   findDateFormatWithoutLanguage,
   findDeadOpacity,
+  findEnglishInKoreanCopy,
   findEnglishProseLiteral,
   findHandWrittenGrid,
   findHangulLiteral,
@@ -285,6 +286,37 @@ test('G11 catches a footnote written as a bare text-ink-3 paragraph', () => {
   assert.deepEqual(findBareFootnote('<p>{copy.note}</p>'), [])
 })
 
+test('G12 catches an English word in the Korean half of a copy module', () => {
+  const module = [
+    'export const page = defineCopy({',
+    '  en: {',
+    "    note: 'Every lot is listed',",
+    '  },',
+    '  ko: {',
+    "    note: '모든 lot을 표시합니다',",
+    "    run: '먼저 pnpm refresh를 실행하세요',",
+    "    plural: (n: number) => `${n}개 ${n === 1 ? 'ticker' : '종목'}`,",
+    "    etf: 'ETF 비중',",
+    '    held: (count: string) => `${count}개 보유 · ${fmtUsd(total, language)}`,',
+    "    slot: '{count}개 보유',",
+    "    form: 'Form 8938 대상',",
+    '  },',
+    '})',
+  ].join('\n')
+  const hits = findEnglishInKoreanCopy(module) as Hit[]
+  // The English half (line 3) is not read; the planted words are.
+  assert.deepEqual(
+    hits.map((h) => [h.line, h.snippet.split(':')[0]]),
+    [
+      [6, 'lot'],
+      [7, 'pnpm, refresh'],
+      [8, 'ticker'],
+    ],
+  )
+  // A file with no `ko:` section has nothing to read.
+  assert.deepEqual(findEnglishInKoreanCopy("export const x = { label: 'Sort' }"), [])
+})
+
 test('the counted checks are registered in order with their scopes', () => {
   type Check = { code: string; id: string; roots: string[]; exclude: string[]; include: RegExp | null }
   const checks = CHECKS as Check[]
@@ -302,6 +334,7 @@ test('the counted checks are registered in order with their scopes', () => {
       'G9 date-format-without-language',
       'G10 browser-locale-number',
       'G11 bare-footnote',
+      'G12 english-in-korean-copy',
     ],
   )
   const byCode = Object.fromEntries(checks.map((c) => [c.code, c]))
@@ -315,6 +348,8 @@ test('the counted checks are registered in order with their scopes', () => {
   assert.ok(!byCode.G8.include?.test('app/tax-planning/components.tsx'))
   assert.deepEqual(byCode.G11.roots, ['app'])
   assert.equal(byCode.G11.include, null)
+  assert.deepEqual(byCode.G12.roots, ['lib/ui-copy'])
+  assert.equal(byCode.G12.include, null)
 })
 
 // The baseline is what lets a check with existing hits still gate a pull
