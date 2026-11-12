@@ -18,6 +18,7 @@ import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
+import type { Language } from '@/lib/i18n'
 import { positionHref } from '@/lib/position-url'
 import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { priorityTone } from '@/lib/tone'
@@ -36,8 +37,8 @@ function coverageTone(status: AccountCoverage['status']): Tone {
 
 type CoverageCopy = ReturnType<typeof getPageCopy<'dataOps'>>['coverage']
 
-function coverageDateLabel(row: AccountCoverage, c: CoverageCopy): string {
-  const date = (value: string | null) => value ? fmtDate(value) : 'n/a'
+function coverageDateLabel(row: AccountCoverage, c: CoverageCopy, language: Language): string {
+  const date = (value: string | null) => value ? fmtDate(value, language) : 'n/a'
   if (row.sources.length > 1) return row.sources.map((source) => `${source.label} ${date(source.coveredThrough)}`).join(' · ')
   if (row.method === 'mixed') return c.mixed(date(row.apiCoveredThrough), date(row.statementCoveredThrough))
   return date(row.coveredThrough)
@@ -52,9 +53,9 @@ function coverageLagLabel(row: AccountCoverage, c: CoverageCopy): string {
   return days(row.lagDays)
 }
 
-function coverageDownloadLabel(row: AccountCoverage, c: CoverageCopy): string {
+function coverageDownloadLabel(row: AccountCoverage, c: CoverageCopy, language: Language): string {
   if (!row.downloadFrom) return c.noExistingCutoff
-  return c.downloadFrom(fmtDate(row.downloadFrom))
+  return c.downloadFrom(fmtDate(row.downloadFrom, language))
 }
 
 function coverageArtifactLabel(artifact: CoverageArtifact, c: CoverageCopy): string {
@@ -126,7 +127,7 @@ export default async function DataOpsPage() {
                   </>
                 ),
               },
-              { key: 'coverage', label: coverageCopy.columns.coverage, nowrap: true, render: (row: AccountCoverage) => <span className="tabular-nums">{coverageDateLabel(row, coverageCopy)}</span> },
+              { key: 'coverage', label: coverageCopy.columns.coverage, nowrap: true, render: (row: AccountCoverage) => <span className="tabular-nums">{coverageDateLabel(row, coverageCopy, language)}</span> },
               {
                 key: 'lag',
                 label: coverageCopy.columns.lag,
@@ -146,7 +147,7 @@ export default async function DataOpsPage() {
                     <div className="font-medium text-ink">{row.artifacts.map((artifact) => coverageArtifactLabel(artifact, coverageCopy)).join(' + ')}</div>
                     <div className="mt-1 text-label text-ink-3">{row.format}</div>
                     <div className="mt-1 text-label font-medium leading-relaxed text-info">
-                      {coverageCopy.downloadRange}: {coverageDownloadLabel(row, coverageCopy)}
+                      {coverageCopy.downloadRange}: {coverageDownloadLabel(row, coverageCopy, language)}
                     </div>
                     <div className="mt-1 text-label leading-relaxed text-ink-3">
                       {row.missingDisposals.length ? `${coverageCopy.missingDisposals(row.missingDisposals.length, row.missingDisposals)} ` : null}

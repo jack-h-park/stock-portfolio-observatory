@@ -424,7 +424,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               { key: 'label', label: copy.columns.file, render: (r) => <span className="max-w-[20rem] break-words">{r.label}</span> },
               { key: 'usage', label: copy.columns.usage },
               { key: 'rows', label: copy.columns.rows, align: 'right', render: (r) => (r.rows == null ? 'n/a' : fmtNumber(r.rows)) },
-              { key: 'modified', label: copy.columns.modified, render: (r) => (r.modified ? fmtDateTime(r.modified) : 'n/a') },
+              { key: 'modified', label: copy.columns.modified, render: (r) => (r.modified ? fmtDateTime(r.modified, language) : 'n/a') },
             ]}
           />
         </Card>
@@ -436,7 +436,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               { key: 'source', label: copy.columns.source, render: (r) => <span className="max-w-[18rem] break-words">{r.source}</span> },
               { key: 'usages', label: copy.columns.usage, render: (r) => r.usages.join(', ') },
               { key: 'row_count', label: copy.columns.rows, align: 'right', render: (r) => (r.file ? fmtNumber(r.file.row_count) : 'n/a') },
-              { key: 'mtime_ms', label: copy.columns.modified, render: (r) => (r.file ? fmtDateTime(new Date(r.file.mtime_ms).toISOString()) : 'n/a') },
+              { key: 'mtime_ms', label: copy.columns.modified, render: (r) => (r.file ? fmtDateTime(new Date(r.file.mtime_ms).toISOString(), language) : 'n/a') },
               { key: 'sha256', label: copy.columns.sha, render: (r) => (r.file ? <code className="font-mono text-label">{shortHash(r.file.sha256)}</code> : 'n/a') },
             ]}
           />

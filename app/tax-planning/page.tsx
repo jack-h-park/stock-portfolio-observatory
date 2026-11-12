@@ -225,6 +225,7 @@ export default async function TaxPlanningPage({
         fullHoldingsValueKrw={opportunityCoverage.holdingsMarketValueKrw}
         copy={copy}
         money={money}
+        language={language}
       />
 
       <SavedPlansPanel
@@ -234,6 +235,7 @@ export default async function TaxPlanningPage({
         horizonYears={horizonYears}
         copy={copy}
         money={money}
+        language={language}
       />
 
       <MasterScenarioComparison
@@ -241,6 +243,7 @@ export default async function TaxPlanningPage({
         horizonYears={horizonYears}
         copy={copy}
         money={money}
+        language={language}
       />
 
       <TaxPlanTimeline

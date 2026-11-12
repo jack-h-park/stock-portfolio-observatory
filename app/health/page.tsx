@@ -105,7 +105,7 @@ export default async function HealthPage() {
         eyebrow={routeSection('/health', language)}
         title={copy.title}
         emphasis={copy.emphasis}
-        subtitle={copy.subtitle(fmtDateTime(meta.ingested_at))}
+        subtitle={copy.subtitle(fmtDateTime(meta.ingested_at, language))}
         action={issueCount ? <Badge tone={errors.length || operational.summary.missing ? 'danger' : 'warning'}>{copy.needsReview(fmtNumber(issueCount))}</Badge> : <Badge tone="success">{copy.allChecksPassed}</Badge>}
       />
 
@@ -189,11 +189,11 @@ export default async function HealthPage() {
             <div className="grid gap-3 text-caption sm:grid-cols-4">
               <div>
                 <div className="text-caption text-ink-3">{copy.latestStart}</div>
-                <div className="font-medium tabular-nums text-ink">{fmtDateTime(latestRefresh.startedAt)}</div>
+                <div className="font-medium tabular-nums text-ink">{fmtDateTime(latestRefresh.startedAt, language)}</div>
               </div>
               <div>
                 <div className="text-caption text-ink-3">{copy.duration}</div>
-                <div className="font-medium tabular-nums text-ink">{fmtDuration(latestRefresh.durationMs)}</div>
+                <div className="font-medium tabular-nums text-ink">{fmtDuration(latestRefresh.durationMs, language)}</div>
               </div>
               <div>
                 <div className="text-caption text-ink-3">{copy.completedSteps}</div>
@@ -219,7 +219,7 @@ export default async function HealthPage() {
                 <li key={`${latestRefresh.id}:${step.name}`} className="flex flex-col gap-1 py-2.5 lg:flex-row lg:items-center lg:gap-3">
                   <Badge tone={statusTone(step.status)}>{displayRunStatus(step.status, runStatusLabels)}</Badge>
                   <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">{step.name}</span>
-                  <span className="text-caption tabular-nums text-ink-3">{fmtDuration(step.durationMs)}</span>
+                  <span className="text-caption tabular-nums text-ink-3">{fmtDuration(step.durationMs, language)}</span>
                   <code className="font-mono text-label text-ink-3">{step.command}</code>
                   {step.exitCode != null ? (
                     <span className="text-caption tabular-nums text-ink-3">{copy.exitCode(String(step.exitCode))}</span>

@@ -46,7 +46,7 @@ export default async function PensionPage() {
               <MetricField
                 label={copy.value}
                 value={money(account.valueKrw)}
-                hint={account.snapshotDate ? copy.snapshotAsOf(fmtDate(account.snapshotDate)) : undefined}
+                hint={account.snapshotDate ? copy.snapshotAsOf(fmtDate(account.snapshotDate, language)) : undefined}
                 valueClassName="text-title"
               />
               <MetricField label={copy.cost} value={money(account.costKrw)} valueClassName="text-title" />
@@ -86,8 +86,8 @@ export default async function PensionPage() {
                   {row.valuationSource === 'price'
                     ? copy.priced
                     : row.valuationSource === 'cost'
-                      ? copy.atCost(fmtDate(row.asOf))
-                      : fmtDate(row.asOf)}
+                      ? copy.atCost(fmtDate(row.asOf, language))
+                      : fmtDate(row.asOf, language)}
                 </span>
               ),
             },

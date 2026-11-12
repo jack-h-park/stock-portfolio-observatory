@@ -141,8 +141,8 @@ export default async function SavedTaxPlanPage({
               {copy.updateStatus}
             </SubmitButton>
             <div className="mt-3 border-t border-line-subtle pt-2 text-micro leading-relaxed text-ink-3">
-              {copy.created} {fmtDateTime(saved.createdAt)}<br />
-              {copy.updated} {fmtDateTime(saved.updatedAt)}
+              {copy.created} {fmtDateTime(saved.createdAt, language)}<br />
+              {copy.updated} {fmtDateTime(saved.updatedAt, language)}
             </div>
           </form>
         </div>

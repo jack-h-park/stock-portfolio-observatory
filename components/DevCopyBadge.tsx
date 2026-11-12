@@ -18,7 +18,7 @@ export function DevCopyBadge({ language }: { language: Language }) {
   if (!notice) return null
   const copy = getUiCopy(language).devCopy
   const when = notice.ingestedAt
-    ? [copy.ingested(fmtDate(notice.ingestedAt)), notice.ageDays == null ? null : copy.age(notice.ageDays)].filter(Boolean).join(' · ')
+    ? [copy.ingested(fmtDate(notice.ingestedAt, language)), notice.ageDays == null ? null : copy.age(notice.ageDays)].filter(Boolean).join(' · ')
     : copy.unknown
   return (
     <p className="mb-4 flex flex-wrap items-center gap-2 text-label text-ink-3" title={copy.description}>

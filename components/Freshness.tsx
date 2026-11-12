@@ -36,8 +36,8 @@ export function FreshnessRows({ items, language }: { items: FreshnessItem[]; lan
         <li key={item.key} className="flex flex-col gap-1 py-2.5 lg:flex-row lg:items-center lg:gap-3">
           <FreshnessBadge status={item.status} language={language} />
           <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">{freshnessLabel(item, language)}</span>
-          <span className="text-caption tabular-nums text-ink-3">{item.observedAt ? fmtDateTime(item.observedAt) : copy.notRecorded}</span>
-          <span className="text-caption tabular-nums text-ink-3">{fmtDuration(item.ageMs)} {copy.elapsed}</span>
+          <span className="text-caption tabular-nums text-ink-3">{item.observedAt ? fmtDateTime(item.observedAt, language) : copy.notRecorded}</span>
+          <span className="text-caption tabular-nums text-ink-3">{fmtDuration(item.ageMs, language)} {copy.elapsed}</span>
           <span className="text-caption text-ink-3">{freshnessDetailText(item.detail, language)}</span>
         </li>
       ))}
@@ -50,7 +50,7 @@ export function FreshnessInline({ item, language }: { item: FreshnessItem; langu
   return (
     <span className="inline-flex flex-wrap items-center gap-2 text-label text-ink-3">
       <FreshnessBadge status={item.status} language={language} />
-      <span className="tabular-nums">{fmtDuration(item.ageMs)} {copy.elapsed}</span>
+      <span className="tabular-nums">{fmtDuration(item.ageMs, language)} {copy.elapsed}</span>
       <span>{freshnessDetailText(item.detail, language)}</span>
     </span>
   )

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, useTransition } from 'react'
 import { clsx } from 'clsx'
 import { usePageLanguage } from '@/components/LanguageProvider'
 import { getUiCopy } from '@/lib/ui-copy'
+import { localeFor } from '@/lib/format'
 
 /** Where the paused choice lives, so it survives navigating to another page. */
 const PAUSE_KEY = 'stock-observatory-autorefresh-paused'
@@ -105,7 +106,7 @@ export function AutoRefresh({ seconds = 30 }: { seconds?: number }) {
     if (!next) refresh()
   }
 
-  const clock = lastRefresh?.toLocaleTimeString(language === 'ko' ? 'ko-KR' : 'en-US', { hour12: false })
+  const clock = lastRefresh?.toLocaleTimeString(localeFor(language), { hour12: false })
 
   if (!online) {
     return (

@@ -1,6 +1,6 @@
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, Label, MetricField, MetricHeroCard, TextLink } from '@/components/ui'
-import { fmtDateTime, fmtNumber } from '@/lib/format'
+import { fmtDate, fmtNumber } from '@/lib/format'
 import { dbAvailable, getMeta, getWrapperReview } from '@/lib/adapters/portfolio-db'
 import { WrapperEstimateNote } from '@/components/WrapperReviewCard'
 import { getGlossary } from '@/lib/glossary'
@@ -113,7 +113,7 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
             />
             <MetricField
               label={copy.hero.updated}
-              value={state.updatedAt ? fmtDateTime(state.updatedAt).slice(0, 10) : copy.hero.notAvailable}
+              value={state.updatedAt ? fmtDate(state.updatedAt, language) : copy.hero.notAvailable}
               hint={copy.hero.updatedHint}
               valueClassName="text-title"
             />

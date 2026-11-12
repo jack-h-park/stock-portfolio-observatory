@@ -242,7 +242,7 @@ export default async function OverviewPage({
         eyebrow={routeSection('/', language)}
         title={copy.title}
         emphasis={copy.emphasis}
-        subtitle={copy.subtitle(fmtDateTime(meta.ingested_at), fxLabel)}
+        subtitle={copy.subtitle(fmtDateTime(meta.ingested_at, language), fxLabel)}
         action={overview.failedChecks + operationalIssues > 0 ? <Badge tone="warning">{copy.needsReview(overview.failedChecks + operationalIssues)}</Badge> : <Badge tone="success">{copy.healthy}</Badge>}
       />
 
@@ -321,7 +321,7 @@ export default async function OverviewPage({
                   {/* A class read from a dated snapshot, held at cost or (cash) from an older balance carries its date here. */}
                   {netWorth.asOfNotes.some((note) => note.assetClass === key) ? (
                     <span className="ml-2 text-label">
-                      {netWorth.asOfNotes.filter((note) => note.assetClass === key).map((note) => copy.asOfNote(maskAccountLabel(note.label), fmtDate(note.asOf))).join(' · ')}
+                      {netWorth.asOfNotes.filter((note) => note.assetClass === key).map((note) => copy.asOfNote(maskAccountLabel(note.label), fmtDate(note.asOf, language))).join(' · ')}
                     </span>
                   ) : null}
                 </span>
@@ -631,17 +631,17 @@ export default async function OverviewPage({
             .filter((owner) => owner.derivation && owner.derivedFrom && owner.derivedUntil)
             .map((owner) => (
               <div key={owner.owner} className="mt-1 text-label text-ink-3">
-                {childCopy.derivedNote(owner.label, fmtDate(owner.derivedFrom!), fmtDate(owner.derivedUntil!), owner.derivation!)}
+                {childCopy.derivedNote(owner.label, fmtDate(owner.derivedFrom!, language), fmtDate(owner.derivedUntil!, language), owner.derivation!)}
               </div>
             ))}
           <div className="mt-1 text-label text-ink-3">
             {copy.totalAssetsStarts(
-              ASSET_CLASSES.filter((key) => totalAssets.startsOn[key]).map((key) => copy.classSince(copy.assetClasses[key], fmtDate(totalAssets.startsOn[key]!)))
+              ASSET_CLASSES.filter((key) => totalAssets.startsOn[key]).map((key) => copy.classSince(copy.assetClasses[key], fmtDate(totalAssets.startsOn[key]!, language)))
             )}
           </div>
           <div className="mt-2 text-label leading-relaxed text-ink-3">{copy.totalAssetsTrendNote}</div>
           <div className="mt-4">
-            <AssetEventList markers={eventMarkers} copy={eventsCopy} money={(krw) => money(krw)} />
+            <AssetEventList markers={eventMarkers} copy={eventsCopy} money={(krw) => money(krw)} language={language} />
           </div>
         </Card>
       ) : null}

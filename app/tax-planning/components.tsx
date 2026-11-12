@@ -4,6 +4,7 @@ import { DataTable } from '@/components/DataTable'
 import { Badge, Card, EmptyState, Label, MetricField, Signed, marketTone, type Tone } from '@/components/ui'
 import type { createMoneyFormatter } from '@/lib/currency'
 import { fmtDateShort, fmtDateTime, fmtDurationDays, fmtNumber, fmtQuantity } from '@/lib/format'
+import type { Language } from '@/lib/i18n'
 import { positionHref } from '@/lib/position-url'
 import type { MonthlySaleMasterPlan, MonthlySalePlanSet, TaxPlanCandidate, MasterPlanStrategyKey } from '@/lib/tax-planning'
 import { savedTaxPlanProgress, type SavedTaxPlan } from '@/lib/tax-plan-store'
@@ -85,12 +86,14 @@ export function MasterPlanOverview({
   fullHoldingsValueKrw,
   copy,
   money,
+  language,
 }: {
   planSet: MonthlySalePlanSet
   inputIssueCount: number
   fullHoldingsValueKrw: number
   copy: TaxPlanningCopy
   money: MoneyFormatter
+  language: Language
 }) {
   const plan = planSet.selectedPlan
   const earliest = planSet.scenarios.find((item) => item.strategy === 'EARLIEST_LT')
@@ -114,8 +117,8 @@ export function MasterPlanOverview({
         <div>
           <Label size="micro">{copy.overview.executionWindow}</Label>
           <h2 className="mt-1 text-title font-medium leading-tight text-ink">
-            {fmtDateShort(plan.summary.startDate)} <span className="text-ink-3">{copy.overview.to}</span>{' '}
-            {fmtDateShort(plan.summary.endDate)}
+            {fmtDateShort(plan.summary.startDate, language)} <span className="text-ink-3">{copy.overview.to}</span>{' '}
+            {fmtDateShort(plan.summary.endDate, language)}
           </h2>
           <p className="mt-2 max-w-[58rem] text-body leading-relaxed text-ink-2">{plan.description}</p>
         </div>
@@ -166,7 +169,7 @@ export function MasterPlanOverview({
           <Label size="micro">{copy.overview.lotsStillWaiting}</Label>
           <div className="mt-1 text-caption leading-relaxed text-ink-2">
             <span className="font-medium tabular-nums text-ink">
-              {copy.overview.waitingLots(fmtNumber(planSet.timing.waitingLotCount), money(planSet.timing.waitingProceedsKrw), planSet.timing.nextLongTermDate ? fmtDateShort(planSet.timing.nextLongTermDate) : null)}
+              {copy.overview.waitingLots(fmtNumber(planSet.timing.waitingLotCount), money(planSet.timing.waitingProceedsKrw), planSet.timing.nextLongTermDate ? fmtDateShort(planSet.timing.nextLongTermDate, language) : null)}
             </span>
           </div>
         </div>
@@ -182,7 +185,7 @@ export function MasterPlanOverview({
           <Label size="micro">{copy.overview.waitingUntil2028}</Label>
           <div className="mt-1 text-caption leading-relaxed text-ink-2">
             <span className={`font-medium tabular-nums ${signClass(waitSavings)}`}>
-              {copy.overview.waitUntil2028(waitSavings >= 0 ? copy.overview.saving : copy.overview.extraTax, money(Math.abs(waitSavings)), fmtDurationDays(Math.max(waitDays, 0)), money(earliestKrTopUp), money(waitKrTopUp))}
+              {copy.overview.waitUntil2028(waitSavings >= 0 ? copy.overview.saving : copy.overview.extraTax, money(Math.abs(waitSavings)), fmtDurationDays(Math.max(waitDays, 0), language), money(earliestKrTopUp), money(waitKrTopUp))}
             </span>
           </div>
         </div>
@@ -196,11 +199,13 @@ export function MasterScenarioComparison({
   horizonYears,
   copy,
   money,
+  language,
 }: {
   planSet: MonthlySalePlanSet
   horizonYears: number
   copy: TaxPlanningCopy
   money: MoneyFormatter
+  language: Language
 }) {
   const baseline = planSet.scenarios.find((item) => item.strategy === 'EARLIEST_LT')
   const minTax = Math.min(...planSet.scenarios.map((item) => item.summary.estimatedTaxKrw))
@@ -267,12 +272,12 @@ export function MasterScenarioComparison({
               <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-label">
                 <dt className="text-ink-3">{copy.comparison.execution}</dt>
                 <dd className="text-right text-ink">
-                  {fmtDateShort(scenarioRow.summary.startDate)} {copy.comparison.to} {fmtDateShort(scenarioRow.summary.endDate)}
+                  {fmtDateShort(scenarioRow.summary.startDate, language)} {copy.comparison.to} {fmtDateShort(scenarioRow.summary.endDate, language)}
                 </dd>
                 <dt className="text-ink-3">{copy.comparison.longTermSales}</dt>
                 <dd className="text-right tabular-nums text-ink">{fmtNumber(scenarioRow.summary.longTermSalePct, 1)}%</dd>
                 <dt className="text-ink-3">{copy.comparison.averageWait}</dt>
-                <dd className="text-right tabular-nums text-ink">{fmtDurationDays(scenarioRow.summary.averageWaitDays)}</dd>
+                <dd className="text-right tabular-nums text-ink">{fmtDurationDays(scenarioRow.summary.averageWaitDays, language)}</dd>
                 <dt className="text-ink-3">{copy.comparison.krTopUp}</dt>
                 <dd className="text-right tabular-nums text-ink">{money(scenarioRow.summary.incrementalKrTaxAfterCreditKrw)}</dd>
               </dl>
@@ -291,6 +296,7 @@ export function SavedPlansPanel({
   horizonYears,
   copy,
   money,
+  language,
 }: {
   plans: SavedTaxPlan[]
   selectedStrategy: MasterPlanStrategyKey
@@ -298,6 +304,7 @@ export function SavedPlansPanel({
   horizonYears: number
   copy: TaxPlanningCopy
   money: MoneyFormatter
+  language: Language
 }) {
   const visiblePlans = plans.filter((plan) => plan.status !== 'archived').slice(0, 5)
   return (
@@ -366,7 +373,7 @@ export function SavedPlansPanel({
                       <div>{money(saved.plan.summary.proceedsKrw)} {copy.savedPlans.planned}</div>
                       <div className="mt-0.5 text-ink-3">{copy.savedPlans.executed(fmtNumber(progress.executed), fmtNumber(progress.total))}</div>
                     </div>
-                    <div className="text-right text-micro text-ink-3">{fmtDateTime(saved.updatedAt)}</div>
+                    <div className="text-right text-micro text-ink-3">{fmtDateTime(saved.updatedAt, language)}</div>
                   </div>
                 )
               })}

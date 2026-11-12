@@ -39,16 +39,6 @@
     "app/net-worth/page.tsx": 1,
     "components/charts.tsx": 6
   },
-  "date-format-without-language": {
-    "app/data-map/page.tsx": 2,
-    "app/health/page.tsx": 2,
-    "app/page.tsx": 1,
-    "app/positions/[market]/[ticker]/page.tsx": 2,
-    "app/tax-planning/components.tsx": 6,
-    "app/tax-planning/plans/[id]/page.tsx": 2,
-    "app/tax-settings/page.tsx": 1,
-    "components/Freshness.tsx": 1
-  },
   "english-in-korean-copy": {
     "lib/ui-copy/common.ts": 2,
     "lib/ui-copy/pages/accounts.ts": 3,
@@ -93,10 +83,6 @@
     "app/taxes/records/[id]/page.tsx": 1,
     "components/TaxPlanTimeline.tsx": 1,
     "components/WashSaleBanner.tsx": 1
-  },
-  "inline-language-branch": {
-    "components/AutoRefresh.tsx": 1,
-    "components/TaxPlanTimeline.tsx": 3
   },
   "inline-sign-tone": {
     "app/cost-basis/page.tsx": 1,
@@ -152,7 +138,6 @@
     "app/taxes/records/[id]/page.tsx": 1,
     "app/taxes/view.tsx": 1,
     "app/transactions/page.tsx": 1,
-    "components/TaxPlanTimeline.tsx": 1,
     "components/WashSaleBanner.tsx": 1,
     "components/charts.tsx": 2,
     "components/ui.tsx": 1

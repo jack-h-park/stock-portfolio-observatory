@@ -55,7 +55,7 @@ export default async function DataMapPage({
         eyebrow={routeSection('/data-map', language)}
         title={copy.title}
         emphasis={copy.emphasis}
-        subtitle={copy.subtitle(inventory.dataDir, fmtDateTime(meta.ingested_at))}
+        subtitle={copy.subtitle(inventory.dataDir, fmtDateTime(meta.ingested_at, language))}
         action={
           inventory.summary.missing || inventory.summary.drift ? (
             <Badge tone="warning">{copy.reviewItems(fmtNumber(reviewCount))}</Badge>
@@ -170,7 +170,7 @@ export default async function DataMapPage({
             { key: 'relativePath', sortable: true, sortFirst: 'asc', label: copy.columns.path, render: (r) => <span className="block max-w-[32rem] truncate">{r.relativePath}</span> },
             { key: 'rowCount', sortable: true, sortFirst: 'desc', label: copy.columns.rows, align: 'right', render: (r) => (r.rowCount == null ? 'n/a' : fmtNumber(r.rowCount)) },
             { key: 'bytes', sortable: true, sortFirst: 'desc', label: copy.columns.size, align: 'right', render: (r) => fmtBytes(r.bytes) },
-            { key: 'mtimeMs', sortable: true, sortFirst: 'desc', label: copy.columns.modified, render: (r) => (r.mtimeMs ? fmtDateTime(new Date(r.mtimeMs).toISOString()) : 'n/a') },
+            { key: 'mtimeMs', sortable: true, sortFirst: 'desc', label: copy.columns.modified, render: (r) => (r.mtimeMs ? fmtDateTime(new Date(r.mtimeMs).toISOString(), language) : 'n/a') },
             { key: 'sha256', label: copy.columns.sha, render: (r) => (r.sha256 ? <code className="font-mono text-label">{shortHash(r.sha256)}</code> : 'n/a') },
             { key: 'retention', label: copy.columns.retention, render: (r) => <div className="min-w-[16rem]"><Badge tone={retentionTone(r.retention)}>{copy.retentionLabels[r.retention as keyof typeof copy.retentionLabels]}</Badge><div className="mt-1 text-label leading-relaxed text-ink-3">{r.retentionReason}</div></div> },
           ]}
