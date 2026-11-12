@@ -1,6 +1,7 @@
 import { DataTable, type DataTableColumn } from '@/components/DataTable'
 import type { EventMarker } from '@/lib/asset-events'
 import { fmtDate } from '@/lib/format'
+import type { Language } from '@/lib/i18n'
 import { signClass } from '@/lib/tone'
 import type { getPageCopy } from '@/lib/ui-copy'
 
@@ -12,7 +13,17 @@ type Copy = ReturnType<typeof getPageCopy<'assetEvents'>>
  * before tax (realized + unrealized at today's price + dividends), the tax
  * planner's estimate for the open lots, and the gain after it.
  */
-export function AssetEventList({ markers, copy, money }: { markers: EventMarker[]; copy: Copy; money: (krw: number) => string }) {
+export function AssetEventList({
+  markers,
+  copy,
+  money,
+  language,
+}: {
+  markers: EventMarker[]
+  copy: Copy
+  money: (krw: number) => string
+  language: Language
+}) {
   const signed = (krw: number) => <span className={`tabular-nums ${krw ? signClass(krw) : ''}`}>{money(krw)}</span>
   const columns: DataTableColumn<EventMarker>[] = [
     { key: 'n', label: copy.columns.n, render: (m) => <span className="tabular-nums text-ink-3">{m.n}</span> },
@@ -21,8 +32,8 @@ export function AssetEventList({ markers, copy, money }: { markers: EventMarker[
       label: copy.columns.period,
       nowrap: true,
       render: ({ event }) => {
-        const end = event.kind === 'inflow' ? (event.end !== event.start ? fmtDate(event.end) : null) : event.end ? fmtDate(event.end) : copy.held
-        return end ? `${fmtDate(event.start)} – ${end}` : fmtDate(event.start)
+        const end = event.kind === 'inflow' ? (event.end !== event.start ? fmtDate(event.end, language) : null) : event.end ? fmtDate(event.end, language) : copy.held
+        return end ? `${fmtDate(event.start, language)} – ${end}` : fmtDate(event.start, language)
       },
     },
     {

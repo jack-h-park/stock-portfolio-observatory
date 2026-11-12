@@ -1,7 +1,13 @@
 import { formatKrw, formatUsd } from '@/lib/currency'
 import type { Language } from '@/lib/i18n'
 
-const localeFor = (language: Language = 'en') => (language === 'ko' ? 'ko-KR' : 'en-US')
+/** What every formatter and page prints when there is no value. */
+export const EMPTY_VALUE = '—'
+
+/** The BCP 47 tag for a dashboard language. The one place a locale is chosen. */
+export function localeFor(language: Language): 'ko-KR' | 'en-US' {
+  return language === 'ko' ? 'ko-KR' : 'en-US'
+}
 
 export function fmtKrw(value: number | null | undefined) {
   return formatKrw(value)
@@ -21,16 +27,42 @@ export function fmtMoney(value: number | null | undefined, currency: string | nu
  * Five pages defined this, three of them byte-identical, and they disagreed on
  * the two things that matter: whether null reads as "n/a" and whether a
  * positive value carries a "+". Both are options here so the disagreement
- * cannot come back.
+ * cannot come back. `signed` follows fmtSigned: a "+" for a gain only, never
+ * for zero. `unit: 'pp'` prints percentage points as "%p".
  */
 export function fmtPct(
   value: number | null | undefined,
-  { digits = 2, signed = false, nullText = 'n/a' }: { digits?: number; signed?: boolean; nullText?: string } = {}
+  {
+    digits = 2,
+    signed = false,
+    unit = '%',
+    nullText = EMPTY_VALUE,
+  }: { digits?: number; signed?: boolean; unit?: '%' | 'pp'; nullText?: string } = {}
 ) {
   if (value == null) return nullText
   const n = Number(value)
-  const sign = signed && n > 0 ? '+' : ''
-  return `${sign}${fmtNumber(n, digits)}%`
+  const body = signed ? fmtSigned(n, (m) => fmtNumber(m, digits)) : fmtNumber(n, digits)
+  return `${body}${unit === 'pp' ? '%p' : '%'}`
+}
+
+/** A percentage band, "1.0–2.5%": one percent sign after the upper bound. */
+export function fmtPctRange(lower: number, upper: number, digits: number) {
+  return `${fmtNumber(lower, digits)}–${fmtNumber(upper, digits)}%`
+}
+
+/**
+ * A signed figure: "+" and the formatted magnitude for a gain, "-" and the
+ * formatted magnitude for a loss, the formatted zero with no sign, and
+ * EMPTY_VALUE for a missing value. A value that rounds to zero in `format` is
+ * zero here too, so it never reads "+0" or "-0". The one sign rule; `Signed` in
+ * components/ui.tsx renders the same text with a tone.
+ */
+export function fmtSigned(value: number | null | undefined, format: (n: number) => string): string {
+  if (value == null || Number.isNaN(Number(value))) return EMPTY_VALUE
+  const n = Number(value)
+  const body = format(Math.abs(n))
+  if (n === 0 || !/[1-9]/.test(body)) return body
+  return `${n > 0 ? '+' : '-'}${body}`
 }
 
 /**
@@ -52,11 +84,15 @@ export function fmtBytes(value: number | null | undefined) {
   return `${fmtNumber(n)} B`
 }
 
-export function fmtNumber(value: number | null | undefined, digits = 0) {
+/**
+ * A plain number with grouping, at a fixed precision by default. `minDigits`
+ * lets trailing zeros drop (a chart tick reads "12", not "12.0").
+ */
+export function fmtNumber(value: number | null | undefined, digits = 0, minDigits = digits) {
   const n = Number(value ?? 0)
   return n.toLocaleString('ko-KR', {
     maximumFractionDigits: digits,
-    minimumFractionDigits: digits,
+    minimumFractionDigits: minDigits,
   })
 }
 
@@ -81,8 +117,8 @@ export function fmtQuantity(value: number | null | undefined, digits = 4) {
   return n.toLocaleString('ko-KR', { maximumFractionDigits: abs >= 0.001 ? 6 : 8, minimumFractionDigits: 0 })
 }
 
-export function fmtDateTime(value: string | null | undefined, language: Language = 'en') {
-  if (!value) return 'n/a'
+export function fmtDateTime(value: string | null | undefined, language: Language) {
+  if (!value) return EMPTY_VALUE
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return value
   return d.toLocaleString(localeFor(language), { hour12: false })
@@ -94,8 +130,8 @@ export function fmtDateTime(value: string | null | undefined, language: Language
  * Two tax pages built this with their own Intl.DateTimeFormat, one of them
  * pinned to en-US even in Korean.
  */
-export function fmtDateShort(value: string | null | undefined, language: Language = 'en') {
-  if (!value) return 'n/a'
+export function fmtDateShort(value: string | null | undefined, language: Language) {
+  if (!value) return EMPTY_VALUE
   // A date-only value carries no time, so reading it in local time can move it a
   // day in either direction. Pin those to UTC; a full timestamp keeps local time.
   const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value.slice(0, 10)) && value.length <= 10
@@ -110,7 +146,7 @@ export function fmtDateShort(value: string | null | undefined, language: Languag
 }
 
 /** A span of days, in the unit that reads best at that magnitude. */
-export function fmtDurationDays(days: number | null | undefined, language: Language = 'en') {
+export function fmtDurationDays(days: number | null | undefined, language: Language) {
   const rounded = Math.round(Number(days ?? 0))
   if (rounded < 31) return language === 'ko' ? `${fmtNumber(rounded)}일` : `${fmtNumber(rounded)} days`
   const months = fmtNumber(rounded / 30.4375, 1)
@@ -126,9 +162,15 @@ export function fmtDurationDays(days: number | null | undefined, language: Langu
  * is the ISO calendar date built from local parts (not toISOString(), which
  * would shift the day across the timezone offset), which also matches how the
  * rest of the dashboard prints market dates.
+ *
+ * The ISO form is the same in both languages, so `language` changes nothing
+ * today beyond the empty text, which is EMPTY_VALUE in both. It is required so
+ * every date helper has the same signature and a caller switching between them
+ * cannot drop it.
  */
-export function fmtDate(value: string | null | undefined) {
-  if (!value) return 'n/a'
+export function fmtDate(value: string | null | undefined, language: Language) {
+  void language
+  if (!value) return EMPTY_VALUE
   // A date-only value is already the answer. Parsed, it becomes UTC midnight,
   // and read back in the server's local time west of UTC it is the day before:
   // /data-ops showed every account's coverage date one day early. Same reason
@@ -140,31 +182,32 @@ export function fmtDate(value: string | null | undefined) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-export function relTime(value: string | null | undefined) {
-  if (!value) return 'n/a'
-  const d = new Date(value)
-  const ms = Date.now() - d.getTime()
-  if (Number.isNaN(ms)) return value
-  const abs = Math.abs(ms)
-  const suffix = ms >= 0 ? 'ago' : 'from now'
-  const minutes = Math.round(abs / 60_000)
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes}m ${suffix}`
-  const hours = Math.round(minutes / 60)
-  if (hours < 48) return `${hours}h ${suffix}`
-  const days = Math.round(hours / 24)
-  return `${days}d ${suffix}`
+/**
+ * A month from its `YYYY-MM` key: "Mar" / "3월", or with the year
+ * "Mar 2026" / "2026년 3월". Built from the key's parts in UTC, so the month
+ * cannot shift across the server's timezone offset.
+ */
+export function fmtMonth(yearMonth: string, language: Language, options: { year?: boolean } = {}) {
+  const [year, month] = yearMonth.split('-').map(Number)
+  if (!year || !month) return yearMonth
+  return new Intl.DateTimeFormat(localeFor(language), {
+    month: language === 'ko' ? 'long' : 'short',
+    ...(options.year ? { year: 'numeric' } : {}),
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(year, month - 1, 1)))
 }
 
-export function fmtDuration(ms: number | null | undefined) {
-  if (ms == null || !Number.isFinite(ms)) return 'n/a'
+/** An elapsed span in the largest unit that keeps it short: minutes, hours, then days. */
+export function fmtDuration(ms: number | null | undefined, language: Language) {
+  if (ms == null || !Number.isFinite(ms)) return EMPTY_VALUE
+  const units = language === 'ko' ? { m: '분', h: '시간', d: '일' } : { m: 'm', h: 'h', d: 'd' }
   const abs = Math.abs(ms)
   const minutes = Math.round(abs / 60_000)
-  if (minutes < 60) return `${minutes}m`
+  if (minutes < 60) return `${minutes}${units.m}`
   const hours = Math.round(minutes / 60)
-  if (hours < 48) return `${hours}h`
+  if (hours < 48) return `${hours}${units.h}`
   const days = Math.round(hours / 24)
-  return `${days}d`
+  return `${days}${units.d}`
 }
 
 export function shortHash(value: string) {

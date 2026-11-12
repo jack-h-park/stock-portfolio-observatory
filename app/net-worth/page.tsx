@@ -8,7 +8,7 @@ import { StackedAssetChart } from '@/components/charts'
 import { getAssetAllocation, getAssetEvents, getChildAssets, getForeignAccountMaxima, getMeta, getNetWorth, getSnapshotDates, getTotalAssetsSeries, portfolioToday } from '@/lib/adapters/portfolio-db'
 import { convertMoney, createMoneyFormatter, formatKrw, formatUsd } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
-import { fmtDate, fmtDateTime } from '@/lib/format'
+import { fmtDate, fmtDateTime, fmtNumber } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { routeMetadata, routeSection } from '@/lib/page-names'
 import { lastCompleteYear, type ForeignAccountRow } from '@/lib/fbar'
@@ -118,7 +118,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
     monthEnds.set(point.date.slice(0, 7), { ...point, month: point.date.slice(0, 7), ...(includeChildren ? { children: childrenOn.get(point.date) ?? null } : {}) })
   const history = [...monthEnds.values()]
   const notesFor = (key: (typeof ASSET_CLASSES)[number]) =>
-    netWorth.asOfNotes.filter((note) => note.assetClass === key).map((note) => copy.asOfNote(maskAccountLabel(note.label), fmtDate(note.asOf))).join(' · ')
+    netWorth.asOfNotes.filter((note) => note.assetClass === key).map((note) => copy.asOfNote(maskAccountLabel(note.label), fmtDate(note.asOf, language))).join(' · ')
   const amount = (value: number | null) => <span className="tabular-nums">{value == null ? copy.none : money(value)}</span>
   const kindLabel = (kind: string) => (kind in copy.kinds ? copy.kinds[kind as keyof typeof copy.kinds] : kind)
   // FBAR: the last complete year unless ?fbarYear= names another offered year.
@@ -148,7 +148,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
         </span>
       ),
     },
-    { key: 'maxDate', label: fbarCopy.columns.maxDate, nowrap: true, render: (row: ForeignAccountRow) => <span className="tabular-nums">{fmtDate(row.maxDate)}</span> },
+    { key: 'maxDate', label: fbarCopy.columns.maxDate, nowrap: true, render: (row: ForeignAccountRow) => <span className="tabular-nums">{fmtDate(row.maxDate, language)}</span> },
     {
       key: 'maxKrw',
       label: fbarCopy.columns.maxKrw,
@@ -276,11 +276,11 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
           markers={chartMarkers(eventMarkers, trendAssets.points[0]?.date)}
         />
         <div className="mt-1 text-label text-ink-3">
-          {copy.trendStarts(classes.filter((key) => totalAssets.startsOn[key]).map((key) => copy.classSince(copy.classes[key], fmtDate(totalAssets.startsOn[key]!))))}
+          {copy.trendStarts(classes.filter((key) => totalAssets.startsOn[key]).map((key) => copy.classSince(copy.classes[key], fmtDate(totalAssets.startsOn[key]!, language))))}
         </div>
         <div className="mt-2 text-label leading-relaxed text-ink-3">{copy.trendNote}</div>
         <div className="mt-4">
-          <AssetEventList markers={eventMarkers} copy={eventsCopy} money={(krw) => money(krw)} />
+          <AssetEventList markers={eventMarkers} copy={eventsCopy} money={(krw) => money(krw)} language={language} />
         </div>
       </Card>
 
@@ -292,7 +292,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
               .filter((owner) => owner.derivation && owner.derivedFrom && owner.derivedUntil)
               .map((owner) => (
                 <span key={owner.owner} className="mt-1 block">
-                  {childCopy.derivedNote(owner.label, fmtDate(owner.derivedFrom!), fmtDate(owner.derivedUntil!), owner.derivation!)}
+                  {childCopy.derivedNote(owner.label, fmtDate(owner.derivedFrom!, language), fmtDate(owner.derivedUntil!, language), owner.derivation!)}
                 </span>
               ))}
           </p>
@@ -304,7 +304,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
             columns={[
               { key: 'owner', label: childCopy.columns.owner, render: (row: ChildRow) => <span className="font-medium text-ink">{row.owner}</span> },
               { key: 'account', label: childCopy.columns.account, render: (row: ChildRow) => (row.subtotal ? <span className="font-medium text-ink">{row.account}</span> : maskAccountLabel(row.account)) },
-              { key: 'asOf', label: childCopy.columns.asOf, nowrap: true, render: (row: ChildRow) => <span className="tabular-nums">{row.asOf ? fmtDate(row.asOf) : ''}</span> },
+              { key: 'asOf', label: childCopy.columns.asOf, nowrap: true, render: (row: ChildRow) => <span className="tabular-nums">{row.asOf ? fmtDate(row.asOf, language) : ''}</span> },
               {
                 key: 'value',
                 label: childCopy.columns.value,
@@ -338,7 +338,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
               nowrap: true,
               render: (row: CashRow) => (
                 <span className="tabular-nums">
-                  {fmtDate(row.asOfDate)}
+                  {fmtDate(row.asOfDate, language)}
                   {row.derived ? (
                     <>
                       {' '}
@@ -430,7 +430,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
           <p>{fbarCopy.method}</p>
           <p>
             {fbar.rate
-              ? fbarCopy.rate(fbar.rate.krwPerUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), fmtDate(fbar.rate.date))
+              ? fbarCopy.rate(fmtNumber(fbar.rate.krwPerUsd, 2), fmtDate(fbar.rate.date, language))
               : fbarCopy.noRate(fbarYear)}
           </p>
           <p>{fbarCopy.understatedNote}</p>

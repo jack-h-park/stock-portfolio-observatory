@@ -6,7 +6,7 @@ import { Badge, Card, Label, Signed } from '@/components/ui'
 import { getCostBasisHoldings, type CostBasisStatus } from '@/lib/adapters/portfolio-db'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
-import { fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
+import { EMPTY_VALUE, fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { positionHref } from '@/lib/position-url'
 import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
@@ -83,7 +83,7 @@ export default async function CostBasisPage({
           <div className="grid gap-2 text-caption text-ink-2">
             <div className="flex items-center justify-between gap-3">
               <span className="text-ink-3">{copy.latestPriceDate}</span>
-              <span className="font-medium tabular-nums text-ink">{priceDate ?? 'n/a'}</span>
+              <span className="font-medium tabular-nums text-ink">{priceDate ?? EMPTY_VALUE}</span>
             </div>
             <div className="flex items-center justify-between gap-3">
               <span className="text-ink-3">{copy.missingCostRows}</span>
@@ -161,9 +161,9 @@ export default async function CostBasisPage({
               { key: 'brokerage', label: copy.columns.broker, sortable: true, sortFirst: 'asc', priority: 'secondary' },
               { key: 'account', label: copy.columns.account, sortable: true, sortFirst: 'asc', nowrap: true, priority: 'secondary', render: (r) => maskAccountLabel(r.account) },
               { key: 'quantity', label: copy.columns.shares, align: 'right', sortable: true, render: (r) => fmtQuantity(r.quantity, 6) },
-              { key: 'native_price', label: copy.columns.price, align: 'right', sortable: true, render: (r) => (r.native_price == null ? 'n/a' : money(r.native_price, r.currency)) },
-              { key: 'native_market_value', label: copy.columns.value, align: 'right', sortable: true, render: (r) => (r.native_market_value == null ? 'n/a' : money(r.native_market_value, r.currency)) },
-              { key: 'native_cost', label: copy.columns.totalCost, align: 'right', sortable: true, render: (r) => (r.native_cost == null ? 'n/a' : money(r.native_cost, r.currency)) },
+              { key: 'native_price', label: copy.columns.price, align: 'right', sortable: true, render: (r) => (r.native_price == null ? EMPTY_VALUE : money(r.native_price, r.currency)) },
+              { key: 'native_market_value', label: copy.columns.value, align: 'right', sortable: true, render: (r) => (r.native_market_value == null ? EMPTY_VALUE : money(r.native_market_value, r.currency)) },
+              { key: 'native_cost', label: copy.columns.totalCost, align: 'right', sortable: true, render: (r) => (r.native_cost == null ? EMPTY_VALUE : money(r.native_cost, r.currency)) },
               { key: 'native_unrealized_gl', label: copy.columns.gain, align: 'right', sortable: true, render: (r) => <Signed value={r.native_unrealized_gl} format={(m) => money(m, r.currency)} /> },
               { key: 'native_unrealized_gl_pct', label: copy.columns.gainPct, align: 'right', sortable: true, render: (r) => <Signed value={r.native_unrealized_gl_pct} format={(m) => fmtPct(m)} /> },
               { key: 'day_change', label: copy.columns.day, align: 'right', sortable: true, priority: 'tertiary', render: (r) => <Signed value={r.day_change} format={(m) => money(m, r.currency)} /> },

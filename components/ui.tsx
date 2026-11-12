@@ -2,6 +2,7 @@ import { clsx } from 'clsx'
 import Link from 'next/link'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { HelpPopover } from '@/components/HelpPopover'
+import { EMPTY_VALUE, fmtSigned } from '@/lib/format'
 
 // InfoTooltip — a small "i" affordance that reveals an explanation on hover or
 // keyboard focus, as an absolutely-positioned overlay (no layout cost). Used
@@ -226,13 +227,13 @@ export function EmptyState({
  *
  * The sign is not decoration. Colour was the only thing separating +0.4% from
  * −0.4% in these tables, which fails anyone who cannot separate the two reds
- * and greens — so `format` is given the magnitude and the sign is always
- * printed in front of it.
+ * and greens — so `format` is given the magnitude and the sign is printed in
+ * front of it by `fmtSigned`: "+" for a gain, "-" for a loss, none for zero.
  */
 export function Signed({
   value,
   format,
-  nullText = 'n/a',
+  nullText = EMPTY_VALUE,
   className,
 }: {
   value: number | null | undefined
@@ -241,15 +242,14 @@ export function Signed({
   nullText?: ReactNode
   className?: string
 }) {
-  if (value == null) return <span className={clsx('text-ink-3', className)}>{nullText}</span>
-  const n = Number(value)
-  const body = format(Math.abs(n))
-  // A value that rounds away to zero is not a loss, so it gets no minus.
-  const negative = n < 0 && /[1-9]/.test(body)
+  if (value == null || Number.isNaN(Number(value))) return <span className={clsx('text-ink-3', className)}>{nullText}</span>
+  const text = fmtSigned(Number(value), format)
+  // fmtSigned prints "-" only for a loss that survives rounding, so a value that
+  // rounds away to zero keeps the gain tone.
+  const negative = text.startsWith('-')
   return (
     <span className={clsx(negative ? 'text-danger' : 'text-success', 'tabular-nums', className)}>
-      {negative ? '-' : '+'}
-      {body}
+      {text}
     </span>
   )
 }

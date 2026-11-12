@@ -120,8 +120,8 @@ export const GLOSSARY_BY_LANG = {
       description: '달러 등 외화 금액을 원화로 환산할 때 사용한 비율과 기준일입니다.',
     },
     taxLot: {
-      label: '세금 계산 단위',
-      alias: 'Tax Lot',
+      label: '세금 단위',
+      alias: '세금 단위',
       description: '같은 종목이라도 매수 시점과 가격별로 나눈 세금 계산용 묶음입니다.',
     },
     reconciliation: {
@@ -142,12 +142,12 @@ export const GLOSSARY_BY_LANG = {
     longTerm: {
       label: '장기 보유',
       alias: 'LT',
-      description: '세금상 장기 보유 요건을 충족한 수량 또는 매수 단위입니다.',
+      description: '세금상 장기 보유 요건을 충족한 수량 또는 세금 단위입니다.',
     },
     shortTerm: {
       label: '단기 보유',
       alias: 'ST',
-      description: '세금상 장기 보유 요건을 아직 충족하지 않은 수량 또는 매수 단위입니다.',
+      description: '세금상 장기 보유 요건을 아직 충족하지 않은 수량 또는 세금 단위입니다.',
     },
     tickerless: {
       label: '종목 미연결 수익',

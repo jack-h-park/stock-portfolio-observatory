@@ -228,10 +228,14 @@ export type MasterPlanInstruction = {
   washSaleNote: string
 }
 
+/**
+ * One month of a sale plan. Its heading is formatted from `yearMonth` at render
+ * (fmtMonth), so a stored plan that still carries an old English `label` field
+ * is read structurally and the extra field is ignored.
+ */
 export type MasterPlanMonth = {
   yearMonth: string
   year: number
-  label: string
   proceedsKrw: number
   gainKrw: number
   lossKrw: number
@@ -1362,9 +1366,6 @@ function assembleMasterPlan({
       return {
         yearMonth: key,
         year: Number(key.slice(0, 4)),
-        label: new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }).format(
-          parseDateOnly(`${key}-01`)
-        ),
         proceedsKrw: rows.reduce((sum, row) => sum + row.proceedsKrw, 0),
         gainKrw,
         lossKrw: Math.abs(rows.reduce((sum, row) => sum + Math.min(row.gainKrw, 0), 0)),

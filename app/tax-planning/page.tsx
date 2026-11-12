@@ -6,7 +6,7 @@ import { WrapperEstimateNote } from '@/components/WrapperReviewCard'
 import { WashSaleBanner } from '@/components/WashSaleBanner'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
-import { fmtKrw, fmtMoney, fmtNumber, fmtPct } from '@/lib/format'
+import { EMPTY_VALUE, fmtKrw, fmtMoney, fmtNumber, fmtPct, fmtSigned } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import {
   buildMonthlySalePlanSet,
@@ -225,6 +225,7 @@ export default async function TaxPlanningPage({
         fullHoldingsValueKrw={opportunityCoverage.holdingsMarketValueKrw}
         copy={copy}
         money={money}
+        language={language}
       />
 
       <SavedPlansPanel
@@ -234,6 +235,7 @@ export default async function TaxPlanningPage({
         horizonYears={horizonYears}
         copy={copy}
         money={money}
+        language={language}
       />
 
       <MasterScenarioComparison
@@ -241,6 +243,7 @@ export default async function TaxPlanningPage({
         horizonYears={horizonYears}
         copy={copy}
         money={money}
+        language={language}
       />
 
       <TaxPlanTimeline
@@ -330,7 +333,7 @@ export default async function TaxPlanningPage({
         <Card title={copy.page.baseAssumptions}>
           <div className="space-y-2 text-caption text-ink-2">
             <div className="flex items-center justify-between gap-3"><span>{copy.page.scenario}</span><Badge tone="info">{plan.assumptions.scenario}</Badge></div>
-            <div className="flex items-center justify-between gap-3"><span>{copy.page.filingState}</span><span className="text-ink">{assumptionString(taxPolicy.policy, 'US', 'filingStatus', 'n/a')} / {assumptionString(taxPolicy.policy, 'US', 'stateCode', 'n/a')}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.filingState}</span><span className="text-ink">{assumptionString(taxPolicy.policy, 'US', 'filingStatus', EMPTY_VALUE)} / {assumptionString(taxPolicy.policy, 'US', 'stateCode', EMPTY_VALUE)}</span></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.w2WageBase}</span><span className="tabular-nums text-ink">{assumptionNumber(taxPolicy.policy, 'US', 'wageBaseYear', 0)} · {fmtMoney(assumptionNumber(taxPolicy.policy, 'US', 'wageBaseUsd', 0), 'USD')}</span></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.annualIncomeGrowth}</span><span className="tabular-nums text-ink">{fmtPct(assumptionNumber(taxPolicy.policy, 'US', 'annualIncomeGrowthPct', 0))}</span></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.federalMethod}</span><Badge tone="success">{copy.page.federalMethodValue}</Badge></div>
@@ -431,8 +434,8 @@ export default async function TaxPlanningPage({
             <div className="flex items-center justify-between gap-3"><span>{copy.page.californiaState}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.usStateTaxKrw)}</span></div>
             <div className="flex items-center justify-between gap-3 border-t border-line-subtle pt-2"><span>{copy.page.usGrossEstimate}</span><span className="tabular-nums text-ink">{fmtMoney(plan.summary.usTaxUsd, 'USD')} / {fmtKrw(plan.summary.usTaxKrw)}</span></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.krGrossTax}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.krTaxKrw)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>{copy.page.usFtcLimitUsed}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.usForeignTaxCreditLimitKrw)} / <span className="text-success">-{fmtKrw(plan.summary.usForeignTaxCreditKrw)}</span></span></div>
-            <div className="flex items-center justify-between gap-3"><span>{copy.page.krCreditUsed}</span><span className="tabular-nums text-success">-{fmtKrw(plan.summary.krForeignTaxCreditKrw)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.usFtcLimitUsed}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.usForeignTaxCreditLimitKrw)} / <span className="text-success">{fmtSigned(-plan.summary.usForeignTaxCreditKrw, fmtKrw)}</span></span></div>
+            <div className="flex items-center justify-between gap-3"><span>{copy.page.krCreditUsed}</span><span className="tabular-nums text-success">{fmtSigned(-plan.summary.krForeignTaxCreditKrw, fmtKrw)}</span></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.combinedAfterCredit}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.estimatedTaxKrw)}</span></div>
             <div className="flex items-center justify-between gap-3"><span>{copy.page.afterTaxProceeds}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.estimatedAfterTaxKrw)}</span></div>
             <div className="text-label leading-relaxed text-ink-3">{copy.page.methodNote(plan.summary.taxCalculationMethod)}</div>

@@ -124,15 +124,15 @@ export function Sidebar({
         <div className="mt-4 grid gap-2 px-1">
           <div>
             <div className="mb-1.5 px-0.5 text-micro font-medium text-ink-3">{copy.language}</div>
-            <LanguageSwitcher language={language} />
+            <LanguageSwitcher language={language} label={copy.language} />
           </div>
           <div>
             <div className="mb-1.5 px-0.5 text-micro font-medium text-ink-3">{copy.currency}</div>
-            <CurrencySwitcher displayCurrency={displayCurrency} />
+            <CurrencySwitcher displayCurrency={displayCurrency} label={copy.currency} labels={copy.currencies} />
           </div>
           <div>
             <div className="mb-1.5 px-0.5 text-micro font-medium text-ink-3">{copy.assets}</div>
-            <AssetViewSwitcher assetView={assetView} labels={copy.assetViews} />
+            <AssetViewSwitcher assetView={assetView} label={copy.assets} labels={copy.assetViews} />
           </div>
         </div>
 

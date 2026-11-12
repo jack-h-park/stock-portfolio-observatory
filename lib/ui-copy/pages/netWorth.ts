@@ -119,7 +119,7 @@ export const netWorth = defineCopy({
     chartAxisKrw: '백만 원',
     chartAxisUsd: '백만 달러',
     balances: '예금 잔고',
-    columns: { institution: '기관', account: '계좌', kind: '종류', asOf: '기준일', balance: '잔고', krw: '평가액' },
+    columns: { institution: '기관', account: '계좌', kind: '종류', asOf: '기준일', balance: '잔고', krw: '평가금액' },
     kinds: { checking: '입출금', savings: '저축', cma: 'CMA', deposit: '예금' },
     derived: '기준 잔고에서 역산',
     unpriced: (list: string) => `${list}은(는) USD/KRW 환율이 없어 합계에 포함되지 않았습니다.`,
@@ -138,12 +138,12 @@ export const netWorth = defineCopy({
       band: '자녀',
       combined: '자녀 포함 합계',
       historyColumn: '자녀 (별도)',
-      columns: { owner: '명의', account: '계좌', asOf: '기준일', value: '평가액' },
+      columns: { owner: '명의', account: '계좌', asOf: '기준일', value: '평가금액' },
       subtotal: (label: string) => `${label} 합계`,
       empty: '등록된 자녀 계좌가 없습니다.',
       derivedNote: (label: string, from: string, until: string, method: string) =>
         method === 'contributions'
-          ? `${label}: ${from}부터 ${until}까지는 평가액이 아니라 누적 순납입액(입금 - 출금)으로 추정한 값이며, 그 이후는 잔고 스냅샷입니다.`
+          ? `${label}: ${from}부터 ${until}까지는 평가금액이 아니라 누적 순납입액(입금 - 출금)으로 추정한 값이며, 그 이후는 잔고 스냅샷입니다.`
           : `${label}: ${from}부터 ${until}까지는 거래내역증명서로 추정한 값으로, 그날의 보유 수량을 그날 종가로 평가하고 예수금을 더했습니다. 그 이후는 잔고 스냅샷입니다.`,
     },
     fbar: {
@@ -160,7 +160,7 @@ export const netWorth = defineCopy({
       unpriced: (list: string) => `${list}은(는) USD/KRW 환율이 전혀 없어 원화 금액이 없고, 원화 합계에도 포함되지 않습니다.`,
       columns: { institution: '기관', account: '계좌', kind: '종류', maxDate: '최대값 날짜', maxKrw: '최대값 (KRW)', maxUsd: '최대값 (USD)', coverage: '기준' },
       kinds: { cash: '현금', brokerage: '증권', pension: '연금', gold: '금', crypto: '암호화폐 거래소' },
-      coverage: { daily: '일별 잔고', month_end: '월말 평가액', year_end: '연말 합계', partial: '연중 일부', derived: '원금 기준 계산' },
+      coverage: { daily: '일별 잔고', month_end: '월말 평가금액', year_end: '연말 합계', partial: '연중 일부', derived: '원금 기준 계산' },
       understated: '과소 추정',
       cashNotIncluded: '예수금 미포함',
       aggregate: '최대값 합계',

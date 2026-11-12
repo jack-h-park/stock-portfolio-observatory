@@ -4,7 +4,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { TrendBarChart } from '@/components/charts'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
 import { getIncomeReview } from '@/lib/adapters/portfolio-db'
-import { fmtNumber, fmtPct } from '@/lib/format'
+import { EMPTY_VALUE, fmtNumber, fmtPct } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
@@ -30,7 +30,7 @@ export default async function IncomePage() {
   const glossary = getGlossary(language)
   const income = getIncomeReview(currencyPreferences.displayCurrency)
   const latestMonth = income.byMonth[income.byMonth.length - 1]
-  const latestMonthLabel = latestMonth?.month ?? 'n/a'
+  const latestMonthLabel = latestMonth?.month ?? EMPTY_VALUE
 
   return (
     <>
@@ -209,7 +209,7 @@ export default async function IncomePage() {
               { key: 'row_count', label: copy.columns.rows, align: 'right', render: (r) => fmtNumber(r.row_count) },
               { key: 'native_income', label: copy.columns.nativeIncome, align: 'right', render: (r) => money(r.native_income, r.currency) },
               { key: 'base_income', label: copy.columns.baseIncome, align: 'right', render: (r) => money(r.base_income, income.currency) },
-              { key: 'market_value', label: copy.columns.marketValue, align: 'right', render: (r) => (r.market_value == null ? 'n/a' : money(r.market_value)) },
+              { key: 'market_value', label: copy.columns.marketValue, align: 'right', render: (r) => (r.market_value == null ? EMPTY_VALUE : money(r.market_value)) },
               { key: 'trailing_yield', label: copy.columns.yield, align: 'right', render: (r) => fmtPct(r.trailing_yield) },
               { key: 'yield_on_cost', label: copy.columns.yieldOnCost, align: 'right', render: (r) => fmtPct(r.yield_on_cost) },
             ]}

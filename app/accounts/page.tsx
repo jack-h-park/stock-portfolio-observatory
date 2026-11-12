@@ -28,11 +28,11 @@ export default async function AccountsPage() {
         {/* Each date is kept whole and the line may break between them, so a
             narrow column shows the range on two lines instead of cutting it. */}
         <div className="tabular-nums text-ink">
-          <span className="whitespace-nowrap">{fmtDate(range.start)}</span>
+          <span className="whitespace-nowrap">{fmtDate(range.start, language)}</span>
           {range.end !== range.start ? (
             <>
               {' '}
-              <span className="whitespace-nowrap">{copy.rangeEnd(fmtDate(range.end))}</span>
+              <span className="whitespace-nowrap">{copy.rangeEnd(fmtDate(range.end, language))}</span>
             </>
           ) : null}
         </div>
@@ -61,10 +61,10 @@ export default async function AccountsPage() {
           />
         </Card>
         <Card>
-          <MetricField label={copy.firstDate} value={fmtDate(summary.firstDate)} hint={copy.firstDateHint} valueClassName="text-title tabular-nums" />
+          <MetricField label={copy.firstDate} value={fmtDate(summary.firstDate, language)} hint={copy.firstDateHint} valueClassName="text-title tabular-nums" />
         </Card>
         <Card>
-          <MetricField label={copy.lastDate} value={fmtDate(summary.lastDate)} hint={copy.lastDateHint} valueClassName="text-title tabular-nums" />
+          <MetricField label={copy.lastDate} value={fmtDate(summary.lastDate, language)} hint={copy.lastDateHint} valueClassName="text-title tabular-nums" />
         </Card>
       </CardRow>
 
@@ -115,7 +115,7 @@ export default async function AccountsPage() {
                         transactions={row.ranges.transactions}
                         dividends={row.ranges.dividends}
                         holdings={row.ranges.holdings}
-                        label={copy.timelineLabel(maskAccountLabel(row.name), fmtDate(row.firstDate), fmtDate(row.lastDate))}
+                        label={copy.timelineLabel(maskAccountLabel(row.name), fmtDate(row.firstDate, language), fmtDate(row.lastDate, language))}
                       />
                     ),
                   },
@@ -132,7 +132,7 @@ export default async function AccountsPage() {
               render: (row: AccountDataRange) =>
                 row.ranges.lots?.start ? (
                   <>
-                    <div className="tabular-nums text-ink">{copy.since(fmtDate(row.ranges.lots.start))}</div>
+                    <div className="tabular-nums text-ink">{copy.since(fmtDate(row.ranges.lots.start, language))}</div>
                     <div className="text-label tabular-nums text-ink-3">{copy.rows(row.ranges.lots.count, fmtNumber(row.ranges.lots.count))}</div>
                   </>
                 ) : (

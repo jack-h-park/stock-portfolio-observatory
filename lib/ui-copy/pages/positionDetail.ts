@@ -55,7 +55,6 @@ export const positionDetail = defineCopy({
     noTaxPreview: 'No tax-lot sale preview available',
     noOpenLots: 'No open tax lots for this ticker',
     noDividends: 'No dividend rows for this ticker',
-    noValue: 'No value',
     openPlanner: 'Open planner',
     eventKinds: {
       dividend: 'Dividend',
@@ -159,7 +158,6 @@ export const positionDetail = defineCopy({
     noTaxPreview: '세금 단위 매도 미리보기를 만들 수 없습니다',
     noOpenLots: '이 종목의 미결제 세금 단위가 없습니다',
     noDividends: '이 종목의 배당 행이 없습니다',
-    noValue: '값 없음',
     openPlanner: '세금 계획 열기',
     eventKinds: {
       dividend: '배당',

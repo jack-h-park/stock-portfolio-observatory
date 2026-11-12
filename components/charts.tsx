@@ -19,6 +19,7 @@ import {
   YAxis,
 } from 'recharts'
 import { marketTone, type Tone } from '@/lib/tone'
+import { EMPTY_VALUE, fmtNumber } from '@/lib/format'
 
 const AXIS = { fontSize: 10, fill: 'var(--text-tertiary)' }
 
@@ -106,7 +107,7 @@ export function TrendBarChart({
 }) {
   const interactive = !!onBarSelect
   const hasSelection = selectedKey != null && selectedKey !== ''
-  const formatAxisValue = (value: number) => `${yAxisPrefix}${value.toLocaleString()}${yAxisSuffix}`
+  const formatAxisValue = (value: number) => `${yAxisPrefix}${fmtNumber(value, 3, 0)}${yAxisSuffix}`
   const chartData = data.map((d) => {
     const value = Number(d[yKey])
     return { ...d, [yKey]: Number.isFinite(value) ? value : 0 }
@@ -146,7 +147,7 @@ export function TrendBarChart({
         <Tooltip
           cursor={{ fill: 'var(--bg-surface)' }}
           contentStyle={TOOLTIP_SURFACE}
-          formatter={(value: number) => [`${yAxisPrefix}${value.toLocaleString()}${yAxisSuffix}`, undefined]}
+          formatter={(value: number) => [`${yAxisPrefix}${fmtNumber(value, 3, 0)}${yAxisSuffix}`, undefined]}
         />
         <Bar
           dataKey={yKey}
@@ -186,6 +187,7 @@ export function PortfolioTrendChart({
   valuePrefix = '',
   valueSuffix = '',
   axisLabel,
+  valueName,
 }: {
   data: { date: string; value: number | null }[]
   dataKey: string
@@ -194,8 +196,10 @@ export function PortfolioTrendChart({
   valuePrefix?: string
   valueSuffix?: string
   axisLabel?: string
+  /** The series name in the tooltip, in the page language. */
+  valueName: string
 }) {
-  const formatValue = (value: number) => `${valuePrefix}${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}${valueSuffix}`
+  const formatValue = (value: number) => `${valuePrefix}${fmtNumber(value, 1, 0)}${valueSuffix}`
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
@@ -210,12 +214,12 @@ export function PortfolioTrendChart({
         />
         <Tooltip
           contentStyle={TOOLTIP_SURFACE}
-          formatter={(value: number) => [formatValue(value), 'Value']}
+          formatter={(value: number) => [formatValue(value), valueName]}
         />
         <Line
           type="linear"
           dataKey={dataKey}
-          name="Value"
+          name={valueName}
           connectNulls={false}
           stroke={color}
           strokeWidth={2}
@@ -246,7 +250,7 @@ export function PortfolioMultiTrendChart({
   axisLabel?: string
   rightAxisLabel?: string
 }) {
-  const formatValue = (value: number) => `${valuePrefix}${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}${valueSuffix}`
+  const formatValue = (value: number) => `${valuePrefix}${fmtNumber(value, 1, 0)}${valueSuffix}`
   const rightSeries = series.filter((item) => item.axis === 'right')
   // Ticks take the series color when one series owns the axis, so the scale
   // reads as belonging to that line rather than to the chart.
@@ -347,7 +351,7 @@ export function StackedAssetChart({
   childrenBand?: { label: string; combinedLabel: string }
 }) {
   const prefix = currency === 'USD' ? '$' : '₩'
-  const formatValue = (value: number) => `${prefix}${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}M`
+  const formatValue = (value: number) => `${prefix}${fmtNumber(value, 1, 0)}M`
   const firstDate = points[0]?.date
   const starts = STACK_ORDER.filter((key) => startsOn[key] && startsOn[key] !== firstDate)
   return (
@@ -372,13 +376,13 @@ export function StackedAssetChart({
                 {childrenBand ? (
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                     <span style={{ color: CHILDREN_COLOR }}>{childrenBand.label}</span>
-                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{point.children == null ? '—' : formatValue(point.children)}</span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{point.children == null ? EMPTY_VALUE : formatValue(point.children)}</span>
                   </div>
                 ) : null}
                 {[...STACK_ORDER].reverse().map((key) => (
                   <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                     <span style={{ color: ASSET_COLORS[key] }}>{labels[key]}</span>
-                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{point[key] == null ? '—' : formatValue(point[key]!)}</span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{point[key] == null ? EMPTY_VALUE : formatValue(point[key]!)}</span>
                   </div>
                 ))}
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 4, borderTop: '1px solid var(--border-subtle)', paddingTop: 4, fontWeight: 500 }}>
@@ -481,7 +485,7 @@ export function StackedBarChart({
       return next
     })
   }
-  const format = (value: number) => `${yAxisPrefix}${value.toLocaleString()}${yAxisSuffix}`
+  const format = (value: number) => `${yAxisPrefix}${fmtNumber(value, 3, 0)}${yAxisSuffix}`
   const open = (seriesKey: string) => (entry: { payload?: Record<string, unknown> }) => {
     const links = linkKey ? (entry?.payload?.[linkKey] as Record<string, string> | undefined) : undefined
     const href = links?.[seriesKey]

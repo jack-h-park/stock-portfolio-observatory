@@ -1,10 +1,11 @@
+import { EMPTY_VALUE } from '@/lib/format'
 import { defineCopy } from '@/lib/ui-copy/define'
 
 export const cashInflow = defineCopy({
   en: {
     title: 'Cash Inflow', emphasis: 'Inflow',
     subtitle: 'New money that arrived: salary, dividends net of withholding, interest and other credits, at the rate of the day each arrived.',
-    headlineEyebrow: 'Total inflow', notAvailable: 'n/a',
+    headlineEyebrow: 'Total inflow', notAvailable: EMPTY_VALUE,
     monthly: 'Monthly', yearly: 'Yearly',
     monthlyAverage: 'Monthly average',
     categories: { salary: 'Salary', dividend: 'Dividends', interest: 'Interest', other: 'Other', unclassified: 'Unclassified' },
@@ -59,7 +60,7 @@ export const cashInflow = defineCopy({
   ko: {
     title: '현금 유입', emphasis: '유입',
     subtitle: '새로 들어온 돈입니다. 급여, 원천징수 후 배당, 이자, 기타 입금을 입금일 환율로 환산했습니다.',
-    headlineEyebrow: '총 유입', notAvailable: '해당 없음',
+    headlineEyebrow: '총 유입', notAvailable: EMPTY_VALUE,
     monthly: '월간', yearly: '연간',
     monthlyAverage: '월평균',
     categories: { salary: '급여', dividend: '배당', interest: '이자', other: '기타', unclassified: '미분류' },

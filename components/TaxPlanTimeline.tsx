@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { updateSavedInstructionExecutionAction } from '@/app/tax-planning/actions'
 import { getPageCopy } from '@/lib/ui-copy'
 import { Badge, Button, Card, EmptyState, Label, Signed, marketTone } from '@/components/ui'
-import { fmtNumber } from '@/lib/format'
+import { fmtDateShort, fmtMonth, fmtNumber, fmtSigned, localeFor } from '@/lib/format'
 import { useMoneyFormatter } from '@/components/LanguageProvider'
 import type { Language } from '@/lib/i18n'
 import { positionHref } from '@/lib/position-url'
@@ -19,18 +19,8 @@ import { maskAccountLabel } from '@/lib/account-label'
 
 const PAGE_SIZE = 50
 
-function dateLabel(value: string | null | undefined, language: Language) {
-  if (!value) return 'n/a'
-  return new Intl.DateTimeFormat(language === 'ko' ? 'ko-KR' : 'en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  }).format(new Date(`${value.slice(0, 10)}T00:00:00Z`))
-}
-
 function compactKrw(value: number, language: Language) {
-  return new Intl.NumberFormat(language === 'ko' ? 'ko-KR' : 'en-US', {
+  return new Intl.NumberFormat(localeFor(language), {
     style: 'currency',
     currency: 'KRW',
     notation: 'compact',
@@ -137,7 +127,7 @@ function MonthSummary({
         [copy.plannedSales, money(month.proceedsKrw, 'KRW'), 'text-ink'],
         [copy.position, fmtNumber(month.positionCount), 'text-ink'],
         [copy.grossGains, money(grossGainKrw, 'KRW'), 'text-success'],
-        [copy.pairedLosses, `-${money(month.lossKrw, 'KRW')}`, 'text-danger'],
+        [copy.pairedLosses, fmtSigned(-month.lossKrw, (n) => money(n, 'KRW')), 'text-danger'],
         [copy.netGainLoss, money(month.gainKrw, 'KRW'), month.gainKrw >= 0 ? 'text-success' : 'text-danger'],
       ].map(([label, value, tone]) => (
         <div key={label} className="bg-card px-3 py-2.5">
@@ -155,14 +145,14 @@ export function TaxPlanTimeline({
   initialPage,
   savedPlanId,
   execution = {},
-  language = 'en',
+  language,
 }: {
   plan: MonthlySaleMasterPlan
   initialMonth: string
   initialPage: number
   savedPlanId?: string
   execution?: Record<string, SavedInstructionExecution>
-  language?: Language
+  language: Language
 }) {
   const money = useMoneyFormatter()
   const copy = getPageCopy('taxPlanning', language).timeline
@@ -216,8 +206,8 @@ export function TaxPlanTimeline({
             <div>
               <Label size="micro">{copy.executionSpan}</Label>
               <div className="mt-1 text-title font-medium text-ink">
-                {dateLabel(plan.summary.startDate, language)} <span className="text-ink-3">{copy.to}</span>{' '}
-                {dateLabel(plan.summary.endDate, language)}
+                {fmtDateShort(plan.summary.startDate, language)} <span className="text-ink-3">{copy.to}</span>{' '}
+                {fmtDateShort(plan.summary.endDate, language)}
               </div>
               <p className="mt-1 text-label leading-relaxed text-ink-3">
                 {copy.inspectHint}
@@ -260,7 +250,7 @@ export function TaxPlanTimeline({
                           type="button"
                           onClick={() => chooseMonth(month.yearMonth)}
                           aria-pressed={selected}
-                          aria-label={copy.plannedSalesAria(month.label, money(month.proceedsKrw, 'KRW'))}
+                          aria-label={copy.plannedSalesAria(fmtMonth(month.yearMonth, language, { year: true }), money(month.proceedsKrw, 'KRW'))}
                           className={`group relative flex h-[8.5rem] w-[5.1rem] shrink-0 flex-col items-center rounded-md border px-1.5 py-2 text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-info ${
                             selected
                               ? 'border-info bg-info/5 shadow-card'
@@ -268,9 +258,7 @@ export function TaxPlanTimeline({
                           }`}
                         >
                           <span className="text-label font-medium text-ink">
-                            {new Intl.DateTimeFormat(language === 'ko' ? 'ko-KR' : 'en-US', { month: 'short', timeZone: 'UTC' }).format(
-                              new Date(`${month.yearMonth}-01T00:00:00Z`)
-                            )}
+                            {fmtMonth(month.yearMonth, language)}
                           </span>
                           <span className="mt-0.5 text-micro tabular-nums text-ink-3">
                             {fmtNumber(month.positionCount)} {copy.positions}
@@ -307,7 +295,7 @@ export function TaxPlanTimeline({
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-title font-medium text-ink">{activeMonth.label}</h3>
+                  <h3 className="text-title font-medium text-ink">{fmtMonth(activeMonth.yearMonth, language, { year: true })}</h3>
                   <Badge>{copy.instructions(fmtNumber(activeMonth.instructionCount))}</Badge>
                 </div>
                 <p className="mt-1 text-label text-ink-3">
@@ -336,8 +324,8 @@ export function TaxPlanTimeline({
                     nowrap: true,
                     render: (row: any) => (
                       <>
-                        <span className="font-mono text-ink">{dateLabel(row.plannedDate, language)}</span>
-                        <div className="mt-1 text-micro text-ink-3">{copy.longTermFrom(dateLabel(row.longTermEligibleDate, language))}</div>
+                        <span className="font-mono text-ink">{fmtDateShort(row.plannedDate, language)}</span>
+                        <div className="mt-1 text-micro text-ink-3">{copy.longTermFrom(fmtDateShort(row.longTermEligibleDate, language))}</div>
                       </>
                     ),
                   },

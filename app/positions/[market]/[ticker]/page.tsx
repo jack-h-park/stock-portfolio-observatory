@@ -5,7 +5,7 @@ import { FreshnessInline } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, Label, MetricField, MetricHeroCard, TextLink } from '@/components/ui'
 import { getOperationalHealth, getPositionDetail, type FreshnessItem } from '@/lib/adapters/portfolio-db'
-import { fmtDateTime, fmtNumber, fmtPct, fmtQuantity, shortHash } from '@/lib/format'
+import { EMPTY_VALUE, fmtDateTime, fmtNumber, fmtPct, fmtQuantity, shortHash } from '@/lib/format'
 import { freshnessLabel } from '@/lib/freshness-text'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
@@ -39,8 +39,8 @@ type PageCopy = ReturnType<typeof getPageCopy<'positionDetail'>>
 // directly. They used to be module-scope closures over the raw lib formatter, so
 // they ignored the display-currency preference that the rest of the page honours —
 // the market-value column rendered in KRW next to a cost column rendered in USD.
-function moneyOrNa(copy: PageCopy, money: MoneyFormatter, value: number | null | undefined, currency: string) {
-  return value == null ? copy.noValue : money(value, currency)
+function moneyOrNa(money: MoneyFormatter, value: number | null | undefined, currency: string) {
+  return value == null ? EMPTY_VALUE : money(value, currency)
 }
 
 type CopyMap = Record<string, string>
@@ -257,7 +257,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
           title={copy.marketValue}
           info={copy.marketValueInfo}
           eyebrow={copy.positionHeadline}
-          value={moneyOrNa(copy, money, detail.totals.native_market_value, detail.currency)}
+          value={moneyOrNa(money, detail.totals.native_market_value, detail.currency)}
           hint={copy.quantityHint(fmtQuantity(detail.totals.quantity, 4))}
         >
           <KpiBand>
@@ -270,15 +270,15 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             />
             <MetricField
               label={copy.unrealized}
-              value={moneyOrNa(copy, money, detail.totals.native_unrealized_gl, detail.currency)}
+              value={moneyOrNa(money, detail.totals.native_unrealized_gl, detail.currency)}
               info={glossary.unrealizedGl.description}
-              hint={nativeUnrealizedPct == null ? copy.noValue : fmtPct(nativeUnrealizedPct)}
+              hint={fmtPct(nativeUnrealizedPct)}
               tone={signTone(detail.totals.native_unrealized_gl)}
               valueClassName="text-title"
             />
             <MetricField
               label={copy.baseUnrealized}
-              value={moneyOrNa(copy, money, detail.totals.base_unrealized_gl, 'KRW')}
+              value={moneyOrNa(money, detail.totals.base_unrealized_gl, 'KRW')}
               info={`${glossary.unrealizedGl.description} ${glossary.baseAmount.description}`}
               hint={baseUnrealizedPct == null ? glossary.baseAmount.description : `${fmtPct(baseUnrealizedPct)} · ${glossary.baseAmount.description}`}
               tone={signTone(detail.totals.base_unrealized_gl)}
@@ -346,7 +346,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
                 <li key={row.type} className="flex items-center justify-between gap-3 py-2 text-caption">
                   <Badge tone={row.type === 'DIVIDEND' ? 'success' : row.type === 'SELL' ? 'warning' : 'info'}>{translated(row.type, copy.transactionTypes)}</Badge>
                   <span className="text-ink-3">{copy.rowCount(fmtNumber(row.count))}</span>
-                  <span className="font-medium tabular-nums text-ink">{row.amount == null ? 'n/a' : money(row.amount, detail.currency)}</span>
+                  <span className="font-medium tabular-nums text-ink">{row.amount == null ? EMPTY_VALUE : money(row.amount, detail.currency)}</span>
                 </li>
               ))}
             </ul>
@@ -363,14 +363,14 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               { key: 'account', label: copy.columns.account, render: (r: { account: string }) => maskAccountLabel(r.account) },
               { key: 'quantity', label: copy.columns.quantity, align: 'right', render: (r) => fmtQuantity(r.quantity, 4) },
               { key: 'native_cost', label: copy.columns.cost, align: 'right', render: (r) => money(r.native_cost, r.currency) },
-              { key: 'native_market_value', label: copy.columns.market, align: 'right', render: (r) => moneyOrNa(copy, money, r.native_market_value, r.currency) },
+              { key: 'native_market_value', label: copy.columns.market, align: 'right', render: (r) => moneyOrNa(money, r.native_market_value, r.currency) },
               {
                 key: 'native_unrealized_gl',
                 label: copy.columns.gainLoss,
                 align: 'right',
                 render: (r) => (
                   <span className={Number(r.native_unrealized_gl ?? 0) >= 0 ? 'text-success' : 'text-danger'}>
-                    {moneyOrNa(copy, money, r.native_unrealized_gl, r.currency)}
+                    {moneyOrNa(money, r.native_unrealized_gl, r.currency)}
                   </span>
                 ),
               },
@@ -407,8 +407,8 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
                 <span className="min-w-0 truncate text-ink">
                   {displayAccount(event.brokerage, event.account)} · {event.detail}
                 </span>
-                <span className="text-right tabular-nums text-ink-3">{event.quantity == null ? 'n/a' : fmtQuantity(event.quantity, 4)}</span>
-                <span className="text-right tabular-nums text-ink">{event.amount == null ? 'n/a' : money(event.amount, event.currency)}</span>
+                <span className="text-right tabular-nums text-ink-3">{event.quantity == null ? EMPTY_VALUE : fmtQuantity(event.quantity, 4)}</span>
+                <span className="text-right tabular-nums text-ink">{event.amount == null ? EMPTY_VALUE : money(event.amount, event.currency)}</span>
               </li>
             ))}
           </ul>
@@ -423,8 +423,8 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               { key: 'status', label: copy.columns.status, render: (r: { status: 'linked' | 'unlinked' }) => <Badge tone={r.status === 'linked' ? 'success' : 'warning'}>{copy.linkStatus[r.status] ?? r.status}</Badge> },
               { key: 'label', label: copy.columns.file, render: (r) => <span className="max-w-[20rem] break-words">{r.label}</span> },
               { key: 'usage', label: copy.columns.usage },
-              { key: 'rows', label: copy.columns.rows, align: 'right', render: (r) => (r.rows == null ? 'n/a' : fmtNumber(r.rows)) },
-              { key: 'modified', label: copy.columns.modified, render: (r) => (r.modified ? fmtDateTime(r.modified) : 'n/a') },
+              { key: 'rows', label: copy.columns.rows, align: 'right', render: (r) => (r.rows == null ? EMPTY_VALUE : fmtNumber(r.rows)) },
+              { key: 'modified', label: copy.columns.modified, render: (r) => (r.modified ? fmtDateTime(r.modified, language) : EMPTY_VALUE) },
             ]}
           />
         </Card>
@@ -435,9 +435,9 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             columns={[
               { key: 'source', label: copy.columns.source, render: (r) => <span className="max-w-[18rem] break-words">{r.source}</span> },
               { key: 'usages', label: copy.columns.usage, render: (r) => r.usages.join(', ') },
-              { key: 'row_count', label: copy.columns.rows, align: 'right', render: (r) => (r.file ? fmtNumber(r.file.row_count) : 'n/a') },
-              { key: 'mtime_ms', label: copy.columns.modified, render: (r) => (r.file ? fmtDateTime(new Date(r.file.mtime_ms).toISOString()) : 'n/a') },
-              { key: 'sha256', label: copy.columns.sha, render: (r) => (r.file ? <code className="font-mono text-label">{shortHash(r.file.sha256)}</code> : 'n/a') },
+              { key: 'row_count', label: copy.columns.rows, align: 'right', render: (r) => (r.file ? fmtNumber(r.file.row_count) : EMPTY_VALUE) },
+              { key: 'mtime_ms', label: copy.columns.modified, render: (r) => (r.file ? fmtDateTime(new Date(r.file.mtime_ms).toISOString(), language) : EMPTY_VALUE) },
+              { key: 'sha256', label: copy.columns.sha, render: (r) => (r.file ? <code className="font-mono text-label">{shortHash(r.file.sha256)}</code> : EMPTY_VALUE) },
             ]}
           />
         </Card>
@@ -463,14 +463,14 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
                 { key: 'acquired_date', label: copy.columns.acquired },
                 { key: 'holdingBucket', label: copy.columns.term, render: (r: { holdingBucket: 'long' | 'short' }) => <Badge tone={bucketTone(r.holdingBucket)}>{copy.buckets[r.holdingBucket] ?? r.holdingBucket}</Badge> },
                 { key: 'open_quantity', label: copy.columns.quantity, align: 'right', render: (r) => fmtQuantity(r.open_quantity, 4) },
-                { key: 'proceedsNative', label: copy.columns.proceeds, align: 'right', render: (r) => (r.proceedsNative == null ? 'n/a' : money(r.proceedsNative, r.currency)) },
+                { key: 'proceedsNative', label: copy.columns.proceeds, align: 'right', render: (r) => (r.proceedsNative == null ? EMPTY_VALUE : money(r.proceedsNative, r.currency)) },
                 {
                   key: 'gainKrw',
                   label: copy.columns.baseGainLoss,
                   align: 'right',
                   render: (r) => (
                     <span className={Number(r.gainKrw ?? 0) >= 0 ? 'text-success' : 'text-danger'}>
-                      {r.gainKrw == null ? 'n/a' : money(r.gainKrw, 'KRW')}
+                      {r.gainKrw == null ? EMPTY_VALUE : money(r.gainKrw, 'KRW')}
                     </span>
                   ),
                 },
@@ -512,8 +512,8 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
                 { key: 'account', label: copy.columns.account, render: (r: { account: string }) => maskAccountLabel(r.account) },
                 { key: 'type', label: copy.columns.type, render: (r) => <Badge tone={r.type === 'SELL' ? 'warning' : r.type === 'DIVIDEND' ? 'success' : 'info'}>{translated(r.type, copy.transactionTypes)}</Badge> },
                 { key: 'quantity', label: copy.columns.quantity, align: 'right', render: (r) => fmtQuantity(r.quantity, 4) },
-                { key: 'native_amount', label: copy.columns.amount, align: 'right', render: (r) => moneyOrNa(copy, money, r.native_amount, r.currency) },
-                { key: 'native_unit_price', label: copy.columns.unit, align: 'right', render: (r) => moneyOrNa(copy, money, r.native_unit_price, r.currency) },
+                { key: 'native_amount', label: copy.columns.amount, align: 'right', render: (r) => moneyOrNa(money, r.native_amount, r.currency) },
+                { key: 'native_unit_price', label: copy.columns.unit, align: 'right', render: (r) => moneyOrNa(money, r.native_unit_price, r.currency) },
                 { key: 'source', label: copy.columns.source },
                 { key: 'page', label: copy.columns.page, align: 'right' },
               ]}
@@ -532,7 +532,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
                 { key: 'brokerage', label: copy.columns.broker },
                 { key: 'account', label: copy.columns.account, render: (r: { account: string }) => maskAccountLabel(r.account) },
                 { key: 'native_amount', label: copy.columns.amount, align: 'right', render: (r) => money(r.native_amount, r.currency) },
-                { key: 'native_tax_withheld', label: copy.columns.tax, align: 'right', render: (r) => moneyOrNa(copy, money, r.native_tax_withheld, r.currency) },
+                { key: 'native_tax_withheld', label: copy.columns.tax, align: 'right', render: (r) => moneyOrNa(money, r.native_tax_withheld, r.currency) },
                 { key: 'amount_krw', label: copy.columns.baseAmount, align: 'right', render: (r) => money(r.amount_krw, 'KRW') },
                 { key: 'source', label: copy.columns.source },
                 { key: 'page', label: copy.columns.page, align: 'right' },

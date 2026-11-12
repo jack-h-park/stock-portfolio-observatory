@@ -36,7 +36,7 @@ export const realized = defineCopy({
       market: 'Market',
       broker: 'Broker',
       account: 'Account',
-      instrument: 'Instrument',
+      instrument: 'Position',
       acquired: 'Acquired',
       sold: 'Sold',
       quantity: 'Qty',

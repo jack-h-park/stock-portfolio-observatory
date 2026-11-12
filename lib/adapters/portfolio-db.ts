@@ -3586,6 +3586,8 @@ function tickerlessSuggestion(category: string | null | undefined): TickerlessSu
  * The `note` inside a suggested rule. The rule is JSON the operator pastes into
  * data/manual-mappings.json, so this is file content, not page copy, and stays
  * English; the page shows the suggestion through `dataOps.tickerlessSuggestion`.
+ * The English values there match these notes; change both together
+ * (lib/ui-copy/pages/dataOps.ts).
  */
 const TICKERLESS_RULE_NOTE: Record<TickerlessSuggestion, string> = {
   keep_interest: 'Keep tickerless; category explains non-position cash interest.',

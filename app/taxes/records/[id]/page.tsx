@@ -13,6 +13,7 @@ import { routeMetadata } from '@/lib/page-names'
 import { taxRecordHeading } from '@/lib/page-headings'
 import { getPageCopy } from '@/lib/ui-copy'
 import { reviewTaxHistory } from '../../actions'
+import { EMPTY_VALUE } from '@/lib/format'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/taxes/history')
@@ -155,7 +156,7 @@ export default async function TaxRecordPage({
                     {version.status}
                     {version.statusDate ? ` · ${version.statusDate}` : ''}
                   </td>
-                  <td className="p-3">{version.supersedesId ?? '—'}</td>
+                  <td className="p-3">{version.supersedesId ?? EMPTY_VALUE}</td>
                   <td className="p-3">{version.date ?? copy.none}</td>
                   <td className="whitespace-nowrap p-3 tabular-nums">{formatMoney(version.liability)}</td>
                   <td className="p-3">{version.evidenceIds.join(' · ') || copy.none}</td>

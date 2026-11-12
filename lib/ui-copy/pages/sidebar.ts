@@ -10,6 +10,7 @@ export const sidebar = defineCopy({
     source: 'Generated from local sources',
     language: 'Language',
     currency: 'Currency',
+    currencies: { KRW: 'KRW', USD: 'USD' },
     assets: 'Assets',
     assetViews: { stocks: 'Stocks', all: 'All assets' },
     sections: [
@@ -79,6 +80,7 @@ export const sidebar = defineCopy({
     source: '로컬 원본에서 생성됨',
     language: '언어',
     currency: '화폐',
+    currencies: { KRW: '원화', USD: '달러' },
     assets: '자산',
     assetViews: { stocks: '주식', all: '전체 자산' },
     sections: [
@@ -101,7 +103,7 @@ export const sidebar = defineCopy({
           { href: '/taxes/history', label: '세금 이력' },
           { href: '/tax-planning', label: '세금 계획' },
           { href: '/tax-settings', label: '세금 설정' },
-          { href: '/lots', label: '세금 계산 단위' },
+          { href: '/lots', label: '세금 단위' },
           { href: '/realized', label: '실현 손익 내역' },
         ],
       },

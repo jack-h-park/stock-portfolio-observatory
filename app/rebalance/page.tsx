@@ -3,7 +3,7 @@ import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, Signed, TextLink, marketTone } from '@/components/ui'
 import { getOperationalHealth, getRebalanceReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
-import { fmtNumber, fmtPct } from '@/lib/format'
+import { EMPTY_VALUE, fmtNumber, fmtPct, fmtPctRange } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
@@ -107,7 +107,7 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
         eyebrow={routeSection('/rebalance', language)}
         title={copy.title}
         emphasis={copy.emphasis}
-        subtitle={copy.subtitle(rebalance.policy.marketTargets.map((row) => `${row.market} ${fmtNumber(row.targetPct)}%`).join(' / '), fmtNumber(rebalance.policy.positionCapPct))}
+        subtitle={copy.subtitle(rebalance.policy.marketTargets.map((row) => `${row.market} ${fmtPct(row.targetPct, { digits: 0 })}`).join(' / '), fmtNumber(rebalance.policy.positionCapPct))}
         action={
           <div className="flex items-center gap-2">
             {freshnessIssues ? <Badge tone="warning">{copy.freshnessIssues(freshnessIssues)}</Badge> : <Badge tone="success">{copy.inputsReady}</Badge>}
@@ -141,7 +141,7 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
                 { key: 'sleeve', label: ac.sleeve, render: (r: SleeveRow) => <span className="font-medium text-ink">{proposalCopy.sleeves[r.sleeve]}</span> },
                 { key: 'pct', label: ac.current, align: 'right', render: (r: SleeveRow) => fmtPct(r.pct) },
                 { key: 'target', label: ac.target, align: 'right', render: (r: SleeveRow) => fmtPct(r.target) },
-                { key: 'band', label: ac.band, align: 'right', render: (r: SleeveRow) => `${fmtNumber(r.lower, 1)}–${fmtNumber(r.upper, 1)}%` },
+                { key: 'band', label: ac.band, align: 'right', render: (r: SleeveRow) => fmtPctRange(r.lower, r.upper, 1) },
                 { key: 'status', label: ac.status, render: (r: SleeveRow) => <Badge tone={SLEEVE_TONE[r.status]}>{ac.statuses[r.status]}</Badge> },
               ]}
             />
@@ -303,7 +303,7 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3 text-caption text-ink-2">
                 <span>{editor.usLabel}</span>
-                <Badge tone="neutral">{fmtNumber(rebalance.policy.marketTargets.find((t) => t.market === 'US')?.targetPct ?? 0, 1)}%</Badge>
+                <Badge tone="neutral">{fmtPct(rebalance.policy.marketTargets.find((t) => t.market === 'US')?.targetPct ?? 0, { digits: 1 })}</Badge>
               </div>
               <p className="text-label leading-relaxed text-ink-3">{editor.derivedNote}</p>
               <TextLink href="/rebalance/settings">{copy.settingsLink}</TextLink>
@@ -313,7 +313,7 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
             <Field label={editor.usLabel} name="usTargetPct" defaultValue={targetPolicy.usTargetPct} suffix="%" />
             <div className="flex items-center justify-between gap-3 text-caption text-ink-2">
               <span>{editor.krLabel}</span>
-              <Badge tone="neutral">{fmtNumber(100 - targetPolicy.usTargetPct)}%</Badge>
+              <Badge tone="neutral">{fmtPct(100 - targetPolicy.usTargetPct, { digits: 0 })}</Badge>
             </div>
             <p className="text-label leading-relaxed text-ink-3">
               {targetPolicy.source === 'default' ? editor.defaultNote : editor.hint}
@@ -378,7 +378,7 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
             </div>
             <div className="flex items-center justify-between gap-3">
               <span>{copy.singlePositionCap}</span>
-              <Badge tone="neutral">{fmtNumber(rebalance.policy.positionCapPct)}%</Badge>
+              <Badge tone="neutral">{fmtPct(rebalance.policy.positionCapPct, { digits: 0 })}</Badge>
             </div>
             <div className="flex items-center justify-between gap-3">
               <span>{copy.shortTermWarning}</span>
@@ -403,7 +403,7 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
                 { key: 'currentPct', label: copy.columns.currentPct, align: 'right', render: (r) => fmtPct(r.currentPct) },
                 { key: 'capGapPct', label: copy.columns.overCap, align: 'right', render: (r) => fmtPct(r.capGapPct) },
                 { key: 'capGapValue', label: copy.columns.gapValue, align: 'right', render: (r) => money(r.capGapValue) },
-                { key: 'base_unrealized_gl', label: copy.columns.baseGl, align: 'right', render: (r) => (r.base_unrealized_gl == null ? 'n/a' : money(r.base_unrealized_gl)) },
+                { key: 'base_unrealized_gl', label: copy.columns.baseGl, align: 'right', render: (r) => (r.base_unrealized_gl == null ? EMPTY_VALUE : money(r.base_unrealized_gl)) },
                 { key: 'short_term_ratio', label: copy.columns.shortPct, align: 'right', render: (r) => fmtPct(r.short_term_ratio) },
               ]}
             />
@@ -418,7 +418,7 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
               rows={rebalance.taxSensitive}
               columns={[
                 { key: 'ticker', label: copy.columns.position, render: (r) => <PositionLink row={r} /> },
-                { key: 'base_market_value', label: copy.columns.baseMarket, align: 'right', render: (r) => (r.base_market_value == null ? 'n/a' : money(r.base_market_value)) },
+                { key: 'base_market_value', label: copy.columns.baseMarket, align: 'right', render: (r) => (r.base_market_value == null ? EMPTY_VALUE : money(r.base_market_value)) },
                 { key: 'short_term_ratio', label: copy.columns.shortPct, align: 'right', render: (r) => fmtPct(r.short_term_ratio) },
                 { key: 'short_term_qty', label: copy.columns.shortQty, align: 'right', render: (r) => fmtNumber(r.short_term_qty, 4) },
                 { key: 'reason', label: copy.columns.reason },

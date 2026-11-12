@@ -24,6 +24,6 @@ export function freshnessDetailText(detail: FreshnessDetail, language: Language)
     case 'SOURCE_CHANGED':
       return sentences.SOURCE_CHANGED(detail)
     default:
-      return sentences[detail.code]()
+      return sentences[detail.code]?.() ?? detail.code
   }
 }

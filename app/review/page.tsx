@@ -4,7 +4,7 @@ import { FreshnessRows } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, Signed, marketTone } from '@/components/ui'
 import { getOperationalHealth, getPortfolioReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
-import { fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
+import { EMPTY_VALUE, fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
@@ -54,8 +54,8 @@ function PositionTable({
         { key: 'ticker', label: copy.columns.position, render: (r) => <PositionLink row={r} /> },
         { key: 'account_count', label: copy.columns.accounts, align: 'right', render: (r) => fmtNumber(r.account_count) },
         { key: 'quantity', label: copy.columns.quantity, align: 'right', render: (r) => fmtQuantity(r.quantity, 4) },
-        { key: 'native_market_value', label: copy.columns.market, align: 'right', render: (r) => (r.native_market_value == null ? 'n/a' : money(r.native_market_value, r.currency)) },
-        { key: 'base_market_value', label: copy.columns.baseMarket, align: 'right', render: (r) => (r.base_market_value == null ? 'n/a' : money(r.base_market_value)) },
+        { key: 'native_market_value', label: copy.columns.market, align: 'right', render: (r) => (r.native_market_value == null ? EMPTY_VALUE : money(r.native_market_value, r.currency)) },
+        { key: 'base_market_value', label: copy.columns.baseMarket, align: 'right', render: (r) => (r.base_market_value == null ? EMPTY_VALUE : money(r.base_market_value)) },
         {
           key: 'base_unrealized_gl',
           label: mode === 'term' ? copy.columns.shortPct : copy.columns.baseGl,
