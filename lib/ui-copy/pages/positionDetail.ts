@@ -1,5 +1,11 @@
 import { defineCopy } from '@/lib/ui-copy/define'
 
+// Raw values the page translates at render. Declared here rather than inline in
+// each half so the Korean half carries no English lookup words.
+type EventKind = 'dividend' | 'taxLot' | 'buy' | 'sell' | 'transaction'
+type LinkStatus = 'linked' | 'unlinked'
+type HoldingBucket = 'long' | 'short'
+
 export const positionDetail = defineCopy({
   en: {
     subtitle: (accounts: string, lots: string, transactions: string) =>
@@ -51,7 +57,27 @@ export const positionDetail = defineCopy({
     noDividends: 'No dividend rows for this ticker',
     noValue: 'No value',
     openPlanner: 'Open planner',
-    eventKinds: { Dividend: 'Dividend', 'Tax lot': 'Tax lot', Buy: 'Buy', Sell: 'Sell' } as Record<string, string>,
+    eventKinds: {
+      dividend: 'Dividend',
+      taxLot: 'Tax lot',
+      buy: 'Buy',
+      sell: 'Sell',
+      transaction: 'Transaction',
+    } as Record<EventKind, string>,
+    eventDetail: { income: 'income', openLot: 'open lot' },
+    reconDetail: (quantity: string, cost: string) => `Quantity difference ${quantity} · base cost difference ${cost}`,
+    evidenceDetail: (linked: string, unresolved: string) =>
+      `${linked} source files linked · ${unresolved} unresolved references`,
+    activityDetail: (transactions: string, dividends: string, lots: string) =>
+      `${transactions} transactions · ${dividends} dividends · ${lots} open tax lots`,
+    quantityHint: (quantity: string) => `${quantity} shares or units`,
+    holdingRowsHint: (count: string) => `${count} account holding rows`,
+    rowCount: (count: string) => `${count} rows`,
+    readOrderNote: 'Read order: value first, then cost and gain/loss, then reconciliation and lot details.',
+    linkStatus: { linked: 'linked', unlinked: 'unlinked' } as Record<LinkStatus, string>,
+    buckets: { long: 'long', short: 'short' } as Record<HoldingBucket, string>,
+    terms: { 'Long-term': 'Long-term', 'Short-term': 'Short-term' } as Record<string, string>,
+    transactionTypes: { BUY: 'BUY', SELL: 'SELL', DIVIDEND: 'DIVIDEND' } as Record<string, string>,
     columns: {
       broker: 'Broker',
       account: 'Account',
@@ -77,6 +103,7 @@ export const positionDetail = defineCopy({
       estimatedTax: 'Est. Tax',
       baseCost: 'Base Cost',
       date: 'Date',
+      paidDate: 'Date',
       type: 'Type',
       amount: 'Amount',
       unit: 'Unit',
@@ -134,7 +161,27 @@ export const positionDetail = defineCopy({
     noDividends: '이 종목의 배당 행이 없습니다',
     noValue: '값 없음',
     openPlanner: '세금 계획 열기',
-    eventKinds: { Dividend: '배당', 'Tax lot': '세금 단위', Buy: '매수', Sell: '매도' } as Record<string, string>,
+    eventKinds: {
+      dividend: '배당',
+      taxLot: '세금 단위',
+      buy: '매수',
+      sell: '매도',
+      transaction: '거래',
+    } as Record<EventKind, string>,
+    eventDetail: { income: '수익', openLot: '미결제 세금 단위' },
+    reconDetail: (quantity: string, cost: string) => `수량 차이 ${quantity} · 원화 취득원가 차이 ${cost}`,
+    evidenceDetail: (linked: string, unresolved: string) =>
+      `연결된 원본 파일 ${linked}개 · 확인되지 않은 참조 ${unresolved}개`,
+    activityDetail: (transactions: string, dividends: string, lots: string) =>
+      `거래 ${transactions}건 · 배당 ${dividends}건 · 미결제 세금 단위 ${lots}개`,
+    quantityHint: (quantity: string) => `${quantity}주(또는 단위)`,
+    holdingRowsHint: (count: string) => `계좌별 보유 행 ${count}개`,
+    rowCount: (count: string) => `${count}행`,
+    readOrderNote: '평가금액을 먼저 보고, 그다음 취득원가와 평가손익, 마지막으로 정합성과 세금 단위 세부 내역을 확인하세요.',
+    linkStatus: { linked: '연결됨', unlinked: '연결 안 됨' } as Record<LinkStatus, string>,
+    buckets: { long: '장기', short: '단기' } as Record<HoldingBucket, string>,
+    terms: { 'Long-term': '장기', 'Short-term': '단기' } as Record<string, string>,
+    transactionTypes: { BUY: '매수', SELL: '매도', DIVIDEND: '배당' } as Record<string, string>,
     columns: {
       broker: '증권사',
       account: '계좌',
@@ -160,6 +207,7 @@ export const positionDetail = defineCopy({
       estimatedTax: '예상 세금',
       baseCost: '원화 취득원가',
       date: '거래일',
+      paidDate: '지급일',
       type: '유형',
       amount: '금액',
       unit: '단가',

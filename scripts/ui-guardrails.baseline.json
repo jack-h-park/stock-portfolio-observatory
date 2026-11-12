@@ -75,8 +75,7 @@
   "english-prose-literal": {
     "app/crypto-premium/page.tsx": 11,
     "app/daily-briefing/page.tsx": 10,
-    "app/data-ops/page.tsx": 2,
-    "app/positions/[market]/[ticker]/page.tsx": 2
+    "app/data-ops/page.tsx": 2
   },
   "hand-written-grid": {
     "app/cost-basis/page.tsx": 2,
