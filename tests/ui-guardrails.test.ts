@@ -91,6 +91,8 @@ test('G1 catches copy chosen inline by language', () => {
     [1, 2],
   )
   assert.equal(hits[0].file, 'f.tsx')
+  // The loose comparisons count too.
+  assert.equal(findInlineLanguageBranch("const a = language == 'ko'\nconst b = language != 'en'").length, 2)
   // A copy module lookup, a comparison in a comment and another variable are fine.
   assert.deepEqual(findInlineLanguageBranch('const copy = pageCopy[language]'), [])
   assert.deepEqual(findInlineLanguageBranch("// language === 'ko' was here"), [])
@@ -113,6 +115,8 @@ test('G3 catches English prose in JSX text and reader-facing props', () => {
     "<Field placeholder={'Type a ticker'} />",
     "const row = { label: 'Cash on hand', kind: 'Tax lot' }",
     '<button aria-label="Close the panel">',
+    // An HTML entity is text; its `;` is not a statement end.
+    '<p>Don&apos;t do this twice</p>',
   ]
   for (const source of positives) {
     assert.ok(findEnglishProseLiteral(source).length > 0, `missed: ${source}`)
@@ -137,6 +141,37 @@ test('G3 catches English prose in JSX text and reader-facing props', () => {
   for (const source of negatives) {
     assert.deepEqual(findEnglishProseLiteral(source), [], `false positive on: ${source}`)
   }
+})
+
+// Paragraphs are usually wrapped over several lines, which the one-line
+// `>…<` run cannot see.
+test('G3 counts each line of a paragraph wrapped inside a JSX element', () => {
+  const paragraph = [
+    '      <p className="text-label text-ink-3">',
+    '        Figures are taken from the snapshot and do',
+    '        not update after the briefing date, so a later',
+    '        correction appears only in the next one.',
+    '      </p>',
+  ].join('\n')
+  assert.deepEqual(
+    (findEnglishProseLiteral(paragraph) as Hit[]).map((h) => h.line),
+    [2, 3, 4],
+  )
+
+  const comment = [
+    '      <span>',
+    '        {/*',
+    '          A bare button, not a styled control. It carries no',
+    '          padding of its own so it occupies the same box.',
+    '        */}',
+    '        {label}',
+    '      </span>',
+  ].join('\n')
+  assert.deepEqual(findEnglishProseLiteral(comment), [])
+
+  // A ternary chain wrapped over lines is code, not text.
+  const ternary = ['  const label = paused', '    ? copy.pausedSince(clock)', '    : copy.paused', '  return <span>x</span>'].join('\n')
+  assert.deepEqual(findEnglishProseLiteral(ternary), [])
 })
 
 test('every counted check scans app and components and skips the bilingual error page', () => {

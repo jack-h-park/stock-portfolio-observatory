@@ -304,16 +304,45 @@ const PROSE_PROP = new RegExp(
  * page, and a reviewer reading only the English UI cannot tell. Only
  * reader-facing places are read (JSX text, and the props listed above), so
  * class lists, paths and ids are left alone.
+ *
+ * JSX text is read two ways. A run between `>` and `<` on one line counts
+ * once. A paragraph wrapped over several lines counts once per line: a line of
+ * bare text (no `<`, `>`, `{`, `}`, `=`, `;` or quote once HTML entities are
+ * removed, and not starting like a continued expression, `?`, `:`, `|`, `&`,
+ * `.`) is a run when its block of bare lines sits below a line that opens a
+ * tag (ends with `>` but not `=>`, or closes one inline with `</`) and above a
+ * line that starts a tag or closes one (`<…`, or contains `</`). Comments are
+ * already blanked by the strip, so a JSX block comment is never a run.
  */
+const HTML_ENTITY = /&(?:\w+|#\d+);/g
+
+function isBareTextLine(text) {
+  const t = text.replace(HTML_ENTITY, ' ').trim()
+  return t !== '' && !/[<>{}=;'"`]/.test(t) && !/^[?:|&.,)\]]/.test(t)
+}
+
+function opensJsxText(text) {
+  const t = (text ?? '').trim()
+  return (t.endsWith('>') && !t.endsWith('=>')) || t.includes('</')
+}
+
+function closesJsxText(text) {
+  const t = (text ?? '').trim()
+  return t.startsWith('<') || t.includes('</')
+}
+
 export function findEnglishProseLiteral(source, file = '<source>') {
   const hits = []
-  eachLine(source, (text, line) => {
+  const lines = stripComments(source).split('\n')
+  lines.forEach((text, index) => {
+    const line = index + 1
     for (const match of text.matchAll(JSX_TEXT)) {
       const body = match[1]
       // A brace means the run is inside or beside an expression, not plain text.
       if (/[{}]/.test(body)) continue
-      // Code between a comparison's `>` and `<`, not text between tags.
-      if (/&&|\|\||=>|===?|;/.test(body)) continue
+      // Code between a comparison's `>` and `<`, not text between tags. An
+      // entity such as `&apos;` is text, so its `;` must not count as code.
+      if (/&&|\|\||=>|===?|;/.test(body.replace(HTML_ENTITY, ' '))) continue
       if (hasLatinProse(body)) hits.push(hit(file, line, body))
     }
     for (const match of text.matchAll(PROSE_PROP)) {
@@ -323,7 +352,19 @@ export function findEnglishProseLiteral(source, file = '<source>') {
       }
     }
   })
-  return hits
+  // Paragraphs wrapped over several lines.
+  for (let i = 0; i < lines.length; i++) {
+    if (!isBareTextLine(lines[i])) continue
+    let j = i
+    while (j + 1 < lines.length && isBareTextLine(lines[j + 1])) j++
+    if (opensJsxText(lines[i - 1]) && closesJsxText(lines[j + 1])) {
+      for (let k = i; k <= j; k++) {
+        if (hasLatinProse(lines[k])) hits.push(hit(file, k + 1, lines[k]))
+      }
+    }
+    i = j
+  }
+  return hits.sort((a, b) => a.line - b.line)
 }
 
 const BILINGUAL_BY_DESIGN = ['app/global-error.tsx']
