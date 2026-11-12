@@ -1,3 +1,5 @@
+import { matchGoldLots } from '@/scripts/gold-lots.mjs'
+
 /**
  * Net worth across asset classes, kept free of the database so the conversion
  * rules can be tested on their own. A USD balance with no USD/KRW rate is listed
@@ -99,6 +101,47 @@ export type TotalAssetsPoint = {
 }
 export type TotalAssetsSeries = { points: TotalAssetsPoint[]; startsOn: Partial<Record<AssetClassKey, string>> }
 
+export type HistoricalGoldTrade = {
+  accountId: string
+  date: string
+  type: 'BUY' | 'SELL'
+  grams: number | null
+  costKrw: number | null
+  feeKrw?: number
+}
+
+/** Same account-scoped FIFO basis as ingestion; a quote does not repair missing quantities. */
+function historicalGoldValue(trades: HistoricalGoldTrade[], prices: { date: string; price: number }[], date: string): number | null {
+  if (trades.some(trade => !/^\d{4}-\d{2}-\d{2}$/.test(trade.date))) return null
+  const reached = trades.filter(trade => trade.date <= date)
+  if (!reached.length) return null
+  const accounts = new Map<string, HistoricalGoldTrade[]>()
+  for (const trade of reached) accounts.set(trade.accountId, [...(accounts.get(trade.accountId) ?? []), trade])
+  const price = prices.filter(row => row.date <= date && Number.isFinite(row.price) && row.price > 0).at(-1)
+  let value = 0
+  for (const rows of accounts.values()) {
+    if (rows.some(row => row.grams == null || !Number.isFinite(row.grams) || row.grams === 0 || !['BUY', 'SELL'].includes(row.type))) return null
+    const knownCost = (row: HistoricalGoldTrade) => row.costKrw != null && Number.isFinite(row.costKrw) && Number.isFinite(row.feeKrw ?? 0)
+    const normalized = rows.map(row => ({ date: row.date, type: row.type, grams: Math.abs(row.grams!),
+      amountKrw: row.costKrw != null && Number.isFinite(row.costKrw) ? Math.abs(row.costKrw) : 0,
+      feeKrw: Number.isFinite(row.feeKrw ?? 0) ? Math.abs(row.feeKrw ?? 0) : 0 }))
+    const matched = matchGoldLots(normalized)
+    if (matched.oversold > 1e-9) return null
+    const grams = matched.open.reduce((sum, lot) => sum + lot.grams, 0)
+    if (!grams) continue // A supported closed account is zero, even without a price or basis.
+    if (price) value += grams * price.price
+    else {
+      // Replay a unit-cost marker through the same FIFO matcher. Only unknown
+      // purchase basis still in an open lot prevents remaining-cost fallback.
+      const unknown = matchGoldLots(normalized.map((row, i) => ({ ...row, feeKrw: 0,
+        amountKrw: row.type === 'BUY' && !knownCost(rows[i]) ? row.grams : 0 })))
+      if (unknown.open.some(lot => lot.costKrw > 0)) return null
+      value += matched.open.reduce((sum, lot) => sum + lot.costKrw, 0)
+    }
+  }
+  return value
+}
+
 /**
  * Every asset class on each date, in KRW, for the stacked total-assets chart.
  *
@@ -106,9 +149,9 @@ export type TotalAssetsSeries = { points: TotalAssetsPoint[]; startsOn: Partial<
  * - Pensions step: each account holds its latest point on or before the date
  *   (a year-end certificate or a snapshot total) and adds nothing before its
  *   first. The class is null until some account has started.
- * - Gold: the grams bought on or before the date times the latest price on or
- *   before it. With no such price the grams held are valued at their cost. Null
- *   before the first purchase.
+ * - Gold: remaining grams after account-scoped FIFO sales, at the latest price
+ *   on or before the date, or their remaining purchase cost including fees.
+ *   Null before history begins or where quantity/basis cannot be supported.
  *
  * A class that has not started is null, never 0 and never interpolated, so the
  * chart draws nothing for it. The total is the sum of the non-null classes, and
@@ -120,13 +163,12 @@ export function totalAssetsSeries(input: {
   crypto: Record<string, number | null>
   cash: Record<string, number | null>
   pensionPoints: { date: string; account: string; valueKrw: number }[]
-  gold: { buys: { date: string; grams: number; costKrw: number }[]; prices: { date: string; price: number }[] }
+  gold: { trades: HistoricalGoldTrade[]; prices: { date: string; price: number }[] }
 }): TotalAssetsSeries {
   const byAccount = new Map<string, { date: string; valueKrw: number }[]>()
   for (const point of input.pensionPoints) byAccount.set(point.account, [...(byAccount.get(point.account) ?? []), point])
   // Stable sort: points of one account that share a date keep their input order, so the last wins.
   const accounts = [...byAccount.values()].map((list) => [...list].sort((a, b) => a.date.localeCompare(b.date)))
-  const buys = [...input.gold.buys].sort((a, b) => a.date.localeCompare(b.date))
   const prices = [...input.gold.prices].sort((a, b) => a.date.localeCompare(b.date))
   const value = (record: Record<string, number | null>, date: string) => {
     const v = record[date]
@@ -139,13 +181,7 @@ export function totalAssetsSeries(input: {
       const last = list.filter((point) => point.date <= date).at(-1)
       if (last) pensions = (pensions ?? 0) + last.valueKrw
     }
-    const held = buys.filter((buy) => buy.date <= date)
-    let gold: number | null = null
-    if (held.length) {
-      const grams = held.reduce((sum, buy) => sum + buy.grams, 0)
-      const price = prices.filter((row) => row.date <= date).at(-1)
-      gold = price ? grams * price.price : held.reduce((sum, buy) => sum + buy.costKrw, 0)
-    }
+    const gold = historicalGoldValue(input.gold.trades, prices, date)
     const classes = { stocks: value(input.stocks, date), crypto: value(input.crypto, date), cash: value(input.cash, date), pensions, gold }
     const total = ASSET_CLASSES.reduce((sum, key) => sum + (classes[key] ?? 0), 0)
     return { date, ...classes, total }

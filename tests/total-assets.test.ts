@@ -12,7 +12,7 @@ import { GOLD, IRP, SAMSUNG_PENSION, writeScenario } from './pension-fixtures'
 
 // Invented figures throughout; the repository is public.
 
-const empty = { stocks: {}, crypto: {}, cash: {}, pensionPoints: [], gold: { buys: [], prices: [] } }
+const empty = { stocks: {}, crypto: {}, cash: {}, pensionPoints: [], gold: { trades: [], prices: [] } }
 
 test('pensions step: each account holds its latest point on or before the date, and adds nothing before its first', () => {
   const r = totalAssetsSeries({
@@ -36,9 +36,9 @@ test('gold: grams bought on or before the date times the latest price on or befo
     ...empty,
     dates: ['2026-01-01', '2026-01-20', '2026-02-20', '2026-03-10'],
     gold: {
-      buys: [
-        { date: '2026-01-15', grams: 10, costKrw: 1_000_000 },
-        { date: '2026-02-16', grams: 5, costKrw: 600_000 },
+      trades: [
+        { date: '2026-01-15', accountId: 'A', type: 'BUY', grams: 10, costKrw: 1_000_000 },
+        { date: '2026-02-16', accountId: 'A', type: 'BUY', grams: 5, costKrw: 600_000 },
       ],
       prices: [
         { date: '2026-01-10', price: 100_000 },
@@ -59,9 +59,9 @@ test('gold with no price on or before the date is valued at the cost of the gram
     ...empty,
     dates: ['2026-01-20', '2026-02-20', '2026-04-01'],
     gold: {
-      buys: [
-        { date: '2026-01-15', grams: 10, costKrw: 1_000_000 },
-        { date: '2026-02-16', grams: 5, costKrw: 600_000 },
+      trades: [
+        { date: '2026-01-15', accountId: 'A', type: 'BUY', grams: 10, costKrw: 1_000_000 },
+        { date: '2026-02-16', accountId: 'A', type: 'BUY', grams: 5, costKrw: 600_000 },
       ],
       prices: [{ date: '2026-03-31', price: 130_000 }],
     },
@@ -81,7 +81,7 @@ test('total is the sum of the non-null classes, and startsOn is each class first
     crypto: { '2026-02-01': 5, '2026-03-01': 6 },
     cash: { '2026-01-01': null, '2026-02-01': null, '2026-03-01': 40 },
     pensionPoints: [{ date: '2026-02-15', account: 'A', valueKrw: 70 }],
-    gold: { buys: [], prices: [] },
+    gold: { trades: [], prices: [] },
   })
   assert.deepEqual(r.points, [
     { date: '2026-01-01', stocks: 100, crypto: null, cash: null, pensions: null, gold: null, total: 100 },

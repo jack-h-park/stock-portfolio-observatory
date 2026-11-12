@@ -12,7 +12,7 @@ import { allocateTax, buildInvestmentEpisodes, mergeAssetEvents, type AssetEvent
 import { getRebalancePolicy, marketTargetsFor } from '@/lib/rebalance-policy'
 import { deriveUsTargetPct, getAllocationPolicy } from '@/lib/rebalance/allocation-policy'
 import { getTaxPolicyState, usTaxableWrappers, wrapperTreatment, type TaxPolicy, type WrapperTreatment } from '@/lib/tax-policy'
-import { ASSET_CLASSES, depositsSeries, totalAssetsSeries, type CashBalanceRow, type NetWorth, type TotalAssetsSeries } from '@/lib/net-worth'
+import { ASSET_CLASSES, depositsSeries, totalAssetsSeries, type CashBalanceRow, type HistoricalGoldTrade, type NetWorth, type TotalAssetsSeries } from '@/lib/net-worth'
 import type { PensionContributionYear } from '@/lib/pension'
 import { summarizeAllocation, type AssetAllocation } from '@/lib/asset-allocation'
 import { getInstrumentClasses } from '@/lib/rebalance/instrument-classes'
@@ -1344,22 +1344,27 @@ export function getTotalAssetsSeries(dates: string[], precomputed?: NetWorth): T
           .prepare(`select account, date, value_krw as valueKrw from pension_points where 1 = 1${selfOnlyAnd(conn, 'pension_points')} order by date, id`)
           .all() as { account: string; date: string; valueKrw: number }[])
       : []
-    // Gold BUY rows carry grams as quantity and the purchase amount in KRW. No
-    // gold sale is on file; the holding itself (getNetWorth) handles one.
-    const goldBuys =
-      hasTable('transactions_all') && columnsOf('transactions_all').has('asset_class')
-        ? (
-            conn
-              .prepare(
-                `select substr(date, 1, 10) as date, abs(coalesce(quantity, 0)) as grams, abs(coalesce(amount_krw, settlement_krw, 0)) as costKrw
-                   from transactions_all where asset_class = 'gold' and type = 'BUY' order by date, id`
-              )
-              .all() as { date: string; grams: number; costKrw: number }[]
-          ).filter((buy) => buy.grams > 0)
-        : []
+    // Preserve account identities and self-owner scope while replaying both sides.
+    // Older synthetic/legacy tables may not have fees or account metadata.
+    const goldColumns = hasTable('transactions_all') ? columnsOf('transactions_all') : new Set<string>()
+    const goldTrades: HistoricalGoldTrade[] = goldColumns.has('asset_class')
+      ? (conn.prepare(`select substr(date, 1, 10) as date, type, quantity, amount_krw, settlement_krw,
+            ${goldColumns.has('fee') ? 'fee' : '0'} as fee, ${goldColumns.has('tax') ? 'tax' : '0'} as tax,
+            ${goldColumns.has('brokerage') ? 'brokerage' : "''"} as institution,
+            ${goldColumns.has('account') ? 'account' : "''"} as account
+          from transactions_all where asset_class = 'gold' and type in ('BUY', 'SELL')${selfOnlyAnd(conn, 'transactions_all')}
+          order by date, id`).all() as { date: string | null; type: 'BUY' | 'SELL'; quantity: number | null;
+            amount_krw: number | null; settlement_krw: number | null; fee: number | null; tax: number | null;
+            institution: string | null; account: string | null }[]).map(row => ({
+              date: row.date ?? '', type: row.type, accountId: JSON.stringify([row.institution ?? '', row.account ?? '']),
+              grams: row.quantity == null ? null : Math.abs(Number(row.quantity)),
+              costKrw: row.amount_krw == null && row.settlement_krw == null ? null : Math.abs(Number(row.amount_krw ?? row.settlement_krw)),
+              feeKrw: Math.abs(Number(row.fee ?? 0)) + Math.abs(Number(row.tax ?? 0)),
+            }))
+      : []
     const goldPrices = hasTable('gold_prices') ? (conn.prepare('select date, price from gold_prices order by date').all() as { date: string; price: number }[]) : []
 
-    const history = totalAssetsSeries({ dates: past, stocks, crypto, cash, pensionPoints, gold: { buys: goldBuys, prices: goldPrices } })
+    const history = totalAssetsSeries({ dates: past, stocks, crypto, cash, pensionPoints, gold: { trades: goldTrades, prices: goldPrices } })
     // Today, from the card's own figures. A class that is zero today and never
     // had data stays null, so it does not "start" on the last point.
     const latest = { date: today, total: netWorth.totalKrw } as TotalAssetsSeries['points'][number]
