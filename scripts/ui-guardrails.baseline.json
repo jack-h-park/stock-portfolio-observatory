@@ -154,7 +154,7 @@
     "app/positions/[market]/[ticker]/page.tsx": 10,
     "app/realized/page.tsx": 2,
     "app/rebalance/page.tsx": 2,
-    "app/rebalance/proposals/[id]/page.tsx": 5,
+    "app/rebalance/proposals/[id]/page.tsx": 6,
     "app/reconciliation/page.tsx": 3,
     "app/review/page.tsx": 2,
     "app/tax-planning/opportunity-analysis.tsx": 1,

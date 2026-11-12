@@ -367,6 +367,29 @@ export function findEnglishProseLiteral(source, file = '<source>') {
   return hits.sort((a, b) => a.line - b.line)
 }
 
+/**
+ * Every literal on a line, including the quoted literals inside a template
+ * literal's `${…}` interpolations. Matching STRING_LITERAL alone returns the
+ * template as one string, so `` `${x == null ? '—' : fmt(x)}` `` would hide
+ * its `'—'`. Interpolation bodies are read recursively. G2 does not need this:
+ * the outer template already contains whatever Korean its parts hold.
+ */
+function literalsIn(text) {
+  const out = []
+  for (const match of text.matchAll(STRING_LITERAL)) {
+    out.push(match[0])
+    if (match[0][0] !== '`') continue
+    const body = match[0].slice(1, -1)
+    for (let i = body.indexOf('${'); i !== -1; i = body.indexOf('${', i + 1)) {
+      const inner = callArguments(body, i + 1)
+      if (inner === null) break
+      out.push(...literalsIn(inner))
+      i += inner.length + 2
+    }
+  }
+  return out
+}
+
 /** The one file whose job is to write grid columns, so pages need not. */
 const GRID_OWNER = 'components/layout.tsx'
 
@@ -387,9 +410,9 @@ export function findHandWrittenGrid(source, file = '<source>') {
   const raw = source.split('\n')
   eachLine(source, (text, line) => {
     if (raw[line - 1]?.includes(GRID_ALLOW) || raw[line - 2]?.includes(GRID_ALLOW)) return
-    for (const match of text.matchAll(STRING_LITERAL)) {
-      const classes = match[0].slice(1, -1).split(/\s+/)
-      if (classes.some((cls) => bareOf(cls).startsWith('grid-cols-'))) hits.push(hit(file, line, match[0]))
+    for (const literal of literalsIn(text)) {
+      const classes = literal.slice(1, -1).split(/\s+/)
+      if (classes.some((cls) => bareOf(cls).startsWith('grid-cols-'))) hits.push(hit(file, line, literal))
     }
   })
   return hits
@@ -428,8 +451,8 @@ const NULL_LITERALS = new Set(['n/a', 'N/A', '—'])
 export function findNullLiteral(source, file = '<source>') {
   const hits = []
   eachLine(source, (text, line) => {
-    for (const match of text.matchAll(STRING_LITERAL)) {
-      if (NULL_LITERALS.has(match[0].slice(1, -1))) hits.push(hit(file, line, match[0]))
+    for (const literal of literalsIn(text)) {
+      if (NULL_LITERALS.has(literal.slice(1, -1))) hits.push(hit(file, line, literal))
     }
   })
   return hits

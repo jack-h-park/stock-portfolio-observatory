@@ -187,6 +187,11 @@ test('G4 catches grid columns written by hand, outside the layout primitives', (
     '"grid gap-4 lg:grid-cols-3"',
   ])
   assert.equal(findHandWrittenGrid("const c = 'grid grid-cols-[7rem_1fr]'", 'app/a/page.tsx').length, 1)
+  // Literals inside a template literal's interpolation are read too.
+  assert.deepEqual(
+    snippets(findHandWrittenGrid("<div className={`grid ${wide ? 'grid-cols-3' : 'grid-cols-2'}`}>", 'app/a/page.tsx')),
+    ["'grid-cols-3'", "'grid-cols-2'"],
+  )
   // The layout primitives are where columns belong.
   assert.deepEqual(findHandWrittenGrid("const COLUMNS = { 2: 'xl:grid-cols-2' }", 'components/layout.tsx'), [])
   // A marked exception, on the line or the line above.
@@ -213,6 +218,9 @@ test('G6 catches a missing value written by hand', () => {
   assert.deepEqual(snippets(findNullLiteral("const v = x ?? 'n/a'")), ["'n/a'"])
   assert.deepEqual(snippets(findNullLiteral('const v = x ?? "N/A"')), ['"N/A"'])
   assert.deepEqual(snippets(findNullLiteral("const v = x ?? '—'")), ["'—'"])
+  // Inside a template literal's interpolation, also within a nested call.
+  assert.deepEqual(snippets(findNullLiteral("<Metric sub={`Cap ${cap == null ? '—' : fmt(cap)}`} />")), ["'—'"])
+  assert.deepEqual(snippets(findNullLiteral('const s = `Rate ${pick(rate, () => "n/a")} today`')), ['"n/a"'])
   // A longer string that contains one, and a formatter call.
   assert.deepEqual(findNullLiteral("const v = 'n/a for this account'"), [])
   assert.deepEqual(findNullLiteral("const v = '— since then'"), [])
