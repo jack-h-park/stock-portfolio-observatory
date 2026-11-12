@@ -20,7 +20,7 @@ export const holdings = defineCopy({
     market: 'Market',
     broker: 'Broker',
     account: 'Account',
-    instrument: 'Instrument',
+    instrument: 'Position',
     open: 'Open',
     baseCost: 'KRW cost basis',
     baseGain: 'KRW unrealized G/L',

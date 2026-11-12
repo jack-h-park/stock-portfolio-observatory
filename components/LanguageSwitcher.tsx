@@ -6,7 +6,6 @@ import { SegmentedControl } from '@/components/ui'
 import {
   DISPLAY_CURRENCIES,
   DISPLAY_CURRENCY_COOKIE,
-  DISPLAY_CURRENCY_LABELS,
   type DisplayCurrency,
 } from '@/lib/currency'
 import { ASSET_VIEWS, ASSET_VIEW_COOKIE, type AssetView } from '@/lib/asset-view'
@@ -18,12 +17,12 @@ function persist(name: string, value: string) {
   document.cookie = `${name}=${value}; path=/; max-age=${COOKIE_MAX_AGE}; samesite=lax`
 }
 
-export function LanguageSwitcher({ language }: { language: Language }) {
+export function LanguageSwitcher({ language, label }: { language: Language; label: string }) {
   const router = useRouter()
 
   return (
     <SegmentedControl
-      label="Language"
+      label={label}
       value={language}
       options={(['en', 'ko'] as Language[]).map((option) => ({ value: option, label: LANGUAGE_LABELS[option] }))}
       onChange={(next) => {
@@ -37,14 +36,22 @@ export function LanguageSwitcher({ language }: { language: Language }) {
   )
 }
 
-export function CurrencySwitcher({ displayCurrency }: { displayCurrency: DisplayCurrency }) {
+export function CurrencySwitcher({
+  displayCurrency,
+  label,
+  labels,
+}: {
+  displayCurrency: DisplayCurrency
+  label: string
+  labels: Record<DisplayCurrency, string>
+}) {
   const router = useRouter()
 
   return (
     <SegmentedControl
-      label="Currency"
+      label={label}
       value={displayCurrency}
-      options={DISPLAY_CURRENCIES.map((option) => ({ value: option, label: DISPLAY_CURRENCY_LABELS[option] }))}
+      options={DISPLAY_CURRENCIES.map((option) => ({ value: option, label: labels[option] }))}
       onChange={(next) => {
         persist(DISPLAY_CURRENCY_COOKIE, next)
         router.refresh()
@@ -53,12 +60,12 @@ export function CurrencySwitcher({ displayCurrency }: { displayCurrency: Display
   )
 }
 
-export function AssetViewSwitcher({ assetView, labels }: { assetView: AssetView; labels: Record<AssetView, string> }) {
+export function AssetViewSwitcher({ assetView, label, labels }: { assetView: AssetView; label: string; labels: Record<AssetView, string> }) {
   const router = useRouter()
 
   return (
     <SegmentedControl
-      label="Assets"
+      label={label}
       value={assetView}
       options={ASSET_VIEWS.map((option) => ({ value: option, label: labels[option] }))}
       onChange={(next) => {

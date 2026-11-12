@@ -67,7 +67,7 @@ export const fx = defineCopy({
     missing: '미래에셋 외화 계좌 미연결', balance: '최근 하나은행 달러 잔액', current: '현재 USD/KRW 스냅샷',
     institutions: '기관별 현황', trend: '월별 가중평균 환율', transferReview: '이체 검토', recent: '최근 FX 원장',
     hanaOutbound: '하나은행 미국 송금 검증 기준액', hanaOutboundHint: '향후 미국 계좌 입금내역과 대조할 하나은행 USD 출금 합계입니다. 미국 송금 확정액은 아닙니다.', knownMirae: '확인된 미래에셋 이체', destinationUnknown: '목적지 미확인',
-    remittanceCost: '추정 원화 원가', remittanceValue: '현재 환율 평가액', remittanceGl: '추정 미실현 환차익',
+    remittanceCost: '추정 원화 원가', remittanceValue: '현재 환율 평가금액', remittanceGl: '추정 미실현 환차익',
     confirmedGl: '확정 출처 원가분', estimatedGl: '추정 출처 원가분',
     date: '일자', institution: '기관', type: '유형', usd: '달러', krw: '원화', rate: '환율', status: '환율 상태',
     counterparty: '상대 기관', match: '연결 상태', source: '원본', accountBalance: '최근 달러 잔액',

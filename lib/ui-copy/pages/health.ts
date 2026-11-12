@@ -121,15 +121,15 @@ export const health = defineCopy({
 
     reconciliationCoverage: '대조 커버리지',
     reconciliationCoverageInfo:
-      '최근 수집분에서 증권사별 보유 요약이 세금 계산 단위 기록과 일치하는지 봅니다. 불일치는 종목 단위로 세며, 목록은 대조 페이지에 있습니다.',
+      '최근 수집분에서 증권사별 보유 요약이 세금 단위 기록과 일치하는지 봅니다. 불일치는 종목 단위로 세며, 목록은 대조 페이지에 있습니다.',
     openReconciliation: '대조 열기',
-    nothingToReconcile: '대조할 보유종목이나 세금 계산 단위가 없습니다.',
-    holdingsVsLots: (brokerage: string) => `${brokerage} 보유 ↔ 세금 계산 단위`,
-    noLotDetail: '계산 단위 없음',
+    nothingToReconcile: '대조할 보유종목이나 세금 단위가 없습니다.',
+    holdingsVsLots: (brokerage: string) => `${brokerage} 보유 ↔ 세금 단위`,
+    noLotDetail: '세금 단위 없음',
     matched: '일치',
     breaks: (count: number, capped: boolean) => `불일치 ${count}${capped ? '+' : ''}건`,
     merrillNote:
-      'Merrill은 보유 내역을 두 가지 형식으로 내보내는데, 세금 계산 단위 정보가 담긴 쪽은 하나뿐입니다. 마지막 다운로드가 평면 형식이었다면 계산 단위가 수집에서 빠지고, 세금 계산 단위 화면을 다시 내보낼 때까지 위 행에는 “계산 단위 없음”이 표시됩니다. 재투자분도 종목당 날짜 없는 묶음 하나로 들어오기 때문에, 대조는 취득일이 아니라 수량과 원가로 맞춥니다.',
+      'Merrill은 보유 내역을 두 가지 형식으로 내보내는데, 세금 단위 정보가 담긴 쪽은 하나뿐입니다. 마지막 다운로드가 평면 형식이었다면 세금 단위가 수집에서 빠지고, 세금 단위 화면을 다시 내보낼 때까지 위 행에는 “세금 단위 없음”이 표시됩니다. 재투자분도 종목당 날짜 없는 묶음 하나로 들어오기 때문에, 대조는 취득일이 아니라 수량과 원가로 맞춥니다.',
 
     refreshHistory: '갱신 이력',
     noRefreshRuns: '기록된 갱신 실행이 없습니다.',

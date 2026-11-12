@@ -13,11 +13,6 @@ export function normalizeDisplayCurrency(value: unknown): DisplayCurrency {
   return value === 'USD' ? 'USD' : DEFAULT_DISPLAY_CURRENCY
 }
 
-export const DISPLAY_CURRENCY_LABELS: Record<DisplayCurrency, string> = {
-  KRW: '원화',
-  USD: '달러',
-}
-
 /**
  * The minus sign goes before the symbol, not after it.
  *
