@@ -8,7 +8,7 @@
 
 **Tech Stack:** Node 22 ESM script (no new dependencies), `node:test` through `tsx --test`, TypeScript, Next.js app router.
 
-**Spec:** The second GUI refactoring plan (Claude Docs, "Stock Observatory GUI 리팩토링 계획 2차", 2026-10-30), section "가드레일 확장" (guardrail extension). Its table of checks G1–G11 is restated below with exact definitions; this file is the authority for the implementer.
+**Spec:** The second GUI refactoring plan (Claude Docs, 2026-10-30), guardrail-extension section. Its table of checks G1–G11 is restated below with exact definitions; this file is the authority for the implementer.
 
 ## Global Constraints
 

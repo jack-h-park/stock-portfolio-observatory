@@ -70,7 +70,7 @@ export default async function CryptoPremiumPage() {
           <CardRow columns="hero">
             <MetricHeroCard
               title={copy.weightedPremium}
-              info="KRW-venue crypto premium weighted by the value of held KRW-venue positions. Use this as the headline premium exposure signal."
+              info={copy.weightedPremiumInfo}
               eyebrow={copy.premiumHeadline}
               value={weighted == null ? 'n/a' : `${weighted >= 0 ? '+' : ''}${fmtNumber(weighted, 2)}%`}
               hint={copy.weightedHint}

@@ -23,10 +23,23 @@ const COPY_ROOT = path.join('lib', 'ui-copy')
 /**
  * Keys reached only through computed access (`copy[kind]`), which a
  * whole-word search cannot see. Each entry names the module, the key, why it
- * is computed, and where. None today: every key the first run flagged was
- * confirmed unused by grep and deleted instead.
+ * is computed, and where. None today.
  */
 const DYNAMIC_KEYS: Record<string, string[]> = {}
+
+/**
+ * A flagged key is not always dead. It can be unwired: the page still types
+ * the same English inline, and the key holds the only Korean translation.
+ * Before deleting one, search the pages for its English text. If the text
+ * is there, point the page at the key. If wiring has to wait, list the key
+ * here with the reason, and remove it once wired (the last test fails when a
+ * listed key starts being read).
+ */
+const PENDING_WIRING: Record<string, string[]> = {
+  // app/crypto-premium/page.tsx builds its subtitle inline today, in English
+  // only; R1 wires it to this key.
+  cryptoPremium: ['subtitleWithData'],
+}
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = []
@@ -57,7 +70,7 @@ function isRead(key: string) {
 test('every top-level copy key is read outside the copy modules', () => {
   const unused: string[] = []
   for (const [page, copy] of Object.entries(PAGE_COPY)) {
-    const allowed = new Set(DYNAMIC_KEYS[page] ?? [])
+    const allowed = new Set([...(DYNAMIC_KEYS[page] ?? []), ...(PENDING_WIRING[page] ?? [])])
     for (const key of Object.keys(copy.en)) {
       if (!allowed.has(key) && !isRead(key)) unused.push(`${page}.${key}`)
     }
@@ -65,10 +78,17 @@ test('every top-level copy key is read outside the copy modules', () => {
   assert.deepEqual(unused, [], `copy keys nothing reads:\n  ${unused.join('\n  ')}`)
 })
 
-test('every DYNAMIC_KEYS entry names a key that exists', () => {
-  for (const [page, keys] of Object.entries(DYNAMIC_KEYS)) {
+test('every allow-list entry names a key that exists', () => {
+  for (const [page, keys] of Object.entries({ ...DYNAMIC_KEYS, ...PENDING_WIRING })) {
     const copy = PAGE_COPY[page as keyof typeof PAGE_COPY]
     assert.ok(copy, `no copy module named ${page}`)
     for (const key of keys) assert.ok(key in copy.en, `${page}.${key} is not a key`)
   }
+})
+
+test('a PENDING_WIRING key leaves the list once a page reads it', () => {
+  const wired = Object.entries(PENDING_WIRING).flatMap(([page, keys]) =>
+    keys.filter((key) => isRead(key)).map((key) => `${page}.${key}`),
+  )
+  assert.deepEqual(wired, [], 'these keys are read now; remove them from PENDING_WIRING')
 })

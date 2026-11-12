@@ -281,7 +281,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
 
             {session?.marketClosed && (
               <Card className="mb-3">
-                <EmptyState hint="Session figures are therefore zero; the standing-versus-cost view below is unaffected.">
+                <EmptyState hint={copy.sessionZero}>
                   Every tracked {m.label} price matches {session.previousDate} — the market was closed, or the sheet has
                   not re-priced.
                 </EmptyState>
@@ -388,7 +388,7 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
               </Card>
             )}
 
-            <Band title={`${m.flag} ${m.label} — standing vs cost`} subtitle="cumulative since purchase — moves slowly" />
+            <Band title={`${m.flag} ${m.label} — standing vs cost`} subtitle={copy.cumulativeNote} />
 
             <CardRow>
               <Card title={copy.bestVsCost} info={`Ranked by unrealized gain versus cost basis, among positions of at least ${amount(m.moverMinCost, m)}. Cumulative since purchase — not a one-day move.`}>

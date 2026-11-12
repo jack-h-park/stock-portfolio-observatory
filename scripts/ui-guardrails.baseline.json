@@ -75,8 +75,8 @@
     "lib/ui-copy/pages/washSale.ts": 1
   },
   "english-prose-literal": {
-    "app/crypto-premium/page.tsx": 12,
-    "app/daily-briefing/page.tsx": 12,
+    "app/crypto-premium/page.tsx": 11,
+    "app/daily-briefing/page.tsx": 10,
     "app/data-ops/page.tsx": 2,
     "app/fx/page.tsx": 3,
     "app/health/page.tsx": 1,

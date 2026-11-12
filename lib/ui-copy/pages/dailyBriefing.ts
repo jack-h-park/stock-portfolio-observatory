@@ -24,6 +24,7 @@ export const dailyBriefing = defineCopy({
     market: 'Market',
     costBasis: 'Cost Basis',
     standingVsCost: 'Standing versus purchase cost',
+    cumulativeNote: 'cumulative since purchase — moves slowly',
     gainers: 'Session gainers',
     decliners: 'Session decliners',
     bestVsCost: 'Best vs cost',
@@ -43,6 +44,7 @@ export const dailyBriefing = defineCopy({
     unreadable: 'That briefing could not be read.',
     noArchive: 'No briefings archived yet.',
     noPriorSnapshot: 'No prior snapshot was available to compare against.',
+    sessionZero: 'Session figures are therefore zero; the standing-versus-cost view below is unaffected.',
     columns: {
       ticker: 'Ticker',
       marketValue: 'Market Value',
@@ -73,6 +75,7 @@ export const dailyBriefing = defineCopy({
     market: '시장',
     costBasis: '취득원가',
     standingVsCost: '취득원가 대비 현재',
+    cumulativeNote: '매수 이후 누적 — 천천히 움직입니다',
     gainers: '당일 상승',
     decliners: '당일 하락',
     bestVsCost: '원가 대비 최고',
@@ -92,6 +95,7 @@ export const dailyBriefing = defineCopy({
     unreadable: '해당 브리핑을 읽을 수 없었습니다.',
     noArchive: '아직 보관된 브리핑이 없습니다.',
     noPriorSnapshot: '비교할 이전 스냅샷이 없었습니다.',
+    sessionZero: '따라서 당일 수치는 0입니다. 아래의 원가 대비 현황은 영향을 받지 않습니다.',
     columns: {
       ticker: '종목코드',
       marketValue: '평가금액',
