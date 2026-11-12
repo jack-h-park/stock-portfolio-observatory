@@ -14,7 +14,9 @@ Updated November 12, 2026 (America/Los_Angeles). This is the current status of t
 | Private web access | Approved-owner-device restriction documented and deployed in [#278](https://github.com/jack-h-park/stock-portfolio-observatory/pull/278); effective and startup gateway rules verified | New or re-enrolled devices require review; storage mode is not an access-control mechanism |
 | Backup and recovery | Actual populated history, evidence and host configuration recovered from pinned encrypted snapshots in isolation; paired installed backup/drill targets match their versioned source | This is observed manual recovery proof, not proof of every later scheduled run or independent recovery of lost credentials |
 | Current covered asset totals | Read-only operating review verified included-row/class arithmetic, allocation total, current chart endpoint, self-owner scope and unique inclusion keys | Source coverage remains unconfirmed; not every account or original statement has been reconciled |
-| Historical asset totals | Implemented, with a confirmed gold-history correctness gap | Sale-aware historical gold correction merged in [#283](https://github.com/jack-h-park/stock-portfolio-observatory/pull/283), not deployed; the operating reader still has the original gap |
+| Historical asset totals | Sale-aware historical gold correction [#283](https://github.com/jack-h-park/stock-portfolio-observatory/pull/283) deployed with [#286](https://github.com/jack-h-park/stock-portfolio-observatory/pull/286); independent FIFO and post-sale web checks passed | Unknown quantities/basis remain unknown; the current endpoint alone does not validate history |
+| Asset dates and coverage | [#286](https://github.com/jack-h-park/stock-portfolio-observatory/pull/286) deployed on both asset overviews; nonzero cash dates, valuation methods, source review and freshness are separate | Declared statement period-end provenance and complete account coverage remain unconfirmed |
+| Annual recorded-tax summary | Implemented on this review branch from existing records, not deployed | No new tax records, structured return-reported prepayments/refund requests, annual estimate or settlement-completeness claim |
 | Annual total tax / liabilities | Deferred | Require separate designs, official-source verification where applicable, and independent acceptance cases |
 
 The operator's private acceptance records retain actual paths, figures, evidence identifiers, hashes and snapshot receipts. None belongs in this public status file. Other installations must establish their own authority, source coverage, access and recovery evidence.
@@ -31,12 +33,12 @@ Verified within the supplied data:
 - Both pages label source coverage as unconfirmed and liabilities as unsupported. Missing/conflicting observations are distinct from accounts whose records were never supplied.
 - Asset-class grouping and economic-exposure grouping intentionally differ: a gold ETF can remain a security in the former and gold exposure in the latter. Different group labels are not duplicate asset totals.
 
-Open findings:
+Follow-up resolution and remaining boundaries:
 
-1. The operating historical physical-gold reader reads `BUY` rows only. A sale-aware, account-scoped correction using existing FIFO basis merged in #283, not deployed; retaining a current endpoint does not validate earlier points.
-2. File freshness, statement/account coverage, valuation dates and reconciliation checks are different signals. A fresh source-file inventory can coexist with older nonzero balances, overdue account coverage and unresolved checks.
-3. A zero/retired balance can currently supply the oldest cash date shown beside a class. Preserve those records while making dates for nonzero supported balances understandable.
-4. Overall source coverage is explicitly unconfirmed. A zero omission count does not establish complete assets, complete ownership review or complete net worth.
+1. The former purchases-only historical gold gap is resolved in operating code. Account-scoped remaining quantities and fee-inclusive FIFO cost were independently checked, and a post-sale month-end web value was zero. Current asset totals and financial records were unchanged by deployment.
+2. File freshness, statement/account coverage, valuation dates and reconciliation checks now appear as distinct signals. Configured review may include other owners; it is not a completeness score for the self-owned total.
+3. Old zero cash observations are retained but no longer set the nonzero-cash date note. A zero balance does not establish account closure.
+4. Overall source coverage remains unconfirmed. Declared statement ends cannot yet be distinguished reliably from pinned/inferred legacy dates; they remain unconfirmed rather than being promoted from transaction or lot dates.
 
 The observed installation has no included pension-gold row with which to prove that particular live duplication case. Its protection remains synthetic test evidence. The review did not reconcile every statement or authorize missing-data collection.
 
@@ -48,6 +50,10 @@ The foundation's tax-route mobile/accessibility checks and bilingual read-only c
 
 ## Next work and preserved gates
 
-See [next increment scope](next-increment.md). The gold correction is merged but undeployed. The authorized coverage-display increment is implemented on a review branch, with synthetic verification; it is not deployed. Broader annual tax, liabilities, module extraction and repository/operational renames remain separately designed work packages.
+See [next increment scope](next-increment.md). The gold correction and coverage display are merged and deployed. The next authorized increment is the existing-record annual tax summary on this review branch; it remains undeployed. Broader annual tax, liabilities, module extraction and repository/operational renames remain separately designed work packages.
 
 Keep private web tax-history writes disabled. Each later record change needs a reviewed candidate, current revision, one writing authority and applicable execution authorization. Preserve approved-device access, original archives and existing CLI/briefing contracts. Repository rename, archive moves, deployment, restart and legacy removal remain independent execution decisions.
+
+## Latest operating release
+
+The owner installation was verified at merge `6fac7cb` (#286), including #283, on November 12, 2026. The isolated candidate build and focused synthetic tests passed. Operating before/after checks confirmed unchanged current asset totals, financial DB, tax history and original evidence. Both asset pages were checked in English/Korean and at mobile width, and tax/detail/review routes remained usable. Hash-checked evidence downloads, owner-device enforcement, loopback app binding and disabled web writes were preserved. The entire persisted/live gateway configuration was unchanged; a non-allowed source and spoofed forwarding headers received 403. This is bounded operating evidence, not physical-device or universal financial-coverage acceptance. Private paths, amounts, account identifiers and receipts remain outside this repository.

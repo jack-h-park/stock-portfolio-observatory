@@ -10,7 +10,7 @@
 
 **Spec:** [Product and architecture design](../specs/2026-11-10-personal-finance-observatory-design.md)
 
-**Status:** Foundation implemented and merged; bounded private adoption is accepted. Follow-up asset correctness and coverage work remains proposed. See [execution status](../../product/implementation-status.md) for verified work and remaining gates. Implementation authorization is not authorization to rename GitHub, move archives, push/merge, deploy, or restart services. Revised after review on 2026-11-10: added evidence resolution, relink by content hash, and a single write host.
+**Status:** Foundation implemented and merged; bounded private adoption is accepted. Follow-up gold correctness and coverage display are merged and deployed; an existing-record annual tax summary is implemented on the current review branch, not deployed. See [execution status](../../product/implementation-status.md) for verified work and remaining gates. Implementation authorization is not authorization to rename GitHub, move archives, push/merge, deploy, or restart services. Revised after review on 2026-11-10: added evidence resolution, relink by content hash, and a single write host.
 
 ## Global Constraints
 
@@ -150,11 +150,13 @@ P1 and P2 may be reviewed independently. P3 is the first functional expansion; d
 **Interfaces:** Migration command accepts explicit source/destination mappings, defaults to dry-run, emits a private manifest containing path/hash/ownership classifications, and refuses destination conflicts. `--apply` copies and verifies; it does not delete old files or flip live configuration automatically.
 
 - [ ] Inventory policies, mappings, saved plans, proposals/fills/events, notification deduplication, briefing archives, historical snapshots, and generated inputs. Record the owning host and whether each item is reconstructible.
-- [ ] Confirm that the writing host's state root lies under a path covered by its existing records backup, or add a backup target before enabling writes, and include the state in the restore proof.
+- [x] Confirm that the writing host's state root lies under a path covered by its existing records backup, or add a backup target before enabling writes, and include the state in the restore proof.
 - [ ] Add synthetic migration tests for matching destinations, conflicting destinations, interruption/resume, symlink targets, legacy file overrides, and restore of a previous configuration.
-- [ ] Implement checksummed copy and rollback instructions. Keep one writable authority; source sync must not overwrite host-owned state with a stale workstation copy.
+- [x] Implement checksummed copy and rollback instructions. Keep one writable authority; source sync must not overwrite host-owned state with a stale workstation copy.
 - [ ] In a temporary fixture environment, edit/import history, rebuild the query DB, simulate failure/restart, restore a backup, and compare state revisions/content and visible projections.
 - [ ] Prepare concrete per-host configuration changes and dry-run manifests. Execute private file migration and production restart only within separately authorized scope.
+
+**Current evidence:** Checksummed migration, matching-resume/conflict/symlink tests and synthetic ingest/restore durability tests exist and pass in the integrated suite. The owner installation has accepted populated tax-history/evidence recovery and paired backup/drill targets. The broader inventory, full original test matrix (including every interruption/override/configuration-restore combination), restart fault exercise and per-host path migration remain open; unchecked items retain that broader scope. No wholesale financial archive or state-path migration is claimed.
 
 **Done:** Rebuild and restore are proven in isolation; live migration status is recorded separately from preparation.
 

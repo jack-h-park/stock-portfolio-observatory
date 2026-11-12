@@ -8,10 +8,11 @@ Status combines source support with the bounded operating acceptance recorded in
 | Crypto | Implemented | Bithumb/Robinhood statement reconstruction with independent balance checks; [data sources](../data-sources.md) |
 | Deposits/CMA | Implemented | Supported bank statements and explicit local mappings; [bank extraction](../../scripts/extract-bank-statements.mjs) |
 | Pension/gold | Implemented | Supported snapshots/certificates; wrapper and underlying exposure must not be summed twice; [asset totals](../../lib/net-worth.ts) |
-| Total assets | Partial | Supported asset classes and self-owner scope; current arithmetic reviewed, source coverage unconfirmed, historical gold sales need correction; [queries](../../lib/adapters/portfolio-db.ts) |
+| Total assets | Partial | Supported asset classes and self-owner scope; current arithmetic reviewed, source coverage unconfirmed, sale-aware historical gold and coverage display deployed; declared statement ends still unconfirmed; [queries](../../lib/adapters/portfolio-db.ts) |
 | Complete net worth | Unsupported | No general liabilities ledger; asset totals alone are not net worth |
 | Cash flow | Partial | Income/inflows/transfers from supported records; not a full budget/spending ledger; [asset events](../../lib/asset-events.ts) |
 | KR/US investment tax scenarios | Implemented, bounded | Investment-incremental planning under configured policy; [planner](../../lib/tax-planning.ts), [US engine](../../lib/us-tax-engine.ts) |
+| Annual recorded-tax summary | Review-branch implementation, not deployed | Existing obligation-year amounts with separate units/authorities/currencies; no schema change or new estimate; [increment scope](next-increment.md) |
 | Annual total tax calculator | Planned | Existing ordinary-income assumptions contextualize investment scenarios; they do not establish complete annual return coverage |
 | Saved tax/rebalance plans | Implemented | Local state with review/execution records; [tax plans](../../lib/tax-plan-store.ts), [proposals](../../lib/rebalance/proposal-store.ts) |
 | Returns/assessments/payments/refunds | Implemented; bounded private adoption verified | Versioned structured import and evidence links operating; private web history writes remain disabled; [workflow](../operations/tax-history.md); no completion inferred from file names |
