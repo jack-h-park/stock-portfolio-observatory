@@ -7,6 +7,8 @@ import {
   getAccountCoverage,
   getDataOpsReview,
   type AccountCoverage,
+  type CoverageAction,
+  type CoverageArtifact,
   type DataOpsReview,
   type TickerlessSuggestion,
   type ValuationReason,
@@ -32,35 +34,50 @@ function coverageTone(status: AccountCoverage['status']): Tone {
   return 'success'
 }
 
-function coverageDateLabel(row: AccountCoverage): string {
+type CoverageCopy = ReturnType<typeof getPageCopy<'dataOps'>>['coverage']
+
+function coverageDateLabel(row: AccountCoverage, c: CoverageCopy): string {
   const date = (value: string | null) => value ? fmtDate(value) : 'n/a'
   if (row.sources.length > 1) return row.sources.map((source) => `${source.label} ${date(source.coveredThrough)}`).join(' · ')
-  if (row.method === 'mixed') {
-    // TODO(i18n): not yet translated — folded into the shared copy registry in P2.
-    return `API ${date(row.apiCoveredThrough)} · statement ${date(row.statementCoveredThrough)}`
-  }
+  if (row.method === 'mixed') return c.mixed(date(row.apiCoveredThrough), date(row.statementCoveredThrough))
   return date(row.coveredThrough)
 }
 
 type QueueRow = DataOpsReview['actionQueue'][number]
 
-function coverageLagLabel(row: AccountCoverage, language: string): string {
-  const days = (value: number | null) => value == null ? (language === 'ko' ? '기준일 없음' : 'No cutoff') : language === 'ko' ? `${fmtNumber(value)}일 전` : `${fmtNumber(value)}d ago`
+function coverageLagLabel(row: AccountCoverage, c: CoverageCopy): string {
+  const days = (value: number | null) => value == null ? c.noCutoff : c.daysAgo(fmtNumber(value))
   if (row.sources.length > 1) return row.sources.map((source) => `${source.label} ${days(source.lagDays)}`).join(' · ')
-  if (row.method === 'mixed') {
-    // TODO(i18n): not yet translated — folded into the shared copy registry in P2.
-    return `API ${days(row.apiLagDays)} · statement ${days(row.statementLagDays)}`
-  }
+  if (row.method === 'mixed') return c.mixed(days(row.apiLagDays), days(row.statementLagDays))
   return days(row.lagDays)
 }
 
-function coverageDownloadLabel(row: AccountCoverage, language: string): string {
-  if (!row.downloadFrom) return language === 'ko' ? '기존 기준일 없음 — 가능한 전체 기간' : 'No existing cutoff — download the full available period'
-  return language === 'ko'
-    ? `${fmtDate(row.downloadFrom)}부터 (기존 자료와 1일 overlap)`
-    : `From ${fmtDate(row.downloadFrom)} (1-day overlap)`
+function coverageDownloadLabel(row: AccountCoverage, c: CoverageCopy): string {
+  if (!row.downloadFrom) return c.noExistingCutoff
+  return c.downloadFrom(fmtDate(row.downloadFrom))
 }
 
+function coverageArtifactLabel(artifact: CoverageArtifact, c: CoverageCopy): string {
+  switch (artifact.code) {
+    case 'KR_CERTIFICATE':
+      return c.artifact.KR_CERTIFICATE(artifact.brokerage, maskAccountLabel(artifact.account))
+    case 'US_HOLDINGS_AND_TRANSACTIONS_CSV':
+      return c.artifact.US_HOLDINGS_AND_TRANSACTIONS_CSV(artifact.brokerage)
+    default:
+      return c.artifact[artifact.code] ?? artifact.code
+  }
+}
+
+function coverageActionLabel(action: CoverageAction, c: CoverageCopy): string {
+  switch (action.code) {
+    case 'KR_CERTIFICATE':
+      return c.action.KR_CERTIFICATE(action.brokerage, maskAccountLabel(action.account))
+    case 'US_HOLDINGS_AND_TRANSACTIONS':
+      return c.action.US_HOLDINGS_AND_TRANSACTIONS(action.brokerage)
+    default:
+      return c.action[action.code] ?? action.code
+  }
+}
 
 export default async function DataOpsPage() {
   const language = await getLanguage()
@@ -71,43 +88,7 @@ export default async function DataOpsPage() {
   const ops = getDataOpsReview()
   const coverage = getAccountCoverage()
   const issueCount = ops.actionQueue.reduce((sum, item) => sum + item.count, 0)
-  const coverageCopy = language === 'ko'
-    ? {
-        title: '계좌 데이터 업데이트',
-        info: '파일 무결성(Fresh)과 별도로, 각 계좌의 자료가 어느 날짜까지 반영되었는지와 다음 다운로드 시작일을 보여줍니다. 시작일은 누락 방지를 위해 기존 기준일보다 하루 빠릅니다.',
-        action: '지금 필요한 계좌',
-        due: '곧 필요한 계좌',
-        current: '현재 기준 계좌',
-        status: { action_needed: '업데이트 필요', missing: '자료 없음', due_soon: '곧 필요', current: '현재 기준' },
-        account: '계좌',
-        coverage: '반영 기준일',
-        lag: '지연',
-        artifact: '받을 자료',
-        method: '방식',
-        destination: '넣을 위치',
-        detail: '설명',
-        days: (value: number | null) => value == null ? '기준일 없음' : `${fmtNumber(value)}일 전`,
-        methodLabel: { inbox: 'inbox', manual: '직접 저장', api: '자동 API', mcp: 'MCP', mixed: 'API + 파일' },
-        none: '모든 계좌가 허용 범위 안에 있습니다.',
-      }
-    : {
-        title: 'Account data updates',
-        info: 'Separate from file integrity: this shows the actual cutoff and the next download start date. The start date is one day before the cutoff to guarantee overlap.',
-        action: 'Action needed',
-        due: 'Due soon',
-        current: 'Current',
-        status: { action_needed: 'Update needed', missing: 'No data', due_soon: 'Due soon', current: 'Current' },
-        account: 'Account',
-        coverage: 'Covered through',
-        lag: 'Lag',
-        artifact: 'Get this',
-        method: 'Method',
-        destination: 'Destination',
-        detail: 'Detail',
-        days: (value: number | null) => value == null ? 'No cutoff' : `${fmtNumber(value)}d ago`,
-        methodLabel: { inbox: 'inbox', manual: 'by hand', api: 'API', mcp: 'MCP', mixed: 'API + file' },
-        none: 'All accounts are within their configured coverage window.',
-      }
+  const coverageCopy = copy.coverage
 
   return (
     <>
@@ -119,10 +100,10 @@ export default async function DataOpsPage() {
         action={issueCount ? <Badge tone="warning">{copy.needsReview(fmtNumber(issueCount))}</Badge> : <Badge tone="success">{copy.noPending}</Badge>}
       />
 
-      <Card title={coverageCopy.title} info={coverageCopy.info} accent={coverage.actionNeeded > 0} className="mb-5" action={<TextLink href="#account-coverage">{language === 'ko' ? '전체 보기' : 'View all'}</TextLink>}>
+      <Card title={coverageCopy.title} info={coverageCopy.info} accent={coverage.actionNeeded > 0} className="mb-5" action={<TextLink href="#account-coverage">{coverageCopy.viewAll}</TextLink>}>
         <div className="mb-4 grid grid-cols-3 gap-3">
-          <MetricField label={coverageCopy.action} value={fmtNumber(coverage.actionNeeded)} tone={coverage.actionNeeded ? 'danger' : 'success'} valueClassName="text-title" />
-          <MetricField label={coverageCopy.due} value={fmtNumber(coverage.dueSoon)} tone={coverage.dueSoon ? 'warning' : 'success'} valueClassName="text-title" />
+          <MetricField label={coverageCopy.actionNeeded} value={fmtNumber(coverage.actionNeeded)} tone={coverage.actionNeeded ? 'danger' : 'success'} valueClassName="text-title" />
+          <MetricField label={coverageCopy.dueSoon} value={fmtNumber(coverage.dueSoon)} tone={coverage.dueSoon ? 'warning' : 'success'} valueClassName="text-title" />
           <MetricField label={coverageCopy.current} value={fmtNumber(coverage.current)} tone="success" valueClassName="text-title" />
         </div>
         <div id="account-coverage">
@@ -134,7 +115,7 @@ export default async function DataOpsPage() {
             columns={[
               {
                 key: 'account',
-                label: coverageCopy.account,
+                label: coverageCopy.columns.account,
                 render: (row: AccountCoverage) => (
                   <>
                     <div className="flex items-center gap-2">
@@ -145,46 +126,54 @@ export default async function DataOpsPage() {
                   </>
                 ),
               },
-              { key: 'coverage', label: coverageCopy.coverage, nowrap: true, render: (row: AccountCoverage) => <span className="tabular-nums">{coverageDateLabel(row)}</span> },
+              { key: 'coverage', label: coverageCopy.columns.coverage, nowrap: true, render: (row: AccountCoverage) => <span className="tabular-nums">{coverageDateLabel(row, coverageCopy)}</span> },
               {
                 key: 'lag',
-                label: coverageCopy.lag,
+                label: coverageCopy.columns.lag,
                 nowrap: true,
                 render: (row: AccountCoverage) => (
                   <span className="tabular-nums">
-                    {coverageLagLabel(row, language)}
+                    {coverageLagLabel(row, coverageCopy)}
                     {row.method !== 'mixed' && row.sources.length <= 1 && row.overdueDays ? <span className="ml-1 text-danger">(+{row.overdueDays})</span> : null}
                   </span>
                 ),
               },
               {
                 key: 'artifact',
-                label: coverageCopy.artifact,
+                label: coverageCopy.columns.artifact,
                 render: (row: AccountCoverage) => (
                   <div className="max-w-[24rem]">
-                    <div className="font-medium text-ink">{row.requiredArtifact}</div>
+                    <div className="font-medium text-ink">{row.artifacts.map((artifact) => coverageArtifactLabel(artifact, coverageCopy)).join(' + ')}</div>
                     <div className="mt-1 text-label text-ink-3">{row.format}</div>
                     <div className="mt-1 text-label font-medium leading-relaxed text-info">
-                      {language === 'ko' ? '추가 다운로드' : 'Download range'}: {coverageDownloadLabel(row, language)}
+                      {coverageCopy.downloadRange}: {coverageDownloadLabel(row, coverageCopy)}
                     </div>
-                    <div className="mt-1 text-label leading-relaxed text-ink-3">{row.action}</div>
+                    <div className="mt-1 text-label leading-relaxed text-ink-3">
+                      {row.missingDisposals.length ? `${coverageCopy.missingDisposals(row.missingDisposals.length, row.missingDisposals)} ` : null}
+                      {coverageActionLabel(row.action, coverageCopy)}
+                    </div>
                     {row.lastFile ? (
                       <code className="mt-1 block truncate text-micro text-ink-3" title={row.lastFile}>
-                        last: {row.lastFile}
+                        {coverageCopy.last} {row.lastFile}
                       </code>
                     ) : null}
                   </div>
                 ),
               },
-              { key: 'method', label: coverageCopy.method, nowrap: true, priority: 'secondary', render: (row: AccountCoverage) => coverageCopy.methodLabel[row.method] },
+              { key: 'method', label: coverageCopy.columns.method, nowrap: true, priority: 'secondary', render: (row: AccountCoverage) => coverageCopy.methodLabel[row.method] },
               {
                 key: 'destination',
-                label: coverageCopy.destination,
+                label: coverageCopy.columns.destination,
                 priority: 'tertiary',
                 render: (row: AccountCoverage) => (
                   <>
                     <code className="text-label text-ink-3">{row.destination}</code>
-                    <div className="mt-1 max-w-[15rem] text-label leading-relaxed text-ink-3">{row.detail}</div>
+                    <div
+                      className="mt-1 max-w-[15rem] text-label leading-relaxed text-ink-3"
+                      title={'checkDetail' in row.detail ? row.detail.checkDetail : undefined}
+                    >
+                      {coverageCopy.detail[row.detail.code] ?? row.detail.code}
+                    </div>
                   </>
                 ),
               },

@@ -1,4 +1,14 @@
+import type {
+  AccountCoverage,
+  AccountCoverageStatus,
+  CoverageAction,
+  CoverageArtifact,
+  CoverageDetail,
+} from '@/lib/adapters/portfolio-db'
 import { defineCopy } from '@/lib/ui-copy/define'
+
+/** One entry per code: a sentence, or a function of the code's parameters. */
+type CodeCopy<U extends { code: string }> = Record<U['code'], string | ((...args: never[]) => string)>
 
 export const dataOps = defineCopy({
   en: {
@@ -107,6 +117,70 @@ export const dataOps = defineCopy({
       ticker_missing_from_price_snapshot: 'Check ticker normalization and refresh the relevant price snapshot.',
       source_missing_market_value: 'Review source valuation fields; tax-lot-only sources may need external price enrichment.',
     },
+    coverage: {
+      title: 'Account data updates',
+      info: 'Separate from file integrity: this shows the actual cutoff and the next download start date. The start date is one day before the cutoff to guarantee overlap.',
+      viewAll: 'View all',
+      actionNeeded: 'Action needed',
+      dueSoon: 'Due soon',
+      current: 'Current',
+      none: 'All accounts are within their configured coverage window.',
+      downloadRange: 'Download range',
+      last: 'last:',
+      noCutoff: 'No cutoff',
+      daysAgo: (n: string) => `${n}d ago`,
+      noExistingCutoff: 'No existing cutoff — download the full available period',
+      downloadFrom: (date: string) => `From ${date} (1-day overlap)`,
+      mixed: (api: string, statement: string) => `API ${api} · statement ${statement}`,
+      status: { action_needed: 'Update needed', missing: 'No data', due_soon: 'Due soon', current: 'Current' } satisfies Record<AccountCoverageStatus, string>,
+      methodLabel: { inbox: 'inbox', manual: 'by hand', api: 'API', mcp: 'MCP', mixed: 'API + file' } satisfies Record<AccountCoverage['method'], string>,
+      columns: {
+        account: 'Account',
+        coverage: 'Covered through',
+        lag: 'Lag',
+        artifact: 'Get this',
+        method: 'Method',
+        destination: 'Destination',
+      },
+      artifact: {
+        KR_STATEMENT: 'Latest transaction statement',
+        KR_CERTIFICATE: (brokerage: string, account: string) => `${brokerage} ${account} transaction certificate`,
+        TOSS_STATEMENT_WITH_API: 'Toss Securities statement PDF (supplements the Open API)',
+        SAMSUNG_STOCK_COMP_STATEMENT: 'Samsung Securities stock-compensation account statement',
+        US_HOLDINGS_AND_TRANSACTIONS_CSV: (brokerage: string) => `${brokerage} holdings CSV + transactions CSV`,
+        ROBINHOOD_MCP_SNAPSHOT: 'Robinhood MCP snapshot + tax lots',
+        ROBINHOOD_TRANSACTIONS_CSV: 'Robinhood transactions CSV',
+        BITHUMB_PDF_AND_XLSX: 'Bithumb transaction confirmation PDF + period transaction XLSX',
+        ROBINHOOD_CRYPTO_STATEMENT: 'Robinhood Crypto monthly statement',
+      } satisfies CodeCopy<CoverageArtifact>,
+      action: {
+        DOWNLOAD_TO_INBOX: 'Download a statement whose period runs through today and drop it in the inbox.',
+        KR_CERTIFICATE: (brokerage: string, account: string) =>
+          `Download the latest transaction certificate for ${brokerage} ${account} and drop it in the inbox.`,
+        TOSS_API_OR_STATEMENT:
+          'No action is needed while the Open API is current. Download a new statement when the statement cutoff falls behind.',
+        SAMSUNG_STOCK_COMP: 'Download the latest statement for the stock-compensation account and drop it in the inbox.',
+        US_HOLDINGS_AND_TRANSACTIONS: (brokerage: string) =>
+          `Download ${brokerage} holdings/positions and the latest transactions CSV as of the same date and drop them in the inbox.`,
+        ROBINHOOD_SNAPSHOT: 'Regenerate the account snapshot and lots from the Robinhood MCP. This is not a broker CSV for the inbox.',
+        ROBINHOOD_SNAPSHOT_AND_CSV:
+          "Regenerate the snapshot from the Robinhood MCP, and download each account's transactions CSV, name it and drop it in us-transactions/. The older of the two is the account cutoff.",
+        BITHUMB_SAME_PERIOD: 'Download both the PDF and the XLSX for the same period and drop them in the inbox.',
+        CRYPTO_MONTHLY_STATEMENT: 'Download the missing latest monthly crypto statement PDF and drop it in the inbox.',
+      } satisfies CodeCopy<CoverageAction>,
+      detail: {
+        STATEMENT_PERIOD_END: 'Computed from the last day of the period the document declares.',
+        ROBINHOOD_OLDER_OF_TWO:
+          'Computed from the older of the MCP snapshot fetch time and the last day the transactions CSV covers (the period end in the file name, or a later trade date).',
+        ROBINHOOD_SNAPSHOT_FETCHED_AT: 'Computed from the MCP snapshot fetch time.',
+        OLDER_OF_TWO_CSVS: 'The older cutoff of the two CSVs is the account coverage.',
+        BITHUMB_PDF_IS_LEDGER: 'The PDF is the trade ledger; the XLSX supplements deposit and withdrawal reasons.',
+        MONTHLY_STATEMENT_CONTINUITY: 'Checks that the monthly statements run without a gap.',
+        TOSS_STATEMENT_AND_API: 'Shows the statement and the Open API snapshot together.',
+      } satisfies CodeCopy<CoverageDetail>,
+      missingDisposals: (count: number, tickers: readonly string[]) =>
+        `Missing sale records for ${count} ticker(s) (${tickers.join(', ')}): realized gains for this account appear only once its transactions CSV arrives.`,
+    },
   },
   ko: {
     title: '조치 센터',
@@ -213,6 +287,68 @@ export const dataOps = defineCopy({
       price_snapshot_missing: '갱신을 실행하거나 로컬 가격 스냅샷 파일을 복원하세요.',
       ticker_missing_from_price_snapshot: '종목 코드 정규화를 확인하고 해당 가격 스냅샷을 갱신하세요.',
       source_missing_market_value: '원본의 평가 필드를 검토하세요. 세금 단위만 있는 원본은 외부 가격 보강이 필요할 수 있습니다.',
+    },
+    coverage: {
+      title: '계좌 데이터 업데이트',
+      info: '파일 무결성과 별도로, 각 계좌의 자료가 어느 날짜까지 반영되었는지와 다음 다운로드 시작일을 보여줍니다. 시작일은 누락 방지를 위해 기존 기준일보다 하루 빠릅니다.',
+      viewAll: '전체 보기',
+      actionNeeded: '지금 필요한 계좌',
+      dueSoon: '곧 필요한 계좌',
+      current: '현재 기준 계좌',
+      none: '모든 계좌가 허용 범위 안에 있습니다.',
+      downloadRange: '추가 다운로드',
+      last: '최근 파일:',
+      noCutoff: '기준일 없음',
+      daysAgo: (n: string) => `${n}일 전`,
+      noExistingCutoff: '기존 기준일 없음 — 가능한 전체 기간',
+      downloadFrom: (date: string) => `${date}부터 (기존 자료와 1일 겹침)`,
+      mixed: (api: string, statement: string) => `API ${api} · 명세서 ${statement}`,
+      status: { action_needed: '업데이트 필요', missing: '자료 없음', due_soon: '곧 필요', current: '현재 기준' },
+      methodLabel: { inbox: '인박스', manual: '직접 저장', api: '자동 API', mcp: 'MCP', mixed: 'API + 파일' },
+      columns: {
+        account: '계좌',
+        coverage: '반영 기준일',
+        lag: '지연',
+        artifact: '받을 자료',
+        method: '방식',
+        destination: '넣을 위치',
+      },
+      artifact: {
+        KR_STATEMENT: '최근 거래내역서',
+        KR_CERTIFICATE: (brokerage: string, account: string) => `${brokerage} ${account} 거래내역증명서`,
+        TOSS_STATEMENT_WITH_API: '토스증권 거래내역서 PDF (오픈 API 보완)',
+        SAMSUNG_STOCK_COMP_STATEMENT: '삼성증권 주식보상 계좌거래내역서',
+        US_HOLDINGS_AND_TRANSACTIONS_CSV: (brokerage: string) => `${brokerage} 보유 CSV + 거래 CSV`,
+        ROBINHOOD_MCP_SNAPSHOT: '로빈후드 MCP 스냅샷 + 세금 단위',
+        ROBINHOOD_TRANSACTIONS_CSV: '로빈후드 거래 CSV',
+        BITHUMB_PDF_AND_XLSX: '빗썸 거래내역확인서 PDF + 기간별 거래내역 XLSX',
+        ROBINHOOD_CRYPTO_STATEMENT: '로빈후드 크립토 월간 명세서',
+      },
+      action: {
+        DOWNLOAD_TO_INBOX: '최근 조회기간이 오늘까지 포함된 자료를 다운로드해 인박스 폴더에 넣으세요.',
+        KR_CERTIFICATE: (brokerage: string, account: string) => `${brokerage} ${account}의 최신 거래내역증명서를 다운로드해 인박스 폴더에 넣으세요.`,
+        TOSS_API_OR_STATEMENT: '오픈 API가 최신이면 조치하지 않아도 됩니다. 명세서 기준일이 뒤처지면 새 거래내역서를 다운로드하세요.',
+        SAMSUNG_STOCK_COMP: '주식보상 계좌의 최신 계좌거래내역서를 다운로드해 인박스 폴더에 넣으세요.',
+        US_HOLDINGS_AND_TRANSACTIONS: (brokerage: string) =>
+          `${brokerage}의 보유/포지션과 최신 거래 CSV를 같은 기준일로 다운로드해 인박스 폴더에 넣으세요.`,
+        ROBINHOOD_SNAPSHOT: '로빈후드 MCP에서 계좌 스냅샷과 세금 단위를 다시 생성하세요. 증권사 CSV를 인박스 폴더에 넣는 작업이 아닙니다.',
+        ROBINHOOD_SNAPSHOT_AND_CSV:
+          '스냅샷은 로빈후드 MCP에서 다시 생성하고, 거래 CSV는 계좌별로 다운로드해 이름을 붙여 us-transactions/에 넣으세요. 둘 중 오래된 쪽이 계좌 기준일입니다.',
+        BITHUMB_SAME_PERIOD: '같은 조회기간의 PDF와 XLSX를 모두 다운로드해 인박스 폴더에 넣으세요.',
+        CRYPTO_MONTHLY_STATEMENT: '누락된 최신 월의 크립토 명세서 PDF를 다운로드해 인박스 폴더에 넣으세요.',
+      },
+      detail: {
+        STATEMENT_PERIOD_END: '문서가 선언한 조회기간의 마지막 날짜를 기준으로 계산합니다.',
+        ROBINHOOD_OLDER_OF_TWO:
+          'MCP 스냅샷을 가져온 시각과 거래 CSV가 다루는 마지막 날(파일 이름의 기간 끝, 또는 그보다 늦은 거래일) 중 오래된 쪽을 기준으로 계산합니다.',
+        ROBINHOOD_SNAPSHOT_FETCHED_AT: 'MCP 스냅샷을 가져온 시각을 기준으로 계산합니다.',
+        OLDER_OF_TWO_CSVS: '두 CSV 중 더 오래된 기준일을 계좌 반영 기준일로 사용합니다.',
+        BITHUMB_PDF_IS_LEDGER: 'PDF가 거래 원장이고 XLSX는 입출금 사유 보강용입니다.',
+        MONTHLY_STATEMENT_CONTINUITY: '월별 명세서가 끊기지 않는지 기준일을 계산합니다.',
+        TOSS_STATEMENT_AND_API: '명세서와 오픈 API 스냅샷을 함께 표시합니다.',
+      },
+      missingDisposals: (count: number, tickers: readonly string[]) =>
+        `매도 기록 누락 ${count}종목(${tickers.join(', ')}): 이 계좌의 거래내역 CSV가 들어와야 실현 손익이 잡힙니다.`,
     },
   },
 })

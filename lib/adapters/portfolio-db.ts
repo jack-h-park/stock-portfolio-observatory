@@ -335,6 +335,43 @@ export type OperationalHealth = {
 
 export type AccountCoverageStatus = 'current' | 'due_soon' | 'action_needed' | 'missing'
 
+/** What an account's coverage needs, as a code the page renders through its copy module. */
+export type CoverageArtifact =
+  | { code: 'KR_STATEMENT' }
+  | { code: 'KR_CERTIFICATE'; brokerage: string; account: string }
+  | { code: 'TOSS_STATEMENT_WITH_API' }
+  | { code: 'SAMSUNG_STOCK_COMP_STATEMENT' }
+  | { code: 'US_HOLDINGS_AND_TRANSACTIONS_CSV'; brokerage: string }
+  | { code: 'ROBINHOOD_MCP_SNAPSHOT' }
+  | { code: 'ROBINHOOD_TRANSACTIONS_CSV' }
+  | { code: 'BITHUMB_PDF_AND_XLSX' }
+  | { code: 'ROBINHOOD_CRYPTO_STATEMENT' }
+
+/** What to do to bring the account current. */
+export type CoverageAction =
+  | { code: 'DOWNLOAD_TO_INBOX' }
+  | { code: 'KR_CERTIFICATE'; brokerage: string; account: string }
+  | { code: 'TOSS_API_OR_STATEMENT' }
+  | { code: 'SAMSUNG_STOCK_COMP' }
+  | { code: 'US_HOLDINGS_AND_TRANSACTIONS'; brokerage: string }
+  | { code: 'ROBINHOOD_SNAPSHOT' }
+  | { code: 'ROBINHOOD_SNAPSHOT_AND_CSV' }
+  | { code: 'BITHUMB_SAME_PERIOD' }
+  | { code: 'CRYPTO_MONTHLY_STATEMENT' }
+
+/**
+ * How the coverage date is computed. `checkDetail` carries the validation
+ * check's own text when the branch has one; it is ingest output, not copy.
+ */
+export type CoverageDetail =
+  | { code: 'STATEMENT_PERIOD_END'; checkDetail?: string }
+  | { code: 'ROBINHOOD_OLDER_OF_TWO' }
+  | { code: 'ROBINHOOD_SNAPSHOT_FETCHED_AT'; checkDetail?: string }
+  | { code: 'OLDER_OF_TWO_CSVS' }
+  | { code: 'BITHUMB_PDF_IS_LEDGER' }
+  | { code: 'MONTHLY_STATEMENT_CONTINUITY' }
+  | { code: 'TOSS_STATEMENT_AND_API'; checkDetail?: string }
+
 /**
  * One of the separate artifacts an account's coverage is made of, when there is
  * more than one and each goes stale on its own. Robinhood is the case: its
@@ -351,7 +388,9 @@ export type AccountCoverageSource = {
   maxLagDays: number
   overdueDays: number | null
   status: AccountCoverageStatus
+  /** Printed by the briefing summary, the reminder script and the CLI; the page renders `artifact`. */
   requiredArtifact: string
+  artifact: CoverageArtifact
   destination: string
   /**
    * Tickers whose disposal is missing from this artifact's history: the broker
@@ -381,12 +420,14 @@ export type AccountCoverage = {
   // placed by hand. A Robinhood transactions CSV carries no account, and which
   // account it is exists only in the name someone gives it.
   method: 'inbox' | 'manual' | 'api' | 'mcp' | 'mixed'
+  /** Printed by the briefing summary, the reminder script and the CLI; the page renders `artifacts`. */
   requiredArtifact: string
+  artifacts: CoverageArtifact[]
   format: string
   destination: string
   lastFile: string | null
-  action: string
-  detail: string
+  action: CoverageAction
+  detail: CoverageDetail
   /**
    * Non-empty when the row stands for several artifacts that age separately. The row's
    * own date, status and method are those of the one furthest behind, so a
@@ -3646,7 +3687,9 @@ type CoverageDbRow = { market: string; brokerage: string; account: string; accou
 
 const COVERAGE_STATUS_RANK: Record<AccountCoverageStatus, number> = { missing: 0, action_needed: 1, due_soon: 2, current: 3 }
 
-function coverageSource(input: Pick<AccountCoverageSource, 'label' | 'method' | 'coveredThrough' | 'maxLagDays' | 'requiredArtifact' | 'destination'>): AccountCoverageSource {
+function coverageSource(
+  input: Pick<AccountCoverageSource, 'label' | 'method' | 'coveredThrough' | 'maxLagDays' | 'requiredArtifact' | 'artifact' | 'destination'>
+): AccountCoverageSource {
   const lagDays = calendarAgeDays(input.coveredThrough)
   return {
     ...input,
@@ -3857,10 +3900,11 @@ export function getAccountCoverage(): AccountCoverageSummary {
       let maxLagDays = market === 'US' ? 14 : market === 'CRYPTO' ? 35 : 35
       let method: AccountCoverage['method'] = 'inbox'
       let requiredArtifact = '최근 거래내역서'
+      let artifacts: CoverageArtifact[] = [{ code: 'KR_STATEMENT' }]
       let format = 'PDF'
       let destination = 'kr-statements/'
-      let action = '최근 조회기간이 오늘까지 포함된 자료를 다운로드해 inbox에 넣으세요.'
-      let detail = '문서가 선언한 조회기간의 마지막 날짜를 기준으로 계산합니다.'
+      let action: CoverageAction = { code: 'DOWNLOAD_TO_INBOX' }
+      let detail: CoverageDetail = { code: 'STATEMENT_PERIOD_END' }
       const brokerLower = brokerage.toLowerCase()
 
       if (market === 'KR' && statementCoveredThrough) coveredThrough = statementCoveredThrough
@@ -3881,6 +3925,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
           coveredThrough: snapshotDate,
           maxLagDays: 7,
           requiredArtifact: 'Robinhood MCP snapshot + tax lots',
+          artifact: { code: 'ROBINHOOD_MCP_SNAPSHOT' },
           destination: 'data/robinhood-snapshot.json',
         })]
         // An account the CSVs do not know by name (a holdings label with no
@@ -3894,6 +3939,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
             coveredThrough: robinhoodCsvThrough.get(rawAccount) ?? null,
             maxLagDays: 14,
             requiredArtifact: 'Robinhood transactions CSV',
+            artifact: { code: 'ROBINHOOD_TRANSACTIONS_CSV' },
             // The export names no account, so the file is named by hand; the
             // window shape is what the ingest reads beside the year-to-date.
             destination: `us-transactions/robinhood-transactions-${token}-YYYYMMDD-YYYYMMDD.csv`,
@@ -3904,28 +3950,28 @@ export function getAccountCoverage(): AccountCoverageSummary {
         const behind = worstSource(sources)
         method = behind.method
         requiredArtifact = sources.map((source) => source.requiredArtifact).join(' + ')
+        artifacts = sources.map((source) => source.artifact)
         format = sources.length > 1 ? 'JSON + CSV' : 'JSON'
         destination = sources.length > 1 ? 'data/robinhood-snapshot.json + us-transactions/' : 'data/robinhood-snapshot.json'
         coveredThrough = behind.coveredThrough
         maxLagDays = behind.maxLagDays
-        action = (missingDisposals.length
-          ? `매도 기록 누락 ${missingDisposals.length}종목(${missingDisposals.join(', ')}): 이 계좌의 거래내역 CSV가 들어와야 실현손익이 잡힙니다. `
-          : '') + (sources.length > 1
-          ? 'snapshot은 Robinhood MCP에서 다시 생성하고, 거래내역 CSV는 계좌별로 다운로드해 이름을 붙여 us-transactions/에 넣으세요. 둘 중 오래된 쪽이 계좌 기준일입니다.'
-          : 'Robinhood MCP에서 계좌 snapshot과 lot을 다시 생성하세요. broker CSV를 inbox에 넣는 작업이 아닙니다.')
+        // The missing-disposal prefix is rendered by the page from missingDisposals.
+        action = { code: sources.length > 1 ? 'ROBINHOOD_SNAPSHOT_AND_CSV' : 'ROBINHOOD_SNAPSHOT' }
         detail = sources.length > 1
-          ? 'MCP snapshot의 fetchedAt과 거래내역 CSV가 다루는 마지막 날(파일 이름의 기간 끝, 또는 그보다 늦은 거래일) 중 오래된 쪽을 기준으로 계산합니다.'
-          : checks.get('robinhood_snapshot_fresh')?.detail ?? 'MCP snapshot의 fetchedAt을 기준으로 계산합니다.'
+          ? { code: 'ROBINHOOD_OLDER_OF_TWO' }
+          : { code: 'ROBINHOOD_SNAPSHOT_FETCHED_AT', checkDetail: checks.get('robinhood_snapshot_fresh')?.detail }
       } else if (market === 'US') {
         requiredArtifact = `${brokerage} holdings CSV + transactions CSV`
+        artifacts = [{ code: 'US_HOLDINGS_AND_TRANSACTIONS_CSV', brokerage }]
         format = 'CSV × 2'
         destination = 'us-holdings/ + us-transactions/'
-        action = `${brokerage}의 holdings/positions와 최신 transactions CSV를 같은 기준일로 다운로드해 inbox에 넣으세요.`
-        detail = '두 CSV 중 더 오래된 기준일을 계좌 coverage로 사용합니다.'
+        action = { code: 'US_HOLDINGS_AND_TRANSACTIONS', brokerage }
+        detail = { code: 'OLDER_OF_TWO_CSVS' }
         const dates = [holding?.covered_through, transaction?.covered_through].filter(Boolean) as string[]
         coveredThrough = dates.length ? dates.sort()[0] : null
       } else if (market === 'CRYPTO' && brokerLower === 'bithumb') {
         requiredArtifact = '빗썸 거래내역확인서 PDF + 기간별 거래내역 XLSX'
+        artifacts = [{ code: 'BITHUMB_PDF_AND_XLSX' }]
         format = 'PDF + XLSX'
         destination = 'crypto-bithumb/'
         maxLagDays = 14
@@ -3933,21 +3979,23 @@ export function getAccountCoverage(): AccountCoverageSummary {
         // today even when the statement activity stops earlier. The statement
         // transaction cutoff is the authoritative coverage date here.
         coveredThrough = isoDate(transaction?.covered_through)
-        action = '같은 조회기간의 PDF와 XLSX를 모두 다운로드해 inbox에 넣으세요.'
-        detail = 'PDF가 거래 원장이고 XLSX는 입출금 사유 보강용입니다.'
+        action = { code: 'BITHUMB_SAME_PERIOD' }
+        detail = { code: 'BITHUMB_PDF_IS_LEDGER' }
       } else if (market === 'CRYPTO') {
         requiredArtifact = 'Robinhood Crypto monthly statement'
+        artifacts = [{ code: 'ROBINHOOD_CRYPTO_STATEMENT' }]
         format = 'PDF'
         destination = 'crypto-robinhood/'
         coveredThrough = isoDate(transaction?.covered_through)
-        action = '누락된 최신 월의 Crypto Statement PDF를 다운로드해 inbox에 넣으세요.'
-        detail = '월별 statement가 끊기지 않는지 기준일을 계산합니다.'
+        action = { code: 'CRYPTO_MONTHLY_STATEMENT' }
+        detail = { code: 'MONTHLY_STATEMENT_CONTINUITY' }
       } else if (market === 'KR' && (brokerLower.includes('toss') || brokerLower.includes('토스'))) {
         method = 'mixed'
         requiredArtifact = '토스증권 거래내역서 PDF (Open API 보완)'
+        artifacts = [{ code: 'TOSS_STATEMENT_WITH_API' }]
         maxLagDays = 35
-        action = 'Open API가 최신이면 조치하지 않아도 됩니다. statement cutoff가 뒤처지면 새 거래내역서를 다운로드하세요.'
-        detail = checks.get('toss_positions_fresh')?.detail ?? 'statement와 Open API snapshot을 함께 표시합니다.'
+        action = { code: 'TOSS_API_OR_STATEMENT' }
+        detail = { code: 'TOSS_STATEMENT_AND_API', checkDetail: checks.get('toss_positions_fresh')?.detail }
         apiCoveredThrough = [holding?.covered_through, transaction?.covered_through]
           .filter(Boolean)
           .map((date) => isoDate(date))
@@ -3960,12 +4008,14 @@ export function getAccountCoverage(): AccountCoverageSummary {
         coveredThrough = [statementCoveredThrough, apiCoveredThrough].filter(Boolean).sort().at(-1) ?? null
       } else if (market === 'KR' && brokerLower.includes('삼성')) {
         requiredArtifact = '삼성증권 주식보상 계좌거래내역서'
+        artifacts = [{ code: 'SAMSUNG_STOCK_COMP_STATEMENT' }]
         maxLagDays = 120
-        action = '주식보상 계좌의 최신 계좌거래내역서를 다운로드해 inbox에 넣으세요.'
-        detail = checks.get('samsung_statement_fresh')?.detail ?? detail
+        action = { code: 'SAMSUNG_STOCK_COMP' }
+        detail = { code: 'STATEMENT_PERIOD_END', checkDetail: checks.get('samsung_statement_fresh')?.detail }
       } else if (market === 'KR') {
         requiredArtifact = `${brokerage} ${account} 거래내역증명서`
-        action = `${brokerage} ${account}의 최신 거래내역증명서를 다운로드해 inbox에 넣으세요.`
+        artifacts = [{ code: 'KR_CERTIFICATE', brokerage, account }]
+        action = { code: 'KR_CERTIFICATE', brokerage, account }
         coveredThrough = statementCoveredThrough ?? coveredThrough
       }
 
@@ -3998,6 +4048,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
         status,
         method,
         requiredArtifact,
+        artifacts,
         format,
         destination,
         lastFile: latestSourceFilename(sourceRows, sourceNeedles),
