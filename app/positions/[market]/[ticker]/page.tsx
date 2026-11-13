@@ -12,7 +12,7 @@ import { getCurrencyPreferences } from '@/lib/currency-server'
 import { buildTaxPlan } from '@/lib/tax-planning'
 import { getTaxPolicyState } from '@/lib/tax-policy'
 import { getGlossary } from '@/lib/glossary'
-import { bucketTone, signTone } from '@/lib/tone'
+import { bucketTone, signClass, signTone } from '@/lib/tone'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
 import { CardRow, KpiBand } from '@/components/layout'
@@ -357,7 +357,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
                 label: copy.columns.gainLoss,
                 align: 'right',
                 render: (r) => (
-                  <span className={Number(r.native_unrealized_gl ?? 0) >= 0 ? 'text-success' : 'text-danger'}>
+                  <span className={signClass(r.native_unrealized_gl)}>
                     {moneyOrNa(money, r.native_unrealized_gl, r.currency)}
                   </span>
                 ),
@@ -457,7 +457,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
                   label: copy.columns.baseGainLoss,
                   align: 'right',
                   render: (r) => (
-                    <span className={Number(r.gainKrw ?? 0) >= 0 ? 'text-success' : 'text-danger'}>
+                    <span className={signClass(r.gainKrw)}>
                       {r.gainKrw == null ? EMPTY_VALUE : money(r.gainKrw, 'KRW')}
                     </span>
                   ),

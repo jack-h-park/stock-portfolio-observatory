@@ -57,15 +57,13 @@
     "app/cost-basis/page.tsx": 1,
     "app/data-map/page.tsx": 1,
     "app/data-ops/page.tsx": 2,
-    "app/fx/page.tsx": 2,
     "app/health/page.tsx": 2,
-    "app/positions/[market]/[ticker]/page.tsx": 4,
+    "app/positions/[market]/[ticker]/page.tsx": 2,
     "app/rebalance/page.tsx": 1,
     "app/rebalance/proposals/[id]/page.tsx": 2,
     "app/rebalance/settings/page.tsx": 1,
     "app/reconciliation/page.tsx": 1,
     "app/tax-planning/page.tsx": 1,
-    "components/TaxPlanTimeline.tsx": 1,
     "components/ui.tsx": 1
   }
 }

@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { Children, Fragment, createElement, isValidElement, type ButtonHTMLAttributes, type ComponentProps, type ReactNode } from 'react'
 import { HelpPopover } from '@/components/HelpPopover'
 import { EMPTY_VALUE, fmtSigned } from '@/lib/format'
+import type { Tone } from '@/lib/tone'
 
 // InfoTooltip — a small "i" affordance that reveals an explanation on hover or
 // keyboard focus, as an absolutely-positioned overlay (no layout cost). Used
@@ -90,7 +91,7 @@ export function Card({
   )
 }
 
-const TONE_STYLES = {
+const TONE_STYLES: Record<Tone, string> = {
   neutral: 'bg-surface text-ink-2 border-line',
   info: 'border-info/30 bg-info/10 text-info',
   success:
@@ -99,9 +100,11 @@ const TONE_STYLES = {
     'border-warning/30 bg-warning/10 text-warning',
   danger:
     'border-danger/30 bg-danger/10 text-danger',
-} as const
+}
 
-export type Tone = keyof typeof TONE_STYLES
+// Tone is owned by lib/tone.ts. Re-exported here because the pages and
+// components that import it from this module keep compiling unchanged.
+export type { Tone }
 
 // marketTone now lives in lib/tone.ts with the rest of the meaning→tone rules.
 // Re-exported here because eleven files import it from this module.

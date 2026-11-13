@@ -18,7 +18,8 @@ import { AllocationShares } from '@/components/AllocationShares'
 import { TrendRangeLinks } from '@/components/TrendRangeLinks'
 import { LinkChip, LinkChips } from '@/components/LinkChips'
 import { DEFAULT_TREND_RANGE, resolveTrendRange, trendRangeDays, type TrendRange } from '@/lib/trend-ranges'
-import type { AllocationClass, AllocationWrapper } from '@/lib/asset-allocation'
+import type { AllocationClass } from '@/lib/asset-allocation'
+import { ASSET_CLASS_COLOR, WRAPPER_COLOR } from '@/lib/palette'
 import { getPageCopy } from '@/lib/ui-copy'
 import { maskAccountLabel } from '@/lib/account-label'
 
@@ -31,26 +32,6 @@ type ChildRow = { key: string; owner: string; account: string; asOf: string | nu
 
 /** The first year the FBAR table offers: the Treasury rates file starts here. */
 const FBAR_FIRST_YEAR = 2020
-
-/**
- * Gold, crypto, pension and cash keep the colours the total-assets chart gives them
- * (crypto is marketColor('CRYPTO'), written out: charts.tsx is a client module).
- */
-const CLASS_COLORS: Record<AllocationClass, string> = {
-  kr_equity: 'var(--brand-cyan)',
-  us_equity: 'var(--brand-blue)',
-  bonds: 'var(--accent-info)',
-  gold: 'var(--brand-pink)',
-  crypto: 'var(--accent-warning)',
-  pension: 'var(--brand-purple)',
-  cash: 'var(--accent-success)',
-  unclassified: 'var(--text-tertiary)',
-}
-const WRAPPER_COLORS: Record<AllocationWrapper, string> = {
-  taxable: 'var(--brand-blue)',
-  isa: 'var(--brand-cyan)',
-  pension: 'var(--brand-purple)',
-}
 
 export default async function NetWorthPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams
@@ -206,7 +187,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
             title={allocationCopy.byClass}
             shares={allocation.classes}
             labels={allocationCopy.classes}
-            colors={CLASS_COLORS}
+            colors={ASSET_CLASS_COLOR}
             money={money}
             columns={allocationCopy.columns}
             details={movedDetails}
@@ -216,7 +197,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
             title={allocationCopy.byWrapper}
             shares={allocation.wrappers}
             labels={allocationCopy.wrappers}
-            colors={WRAPPER_COLORS}
+            colors={WRAPPER_COLOR}
             money={money}
             columns={allocationCopy.columns}
             note={allocationCopy.wrapperNote}

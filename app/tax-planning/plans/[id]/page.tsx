@@ -18,6 +18,7 @@ import type { Metadata } from 'next'
 import { SubmitButton } from '@/components/SubmitButton'
 import { routeSection } from '@/lib/page-names'
 import { savedPlanHeading } from '@/lib/page-headings'
+import { deltaTone } from '@/lib/tone'
 
 export const dynamic = 'force-dynamic'
 
@@ -162,7 +163,7 @@ export default async function SavedTaxPlanPage({
               key={String(label)}
               label={label}
               value={value}
-              tone={Number(toneValue) > 0 ? 'success' : Number(toneValue) < 0 ? 'warning' : 'neutral'}
+              tone={deltaTone(Number(toneValue))}
             />
           ))}
         </StatStrip>
