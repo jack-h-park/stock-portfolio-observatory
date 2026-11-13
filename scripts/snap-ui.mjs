@@ -90,10 +90,12 @@ const VIEWPORTS = [
  * and the freshness rows render an age ("31m elapsed", "1m old") that ticks
  * between one capture and the next. Neither can carry a regression signal, and
  * with them in frame a second capture of an unchanged app reported 64 of 68
- * files changed — the baseline was worthless.
+ * files changed — the baseline was worthless. The Korean age reads "6시간 경과"
+ * since the duration formatter learned Korean units, so the Korean branch
+ * matches 초/분/시간/일 as well as the Latin unit letters.
  */
 const VOLATILE_TEXT =
-  /Last refresh|Refreshing|Auto-refresh|Offline|마지막 갱신|갱신 중|오프라인|초마다 자동 갱신|\d+\s*[smhd]\s*(old|elapsed|ago)|\d+\s*[smhd]\s*경과/
+  /Last refresh|Refreshing|Auto-refresh|Offline|마지막 갱신|갱신 중|오프라인|초마다 자동 갱신|\d+\s*[smhd]\s*(old|elapsed|ago)|\d+\s*(?:[smhd]|초|분|시간|일)\s*경과/
 
 const LANGUAGE_COOKIE = 'stock-observatory-language'
 const CURRENCY_COOKIE = 'stock-observatory-display-currency'
