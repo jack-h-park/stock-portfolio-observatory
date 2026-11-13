@@ -1,15 +1,14 @@
-import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
 import { DataTable } from '@/components/DataTable'
 import { FilterBar } from '@/components/FilterBar'
 import { Badge, Card, Signed } from '@/components/ui'
-import { Total, TotalsStrip } from '@/components/layout'
+import { CardRow, Total, TotalsStrip } from '@/components/layout'
+import { PositionCell } from '@/components/PositionCell'
 import { getCostBasisHoldings, type CostBasisStatus } from '@/lib/adapters/portfolio-db'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { EMPTY_VALUE, fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
-import { positionHref } from '@/lib/position-url'
 import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { applyFilters, applySearch, filterOptions, readFilters, withParam, type FilterGroup } from '@/lib/table-filter'
 import { formatSort, parseSort, sortRows, type TableSort } from '@/lib/table-sort'
@@ -73,7 +72,7 @@ export default async function CostBasisPage({
         emphasis={copy.emphasis}
         subtitle={copy.subtitle(fmtNumber(rows.length), fmtNumber(missingCost), fmtNumber(estimated))}
       />
-      <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]">
+      <CardRow columns="main">
         <Card title={copy.methodCard}>
           <div className="space-y-2 text-body leading-relaxed text-ink-2">
             <p>{copy.methodBody1}</p>
@@ -100,7 +99,7 @@ export default async function CostBasisPage({
             </div>
           </div>
         </Card>
-      </div>
+      </CardRow>
       <Card title={copy.card}>
         <div className="space-y-3">
           <FilterBar
@@ -136,11 +135,7 @@ export default async function CostBasisPage({
                 label: copy.columns.symbol,
                 sortable: true,
                 sortFirst: 'asc',
-                render: (r) => (
-                  <Link href={positionHref(r.market, r.ticker)} className="font-mono text-caption font-medium text-info hover:underline">
-                    {r.ticker}
-                  </Link>
-                ),
+                render: (r) => <PositionCell market={r.market} ticker={r.ticker} layout="ticker" />,
               },
               { key: 'name', label: copy.columns.name, sortable: true, sortFirst: 'asc', render: (r) => <div className="min-w-[14rem] max-w-[20rem] truncate text-ink">{r.name}</div> },
               { key: 'brokerage', label: copy.columns.broker, sortable: true, sortFirst: 'asc', priority: 'secondary' },

@@ -4,7 +4,8 @@ import { getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
 import { Badge, Card, Panel, TextLink } from '@/components/ui'
-import { Stat, StatStrip } from '@/components/layout'
+import { Split, Stat, StatStrip } from '@/components/layout'
+import { ProgressBar } from '@/components/bars'
 import { fmtDateShort, fmtDateTime, fmtKrw, fmtNumber, fmtPct, fmtSigned } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { buildMonthlySalePlanSet } from '@/lib/tax-planning'
@@ -96,7 +97,7 @@ export default async function SavedTaxPlanPage({
         accent
         action={<Badge tone={STATUS_TONE[saved.status]}>{copy.statusLabels[saved.status]}</Badge>}
       >
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <Split side="18rem" at="lg" gap={5}>
           <div>
             <StatStrip columns="md-4">
               {[
@@ -108,9 +109,7 @@ export default async function SavedTaxPlanPage({
                 <Stat key={label} label={label} value={value} />
               ))}
             </StatStrip>
-            <div className="mt-4 h-2 overflow-hidden rounded-pill bg-line-subtle">
-              <div className="h-full bg-success" style={{ width: `${progress.completionPct}%` }} />
-            </div>
+            <ProgressBar pct={progress.completionPct} spacing="mt-4" />
             <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-label text-ink-3">
               <span><strong className="font-medium text-ink">{progress.executed}</strong> {copy.executed}</span>
               <span><strong className="font-medium text-ink">{progress.reviewed}</strong> {copy.reviewed}</span>
@@ -143,7 +142,7 @@ export default async function SavedTaxPlanPage({
               {copy.updated} {fmtDateTime(saved.updatedAt, language)}
             </div>
           </Panel>
-        </div>
+        </Split>
       </Card>
 
       <Card

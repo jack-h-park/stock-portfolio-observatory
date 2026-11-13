@@ -7,7 +7,7 @@ import { Tabs } from '@/components/Tabs'
 import { SubmitButton } from '@/components/SubmitButton'
 import { Badge, Callout, Card, EmptyState, Note, Panel, SectionHeading, Signed, TextLink } from '@/components/ui'
 import { Checkbox, Input, Select } from '@/components/form'
-import { CardRow, Stat, StatStrip } from '@/components/layout'
+import { CardRow, Split, Stat, StatStrip } from '@/components/layout'
 import { dbAvailable, portfolioToday } from '@/lib/adapters/portfolio-db'
 import { getRebalanceInput } from '@/lib/adapters/rebalance-input'
 import { EMPTY_VALUE, fmtDateShort, fmtDateTime, fmtKrw, fmtMoney, fmtNumber, fmtPct, fmtPctRange, fmtQuantity, fmtSigned } from '@/lib/format'
@@ -992,7 +992,7 @@ export default async function RebalanceProposalPage({
         accent
         action={<Badge tone={PROPOSAL_STATUS_TONE[proposal.status]}>{copy.statuses[proposal.status]}</Badge>}
       >
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <Split side="20rem" at="lg" gap={4}>
           <div className="space-y-2">
             <p className="text-caption text-ink">{copy.statusCard.next[nextKey]}</p>
             <dl className="grid grid-cols-2 gap-2 text-label sm:grid-cols-4">
@@ -1022,7 +1022,7 @@ export default async function RebalanceProposalPage({
               </form>
             )}
           </div>
-        </div>
+        </Split>
       </Card>
 
       <Tabs label={copy.title} items={tabs.map((t) => ({ key: t, href: `${base}?tab=${t}`, label: copy.tabs[t] }))} current={tab} />

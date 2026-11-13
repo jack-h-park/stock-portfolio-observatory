@@ -27,6 +27,10 @@ const COLUMNS = {
   3: 'xl:grid-cols-3',
   /** A wide lead card and a narrower companion that will not collapse below 22rem. */
   hero: 'xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.9fr)]',
+  /** A main card and a side card that stays between 18rem and 24rem. */
+  main: 'xl:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]',
+  /** The same pair with the side card first. */
+  'side-main': 'xl:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]',
 } as const
 
 // Rows carry their own separation from the next block. Most sit below the
@@ -46,6 +50,40 @@ export function CardRow({
   children: ReactNode
 }) {
   return <div className={clsx(SPACING[spacing], 'grid grid-cols-1 gap-5', COLUMNS[columns], className)}>{children}</div>
+}
+
+// The two-column splits inside a card body, one entry per template in use. A
+// combination not listed here throws at render, so this table stays the only
+// place a split's classes are written.
+const SPLITS: Record<string, string> = {
+  '20rem|lg|4|last': 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]',
+  '18rem|lg|5|last': 'grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]',
+  '18rem|md|3|last': 'grid gap-3 md:grid-cols-[1fr_18rem]',
+  '26rem|xl|4|last': 'grid gap-4 xl:grid-cols-[1fr_26rem]',
+  '20rem|xl|5|first': 'grid gap-5 xl:grid-cols-[20rem_minmax(0,1fr)]',
+}
+
+/**
+ * A main column and a fixed-width side column inside a card, stacked until the
+ * `at` breakpoint. `sideFirst` puts the side column on the left.
+ */
+export function Split({
+  side,
+  at,
+  gap,
+  sideFirst,
+  children,
+}: {
+  side: '18rem' | '20rem' | '26rem'
+  at: 'md' | 'lg' | 'xl'
+  gap: 3 | 4 | 5
+  sideFirst?: boolean
+  children: ReactNode
+}) {
+  const key = `${side}|${at}|${gap}|${sideFirst ? 'first' : 'last'}`
+  const className = SPLITS[key]
+  if (!className) throw new Error(`Split: no template for ${key}; add it to SPLITS in components/layout.tsx`)
+  return <div className={className}>{children}</div>
 }
 
 /**

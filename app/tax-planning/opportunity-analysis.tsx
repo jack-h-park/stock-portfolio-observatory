@@ -8,6 +8,7 @@ import {
 } from '@/lib/tax-planning'
 import { scenarioFromTaxYearProfile, type FilingScenario, type TaxPolicy, type TaxYearProfile } from '@/lib/tax-policy'
 import { DataTable } from '@/components/DataTable'
+import { Split } from '@/components/layout'
 import type { getPageCopy } from '@/lib/ui-copy'
 
 type TaxPlanningCopy = ReturnType<typeof getPageCopy<'taxPlanning'>>
@@ -269,7 +270,7 @@ export function DecisionSummary({
 
   return (
     <Card title={copy.opportunity.currentDecision} className="mb-5" accent>
-      <div className="grid gap-4 xl:grid-cols-[1fr_26rem]">
+      <Split side="26rem" at="xl" gap={4}>
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={!hasPlanningTarget ? 'warning' : tiedTax ? 'neutral' : 'success'}>
@@ -323,7 +324,7 @@ export function DecisionSummary({
             />
   </div>
         </Panel>
-      </div>
+      </Split>
     </Card>
   )
 }

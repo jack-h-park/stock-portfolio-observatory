@@ -1,11 +1,10 @@
 import Link from 'next/link'
 import { createSavedTaxPlanAction } from '@/app/tax-planning/actions'
 import { DataTable } from '@/components/DataTable'
-import { Badge, Callout, Card, EmptyState, Label, MetricField, Note, Panel, SectionHeading, Signed, marketTone, type Tone } from '@/components/ui'
+import { Badge, Callout, Card, EmptyState, Label, MetricField, Note, Panel, SectionHeading, Signed, type Tone } from '@/components/ui'
 import type { createMoneyFormatter } from '@/lib/currency'
 import { fmtDateShort, fmtDateTime, fmtDurationDays, fmtNumber, fmtPct, fmtQuantity, fmtSigned } from '@/lib/format'
 import type { Language } from '@/lib/i18n'
-import { positionHref } from '@/lib/position-url'
 import type { MonthlySaleMasterPlan, MonthlySalePlanSet, TaxPlanCandidate, MasterPlanStrategyKey } from '@/lib/tax-planning'
 import { savedTaxPlanProgress, type SavedTaxPlan } from '@/lib/tax-plan-store'
 import { bucketTone, signClass } from '@/lib/tone'
@@ -15,22 +14,11 @@ type TaxPlanningCopy = ReturnType<typeof getPageCopy<'taxPlanning'>>
 import { Input } from '@/components/form'
 import { SubmitButton } from '@/components/SubmitButton'
 import { displayAccount } from '@/lib/account-label'
+import { ProgressBar } from '@/components/bars'
+import { PositionCell } from '@/components/PositionCell'
+import { Split } from '@/components/layout'
 
 type MoneyFormatter = ReturnType<typeof createMoneyFormatter>
-
-function PositionCell({ row }: { row: TaxPlanCandidate }) {
-  return (
-    <div className="min-w-[14rem]">
-      <div className="flex items-center gap-2">
-        <Badge tone={marketTone(row.market)}>{row.market}</Badge>
-        <Link href={positionHref(row.market, row.ticker)} className="font-mono text-caption font-medium text-info hover:underline">
-          {row.ticker}
-        </Link>
-      </div>
-      <div className="mt-1 max-w-[20rem] truncate text-caption font-medium text-ink">{row.name}</div>
-    </div>
-  )
-}
 
 export function CandidateTable({ rows, copy, money }: { rows: TaxPlanCandidate[]; copy: TaxPlanningCopy; money: MoneyFormatter }) {
   if (rows.length === 0) return <EmptyState>{copy.candidateTable.empty}</EmptyState>
@@ -38,7 +26,7 @@ export function CandidateTable({ rows, copy, money }: { rows: TaxPlanCandidate[]
     <DataTable
       rows={rows}
       columns={[
-        { key: 'ticker', label: copy.candidateTable.position, render: (r) => <PositionCell row={r} /> },
+        { key: 'ticker', label: copy.candidateTable.position, render: (r) => <PositionCell market={r.market} ticker={r.ticker} name={r.name} /> },
         { key: 'account', label: copy.candidateTable.account, render: (r) => <span className="max-w-[12rem] truncate">{displayAccount(r.brokerage, r.account)}</span> },
         { key: 'acquired_date', label: copy.candidateTable.acquired },
         { key: 'holdingBucket', label: copy.candidateTable.term, render: (r) => <Badge tone={bucketTone(r.holdingBucket)}>{r.holdingBucket}</Badge> },
@@ -257,12 +245,13 @@ export function MasterScenarioComparison({
                     {money(scenarioRow.summary.estimatedTaxKrw)}
                   </span>
                 </div>
-                <div className="mt-1.5 h-1.5 overflow-hidden rounded-pill bg-line-subtle">
-                  <div
-                    className={scenarioRow.summary.estimatedTaxKrw === minTax ? 'h-full bg-success' : 'h-full bg-warning'}
-                    style={{ width: `${taxWidth}%` }}
-                  />
-                </div>
+                <ProgressBar
+                  pct={taxWidth}
+                  // Not a gain/loss sign: the cheapest scenario is marked, the rest warn.
+                  tone={scenarioRow.summary.estimatedTaxKrw !== minTax ? 'warning' : 'success'}
+                  height="sm"
+                  spacing="mt-1.5"
+                />
                 <div className={`mt-1 text-right text-micro tabular-nums ${signClass(-delta)}`}>
                   {delta === 0 ? copy.comparison.earliestBaseline : delta < 0 ? copy.comparison.less(money(Math.abs(delta))) : copy.comparison.more(money(delta))}
                 </div>
@@ -313,7 +302,7 @@ export function SavedPlansPanel({
       className="mb-5"
       action={<Badge>{copy.savedPlans.recent(fmtNumber(visiblePlans.length))}</Badge>}
     >
-      <div className="grid gap-5 xl:grid-cols-[20rem_minmax(0,1fr)]">
+      <Split side="20rem" at="xl" gap={5} sideFirst>
         <Panel as="form" pad="md" action={createSavedTaxPlanAction}>
           <Label size="micro">{copy.savedPlans.saveCurrentCalculation}</Label>
           <Note spacing="above-1" relaxed>
@@ -364,9 +353,7 @@ export function SavedPlansPanel({
                       <div className="flex justify-between text-micro text-ink-3">
                         <span>{copy.savedPlans.execution}</span><span>{fmtPct(progress.completionPct, { digits: 1 })}</span>
                       </div>
-                      <div className="mt-1 h-1.5 overflow-hidden rounded-pill bg-line-subtle">
-                        <div className="h-full bg-success" style={{ width: `${progress.completionPct}%` }} />
-                      </div>
+                      <ProgressBar pct={progress.completionPct} height="sm" spacing="mt-1" />
                     </div>
                     <div className="text-label tabular-nums text-ink-2">
                       <div>{money(saved.plan.summary.proceedsKrw)} {copy.savedPlans.planned}</div>
@@ -383,7 +370,7 @@ export function SavedPlansPanel({
             </div>
           )}
         </div>
-      </div>
+      </Split>
     </Card>
   )
 }

@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { TrendBarChart } from '@/components/charts'
@@ -9,10 +8,10 @@ import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
-import { positionHref } from '@/lib/position-url'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow, KpiBand } from '@/components/layout'
+import { PositionCell } from '@/components/PositionCell'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/income')
@@ -182,17 +181,7 @@ export default async function IncomePage() {
               {
                 key: 'ticker',
                 label: copy.columns.position,
-                render: (r) => (
-                  <div className="min-w-[14rem]">
-                    <div className="flex items-center gap-2">
-                      <Badge tone={marketTone(r.market)}>{r.market}</Badge>
-                      <Link href={positionHref(r.market, r.ticker)} className="font-mono text-caption font-medium text-info hover:underline">
-                        {r.ticker}
-                      </Link>
-                    </div>
-                    <div className="mt-1 max-w-[20rem] truncate text-caption font-medium text-ink">{r.name}</div>
-                  </div>
-                ),
+                render: (r) => <PositionCell market={r.market} ticker={r.ticker} name={r.name} />,
               },
               { key: 'row_count', label: copy.columns.rows, align: 'right', render: (r) => fmtNumber(r.row_count) },
               { key: 'native_income', label: copy.columns.nativeIncome, align: 'right', render: (r) => money(r.native_income, r.currency) },

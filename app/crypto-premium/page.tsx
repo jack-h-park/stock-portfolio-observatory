@@ -115,8 +115,8 @@ export default async function CryptoPremiumPage() {
             </HeroAside>
           </CardRow>
 
-          <CardRow columns={3}>
-            <Card title={copy.byCoin} className="xl:col-span-2">
+          <CardRow columns="main">
+            <Card title={copy.byCoin}>
               <DataTable
                 rows={premium.spot}
                 columns={[

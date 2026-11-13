@@ -34,7 +34,7 @@ import { Select } from '@/components/form'
 import { DataTable } from '@/components/DataTable'
 import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { routeMetadata, routeSection } from '@/lib/page-names'
-import { CardRow } from '@/components/layout'
+import { CardRow, Split } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/tax-planning')
@@ -280,7 +280,7 @@ export default async function TaxPlanningPage({
         </div>
       </details>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+      <CardRow columns="main">
         <Card
           title={copy.page.annualFilingProfile}
           info={copy.page.annualFilingProfileInfo}
@@ -358,7 +358,7 @@ export default async function TaxPlanningPage({
             <div className="flex items-center justify-between gap-3"><span>{copy.page.creditModel}</span><span className="text-right text-ink">{plan.assumptions.krForeignTaxCreditMode}</span></div>
           </div>
         </Card>
-      </div>
+      </CardRow>
 
       {hasPlanningTarget ? (
         <Card
@@ -403,14 +403,14 @@ export default async function TaxPlanningPage({
         </Card>
       ) : (
         <Card title={copy.page.annualTargetScenarioComparison} className="mb-5">
-          <div className="grid gap-3 md:grid-cols-[1fr_18rem]">
+          <Split side="18rem" at="md" gap={3}>
             <div className="text-body leading-relaxed text-ink-2">
               {copy.page.annualTargetHidden}
             </div>
             <Panel text="caption-3">
               {copy.page.annualTargetHiddenHint}
             </Panel>
-          </div>
+          </Split>
         </Card>
       )}
 

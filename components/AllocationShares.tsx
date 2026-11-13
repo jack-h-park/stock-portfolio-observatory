@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { ShareBar } from '@/components/bars'
 import { HelpPopover } from '@/components/HelpPopover'
 import { Note } from '@/components/ui'
 import type { AllocationShare } from '@/lib/asset-allocation'
@@ -34,11 +35,10 @@ export function AllocationShares<K extends string>({
   return (
     <section className="flex flex-col gap-3 p-4">
       <h3 className="text-label font-semibold text-ink-2">{title}</h3>
-      <div className="flex h-3 w-full overflow-hidden rounded-full bg-surface" aria-hidden="true">
-        {shares.map((share) => (
-          <div key={share.key} style={{ width: `${Math.max(share.pct, 0)}%`, background: colors[share.key] }} />
-        ))}
-      </div>
+      <ShareBar
+        ariaHidden
+        segments={shares.map((share) => ({ key: share.key, pct: Math.max(share.pct, 0), style: { background: colors[share.key] } }))}
+      />
       <table className="w-full text-body">
         <caption className="sr-only">{title}</caption>
         <thead>

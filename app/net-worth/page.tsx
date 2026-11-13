@@ -179,11 +179,11 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
       />
       <AssetCoverageNote summary={netWorth} language={language} />
 
-      <CardRow columns={3}>
+      <CardRow columns="side-main">
         <Card>
           <MetricField label={copy.total} value={money(netWorth.totalKrw)} size="metric" />
         </Card>
-        <Card title={copy.byClass} className="md:col-span-2">
+        <Card title={copy.byClass}>
           <div className="grid grid-cols-2 gap-4 p-4 md:grid-cols-5">
             {classes.map((name) => (
               <MetricField
@@ -316,142 +316,145 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
         </Card>
       ) : null}
 
-      <Card title={copy.balances}>
-        {netWorth.unpricedCash.length ? (
-          <div className="border-b border-line-subtle bg-surface px-4 py-3 text-label leading-relaxed text-ink-3">
-            <p>{copy.unpriced(netWorth.unpricedCash.map(maskAccountLabel).join(', '))}</p>
-          </div>
-        ) : null}
-        <DataTable
-          caption={copy.balances}
-          rows={netWorth.cash}
-          getRowKey={(row: CashRow) => `${row.institution}|${row.account}`}
-          emptyMessage={copy.empty}
-          columns={[
-            { key: 'institution', label: copy.columns.institution, render: (row: CashRow) => <span className="font-medium text-ink">{row.institution}</span> },
-            { key: 'account', label: copy.columns.account, render: (row: CashRow) => maskAccountLabel(row.account) },
-            { key: 'kind', label: copy.columns.kind, priority: 'secondary', render: (row: CashRow) => kindLabel(row.kind) },
-            {
-              key: 'asOf',
-              label: copy.columns.asOf,
-              nowrap: true,
-              render: (row: CashRow) => (
-                <span className="tabular-nums">
-                  {fmtDate(row.asOfDate, language)}
-                  {row.derived ? (
-                    <>
-                      {' '}
-                      <Badge tone="info">{copy.derived}</Badge>
-                    </>
-                  ) : null}
-                </span>
-              ),
-            },
-            {
-              key: 'balance',
-              label: copy.columns.balance,
-              align: 'right',
-              nowrap: true,
-              render: (row: CashRow) => <span className="tabular-nums">{row.currency === 'USD' ? formatUsd(row.balance) : formatKrw(row.balance)}</span>,
-            },
-            {
-              key: 'krw',
-              label: copy.columns.krw,
-              align: 'right',
-              nowrap: true,
-              render: (row: CashRow) => <span className="tabular-nums">{row.krw == null ? copy.none : money(row.krw)}</span>,
-            },
-          ]}
-        />
-      </Card>
-
-      {history.length ? (
-        <Card title={copy.history}>
-          <div className="flex flex-col gap-1 border-b border-line-subtle bg-surface px-4 py-3 text-label leading-relaxed text-ink-3">
-            <p>{copy.historyNote}</p>
-            <p>{copy.historyFxNote}</p>
-          </div>
+      <CardRow columns={1} spacing="none">
+        <Card title={copy.balances}>
+          {netWorth.unpricedCash.length ? (
+            <div className="border-b border-line-subtle bg-surface px-4 py-3 text-label leading-relaxed text-ink-3">
+              <p>{copy.unpriced(netWorth.unpricedCash.map(maskAccountLabel).join(', '))}</p>
+            </div>
+          ) : null}
           <DataTable
-            caption={copy.history}
-            rows={history}
-            getRowKey={(row: HistoryRow) => row.month}
+            caption={copy.balances}
+            rows={netWorth.cash}
+            getRowKey={(row: CashRow) => `${row.institution}|${row.account}`}
             emptyMessage={copy.empty}
             columns={[
-              { key: 'month', label: copy.historyColumns.month, render: (row: HistoryRow) => <span className="tabular-nums">{row.month}</span> },
-              ...classes.map((key) => ({
-                key,
-                label: copy.historyColumns[key],
-                align: 'right' as const,
-                render: (row: HistoryRow) => amount(row[key]),
-              })),
+              { key: 'institution', label: copy.columns.institution, render: (row: CashRow) => <span className="font-medium text-ink">{row.institution}</span> },
+              { key: 'account', label: copy.columns.account, render: (row: CashRow) => maskAccountLabel(row.account) },
+              { key: 'kind', label: copy.columns.kind, priority: 'secondary', render: (row: CashRow) => kindLabel(row.kind) },
               {
-                key: 'total',
-                label: copy.historyColumns.total,
-                align: 'right' as const,
-                render: (row: HistoryRow) => <span className="font-medium tabular-nums text-ink">{money(row.total)}</span>,
+                key: 'asOf',
+                label: copy.columns.asOf,
+                nowrap: true,
+                render: (row: CashRow) => (
+                  <span className="tabular-nums">
+                    {fmtDate(row.asOfDate, language)}
+                    {row.derived ? (
+                      <>
+                        {' '}
+                        <Badge tone="info">{copy.derived}</Badge>
+                      </>
+                    ) : null}
+                  </span>
+                ),
               },
-              ...(includeChildren
-                ? [
-                    {
-                      key: 'children',
-                      label: childCopy.historyColumn,
-                      align: 'right' as const,
-                      render: (row: HistoryRow) => amount(row.children ?? null),
-                    },
-                  ]
-                : []),
+              {
+                key: 'balance',
+                label: copy.columns.balance,
+                align: 'right',
+                nowrap: true,
+                render: (row: CashRow) => <span className="tabular-nums">{row.currency === 'USD' ? formatUsd(row.balance) : formatKrw(row.balance)}</span>,
+              },
+              {
+                key: 'krw',
+                label: copy.columns.krw,
+                align: 'right',
+                nowrap: true,
+                render: (row: CashRow) => <span className="tabular-nums">{row.krw == null ? copy.none : money(row.krw)}</span>,
+              },
             ]}
           />
         </Card>
-      ) : null}
 
-      <Card
-        title={fbarCopy.title}
-        className="mt-5"
-        action={
-          <LinkChips
-            as="nav"
-            label={fbarCopy.yearLabel}
-            ariaCurrent="page"
-            items={fbarYears.map((year) => ({ key: String(year), href: hrefWith({ fbarYear: year }), label: year }))}
-            current={String(fbarYear)}
-          />
-        }
-      >
-        <div className="mb-3 flex flex-col gap-1 text-label leading-relaxed text-ink-3">
-          <p className="font-medium text-ink-2">{fbarCopy.note}</p>
-          <p>{fbarCopy.method}</p>
-          <p>
-            {fbar.rate
-              ? fbarCopy.rate(fmtNumber(fbar.rate.krwPerUsd, 2), fmtDate(fbar.rate.date, language))
-              : fbarCopy.noRate(fbarYear)}
-          </p>
-          <p>{fbarCopy.understatedNote}</p>
-          <p>{fbarCopy.cashNote}</p>
-          {fbar.rows.some((row) => row.maxKrw == null) ? (
-            <p>{fbarCopy.unpriced(fbar.rows.filter((row) => row.maxKrw == null).map((row) => `${row.institution} ${maskAccountLabel(row.account)}`).join(', '))}</p>
-          ) : null}
-        </div>
-        <DataTable caption={fbarCopy.title} rows={fbar.rows} getRowKey={(row: ForeignAccountRow) => row.id} emptyMessage={fbarCopy.empty(fbarYear)} columns={fbarColumns} />
-        {fbar.rows.length ? (
-          <div className="mt-3 flex flex-wrap justify-end gap-x-6 gap-y-1 text-body">
-            <span className="text-ink-3">{fbarCopy.aggregate}</span>
-            <span className="font-medium tabular-nums text-ink">{formatKrw(fbar.rows.reduce((sum, row) => sum + (row.maxKrw ?? 0), 0))}</span>
-            {fbar.aggregateMaxUsd != null ? <span className="font-medium tabular-nums text-ink">{formatUsd(fbar.aggregateMaxUsd)}</span> : null}
-          </div>
-        ) : null}
-        {fbar.cryptoRows.length ? (
-          <section className="mt-5 border-t border-line-subtle pt-4">
-            <SectionHeading level={3} size="sub" tone="muted" spacing="mb-2">{fbarCopy.cryptoTitle}</SectionHeading>
-            <DataTable caption={fbarCopy.cryptoTitle} rows={fbar.cryptoRows} getRowKey={(row: ForeignAccountRow) => row.id} emptyMessage={fbarCopy.empty(fbarYear)} columns={fbarColumns} />
-            <div className="mt-3 flex flex-wrap justify-end gap-x-6 gap-y-1 text-body">
-              <span className="text-ink-3">{fbarCopy.cryptoSubtotal}</span>
-              <span className="font-medium tabular-nums text-ink">{formatKrw(fbar.cryptoRows.reduce((sum, row) => sum + (row.maxKrw ?? 0), 0))}</span>
-              {fbar.cryptoSubtotalMaxUsd != null ? <span className="font-medium tabular-nums text-ink">{formatUsd(fbar.cryptoSubtotalMaxUsd)}</span> : null}
+        {history.length ? (
+          <Card title={copy.history}>
+            <div className="flex flex-col gap-1 border-b border-line-subtle bg-surface px-4 py-3 text-label leading-relaxed text-ink-3">
+              <p>{copy.historyNote}</p>
+              <p>{copy.historyFxNote}</p>
             </div>
-          </section>
+            <DataTable
+              caption={copy.history}
+              rows={history}
+              getRowKey={(row: HistoryRow) => row.month}
+              emptyMessage={copy.empty}
+              columns={[
+                { key: 'month', label: copy.historyColumns.month, render: (row: HistoryRow) => <span className="tabular-nums">{row.month}</span> },
+                ...classes.map((key) => ({
+                  key,
+                  label: copy.historyColumns[key],
+                  align: 'right' as const,
+                  render: (row: HistoryRow) => amount(row[key]),
+                })),
+                {
+                  key: 'total',
+                  label: copy.historyColumns.total,
+                  align: 'right' as const,
+                  render: (row: HistoryRow) => <span className="font-medium tabular-nums text-ink">{money(row.total)}</span>,
+                },
+                ...(includeChildren
+                  ? [
+                      {
+                        key: 'children',
+                        label: childCopy.historyColumn,
+                        align: 'right' as const,
+                        render: (row: HistoryRow) => amount(row.children ?? null),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          </Card>
         ) : null}
-      </Card>
+      </CardRow>
+
+      <CardRow columns={1} spacing="above">
+        <Card
+          title={fbarCopy.title}
+          action={
+            <LinkChips
+              as="nav"
+              label={fbarCopy.yearLabel}
+              ariaCurrent="page"
+              items={fbarYears.map((year) => ({ key: String(year), href: hrefWith({ fbarYear: year }), label: year }))}
+              current={String(fbarYear)}
+            />
+          }
+        >
+          <div className="mb-3 flex flex-col gap-1 text-label leading-relaxed text-ink-3">
+            <p className="font-medium text-ink-2">{fbarCopy.note}</p>
+            <p>{fbarCopy.method}</p>
+            <p>
+              {fbar.rate
+                ? fbarCopy.rate(fmtNumber(fbar.rate.krwPerUsd, 2), fmtDate(fbar.rate.date, language))
+                : fbarCopy.noRate(fbarYear)}
+            </p>
+            <p>{fbarCopy.understatedNote}</p>
+            <p>{fbarCopy.cashNote}</p>
+            {fbar.rows.some((row) => row.maxKrw == null) ? (
+              <p>{fbarCopy.unpriced(fbar.rows.filter((row) => row.maxKrw == null).map((row) => `${row.institution} ${maskAccountLabel(row.account)}`).join(', '))}</p>
+            ) : null}
+          </div>
+          <DataTable caption={fbarCopy.title} rows={fbar.rows} getRowKey={(row: ForeignAccountRow) => row.id} emptyMessage={fbarCopy.empty(fbarYear)} columns={fbarColumns} />
+          {fbar.rows.length ? (
+            <div className="mt-3 flex flex-wrap justify-end gap-x-6 gap-y-1 text-body">
+              <span className="text-ink-3">{fbarCopy.aggregate}</span>
+              <span className="font-medium tabular-nums text-ink">{formatKrw(fbar.rows.reduce((sum, row) => sum + (row.maxKrw ?? 0), 0))}</span>
+              {fbar.aggregateMaxUsd != null ? <span className="font-medium tabular-nums text-ink">{formatUsd(fbar.aggregateMaxUsd)}</span> : null}
+            </div>
+          ) : null}
+          {fbar.cryptoRows.length ? (
+            <section className="mt-5 border-t border-line-subtle pt-4">
+              <SectionHeading level={3} size="sub" tone="muted" spacing="mb-2">{fbarCopy.cryptoTitle}</SectionHeading>
+              <DataTable caption={fbarCopy.cryptoTitle} rows={fbar.cryptoRows} getRowKey={(row: ForeignAccountRow) => row.id} emptyMessage={fbarCopy.empty(fbarYear)} columns={fbarColumns} />
+              <div className="mt-3 flex flex-wrap justify-end gap-x-6 gap-y-1 text-body">
+                <span className="text-ink-3">{fbarCopy.cryptoSubtotal}</span>
+                <span className="font-medium tabular-nums text-ink">{formatKrw(fbar.cryptoRows.reduce((sum, row) => sum + (row.maxKrw ?? 0), 0))}</span>
+                {fbar.cryptoSubtotalMaxUsd != null ? <span className="font-medium tabular-nums text-ink">{formatUsd(fbar.cryptoSubtotalMaxUsd)}</span> : null}
+              </div>
+            </section>
+          ) : null}
+        </Card>
+      </CardRow>
     </>
   )
 }

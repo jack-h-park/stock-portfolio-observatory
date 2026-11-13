@@ -3,7 +3,9 @@ import { test } from 'node:test'
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
-import { MiniStat, MiniStatGrid, Stat, StatStrip, Total, TotalsStrip } from '@/components/layout'
+import { CardRow, MiniStat, MiniStatGrid, Split, Stat, StatStrip, Total, TotalsStrip } from '@/components/layout'
+import { ProgressBar, ShareBar } from '@/components/bars'
+import { PositionCell } from '@/components/PositionCell'
 import { Callout, HeroAside, MetricField, Note, Panel, SectionHeading } from '@/components/ui'
 import { LinkChip, LinkChips } from '@/components/LinkChips'
 import { Tabs } from '@/components/Tabs'
@@ -510,4 +512,106 @@ test('SectionHeading muted sub h3 with mb-2 (FBAR sub-section)', () => {
 test('SectionHeading forwards id to the heading', () => {
   const html = renderToStaticMarkup(h(SectionHeading, { id: 'x', children: 'T' }))
   assert.equal(html, '<h2 id="x" class="text-body-lg font-medium text-ink">T</h2>')
+})
+
+// Bars
+
+test('ShareBar defaults: a 12px surface track with full-height segments (overview market bar)', () => {
+  const html = renderToStaticMarkup(
+    h(ShareBar, { segments: [{ key: 'a', pct: 60, title: 'A 60%', style: { backgroundImage: 'g' } }, { key: 'b', pct: 40 }] })
+  )
+  assert.equal(
+    html,
+    '<div class="flex overflow-hidden rounded-pill h-3 bg-surface"><div class="h-full" style="width:60%;background-image:g" title="A 60%"></div><div class="h-full" style="width:40%"></div></div>'
+  )
+})
+
+test('ShareBar md height with mt-5 and token fills (overview term mix)', () => {
+  const html = renderToStaticMarkup(h(ShareBar, { height: 'md', spacing: 'mt-5', segments: [{ key: 'l', pct: 70, className: 'bg-success' }] }))
+  assert.equal(html, '<div class="mt-5 flex overflow-hidden rounded-pill h-2 bg-surface"><div class="h-full bg-success" style="width:70%"></div></div>')
+})
+
+test('ShareBar ariaHidden and a subtle sm track', () => {
+  const html = renderToStaticMarkup(h(ShareBar, { ariaHidden: true, height: 'sm', track: 'subtle', segments: [] }))
+  assert.equal(html, '<div class="flex overflow-hidden rounded-pill h-1.5 bg-line-subtle" aria-hidden="true"></div>')
+})
+
+test('ProgressBar defaults: md subtle track with a success fill', () => {
+  const html = renderToStaticMarkup(h(ProgressBar, { pct: 40 }))
+  assert.equal(html, '<div class="overflow-hidden rounded-pill h-2 bg-line-subtle"><div class="h-full bg-success" style="width:40%"></div></div>')
+})
+
+test('ProgressBar sm with mt-1.5 and a warning fill (tax comparison)', () => {
+  const html = renderToStaticMarkup(h(ProgressBar, { pct: 40, tone: 'warning', height: 'sm', spacing: 'mt-1.5' }))
+  assert.equal(html, '<div class="mt-1.5 overflow-hidden rounded-pill h-1.5 bg-line-subtle"><div class="h-full bg-warning" style="width:40%"></div></div>')
+})
+
+test('ProgressBar spacing mt-1 and mt-4', () => {
+  assert.match(renderToStaticMarkup(h(ProgressBar, { pct: 1, height: 'sm', spacing: 'mt-1' })), /^<div class="mt-1 overflow-hidden rounded-pill h-1.5 bg-line-subtle">/)
+  assert.match(renderToStaticMarkup(h(ProgressBar, { pct: 1, spacing: 'mt-4' })), /^<div class="mt-4 overflow-hidden rounded-pill h-2 bg-line-subtle">/)
+})
+
+test('ProgressBar roundedFill on a surface track (review concentration)', () => {
+  const html = renderToStaticMarkup(h(ProgressBar, { pct: 55, tone: 'info', track: 'surface', roundedFill: true }))
+  assert.equal(html, '<div class="overflow-hidden rounded-pill h-2 bg-surface"><div class="h-full rounded-pill bg-info" style="width:55%"></div></div>')
+})
+
+test('ProgressBar clamps to [0, 100]', () => {
+  assert.match(renderToStaticMarkup(h(ProgressBar, { pct: 150 })), /style="width:100%"/)
+  assert.match(renderToStaticMarkup(h(ProgressBar, { pct: -5 })), /style="width:0%"/)
+})
+
+// Position cell
+
+const TICKER_LINK = '<a class="font-mono text-caption font-medium text-info hover:underline" href="/positions/US/AAA">AAA</a>'
+
+test('PositionCell stacked: market badge and ticker link over the name', () => {
+  const html = renderToStaticMarkup(h(PositionCell, { market: 'US', ticker: 'AAA', name: 'Alpha' }))
+  assert.match(
+    html,
+    new RegExp(
+      '^<div class="min-w-\\[14rem\\]"><div class="flex items-center gap-2"><span class="[^"]*">US</span>' +
+        TICKER_LINK.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
+        '</div><div class="mt-1 max-w-\\[20rem\\] truncate text-caption font-medium text-ink">Alpha</div></div>$'
+    )
+  )
+})
+
+test('PositionCell stacked keeps the name line when the name is missing', () => {
+  const html = renderToStaticMarkup(h(PositionCell, { market: 'US', ticker: 'AAA', name: null }))
+  assert.ok(html.endsWith('<div class="mt-1 max-w-[20rem] truncate text-caption font-medium text-ink"></div></div>'))
+})
+
+test('PositionCell ticker layout is the link alone', () => {
+  const html = renderToStaticMarkup(h(PositionCell, { market: 'US', ticker: 'AAA', layout: 'ticker', showMarket: false }))
+  assert.equal(html, TICKER_LINK)
+})
+
+// Rows and splits
+
+test('CardRow columns="main": main column and an 18-24rem side', () => {
+  const html = renderToStaticMarkup(h(CardRow, { columns: 'main', children: 'x' }))
+  assert.equal(html, '<div class="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]">x</div>')
+})
+
+test('CardRow columns="side-main": the side column first', () => {
+  const html = renderToStaticMarkup(h(CardRow, { columns: 'side-main', children: 'x' }))
+  assert.equal(html, '<div class="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]">x</div>')
+})
+
+for (const [props, expected] of [
+  [{ side: '20rem', at: 'lg', gap: 4 }, 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]'],
+  [{ side: '18rem', at: 'lg', gap: 5 }, 'grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]'],
+  [{ side: '18rem', at: 'md', gap: 3 }, 'grid gap-3 md:grid-cols-[1fr_18rem]'],
+  [{ side: '26rem', at: 'xl', gap: 4 }, 'grid gap-4 xl:grid-cols-[1fr_26rem]'],
+  [{ side: '20rem', at: 'xl', gap: 5, sideFirst: true }, 'grid gap-5 xl:grid-cols-[20rem_minmax(0,1fr)]'],
+] as const) {
+  test(`Split ${JSON.stringify(props)}`, () => {
+    const html = renderToStaticMarkup(h(Split, { ...props, children: 'x' }))
+    assert.equal(html, `<div class="${expected}">x</div>`)
+  })
+}
+
+test('Split throws on a combination not in its table', () => {
+  assert.throws(() => renderToStaticMarkup(h(Split, { side: '26rem', at: 'md', gap: 3, children: 'x' })), /Split/)
 })
