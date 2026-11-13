@@ -55,7 +55,7 @@ a leading substring instead.
 
 | you want | use |
 |---|---|
-| a row of cards under the header | `<CardRow>` — `columns` 1 / 2 / 3 / `hero`, `spacing` below / above / none |
+| a row of cards under the header | `<CardRow>` — `columns` 1 / 2 / 3 / `hero` / `main` / `side-main`, `spacing` below / above / none |
 | the metric strip inside a hero card | `<KpiBand>` |
 | a link beside a heading | `<TextLink>` |
 | a submit button | `<SubmitButton>` — shows a pending state |
@@ -220,7 +220,9 @@ state). Routes that only redirect (`/positions`, `/positions/KR`,
 and `/tax-planning` twice. Nor is the rebalance proposal detail
 (`/rebalance/proposals/[id]`): the sample state holds no proposal, so there is
 nothing for it to render. Its markup is pinned instead by the class-string
-assertions in `tests/ui-primitives.test.ts`, added in R2. `a11y-audit` and
+assertions in `tests/ui-primitives.test.ts`, added in R2. The saved-plan detail
+page with a real plan (`/tax-planning/plans/[id]`) is, like the proposal page,
+not in the net: only its not-found state is. `a11y-audit` and
 `mobile-audit` keep the same list in the same order; add a new page to all
 three.
 

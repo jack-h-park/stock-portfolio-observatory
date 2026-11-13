@@ -18,7 +18,7 @@ import type { Metadata } from 'next'
 import { SubmitButton } from '@/components/SubmitButton'
 import { routeSection } from '@/lib/page-names'
 import { savedPlanHeading } from '@/lib/page-headings'
-import { deltaTone } from '@/lib/tone'
+import { deltaTone, type Tone } from '@/lib/tone'
 
 export const dynamic = 'force-dynamic'
 
@@ -153,17 +153,17 @@ export default async function SavedTaxPlanPage({
         action={<Badge tone={changed ? 'warning' : 'success'}>{changed ? copy.reviewChanges : copy.noMaterialChange}</Badge>}
       >
         <StatStrip columns="lg-4">
-          {[
-            [copy.plannedSales, deltaLabel(drift.proceedsKrw, copy.noChange), drift.proceedsKrw],
-            [copy.estimatedTax, deltaLabel(drift.estimatedTaxKrw, copy.noChange), -drift.estimatedTaxKrw],
-            [copy.afterTaxCash, deltaLabel(drift.afterTaxKrw, copy.noChange), drift.afterTaxKrw],
-            [copy.instructions, deltaLabel(drift.instructionCount, copy.noChange, (value) => fmtNumber(value)), -Math.abs(drift.instructionCount)],
-          ].map(([label, value, toneValue]) => (
+          {([
+            [copy.plannedSales, deltaLabel(drift.proceedsKrw, copy.noChange), deltaTone(drift.proceedsKrw)],
+            [copy.estimatedTax, deltaLabel(drift.estimatedTaxKrw, copy.noChange), deltaTone(-drift.estimatedTaxKrw)],
+            [copy.afterTaxCash, deltaLabel(drift.afterTaxKrw, copy.noChange), deltaTone(drift.afterTaxKrw)],
+            [copy.instructions, deltaLabel(drift.instructionCount, copy.noChange, (value) => fmtNumber(value)), drift.instructionCount ? 'warning' : 'neutral'],
+          ] satisfies [string, string, Tone][]).map(([label, value, tone]) => (
             <Stat
               key={String(label)}
               label={label}
               value={value}
-              tone={deltaTone(Number(toneValue))}
+              tone={tone}
             />
           ))}
         </StatStrip>

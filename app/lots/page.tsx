@@ -84,7 +84,7 @@ export default async function LotsPage({
               selected: selected[group.key],
             }))}
           />
-          <TotalsStrip columns={3}>
+          <TotalsStrip columns="sm-3">
             <Total label={copy.filtered} value={<>{fmtNumber(filtered.length)} / {fmtNumber(rows.length)}</>} />
             <Total label={copy.openQuantity} value={fmtQuantity(totals.quantity, 2)} />
             <Total label={copy.baseCost} value={money(totals.cost, 'KRW')} />

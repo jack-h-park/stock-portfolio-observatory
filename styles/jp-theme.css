@@ -1,24 +1,5 @@
 /* A copy of the J·P theme, not shared with any other repo: edit it here.
    Live classes: .t-h2, .t-eyebrow, .t-emph-gradient, .ai-page-header, .jp-stagger. */
-/* ================================================================
-   JHP Studio — J·P Theme  (v1.1, aligned with Brand Guidelines v1.0)
-
-   CSS scope: [data-theme="jp"]
-   Applied to:
-     - components/admin/layout/AdminPageShell.tsx   (all /admin/* pages)
-     - components/chat/ChatFullPage.tsx              (/chat route)
-     - components/chat/ChatFloatingWindow.tsx        (floating widget)
-
-   Source of truth: jhp-studio-design-system/project/colors_and_type.css
-   Shared brand tokens (--brand-*, --gradient-*) live in
-   styles/ai-design-system.css :root — available to both surfaces.
-
-   GUARDRAIL NOTE: This file is a theme token definition file, equivalent
-   in role to the :root block in ai-design-system.css. Color literals are
-   intentional here (they ARE the token values). This file is intentionally
-   excluded from featureCssFiles in scripts/check-css-guardrails.mjs.
-   Do not add feature-specific component selectors here.
-   ================================================================ */
 
 /* ── Light mode neutrals (Notion-ink foundation) ───────────────── */
 [data-theme="jp"] {

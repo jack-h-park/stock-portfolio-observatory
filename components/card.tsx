@@ -207,7 +207,9 @@ export function HeroAside({
             </Fragment>
           ))}
         </div>
-        <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{note}</div>
+        <Panel bordered={false} text="label-note">
+          {note}
+        </Panel>
       </div>
     </Card>
   )

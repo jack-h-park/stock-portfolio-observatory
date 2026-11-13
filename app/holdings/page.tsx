@@ -85,7 +85,7 @@ export default async function HoldingsPage({
               selected: selected[group.key],
             }))}
           />
-          <TotalsStrip columns={4}>
+          <TotalsStrip columns="sm-4">
             <Total label={copy.filtered} value={<>{fmtNumber(filtered.length)} / {fmtNumber(rows.length)}</>} />
             <Total label={copy.costBasis} value={money(totals.cost, 'KRW')} />
             <Total label={copy.marketValue} value={money(totals.marketValue, 'KRW')} />

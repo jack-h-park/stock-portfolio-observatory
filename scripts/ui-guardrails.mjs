@@ -741,7 +741,9 @@ export const CHECKS = [
     code: 'G11',
     id: 'bare-footnote',
     title: 'footnote written as a bare text-ink-3 paragraph',
-    roots: ['app'],
+    roots: ['app', 'components'],
+    // components/metric.tsx owns Note's own <p>, the one place the recipe belongs.
+    exclude: ['components/metric.tsx'],
     find: findBareFootnote,
   },
   {

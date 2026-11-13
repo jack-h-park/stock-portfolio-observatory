@@ -228,7 +228,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
             <LinkChip
               href={hrefWith({ children: !includeChildren })}
               active={includeChildren}
-              current="none"
+              ariaCurrent="none"
               aria-label={childCopy.toggleAria(includeChildren)}
               title={childCopy.toggleHint}
             >

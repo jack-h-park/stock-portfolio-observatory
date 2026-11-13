@@ -19,7 +19,7 @@ const NOTE_SPACING = {
 
 /**
  * The muted footnote under a table, chart or form: a `text-ink-3` paragraph.
- * Fifty-four pages wrote it by hand with eight margins and four sizes; every
+ * Fifty-four sites wrote it by hand with eight margins and four sizes; every
  * margin is a `spacing` value here, so there is no `className`. `row` lays
  * out text next to a Badge; `band` is the full-bleed strip at the top or
  * bottom of a card body. The children must be phrasing content (it is a `<p>`).
@@ -69,8 +69,9 @@ const HEADING_SIZE = { page: 'text-title', section: 'text-body-lg', sub: 'text-b
 /**
  * A heading inside a page or a card body, outside `Card title`. `eyebrow`
  * puts a micro label above it, `subtitle` a muted line below it (or beside
- * it, in the `band` and `inline` layouts), `action` a Badge after it in a row.
- * `band` is the page-level section row of the daily briefing.
+ * it, in the `band` layout), `action` a Badge after it in a row.
+ * `band` is the page-level section row of the daily briefing; it ignores
+ * `eyebrow`.
  */
 export function SectionHeading({
   level = 2,
@@ -94,7 +95,7 @@ export function SectionHeading({
   eyebrow?: ReactNode
   subtitle?: ReactNode
   action?: ReactNode
-  layout?: 'stack' | 'inline' | 'band'
+  layout?: 'stack' | 'band'
   spacing?: 'mb-1' | 'mb-2' | 'mt-1'
   id?: string
   children: ReactNode
@@ -122,9 +123,9 @@ export function SectionHeading({
   ) : (
     heading
   )
-  if (layout !== 'stack') {
+  if (layout === 'band') {
     return (
-      <div className={clsx(layout === 'band' && 'mb-3 mt-7', 'flex flex-wrap items-baseline gap-2.5', layout === 'band' && 'first:mt-0')}>
+      <div className="mb-3 mt-7 flex flex-wrap items-baseline gap-2.5 first:mt-0">
         {heading}
         {action}
         {subtitle != null ? <span className="text-label text-ink-3">{subtitle}</span> : null}

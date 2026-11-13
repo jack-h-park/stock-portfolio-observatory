@@ -107,7 +107,7 @@ export default async function RealizedLotsPage({
               },
             ]}
           />
-          <TotalsStrip columns={4}>
+          <TotalsStrip columns="sm-4">
             <Total label={copy.filtered} value={<>{fmtNumber(filtered.length)} / {fmtNumber(inYear.length)}</>} />
             <Total label={copy.totals.cost} value={usd ? formatUsd(totals.cost_usd) : formatKrw(totals.cost_krw)} />
             <Total label={copy.totals.proceeds} value={usd ? formatUsd(totals.proceeds_usd) : formatKrw(totals.proceeds_krw)} />
