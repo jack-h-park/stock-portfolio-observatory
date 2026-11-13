@@ -5,6 +5,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import { MiniStat, MiniStatGrid, Stat, StatStrip, Total, TotalsStrip } from '@/components/layout'
 import { HeroAside, MetricField } from '@/components/ui'
+import { LinkChip, LinkChips } from '@/components/LinkChips'
+import { Tabs } from '@/components/Tabs'
 
 // tsx compiles the component's JSX with the classic runtime, which reads a
 // global React; Next supplies it in the app, so the test does here.
@@ -177,4 +179,92 @@ test('Total is a bare div with the default Label and a neutral value', () => {
 test('Total tone="danger" ends the value in text-danger', () => {
   const html = renderToStaticMarkup(h(Total, { label: 'L', value: 'V', tone: 'danger' }))
   assert.equal(classOfText(html, 'V'), 'font-medium tabular-nums text-danger')
+})
+
+// --- LinkChip / LinkChips / Tabs ---
+
+/** The opening tag of the first <a> in the markup. */
+function anchorTag(html: string): string {
+  return html.match(/<a [^>]*>/)?.[0] ?? ''
+}
+function attr(tag: string, name: string): string | undefined {
+  return tag.match(new RegExp(`\\s${name}="([^"]*)"`))?.[1]
+}
+
+const CHIP_INFO = 'rounded-sm border px-2 py-1 text-label font-medium'
+const CHIP_SUBTLE = 'rounded-sm border px-2 py-1 text-label'
+const CHIP_INK = 'inline-flex min-h-8 items-center rounded-sm border px-2.5 text-label font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-info/40'
+
+const chipCases: [string, 'info' | 'subtle' | 'ink' | undefined, boolean, string][] = [
+  ['info (default) active', undefined, true, `${CHIP_INFO} border-info bg-info/10 text-info`],
+  ['info inactive', 'info', false, `${CHIP_INFO} border-line text-ink-3 hover:border-info hover:text-info`],
+  ['subtle active', 'subtle', true, `${CHIP_SUBTLE} border-line bg-surface font-medium text-ink`],
+  ['subtle inactive', 'subtle', false, `${CHIP_SUBTLE} border-transparent text-ink-3 hover:border-line hover:text-ink`],
+  ['ink active', 'ink', true, `${CHIP_INK} border-ink bg-ink text-card`],
+  ['ink inactive', 'ink', false, `${CHIP_INK} border-line bg-card text-ink-2 hover:border-ink-3 hover:bg-surface hover:text-ink`],
+]
+for (const [name, variant, active, expected] of chipCases) {
+  test(`LinkChip ${name}`, () => {
+    const html = renderToStaticMarkup(h(LinkChip, { href: '/x', active, ...(variant ? { variant } : {}), children: 'C' }))
+    assert.equal(attr(anchorTag(html), 'class'), expected)
+  })
+}
+
+test('LinkChip current defaults to "true": aria-current only when active', () => {
+  const on = anchorTag(renderToStaticMarkup(h(LinkChip, { href: '/x', active: true, children: 'C' })))
+  const off = anchorTag(renderToStaticMarkup(h(LinkChip, { href: '/x', active: false, children: 'C' })))
+  assert.equal(attr(on, 'aria-current'), 'true')
+  assert.equal(attr(off, 'aria-current'), undefined)
+})
+
+test('LinkChip current="page" emits aria-current="page" when active', () => {
+  const on = anchorTag(renderToStaticMarkup(h(LinkChip, { href: '/x', active: true, current: 'page', children: 'C' })))
+  const off = anchorTag(renderToStaticMarkup(h(LinkChip, { href: '/x', active: false, current: 'page', children: 'C' })))
+  assert.equal(attr(on, 'aria-current'), 'page')
+  assert.equal(attr(off, 'aria-current'), undefined)
+})
+
+test('LinkChip current="none" emits no aria-current and no aria-pressed, and forwards aria-label and title', () => {
+  const tag = anchorTag(renderToStaticMarkup(h(LinkChip, { href: '/x', active: true, current: 'none', title: 'T', 'aria-label': 'A', children: 'C' })))
+  assert.equal(attr(tag, 'aria-current'), undefined)
+  assert.equal(attr(tag, 'aria-pressed'), undefined)
+  assert.equal(attr(tag, 'aria-label'), 'A')
+  assert.equal(attr(tag, 'title'), 'T')
+  assert.equal(attr(tag, 'href'), '/x')
+})
+
+const ITEMS = [
+  { key: 'a', href: '/?k=a', label: 'A' },
+  { key: 'b', href: '/?k=b', label: 'B', title: 'Bee' },
+] as const
+
+test('LinkChips as="fragment" (default) renders bare chips, keyed by the caller', () => {
+  const html = renderToStaticMarkup(h(LinkChips, { items: [...ITEMS], current: 'b' }))
+  assert.ok(html.startsWith('<a '))
+  assert.equal((html.match(/<a /g) ?? []).length, 2)
+  assert.ok(html.includes('aria-current="true"'))
+  assert.ok(html.includes('title="Bee"'))
+})
+
+test('LinkChips as="nav" wraps in a labelled nav', () => {
+  const html = renderToStaticMarkup(h(LinkChips, { items: [...ITEMS], current: 'a', as: 'nav', label: 'Years' }))
+  assert.ok(html.startsWith('<nav aria-label="Years" class="flex flex-wrap items-center justify-end gap-1">'), html)
+})
+
+test('LinkChips as="group" wraps in a labelled role=group div', () => {
+  const html = renderToStaticMarkup(h(LinkChips, { items: [...ITEMS], current: 'a', as: 'group', label: 'G' }))
+  assert.ok(html.startsWith('<div role="group" aria-label="G" class="flex flex-wrap items-center justify-end gap-1">'), html)
+})
+
+const TAB_BASE = '-mb-px inline-flex min-h-8 items-center border-b-2 px-3 text-caption font-medium'
+
+test('Tabs nav and items', () => {
+  const html = renderToStaticMarkup(h(Tabs, { label: 'P', items: [{ key: 's', href: '/p?tab=s', label: 'S' }, { key: 't', href: '/p?tab=t', label: 'T' }], current: 's' }))
+  assert.ok(html.startsWith('<nav aria-label="P" class="mb-5 flex flex-wrap gap-1 border-b border-line-subtle">'), html)
+  const tags = html.match(/<a [^>]*>/g) ?? []
+  assert.equal(tags.length, 2)
+  assert.equal(attr(tags[0], 'class'), `${TAB_BASE} border-info text-ink`)
+  assert.equal(attr(tags[0], 'aria-current'), 'page')
+  assert.equal(attr(tags[1], 'class'), `${TAB_BASE} border-transparent text-ink-3 hover:text-ink`)
+  assert.equal(attr(tags[1], 'aria-current'), undefined)
 })

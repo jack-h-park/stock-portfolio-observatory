@@ -53,6 +53,7 @@ import { CardRow, KpiBand, MiniStat, MiniStatGrid } from '@/components/layout'
 import { AssetViewLink } from '@/components/LanguageSwitcher'
 import { WashSaleBanner } from '@/components/WashSaleBanner'
 import { TrendRangeLinks } from '@/components/TrendRangeLinks'
+import { LinkChip, LinkChips } from '@/components/LinkChips'
 import { resolveTrendRange, trendRangeDays } from '@/lib/trend-ranges'
 import { maskAccountLabel } from '@/lib/account-label'
 
@@ -501,39 +502,34 @@ export default async function OverviewPage({
           {selectedView === 'single' && <div className={`text-right text-caption tabular-nums ${signClass(trendChange)}`}>{valuedTrendData.length > 1 ? <>{trendChangeLabel}<div className="text-micro font-normal text-ink-3">{copy.since(firstTrendPoint.date)}</div></> : copy.needTwoSnapshots}</div>}
         </div>
         <div className="mb-3 flex flex-wrap items-center gap-1">
-          <Link
+          <LinkChip
             href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=single${childQuery}`}
-            scroll={false}
-            className={`rounded-sm border px-2 py-1 text-label ${selectedView === 'single' ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
-          >{copy.individual}</Link>
-          <Link
+            active={selectedView === 'single'}
+          >{copy.individual}</LinkChip>
+          <LinkChip
             href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=combined${childQuery}`}
-            scroll={false}
-            className={`rounded-sm border px-2 py-1 text-label ${selectedView === 'combined' ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
-          >{copy.combined}</Link>
+            active={selectedView === 'combined'}
+          >{copy.combined}</LinkChip>
           <span className="mx-1 h-4 w-px bg-line-subtle" />
-          {TREND_SCOPES.map((scope) => (
-            <Link
-              key={scope.key}
-              href={`/?trend=${selectedRange.key}&scope=${scope.key}&metric=${selectedMetric.key}&view=${selectedView}${childQuery}`}
-              scroll={false}
-              title={scope.key === 'GOLD' ? copy.scopeHints.GOLD : undefined}
-              className={`rounded-sm border px-2 py-1 text-label ${selectedScope === scope.key ? 'border-info bg-info/10 font-medium text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
-            >
-              {copy.scopeLabels[scope.key]}
-            </Link>
-          ))}
+          <LinkChips
+            items={TREND_SCOPES.map((scope) => ({
+              key: scope.key,
+              href: `/?trend=${selectedRange.key}&scope=${scope.key}&metric=${selectedMetric.key}&view=${selectedView}${childQuery}`,
+              label: copy.scopeLabels[scope.key],
+              title: scope.key === 'GOLD' ? copy.scopeHints.GOLD : undefined,
+            }))}
+            current={selectedScope}
+          />
           <span className="mx-1 h-4 w-px bg-line-subtle" />
-          {TREND_METRICS.map((metric) => (
-            <Link
-              key={metric.key}
-              href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${metric.key}&view=single${childQuery}`}
-              scroll={false}
-              className={`rounded-sm border px-2 py-1 text-label ${selectedMetric.key === metric.key ? 'border-line bg-surface font-medium text-ink' : 'border-transparent text-ink-3 hover:border-line hover:text-ink'}`}
-            >
-              {copy.metricLabels[metric.key]}
-            </Link>
-          ))}
+          <LinkChips
+            variant="subtle"
+            items={TREND_METRICS.map((metric) => ({
+              key: metric.key,
+              href: `/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${metric.key}&view=single${childQuery}`,
+              label: copy.metricLabels[metric.key],
+            }))}
+            current={selectedMetric.key}
+          />
         </div>
         {selectedScope === 'GOLD' ? (
           <div className="mb-3 rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{copy.goldScopeNote}</div>
@@ -580,15 +576,15 @@ export default async function OverviewPage({
           action={
             <div className="flex flex-wrap items-center justify-end gap-1">
               <TrendRangeLinks selected={selectedRange} hrefFor={(key) => `/?trend=${key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}${childQuery}`} />
-              <Link
+              <LinkChip
                 href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}${includeChildren ? '' : '&children=1'}`}
-                scroll={false}
+                active={includeChildren}
+                current="none"
                 aria-label={childCopy.toggleAria(includeChildren)}
                 title={childCopy.toggleHint}
-                className={`rounded-sm border px-2 py-1 text-label font-medium ${includeChildren ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
               >
                 {childCopy.toggle}
-              </Link>
+              </LinkChip>
             </div>
           }
         >
