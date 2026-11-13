@@ -3,6 +3,12 @@ import test from 'node:test'
 import { resolveFinancePaths, resolveFinanceFile, financeFile, financeEnvironment } from '../scripts/finance-paths.mjs'
 
 const cwd = '/synthetic/workspace'
+test('connector roots select private mode and cannot leak into samples', () => {
+  for (const key of ['FINANCE_CONNECTOR_EXPORT_DIR', 'STOCK_CONNECTOR_EXPORT_DIR', 'FINANCE_CONNECTOR_RECORDS_DIR']) {
+    assert.equal(resolveFinancePaths({ [key]: '/private/connector' }, cwd).mode, 'private')
+    assert.throws(() => resolveFinancePaths({ FINANCE_MODE: 'sample', [key]: '/private/connector' }, cwd), /sample/i)
+  }
+})
 test('fresh and operational-flag-only environments use isolated samples', () => {
   for (const env of [{}, { STOCK_ALLOW_NO_ACCOUNT_MAP: '1' }]) {
     assert.deepEqual(resolveFinancePaths(env, cwd), {

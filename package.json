@@ -71,6 +71,7 @@
     "ui:compare": "node scripts/snap-ui.mjs --compare"
   },
   "dependencies": {
+    "ajv": "8.20.0",
     "better-sqlite3": "^11.8.1",
     "clsx": "^2.1.1",
     "next": "^15.5.27",

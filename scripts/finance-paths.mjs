@@ -25,6 +25,7 @@ export const FINANCE_FILES = Object.freeze({
   STOCK_REFRESH_LOCK_PATH: ['runtime', '.refresh.lock'],
   STOCK_MANUAL_MAPPINGS_PATH: ['state', 'manual-mappings.json'],
   STOCK_ACCOUNT_MAP_PATH: ['state', 'accounts.local.json'],
+  STOCK_CONNECTOR_ACCOUNT_MAP_PATH: ['state', 'connector-accounts.local.json'],
   STOCK_ASSET_EVENT_LABELS_PATH: ['state', 'asset-event-labels.local.json'],
   STOCK_TAX_POLICY_PATH: ['state', 'tax-policy.json'],
   STOCK_TAX_PLANS_PATH: ['state', 'tax-plans.json'],
@@ -48,6 +49,10 @@ const rootNames = [
   'FINANCE_STATE_DIR',
   'FINANCE_RUNTIME_DIR',
   'STOCK_DATA_DIR',
+  'FINANCE_CONNECTOR_EXPORT_DIR',
+  'STOCK_CONNECTOR_EXPORT_DIR',
+  'FINANCE_CONNECTOR_RECORDS_DIR',
+  'STOCK_CONNECTOR_RECORDS_DIR',
 ]
 const privateNames = [...rootNames, ...Object.keys(FINANCE_FILES).flatMap((key) => [key, currentKey(key)])]
 
