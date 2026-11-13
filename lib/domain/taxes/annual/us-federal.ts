@@ -1,4 +1,4 @@
-import { ANNUAL_REQUIRED_AMOUNTS, getAnnualComponentBlocker, validateAnnualEstimateInput, type AnnualComponentResult, type AnnualEstimateInput, type AmountKey } from './contracts'
+import { getAnnualRequiredAmounts, getAnnualComponentBlocker, validateAnnualEstimateInput, type AnnualComponentResult, type AnnualEstimateInput, type AmountKey } from './contracts'
 import { getAnnualRulePack } from './rules'
 
 export type FederalCalculatedComponent = 'us.regular.ordinary' | 'us.niit'
@@ -21,8 +21,8 @@ function decimalUsdCents(usd: string): bigint {
 export function calculateFederalComponent(value: AnnualEstimateInput, id: FederalCalculatedComponent): AnnualComponentResult {
   const input = validateAnnualEstimateInput(value)
   if (input.authority !== 'US:federal' || !input.requestedComponents.includes(id) || !['us.regular.ordinary', 'us.niit'].includes(id)) throw new Error('Federal component scope mismatch')
-  const pack = getAnnualRulePack(input.taxYear)
-  const inputRefs = ANNUAL_REQUIRED_AMOUNTS[id].filter(key => input.amounts[key])
+  const pack = getAnnualRulePack(input.taxYear, input.rulePackId)
+  const inputRefs = getAnnualRequiredAmounts(input, id).filter(key => input.amounts[key])
   const sourceRefs = [...pack.readiness[id].sourceIds]
   const blocker = getAnnualComponentBlocker(input, id)
   if (blocker) return { id, ...blocker, amountMinor: null, sourceRefs, inputRefs, trace: [] }

@@ -1,9 +1,12 @@
 import { createHash } from 'node:crypto'
 import rawPack from '@/data/tax-rules/2025/annual-foundation.json'
+import qualifiedPack from '@/data/tax-rules/2025/qualified-gains.json'
 
 export const ANNUAL_COMPONENTS = ['us.regular.ordinary', 'us.regular.qdcg', 'us.niit', 'kr.global.calculated', 'kr.local.calculated'] as const
 export type AnnualComponentId = typeof ANNUAL_COMPONENTS[number]
-export type AnnualRulePack = typeof rawPack
+const PACKS = { 'annual-2025-foundation-v1': rawPack, 'annual-2025-qualified-gains-v2': qualifiedPack } as const
+export type AnnualRulePackId = keyof typeof PACKS
+export type AnnualRulePack = typeof rawPack | typeof qualifiedPack
 
 /** Stable hashing for plain JSON values; no private file or network access. */
 export function annualJsonDigest(value: unknown): string {
@@ -27,19 +30,20 @@ export function annualJsonDigest(value: unknown): string {
 export function validateAnnualRulePack(value: unknown): AnnualRulePack {
   if (!value || typeof value !== 'object') throw new Error('Invalid annual rule pack')
   const pack = value as AnnualRulePack
-  if (pack.schemaVersion !== 1 || pack.taxYear !== 2025 || pack.id !== 'annual-2025-foundation-v1') throw new Error('Unsupported annual rule year/version')
+  if (pack.schemaVersion !== 1 || pack.taxYear !== 2025 || !Object.hasOwn(PACKS, pack.id)) throw new Error('Unsupported annual rule year/version')
   const { contentSha256, ...payload } = pack
-  if (!/^[a-f0-9]{64}$/.test(contentSha256) || annualJsonDigest(payload) !== contentSha256 || contentSha256 !== rawPack.contentSha256) throw new Error('Annual rule pack integrity mismatch')
+  if (!/^[a-f0-9]{64}$/.test(contentSha256) || annualJsonDigest(payload) !== contentSha256 || contentSha256 !== PACKS[pack.id as AnnualRulePackId].contentSha256) throw new Error('Annual rule pack integrity mismatch')
   return structuredClone(pack)
 }
 
-export function getAnnualRulePack(year: number): AnnualRulePack {
+export function getAnnualRulePack(year: number, id: AnnualRulePackId = 'annual-2025-foundation-v1'): AnnualRulePack {
   if (year !== 2025) throw new Error('Unsupported annual tax year; no projection or fallback')
-  return validateAnnualRulePack(rawPack)
+  if (!Object.hasOwn(PACKS, id)) throw new Error('Unsupported annual rule pack; no version fallback')
+  return validateAnnualRulePack(PACKS[id])
 }
 
-export function getAnnualRuleStatus(year: number, component: AnnualComponentId) {
-  const pack = getAnnualRulePack(year)
+export function getAnnualRuleStatus(year: number, component: AnnualComponentId, id: AnnualRulePackId = 'annual-2025-foundation-v1') {
+  const pack = getAnnualRulePack(year, id)
   if (!ANNUAL_COMPONENTS.includes(component)) throw new Error('Unknown annual component')
   const readiness = pack.readiness[component]
   return { ...readiness, calculationAvailable: readiness.status === 'reference-ready' && ['us.regular.ordinary', 'us.niit'].includes(component) }

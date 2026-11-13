@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "rulePackId": "annual-2025-qualified-gains-v2",
+  "id": "qdcg-example",
+  "revision": 0,
+  "taxYear": 2025,
+  "taxUnit": {
+    "id": "example-unit",
+    "kind": "joint",
+    "ownerIds": [
+      "example-a",
+      "example-b"
+    ]
+  },
+  "authority": "US:federal",
+  "currency": "USD",
+  "taxType": "income",
+  "filingStatus": "mfj",
+  "requestedComponents": [
+    "us.regular.qdcg"
+  ],
+  "residency": {
+    "state": "reviewed-full-year",
+    "reason": "Synthetic reviewed fact; not an owner tax profile",
+    "sourceRefs": [
+      "public-example"
+    ],
+    "reviewedAt": "2026-11-12"
+  },
+  "specialMethod": {
+    "state": "none-reviewed",
+    "reason": "Synthetic reviewed fact; not an owner tax profile",
+    "sourceRefs": [
+      "public-example"
+    ],
+    "reviewedAt": "2026-11-12"
+  },
+  "sources": [
+    {
+      "id": "public-example",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "locator": "Synthetic example only; not evidence verification"
+    }
+  ],
+  "amounts": {
+    "taxableIncome": {
+      "minor": "12000000",
+      "currency": "USD",
+      "origin": "synthetic",
+      "reason": "Synthetic USD 120000 taxable base; no private return data",
+      "sourceRefs": []
+    },
+    "ordinaryDividends": {
+      "minor": "2500000",
+      "currency": "USD",
+      "origin": "synthetic",
+      "reason": "Synthetic USD 120000 taxable base; no private return data",
+      "sourceRefs": []
+    },
+    "qualifiedDividends": {
+      "minor": "2000000",
+      "currency": "USD",
+      "origin": "synthetic",
+      "reason": "Synthetic USD 120000 taxable base; no private return data",
+      "sourceRefs": []
+    },
+    "capitalGainDistributions": {
+      "minor": "800000",
+      "currency": "USD",
+      "origin": "synthetic",
+      "reason": "Synthetic USD 120000 taxable base; no private return data",
+      "sourceRefs": []
+    }
+  },
+  "regularTaxMethod": {
+    "state": "qdcg-reviewed",
+    "reason": "Synthetic review confirms eligibility for the ordinary QDCG worksheet, with no special-method or investment-interest adjustment",
+    "sourceRefs": [
+      "public-example"
+    ],
+    "reviewedAt": "2026-11-12"
+  },
+  "qdcgWorksheet": {
+    "state": "distributions-only-reviewed",
+    "reason": "Synthetic review: Schedule D is not required; line 7a contains only eligible capital gain distributions",
+    "sourceRefs": [
+      "public-example"
+    ],
+    "reviewedAt": "2026-11-12"
+  }
+}
