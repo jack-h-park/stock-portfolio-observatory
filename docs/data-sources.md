@@ -1434,3 +1434,11 @@ Each gap that the system can see is a named check rather than a silence. That is
 deliberate: the failures this project keeps rediscovering are not crashes but
 plausible wrong numbers, and the only defence is a source that has to answer for
 itself and a check that says when it did not.
+
+### Owner-confirmed query ends and empty Fidelity positions
+
+A last transaction is an observation, and `Date downloaded` is an export timestamp; neither declares a history query's end. When the owner confirms a query end or identifies an otherwise anonymous empty positions export, the private account map may carry `sourceConfirmations`. Each receipt names `scope` (`investment` or `bank`), `institution`, exact account label, `kind` (`transactions` or `holdings`), a records-root-relative `source`, SHA-256, `through`, `basis: "owner-confirmed"`, and `confirmedAt`. An empty investment positions receipt additionally requires `emptyHoldings: true`. Confirmation of an end does not establish an unknown query start or lifetime completeness.
+
+The ingest validates dates, owning directory, current original bytes and source selection, then records accepted receipts in `source_coverage_confirmations`. Pages read that table without reopening originals. A changed original loses its receipt; a superseded holdings receipt remains historical in the map but no longer controls current holdings. Newer observations can advance the cutoff. Invalid transaction confirmations fail `source_confirmations_valid` instead of silently making an unconsumed source current.
+
+A mapped Fidelity CMA positions CSV may be retained as `bank-statements/fidelity-positions-cma-YYYYMMDD.csv` with a matching holdings receipt. The ingest accepts only the mapped CMA identity and supported core cash/money-market symbols, adds a dated USD balance observation, and creates no inflow transaction. An anonymous empty investment export requires explicit owner identity confirmation before filing it under `us-holdings/fidelity-holdings-YYYYMMDD.csv`; an empty snapshot establishes no positions on that date and never means missing evidence. Generic inbox detection continues to refuse ambiguous files.

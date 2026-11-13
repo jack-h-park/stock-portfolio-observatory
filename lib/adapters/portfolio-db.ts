@@ -3775,10 +3775,18 @@ export function getBrokerageAccountHints(): Map<string, { suffix: string | null;
   return hints
 }
 
+type ConfirmedSourceCoverage = { scope: string; institution: string; account: string; kind: string; through_date: string; empty_holdings: number }
+
+function confirmedSourceCoverage(conn: Database.Database): ConfirmedSourceCoverage[] {
+  if (!conn.prepare("select 1 from sqlite_master where type = 'table' and name = 'source_coverage_confirmations'").get()) return []
+  return conn.prepare('select scope, institution, account, kind, through_date, empty_holdings from source_coverage_confirmations').all() as ConfirmedSourceCoverage[]
+}
+
 export function getAccountCoverage(): AccountCoverageSummary {
   const conn = db()
   try {
     const sourceRows = conn.prepare('select * from source_files order by name').all() as any[]
+    const confirmations = confirmedSourceCoverage(conn)
     const holdingRows = conn
       .prepare(`select market, coalesce(brokerage, 'Unknown') as brokerage, account, account_type, max(as_of_date) as covered_through
                 from holdings where ${STOCK_WRAPPER_SQL} group by market, brokerage, account, account_type`)
@@ -3926,7 +3934,10 @@ export function getAccountCoverage(): AccountCoverageSummary {
         destination = 'us-holdings/ + us-transactions/'
         action = `${brokerage}의 holdings/positions와 최신 transactions CSV를 같은 기준일로 다운로드해 inbox에 넣으세요.`
         detail = '두 CSV 중 더 오래된 기준일을 계좌 coverage로 사용합니다.'
-        const dates = [holding?.covered_through, transaction?.covered_through].filter(Boolean) as string[]
+        const confirmed = confirmations.filter(row => row.scope === 'investment' && row.institution === brokerage && names.includes(row.account))
+        const confirmedDate = (kind: string) => confirmed.filter(row => row.kind === kind).map(row => row.through_date).sort().at(-1)
+        const dates = [latestOf(confirmedDate('holdings'), holding?.covered_through), latestOf(confirmedDate('transactions'), transaction?.covered_through)].filter(Boolean) as string[]
+        if (confirmed.length) detail = '사용자가 확인한 조회 종료일과 보유 기준일을 반영합니다. 마지막 거래일과는 별도로 판단합니다.'
         coveredThrough = dates.length ? dates.sort()[0] : null
       } else if (market === 'CRYPTO' && brokerLower === 'bithumb') {
         requiredArtifact = '빗썸 거래내역확인서 PDF + 기간별 거래내역 XLSX'
@@ -4098,6 +4109,11 @@ export function getAccountDataRanges(): AccountDataRange[] {
     for (const row of balanceSpans) {
       rows.push({ kind: 'balances', market: row.market, brokerage: row.brokerage, account: row.account, accountType: row.account_type, start: isoDate(row.start), end: isoDate(row.end), count: row.count })
     }
+    for (const receipt of confirmedSourceCoverage(conn)) {
+      if (receipt.scope !== 'investment' || receipt.kind !== 'holdings' || !receipt.empty_holdings) continue
+      if (rows.some(row => row.kind === 'holdings' && row.market === 'US' && row.brokerage === receipt.institution && row.count > 0 && String(row.end) >= receipt.through_date)) continue
+      rows.push({kind:'holdings',market:'US',brokerage:receipt.institution,account:receipt.account,accountType:null,start:receipt.through_date,end:receipt.through_date,count:0})
+    }
     return groupAccountRanges(rows)
   } finally {
     conn.close()
@@ -4171,6 +4187,7 @@ export function getSupplementaryCoverage(): SupplementaryCoverage {
     }
     const retired = retiredBankAccounts(accountMap?.bankAccounts)
     const seenBanks = new Set<string>()
+    const confirmations = confirmedSourceCoverage(conn)
 
     if (hasTable('cash_balances')) {
       const cash = conn
@@ -4189,7 +4206,7 @@ export function getSupplementaryCoverage(): SupplementaryCoverage {
         // A quiet account has no balance row near its statement's end, so the
         // statement's own period end counts too; otherwise a fresh download of a
         // dormant account would never clear the reminder.
-        const latest = latestOf(row.latest, ...String(row.sources ?? '').split(',').map(periodEndFromSource))
+        const latest = latestOf(row.latest, ...String(row.sources ?? '').split(',').map(periodEndFromSource), ...confirmations.filter(receipt => receipt.scope === 'bank' && receipt.kind === 'transactions' && receipt.institution === row.institution && receipt.account === row.account).map(receipt => receipt.through_date))
         push(row.isCma ? 'cma' : 'deposit', label, latest, `${label} 거래내역을 ${isoDate(latest)}부터 받아 inbox에 넣으세요`)
       }
     }

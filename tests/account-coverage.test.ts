@@ -28,6 +28,7 @@ const daysAgo = (days: number) => {
 
 const db = new Database(dbPath)
 db.exec(`
+create table source_coverage_confirmations (scope text, institution text, account text, kind text, through_date text, source text, sha256 text, empty_holdings integer);
 create table source_files (name text primary key, filename text not null, mtime_ms integer not null);
 create table holdings (market text, brokerage text, account_type text, account text, as_of_date text, account_wrapper text not null default 'taxable');
 create table transactions (market text, brokerage text, account_type text, account text, date text, source_system text);
@@ -45,6 +46,9 @@ transaction.run('US', 'Robinhood', 'Mid-term', 'Robinhood Mid-term', daysAgo(59)
 transaction.run('US', 'Robinhood', 'Long-term', 'Robinhood Long-term', daysAgo(3))
 transaction.run('KR', '미래에셋증권', 'General', 'Sample second', daysAgo(200))
 transaction.run('KR', '미래에셋증권', 'General', '미래에셋증권(종합)', daysAgo(200))
+transaction.run('US', 'Fidelity', 'Cash', 'Sample Fidelity', daysAgo(100))
+const confirmation = db.prepare('insert into source_coverage_confirmations values (?, ?, ?, ?, ?, ?, ?, ?)')
+for (const kind of ['holdings','transactions']) confirmation.run('investment','Fidelity','Sample Fidelity',kind,daysAgo(0),'sample.csv','0'.repeat(64),kind === 'holdings' ? 1 : 0)
 db.close()
 
 writeFileSync(
@@ -139,4 +143,30 @@ test('closed explicitly labelled brokerage accounts are excluded while the activ
   assert(!rows.some(row => row.account.startsWith('Sample second')))
   assert(rows.some(row => row.account === '미래에셋증권(종합) · …1234'))
   assert.deepEqual(getBrokerageAccountHints().get('Sample second'), { suffix: '…5678', retired: true })
+})
+
+
+test('confirmed Fidelity query and empty snapshot dates replace last-transaction freshness', async () => {
+ const {getAccountCoverage}=await import('../lib/adapters/portfolio-db')
+ const row=getAccountCoverage().rows.find(row=>row.brokerage==='Fidelity')!
+ assert.equal(row.coveredThrough,daysAgo(0))
+ assert.equal(row.status,'current')
+ assert.match(row.detail,/확인/)
+})
+
+
+test('newer Fidelity observations supersede a retained confirmation', async () => {
+ const db=new Database(dbPath)
+ db.prepare("update source_coverage_confirmations set through_date = ? where institution = 'Fidelity'").run(daysAgo(5))
+ db.prepare('insert into holdings (market, brokerage, account_type, account, as_of_date) values (?,?,?,?,?)').run('US','Fidelity','Cash','Sample Fidelity numbered',daysAgo(0))
+ db.prepare('insert into transactions (market, brokerage, account_type, account, date) values (?,?,?,?,?)').run('US','Fidelity','Cash','Sample Fidelity',daysAgo(0))
+ try {
+  const {getAccountCoverage}=await import('../lib/adapters/portfolio-db')
+  assert.equal(getAccountCoverage().rows.find(row=>row.brokerage==='Fidelity')?.coveredThrough,daysAgo(0))
+ } finally {
+  db.prepare("delete from holdings where brokerage = 'Fidelity'").run()
+  db.prepare("delete from transactions where brokerage = 'Fidelity' and date = ?").run(daysAgo(0))
+  db.prepare("update source_coverage_confirmations set through_date = ? where institution = 'Fidelity'").run(daysAgo(0))
+  db.close()
+ }
 })

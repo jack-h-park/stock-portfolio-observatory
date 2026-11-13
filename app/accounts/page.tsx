@@ -41,7 +41,7 @@ export default async function AccountsPage() {
             </>
           ) : null}
         </div>
-        <div className="text-label tabular-nums text-ink-3">{copy.rows(range.count, fmtNumber(range.count))}</div>
+        <div className="text-label tabular-nums text-ink-3">{range.count === 0 ? copy.noHoldings : copy.rows(range.count, fmtNumber(range.count))}</div>
       </>
     ) : (
       <span className="text-ink-3">{copy.none}</span>
