@@ -1,0 +1,664 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://personal-finance-observatory.invalid/schemas/annual-tax-estimate-input.v1.schema.json",
+  "title": "2025 annual tax estimate input v1",
+  "$comment": "Structural contract only. Use the TypeScript validator for cross-field, provenance and readiness checks; validation is not tax calculation certification.",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "taxYear": {
+      "const": 2025
+    },
+    "taxUnit": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+        },
+        "kind": {
+          "enum": [
+            "individual",
+            "joint"
+          ]
+        },
+        "ownerIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+          },
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "ownerIds"
+      ],
+      "additionalProperties": false
+    },
+    "authority": {
+      "enum": [
+        "US:federal",
+        "KR:national",
+        "KR:local"
+      ]
+    },
+    "currency": {
+      "enum": [
+        "USD",
+        "KRW"
+      ]
+    },
+    "taxType": {
+      "const": "income"
+    },
+    "filingStatus": {
+      "enum": [
+        "single",
+        "mfj",
+        "individual"
+      ]
+    },
+    "requestedComponents": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "us.regular.ordinary",
+          "us.regular.qdcg",
+          "us.niit",
+          "kr.global.calculated",
+          "kr.local.calculated"
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 5,
+      "uniqueItems": true
+    },
+    "residency": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "enum": [
+            "reviewed-full-year",
+            "unknown",
+            "unsupported"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "sourceRefs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+          },
+          "minItems": 0,
+          "maxItems": 100,
+          "uniqueItems": true
+        },
+        "reviewedAt": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\\s\\S])"
+        }
+      },
+      "required": [
+        "state",
+        "reason",
+        "sourceRefs"
+      ],
+      "additionalProperties": false
+    },
+    "specialMethod": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "enum": [
+            "none-reviewed",
+            "unknown",
+            "unsupported"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "sourceRefs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+          },
+          "minItems": 0,
+          "maxItems": 100,
+          "uniqueItems": true
+        },
+        "reviewedAt": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\\s\\S])"
+        }
+      },
+      "required": [
+        "state",
+        "reason",
+        "sourceRefs"
+      ],
+      "additionalProperties": false
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}(?![\\s\\S])"
+          },
+          "locator": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "id",
+          "sha256",
+          "locator"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 100
+    },
+    "amounts": {
+      "type": "object",
+      "properties": {
+        "taxableIncome": {
+          "type": "object",
+          "properties": {
+            "minor": {
+              "type": "string",
+              "pattern": "^(0|-?[1-9][0-9]*)(?![\\s\\S])",
+              "maxLength": 100
+            },
+            "currency": {
+              "enum": [
+                "USD",
+                "KRW"
+              ]
+            },
+            "origin": {
+              "enum": [
+                "reviewed-input",
+                "synthetic",
+                "assumption"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "sourceRefs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+              },
+              "minItems": 0,
+              "maxItems": 100,
+              "uniqueItems": true
+            },
+            "reviewedAt": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\\s\\S])"
+            }
+          },
+          "required": [
+            "minor",
+            "currency",
+            "origin",
+            "reason",
+            "sourceRefs"
+          ],
+          "additionalProperties": false
+        },
+        "ordinaryDividends": {
+          "type": "object",
+          "properties": {
+            "minor": {
+              "type": "string",
+              "pattern": "^(0|-?[1-9][0-9]*)(?![\\s\\S])",
+              "maxLength": 100
+            },
+            "currency": {
+              "enum": [
+                "USD",
+                "KRW"
+              ]
+            },
+            "origin": {
+              "enum": [
+                "reviewed-input",
+                "synthetic",
+                "assumption"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "sourceRefs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+              },
+              "minItems": 0,
+              "maxItems": 100,
+              "uniqueItems": true
+            },
+            "reviewedAt": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\\s\\S])"
+            }
+          },
+          "required": [
+            "minor",
+            "currency",
+            "origin",
+            "reason",
+            "sourceRefs"
+          ],
+          "additionalProperties": false
+        },
+        "qualifiedDividends": {
+          "type": "object",
+          "properties": {
+            "minor": {
+              "type": "string",
+              "pattern": "^(0|-?[1-9][0-9]*)(?![\\s\\S])",
+              "maxLength": 100
+            },
+            "currency": {
+              "enum": [
+                "USD",
+                "KRW"
+              ]
+            },
+            "origin": {
+              "enum": [
+                "reviewed-input",
+                "synthetic",
+                "assumption"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "sourceRefs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+              },
+              "minItems": 0,
+              "maxItems": 100,
+              "uniqueItems": true
+            },
+            "reviewedAt": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\\s\\S])"
+            }
+          },
+          "required": [
+            "minor",
+            "currency",
+            "origin",
+            "reason",
+            "sourceRefs"
+          ],
+          "additionalProperties": false
+        },
+        "netLongTermGain": {
+          "type": "object",
+          "properties": {
+            "minor": {
+              "type": "string",
+              "pattern": "^(0|-?[1-9][0-9]*)(?![\\s\\S])",
+              "maxLength": 100
+            },
+            "currency": {
+              "enum": [
+                "USD",
+                "KRW"
+              ]
+            },
+            "origin": {
+              "enum": [
+                "reviewed-input",
+                "synthetic",
+                "assumption"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "sourceRefs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+              },
+              "minItems": 0,
+              "maxItems": 100,
+              "uniqueItems": true
+            },
+            "reviewedAt": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\\s\\S])"
+            }
+          },
+          "required": [
+            "minor",
+            "currency",
+            "origin",
+            "reason",
+            "sourceRefs"
+          ],
+          "additionalProperties": false
+        },
+        "netCapitalGain": {
+          "type": "object",
+          "properties": {
+            "minor": {
+              "type": "string",
+              "pattern": "^(0|-?[1-9][0-9]*)(?![\\s\\S])",
+              "maxLength": 100
+            },
+            "currency": {
+              "enum": [
+                "USD",
+                "KRW"
+              ]
+            },
+            "origin": {
+              "enum": [
+                "reviewed-input",
+                "synthetic",
+                "assumption"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "sourceRefs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+              },
+              "minItems": 0,
+              "maxItems": 100,
+              "uniqueItems": true
+            },
+            "reviewedAt": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\\s\\S])"
+            }
+          },
+          "required": [
+            "minor",
+            "currency",
+            "origin",
+            "reason",
+            "sourceRefs"
+          ],
+          "additionalProperties": false
+        },
+        "niitMagi": {
+          "type": "object",
+          "properties": {
+            "minor": {
+              "type": "string",
+              "pattern": "^(0|-?[1-9][0-9]*)(?![\\s\\S])",
+              "maxLength": 100
+            },
+            "currency": {
+              "enum": [
+                "USD",
+                "KRW"
+              ]
+            },
+            "origin": {
+              "enum": [
+                "reviewed-input",
+                "synthetic",
+                "assumption"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "sourceRefs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+              },
+              "minItems": 0,
+              "maxItems": 100,
+              "uniqueItems": true
+            },
+            "reviewedAt": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\\s\\S])"
+            }
+          },
+          "required": [
+            "minor",
+            "currency",
+            "origin",
+            "reason",
+            "sourceRefs"
+          ],
+          "additionalProperties": false
+        },
+        "netInvestmentIncome": {
+          "type": "object",
+          "properties": {
+            "minor": {
+              "type": "string",
+              "pattern": "^(0|-?[1-9][0-9]*)(?![\\s\\S])",
+              "maxLength": 100
+            },
+            "currency": {
+              "enum": [
+                "USD",
+                "KRW"
+              ]
+            },
+            "origin": {
+              "enum": [
+                "reviewed-input",
+                "synthetic",
+                "assumption"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "sourceRefs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+              },
+              "minItems": 0,
+              "maxItems": 100,
+              "uniqueItems": true
+            },
+            "reviewedAt": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\\s\\S])"
+            }
+          },
+          "required": [
+            "minor",
+            "currency",
+            "origin",
+            "reason",
+            "sourceRefs"
+          ],
+          "additionalProperties": false
+        },
+        "taxableBase": {
+          "type": "object",
+          "properties": {
+            "minor": {
+              "type": "string",
+              "pattern": "^(0|-?[1-9][0-9]*)(?![\\s\\S])",
+              "maxLength": 100
+            },
+            "currency": {
+              "enum": [
+                "USD",
+                "KRW"
+              ]
+            },
+            "origin": {
+              "enum": [
+                "reviewed-input",
+                "synthetic",
+                "assumption"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "sourceRefs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+              },
+              "minItems": 0,
+              "maxItems": 100,
+              "uniqueItems": true
+            },
+            "reviewedAt": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\\s\\S])"
+            }
+          },
+          "required": [
+            "minor",
+            "currency",
+            "origin",
+            "reason",
+            "sourceRefs"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "rulePackId": {
+      "const": "annual-2025-foundation-v1"
+    },
+    "regularTaxMethod": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "enum": [
+            "ordinary-reviewed",
+            "qdcg-reviewed",
+            "general-reviewed",
+            "unknown",
+            "unsupported"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "sourceRefs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+          },
+          "minItems": 0,
+          "maxItems": 100,
+          "uniqueItems": true
+        },
+        "reviewedAt": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\\s\\S])"
+        }
+      },
+      "required": [
+        "state",
+        "reason",
+        "sourceRefs"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "revision",
+    "taxYear",
+    "taxUnit",
+    "authority",
+    "currency",
+    "taxType",
+    "filingStatus",
+    "requestedComponents",
+    "residency",
+    "specialMethod",
+    "sources",
+    "amounts",
+    "rulePackId",
+    "regularTaxMethod"
+  ],
+  "additionalProperties": false
+}

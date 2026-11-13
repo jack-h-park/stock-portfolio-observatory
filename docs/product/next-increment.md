@@ -1,6 +1,6 @@
 # Next Personal Finance Observatory increments
 
-**Status:** Gold correction [#283](https://github.com/jack-h-park/stock-portfolio-observatory/pull/283) and coverage display [#286](https://github.com/jack-h-park/stock-portfolio-observatory/pull/286) are merged and deployed. The existing-record annual tax summary #290 is merged and deployed. The 2025-first annual tax MVP is a proposed design only; implementation remains unauthorized. Updated November 12, 2026 (America/Los_Angeles). Deployment and financial-data mutation require separate authorization.
+**Status:** Gold correction [#283](https://github.com/jack-h-park/stock-portfolio-observatory/pull/283) and coverage display [#286](https://github.com/jack-h-park/stock-portfolio-observatory/pull/286) are merged and deployed. The existing-record annual tax summary #290 is merged and deployed. The first 2025 rule-pack/input/component-result contract increment is authorized and implemented for PR review; calculators and application integration remain later work. Updated November 12, 2026 (America/Los_Angeles). Deployment and financial-data mutation require separate authorization.
 
 The [operating status](implementation-status.md) records the completed foundation and bounded adoption. The read-only review established the immediate priority: resolve the historical gold calculation gap before expanding the overview or annual tax engine. Private examples, account inventory, dates, balances and evidence remain in the operator's private review.
 
@@ -54,7 +54,7 @@ This is a read-only projection of the existing history, independent of the portf
 
 ## Current design: 2025 annual tax calculation foundation
 
-The owner selected finalized 2025 rules first. The [MVP design](../superpowers/specs/2026-11-12-annual-tax-estimation-mvp-design.md) recommends reviewed annual taxable bases, independently scoped federal/Korean general-tax components, explicit unknowns and permitted reviewed composition. California is a separately gated extension. Computed components are not complete annual totals; full comparison requires matching form boundaries and reviewed coverage. This document does not authorize implementation, data entry, migration or deployment. The accepted final historical return package is not a new validation target.
+The owner selected finalized 2025 rules first. The [MVP design](../superpowers/specs/2026-11-12-annual-tax-estimation-mvp-design.md) recommends reviewed annual taxable bases, independently scoped federal/Korean general-tax components, explicit unknowns and permitted reviewed composition. California is a separately gated extension. Computed components are not complete annual totals; full comparison requires matching form boundaries and reviewed coverage. The owner separately authorized the first [rule/contract library PR](../architecture/annual-tax-foundation.md), with no calculator or application integration. Data entry, migration, merge and deployment remain unauthorized. The accepted final historical return package is not a new validation target.
 
 ## Later increments
 

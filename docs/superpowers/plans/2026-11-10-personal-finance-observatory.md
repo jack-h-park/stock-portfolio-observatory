@@ -10,7 +10,7 @@
 
 **Spec:** [Product and architecture design](../specs/2026-11-10-personal-finance-observatory-design.md)
 
-**Status:** Foundation implemented and merged; bounded private adoption is accepted. Follow-up gold correctness and coverage display are merged and deployed; the existing-record annual tax summary #290 is also merged and deployed. The [2025-first annual tax MVP design](../specs/2026-11-12-annual-tax-estimation-mvp-design.md) is proposed for review; no new calculator implementation is authorized. See [execution status](../../product/implementation-status.md) for verified work and remaining gates. Implementation authorization is not authorization to rename GitHub, move archives, push/merge, deploy, or restart services. Revised after review on 2026-11-10: added evidence resolution, relink by content hash, and a single write host.
+**Status:** Foundation implemented and merged; bounded private adoption is accepted. Follow-up gold correctness and coverage display are merged and deployed; the existing-record annual tax summary #290 is also merged and deployed. The [2025-first annual tax MVP design](../specs/2026-11-12-annual-tax-estimation-mvp-design.md) has a separately authorized first rule-pack/input/component-result contract increment, implemented for PR review. No calculator, merge or deployment is authorized. See [execution status](../../product/implementation-status.md) for verified work and remaining gates. Implementation authorization is not authorization to rename GitHub, move archives, push/merge, deploy, or restart services. Revised after review on 2026-11-10: added evidence resolution, relink by content hash, and a single write host.
 
 ## Global Constraints
 

@@ -1,7 +1,7 @@
 # KR/US annual tax estimation MVP design
 
 **Date:** November 12, 2026 (America/Los_Angeles)
-**Status:** Proposed design for review. The owner selected finalized **2025** rules as the first calculation foundation. The reviewed-tax-base approach, component boundaries and sequencing below are design recommendations, not an approved implementation. No implementation, deployment, configuration change or financial-data change is authorized.
+**Status:** The owner selected finalized **2025** rules and authorized the first rule-pack/input/component-result contract PR. That bounded foundation is implemented for review; see [implementation boundary](../../architecture/annual-tax-foundation.md) and [execution plan](../plans/2026-11-12-annual-tax-rule-contracts.md). Calculators, composition/comparison, California and UI integration below remain proposed later increments. Merge, deployment, configuration and financial-data changes are not authorized.
 **Parent:** [Observatory design](2026-11-10-personal-finance-observatory-design.md) and [P5 program](../plans/2026-11-10-personal-finance-observatory.md).
 **Operating baseline:** [#290](https://github.com/jack-h-park/stock-portfolio-observatory/pull/290), merge `862f968`, includes the deployed annual recorded-tax summary. The owner-accepted final historical return package is **not** a test oracle, extraction target or investigation task for this design.
 
@@ -170,7 +170,7 @@ Every release needs independent official table/worksheet references, including a
 | Money / rounding | Large exact inputs, cent aggregation before rounding, nonnegative/floor constraints, every bracket boundary and pack-specific KR truncation tests; missing rounding provenance blocks pack release |
 | Persistence / isolation | Portfolio DB absent/rebuilt, stale/moved evidence and failed reads do not mutate history; byte/hash preservation of sources, state, policies and access settings |
 
-This document does not claim these new acceptance tests exist or passed. Only the deployed history/summary tests are implemented today. The first detailed implementation plan must turn this matrix into exact fixtures, signatures and commands after design review.
+The first rule/contract increment adds synthetic contract and source-integrity tests; its implementation boundary documents the delivered checks. This broader calculator/composition acceptance matrix remains a requirement for later increments, not a claim that those calculations exist or passed.
 
 ## 11. Proposed sequence and release gates
 
@@ -180,7 +180,7 @@ This document does not claim these new acceptance tests exist or passed. Only th
 4. **CA extension and read-only presentation PRs:** add only after state-specific rule/credit boundary tests; preserve unrelated services and existing access controls.
 5. **Separate operational acceptance:** only after authorization, preview a reviewed scenario, verify writer/backup/isolation and existing-history parity, then separately authorize deployment. No request to revisit the accepted final historical return package is implied; any future private validation needs its own scope.
 
-No dates are promised. Release blockers are unresolved rounding/table provenance, unsupported applicable tax methods, unreviewed comparison mappings, incomplete input coverage, financial regression or access/write-boundary regression. Finalized 2025 rules first is the owner decision; the precise reviewed-base/component scope above remains proposed for review. Later years, automatic deductions/credits, broader filing profiles and cross-border engines require new scope decisions.
+No dates are promised. Release blockers are unresolved rounding/table provenance, unsupported applicable tax methods, unreviewed comparison mappings, incomplete input coverage, financial regression or access/write-boundary regression. Finalized 2025 rules first is the owner decision; only the first rule-pack/input/component-result contract increment is authorized; later calculator and composition scope remains proposed for review. Later years, automatic deductions/credits, broader filing profiles and cross-border engines require new scope decisions.
 
 ## 12. Official source register
 
