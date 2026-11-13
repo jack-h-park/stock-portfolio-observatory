@@ -1,7 +1,7 @@
 import { AssetCoverageNote } from '@/components/AssetCoverageNote'
 import { DataTable, type DataTableColumn } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, MetricField } from '@/components/ui'
+import { Badge, Card, MetricField, Note, SectionHeading } from '@/components/ui'
 import { CardRow } from '@/components/layout'
 import { StackedAssetChart } from '@/components/charts'
 import { getAssetAllocation, getAssetEvents, getChildAssets, getForeignAccountMaxima, getMeta, getNetWorth, getSnapshotDates, getTotalAssetsSeries, portfolioToday } from '@/lib/adapters/portfolio-db'
@@ -195,7 +195,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
             ))}
           </div>
           {netWorth.asOfNotes.length ? (
-            <p className="border-t border-line-subtle px-4 py-3 text-label leading-relaxed text-ink-3">{copy.asOfNotesHint}</p>
+            <Note band="top" relaxed>{copy.asOfNotesHint}</Note>
           ) : null}
         </Card>
       </CardRow>
@@ -285,7 +285,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
 
       {includeChildren ? (
         <Card title={childCopy.title} className="mb-5">
-          <p className="border-b border-line-subtle bg-surface px-4 py-3 text-label leading-relaxed text-ink-3">
+          <Note band="bottom" relaxed>
             {childCopy.note}
             {(childAssets?.owners ?? [])
               .filter((owner) => owner.derivation && owner.derivedFrom && owner.derivedUntil)
@@ -294,7 +294,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
                   {childCopy.derivedNote(owner.label, fmtDate(owner.derivedFrom!, language), fmtDate(owner.derivedUntil!, language), owner.derivation!)}
                 </span>
               ))}
-          </p>
+          </Note>
           <DataTable
             caption={childCopy.title}
             rows={childRows}
@@ -442,7 +442,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
         ) : null}
         {fbar.cryptoRows.length ? (
           <section className="mt-5 border-t border-line-subtle pt-4">
-            <h3 className="mb-2 text-body font-medium text-ink-2">{fbarCopy.cryptoTitle}</h3>
+            <SectionHeading level={3} size="sub" tone="muted" spacing="mb-2">{fbarCopy.cryptoTitle}</SectionHeading>
             <DataTable caption={fbarCopy.cryptoTitle} rows={fbar.cryptoRows} getRowKey={(row: ForeignAccountRow) => row.id} emptyMessage={fbarCopy.empty(fbarYear)} columns={fbarColumns} />
             <div className="mt-3 flex flex-wrap justify-end gap-x-6 gap-y-1 text-body">
               <span className="text-ink-3">{fbarCopy.cryptoSubtotal}</span>

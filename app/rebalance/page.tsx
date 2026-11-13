@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, HeroAside, MetricField, MetricHeroCard, Panel, Signed, TextLink, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, HeroAside, MetricField, MetricHeroCard, Note, Panel, Signed, TextLink, marketTone } from '@/components/ui'
 import { getOperationalHealth, getRebalanceReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
 import { EMPTY_VALUE, fmtNumber, fmtPct, fmtPctRange } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
@@ -189,11 +189,11 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
               </div>
             ) : (
               <div className="space-y-2">
-                <p className="text-caption text-ink-3">{pc.none}</p>
+                <Note size="caption">{pc.none}</Note>
                 {allocationState.state === 'ok' && (
                   <form action={createManualProposal} className="space-y-1">
                     <SubmitButton variant="solid">{pc.create}</SubmitButton>
-                    <p className="text-label text-ink-3">{pc.createNote}</p>
+                    <Note>{pc.createNote}</Note>
                   </form>
                 )}
               </div>
@@ -202,7 +202,7 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
               <div>
                 <div className="mb-1 text-label font-medium text-ink-2">{pc.past}</div>
                 {pastProposals.length === 0 ? (
-                  <p className="text-label text-ink-3">{pc.noPast}</p>
+                  <Note>{pc.noPast}</Note>
                 ) : (
                   <ul className="divide-y divide-line-subtle">
                     {pastProposals.slice(0, 12).map((p) => (
@@ -293,7 +293,7 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
                 <span>{editor.usLabel}</span>
                 <Badge tone="neutral">{fmtPct(rebalance.policy.marketTargets.find((t) => t.market === 'US')?.targetPct ?? 0, { digits: 1 })}</Badge>
               </div>
-              <p className="text-label leading-relaxed text-ink-3">{editor.derivedNote}</p>
+              <Note relaxed>{editor.derivedNote}</Note>
               <TextLink href="/rebalance/settings">{copy.settingsLink}</TextLink>
             </div>
           ) : (
@@ -303,9 +303,9 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
               <span>{editor.krLabel}</span>
               <Badge tone="neutral">{fmtPct(100 - targetPolicy.usTargetPct, { digits: 0 })}</Badge>
             </div>
-            <p className="text-label leading-relaxed text-ink-3">
+            <Note relaxed>
               {targetPolicy.source === 'default' ? editor.defaultNote : editor.hint}
-            </p>
+            </Note>
             <div className="flex items-center gap-3">
               <SubmitButton>{editor.save}</SubmitButton>
               {params.target === 'saved' && <Badge tone="success">{editor.saved}</Badge>}
@@ -351,9 +351,9 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
                   </li>
                 ))}
               </ul>
-              <p className="mt-2 text-label text-ink-3">
+              <Note spacing="above-2">
                 {copy.outsidePolicyNote(rebalance.policy.marketTargets.map((row) => row.market).join('/'))}
-              </p>
+              </Note>
             </>
           )}
         </Card>

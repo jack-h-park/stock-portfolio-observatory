@@ -244,6 +244,143 @@ export function Callout({
   return createElement(as, { className, role }, children)
 }
 
+const NOTE_SIZE = { label: 'text-label', caption: 'text-caption', body: 'text-body', micro: 'text-micro', inherit: '' } as const
+
+const NOTE_SPACING = {
+  none: '',
+  'above-0.5': 'mt-0.5',
+  'above-1': 'mt-1',
+  'above-2': 'mt-2',
+  'above-3': 'mt-3',
+  'below-3': 'mb-3',
+  'below-4': 'mb-4',
+  'below-5': 'mb-5',
+} as const
+
+/**
+ * The muted footnote under a table, chart or form: a `text-ink-3` paragraph.
+ * Fifty-four pages wrote it by hand with eight margins and four sizes; every
+ * margin is a `spacing` value here, so there is no `className`. `row` lays
+ * out text next to a Badge; `band` is the full-bleed strip at the top or
+ * bottom of a card body. The children must be phrasing content (it is a `<p>`).
+ */
+export function Note({
+  size = 'label',
+  relaxed = false,
+  weight,
+  spacing = 'none',
+  tone = 'muted',
+  row = false,
+  band,
+  title,
+  children,
+}: {
+  size?: keyof typeof NOTE_SIZE
+  relaxed?: boolean
+  weight?: 'medium'
+  spacing?: keyof typeof NOTE_SPACING
+  tone?: 'muted' | 'warning'
+  row?: boolean
+  band?: 'top' | 'bottom'
+  title?: string
+  children: ReactNode
+}) {
+  return (
+    <p
+      className={clsx(
+        NOTE_SPACING[spacing],
+        row && 'flex flex-wrap items-center gap-2',
+        band === 'top' && 'border-t border-line-subtle px-4 py-3',
+        band === 'bottom' && 'border-b border-line-subtle bg-surface px-4 py-3',
+        NOTE_SIZE[size],
+        weight === 'medium' && 'font-medium',
+        relaxed && 'leading-relaxed',
+        tone === 'warning' ? 'text-warning' : 'text-ink-3'
+      )}
+      title={title}
+    >
+      {children}
+    </p>
+  )
+}
+
+const HEADING_SIZE = { page: 'text-title', section: 'text-body-lg', sub: 'text-body', minor: 'text-label' } as const
+
+/**
+ * A heading inside a page or a card body, outside `Card title`. `eyebrow`
+ * puts a micro label above it, `subtitle` a muted line below it (or beside
+ * it, in the `band` and `inline` layouts), `action` a Badge after it in a row.
+ * `band` is the page-level section row of the daily briefing.
+ */
+export function SectionHeading({
+  level = 2,
+  size = 'section',
+  tight = false,
+  tracking = false,
+  tone = 'default',
+  eyebrow,
+  subtitle,
+  action,
+  layout = 'stack',
+  spacing,
+  id,
+  children,
+}: {
+  level?: 2 | 3
+  size?: keyof typeof HEADING_SIZE
+  tight?: boolean
+  tracking?: boolean
+  tone?: 'default' | 'muted'
+  eyebrow?: ReactNode
+  subtitle?: ReactNode
+  action?: ReactNode
+  layout?: 'stack' | 'inline' | 'band'
+  spacing?: 'mb-1' | 'mb-2' | 'mt-1'
+  id?: string
+  children: ReactNode
+}) {
+  const heading = createElement(
+    level === 3 ? 'h3' : 'h2',
+    {
+      id,
+      className: clsx(
+        spacing ?? (eyebrow != null && 'mt-1'),
+        HEADING_SIZE[size],
+        'font-medium',
+        tight && 'leading-tight',
+        tracking && 'tracking-tight',
+        tone === 'muted' ? 'text-ink-2' : 'text-ink'
+      ),
+    },
+    children
+  )
+  const titled = action != null ? (
+    <div className="flex items-center gap-2">
+      {heading}
+      {action}
+    </div>
+  ) : (
+    heading
+  )
+  if (layout !== 'stack') {
+    return (
+      <div className={clsx(layout === 'band' && 'mb-3 mt-7', 'flex flex-wrap items-baseline gap-2.5', layout === 'band' && 'first:mt-0')}>
+        {heading}
+        {action}
+        {subtitle != null ? <span className="text-label text-ink-3">{subtitle}</span> : null}
+      </div>
+    )
+  }
+  if (eyebrow == null && subtitle == null) return titled
+  return (
+    <div>
+      {eyebrow != null ? <Label size="micro">{eyebrow}</Label> : null}
+      {titled}
+      {subtitle != null ? <p className="mt-0.5 text-label text-ink-3">{subtitle}</p> : null}
+    </div>
+  )
+}
+
 const METRIC_VALUE_SIZE = {
   title: 'text-title',
   metric: 'text-metric',

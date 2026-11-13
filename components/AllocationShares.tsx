@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { HelpPopover } from '@/components/HelpPopover'
+import { Note } from '@/components/ui'
 import type { AllocationShare } from '@/lib/asset-allocation'
 import { fmtPct } from '@/lib/format'
 
@@ -65,7 +66,7 @@ export function AllocationShares<K extends string>({
           ))}
         </tbody>
       </table>
-      {note ? <p className="text-label leading-relaxed text-ink-3">{note}</p> : null}
+      {note ? <Note relaxed>{note}</Note> : null}
     </section>
   )
 }

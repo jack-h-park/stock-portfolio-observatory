@@ -1,7 +1,7 @@
 import { PortfolioMultiTrendChart } from '@/components/charts'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, HeroAside, MetricField, MetricHeroCard, Signed } from '@/components/ui'
+import { Badge, Card, EmptyState, HeroAside, MetricField, MetricHeroCard, Note, Signed } from '@/components/ui'
 import { getCryptoPremium } from '@/lib/adapters/portfolio-db'
 import { EMPTY_VALUE, fmtDateTime, fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
@@ -148,7 +148,7 @@ export default async function CryptoPremiumPage() {
                   },
                 ]}
               />
-              <p className="mt-2 text-label text-ink-3">{copy.tableFootnote}</p>
+              <Note spacing="above-2">{copy.tableFootnote}</Note>
             </Card>
 
             <Card title={copy.whatThisMeasures}>
@@ -159,7 +159,7 @@ export default async function CryptoPremiumPage() {
                   <span className="text-ink">{copy.valueFromPremium}</span>
                   {copy.measures.riskTail}
                 </p>
-                <p className="text-ink-3">{copy.measures.timing}</p>
+                <Note size="inherit">{copy.measures.timing}</Note>
               </div>
             </Card>
           </CardRow>

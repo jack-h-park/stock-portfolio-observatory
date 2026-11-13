@@ -1,4 +1,4 @@
-import { Badge } from '@/components/ui'
+import { Badge, Note } from '@/components/ui'
 import type { WashSaleReview } from '@/lib/adapters/portfolio-db'
 import { EMPTY_VALUE, fmtMoney } from '@/lib/format'
 import type { getPageCopy } from '@/lib/ui-copy'
@@ -77,9 +77,9 @@ export function WashSaleBanner({ review, copy }: { review: WashSaleReview; copy:
           })}
         </ul>
         <p className="mt-3 text-label text-ink-2">{copy.drip}</p>
-        <p className="mt-1 text-label text-ink-3">
+        <Note spacing="above-1">
           {copy.asOf(review.today, review.transactionsThrough ?? EMPTY_VALUE)} {copy.estimate}
-        </p>
+        </Note>
       </div>
     </section>
   )

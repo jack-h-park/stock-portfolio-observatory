@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { TrendBarChart } from '@/components/charts'
-import { Badge, Card, EmptyState, HeroAside, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, HeroAside, MetricField, MetricHeroCard, Note, marketTone } from '@/components/ui'
 import { getIncomeReview } from '@/lib/adapters/portfolio-db'
 import { EMPTY_VALUE, fmtNumber, fmtPct } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
@@ -157,7 +157,7 @@ export default async function IncomePage() {
             yAxisSuffix={chartSuffix}
             yAxisLabel={usd ? copy.chartAxisUsd : copy.chartAxis}
           />
-          <p className="mt-2 text-label text-ink-3">{usd ? copy.chartNoteUsd : copy.chartNote}</p>
+          <Note spacing="above-2">{usd ? copy.chartNoteUsd : copy.chartNote}</Note>
         </Card>
 
         <Card title={copy.yearlyNativeTotals}>

@@ -15,24 +15,6 @@
     "app/tax-planning/plans/[id]/page.tsx": 1,
     "app/tax-settings/page.tsx": 2
   },
-  "bare-footnote": {
-    "app/cash-inflow/page.tsx": 7,
-    "app/crypto-premium/page.tsx": 2,
-    "app/daily-briefing/page.tsx": 3,
-    "app/dividends/page.tsx": 1,
-    "app/error.tsx": 1,
-    "app/fx/page.tsx": 2,
-    "app/income/page.tsx": 1,
-    "app/net-worth/page.tsx": 2,
-    "app/page.tsx": 2,
-    "app/pension/page.tsx": 2,
-    "app/realized/page.tsx": 2,
-    "app/rebalance/page.tsx": 6,
-    "app/rebalance/proposals/[id]/page.tsx": 9,
-    "app/rebalance/settings/page.tsx": 4,
-    "app/tax-planning/components.tsx": 1,
-    "app/tax-planning/page.tsx": 1
-  },
   "english-in-korean-copy": {
     "lib/ui-copy/common.ts": 2,
     "lib/ui-copy/pages/accounts.ts": 1,

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { createSavedTaxPlanAction } from '@/app/tax-planning/actions'
 import { DataTable } from '@/components/DataTable'
-import { Badge, Callout, Card, EmptyState, Label, MetricField, Panel, Signed, marketTone, type Tone } from '@/components/ui'
+import { Badge, Callout, Card, EmptyState, Label, MetricField, Note, Panel, SectionHeading, Signed, marketTone, type Tone } from '@/components/ui'
 import type { createMoneyFormatter } from '@/lib/currency'
 import { fmtDateShort, fmtDateTime, fmtDurationDays, fmtNumber, fmtPct, fmtQuantity, fmtSigned } from '@/lib/format'
 import type { Language } from '@/lib/i18n'
@@ -115,11 +115,10 @@ export function MasterPlanOverview({
     >
       <div className="flex flex-col gap-3 border-b border-line-subtle pb-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <Label size="micro">{copy.overview.executionWindow}</Label>
-          <h2 className="mt-1 text-title font-medium leading-tight text-ink">
+          <SectionHeading size="page" tight eyebrow={copy.overview.executionWindow}>
             {fmtDateShort(plan.summary.startDate, language)} <span className="text-ink-3">{copy.overview.to}</span>{' '}
             {fmtDateShort(plan.summary.endDate, language)}
-          </h2>
+          </SectionHeading>
           <p className="mt-2 max-w-[58rem] text-body leading-relaxed text-ink-2">{plan.description}</p>
         </div>
         <Callout tone="success" emphasis="soft" layout="aside">
@@ -317,9 +316,9 @@ export function SavedPlansPanel({
       <div className="grid gap-5 xl:grid-cols-[20rem_minmax(0,1fr)]">
         <Panel as="form" pad="md" action={createSavedTaxPlanAction}>
           <Label size="micro">{copy.savedPlans.saveCurrentCalculation}</Label>
-          <p className="mt-1 text-label leading-relaxed text-ink-3">
+          <Note spacing="above-1" relaxed>
             {copy.savedPlans.saveDescription}
-          </p>
+          </Note>
           <input type="hidden" name="strategy" value={selectedStrategy} />
           <input type="hidden" name="executionMonths" value={executionMonths} />
           <input type="hidden" name="horizonYears" value={horizonYears} />

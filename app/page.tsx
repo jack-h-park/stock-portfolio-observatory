@@ -4,7 +4,7 @@ import { AssetCoverageNote } from '@/components/AssetCoverageNote'
 import { isSupplementarySource } from '@/lib/supplementary'
 import { FreshnessInline } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, HeroAside, Label, MetricField, MetricHeroCard, Panel, TextLink, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, HeroAside, Label, MetricField, MetricHeroCard, Note, Panel, TextLink, marketTone } from '@/components/ui'
 import { PortfolioMultiTrendChart, PortfolioTrendChart, StackedAssetChart, TrendBarChart } from '@/components/charts'
 import {
   dbAvailable,
@@ -640,7 +640,7 @@ export default async function OverviewPage({
             yAxisSuffix="M"
             yAxisLabel={displayAxisLabel}
           />
-          <p className="mt-2 text-label text-ink-3">{copy.topHoldingsNote}</p>
+          <Note spacing="above-2">{copy.topHoldingsNote}</Note>
         </Card>
 
         <Card title={copy.dividendTrend}>
@@ -654,7 +654,7 @@ export default async function OverviewPage({
             allowDecimals
             yAxisLabel={copy.dividendAxis}
           />
-          <p className="mt-2 text-label text-ink-3">{copy.dividendTrendNote}</p>
+          <Note spacing="above-2">{copy.dividendTrendNote}</Note>
         </Card>
       </CardRow>
 

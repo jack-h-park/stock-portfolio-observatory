@@ -4,7 +4,7 @@ import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { MiniStat, MiniStatGrid, Stat, StatStrip, Total, TotalsStrip } from '@/components/layout'
-import { Callout, HeroAside, MetricField, Panel } from '@/components/ui'
+import { Callout, HeroAside, MetricField, Note, Panel, SectionHeading } from '@/components/ui'
 import { LinkChip, LinkChips } from '@/components/LinkChips'
 import { Tabs } from '@/components/Tabs'
 
@@ -408,4 +408,106 @@ test('Callout rule is a left rule in the tone colour', () => {
       `border-l-2 border-${tone} px-3 py-1`
     )
   }
+})
+
+// — Note ——————————————————————————————————————————————————————————————————————
+// One assertion per class combination the footnote inventory recorded.
+
+const NOTE_CASES: [string, Record<string, unknown>, string][] = [
+  ['label, no spacing', {}, 'text-label text-ink-3'],
+  ['label above-2', { spacing: 'above-2' }, 'mt-2 text-label text-ink-3'],
+  ['label above-3', { spacing: 'above-3' }, 'mt-3 text-label text-ink-3'],
+  ['label above-1', { spacing: 'above-1' }, 'mt-1 text-label text-ink-3'],
+  ['label above-0.5', { spacing: 'above-0.5' }, 'mt-0.5 text-label text-ink-3'],
+  ['label below-3', { spacing: 'below-3' }, 'mb-3 text-label text-ink-3'],
+  ['label below-5', { spacing: 'below-5' }, 'mb-5 text-label text-ink-3'],
+  ['label relaxed', { relaxed: true }, 'text-label leading-relaxed text-ink-3'],
+  ['label relaxed above-3', { relaxed: true, spacing: 'above-3' }, 'mt-3 text-label leading-relaxed text-ink-3'],
+  ['label relaxed above-2', { relaxed: true, spacing: 'above-2' }, 'mt-2 text-label leading-relaxed text-ink-3'],
+  ['label relaxed above-1', { relaxed: true, spacing: 'above-1' }, 'mt-1 text-label leading-relaxed text-ink-3'],
+  ['label relaxed below-3', { relaxed: true, spacing: 'below-3' }, 'mb-3 text-label leading-relaxed text-ink-3'],
+  ['caption, no spacing', { size: 'caption' }, 'text-caption text-ink-3'],
+  ['caption below-3', { size: 'caption', spacing: 'below-3' }, 'mb-3 text-caption text-ink-3'],
+  ['caption below-4', { size: 'caption', spacing: 'below-4' }, 'mb-4 text-caption text-ink-3'],
+  ['caption below-3 warning', { size: 'caption', spacing: 'below-3', tone: 'warning' }, 'mb-3 text-caption text-warning'],
+  ['body', { size: 'body' }, 'text-body text-ink-3'],
+  ['micro medium above-2', { size: 'micro', weight: 'medium', spacing: 'above-2' }, 'mt-2 text-micro font-medium text-ink-3'],
+  ['inherit', { size: 'inherit' }, 'text-ink-3'],
+  ['row above-3', { row: true, spacing: 'above-3' }, 'mt-3 flex flex-wrap items-center gap-2 text-label text-ink-3'],
+  ['row below-4', { row: true, spacing: 'below-4' }, 'mb-4 flex flex-wrap items-center gap-2 text-label text-ink-3'],
+  ['band top relaxed', { band: 'top', relaxed: true }, 'border-t border-line-subtle px-4 py-3 text-label leading-relaxed text-ink-3'],
+  [
+    'band bottom relaxed',
+    { band: 'bottom', relaxed: true },
+    'border-b border-line-subtle bg-surface px-4 py-3 text-label leading-relaxed text-ink-3',
+  ],
+]
+
+for (const [name, props, expected] of NOTE_CASES) {
+  test(`Note ${name}`, () => {
+    const el = outer(renderToStaticMarkup(h(Note, { ...props, children: 'x' } as never)))
+    assert.equal(el.tag, 'p')
+    assert.equal(el.className, expected)
+  })
+}
+
+test('Note forwards title and keeps a Badge child inside the paragraph', () => {
+  const html = renderToStaticMarkup(h(Note, { row: true, spacing: 'below-4', title: 'why', children: h('span', null, 'b') }))
+  assert.match(html, /^<p class="[^"]*" title="why"><span>b<\/span><\/p>$/)
+})
+
+// — SectionHeading ————————————————————————————————————————————————————————————
+
+test('SectionHeading pension: page size with mb-1, bare h2', () => {
+  const html = renderToStaticMarkup(h(SectionHeading, { size: 'page', spacing: 'mb-1', children: 'T' }))
+  assert.equal(html, '<h2 class="mb-1 text-title font-medium text-ink">T</h2>')
+})
+
+test('SectionHeading band: the briefing band row with an inline subtitle', () => {
+  const html = renderToStaticMarkup(h(SectionHeading, { size: 'section', tracking: true, layout: 'band', subtitle: 'S', children: 'T' }))
+  assert.equal(
+    html,
+    '<div class="mb-3 mt-7 flex flex-wrap items-baseline gap-2.5 first:mt-0">' +
+      '<h2 class="text-body-lg font-medium tracking-tight text-ink">T</h2>' +
+      '<span class="text-label text-ink-3">S</span></div>'
+  )
+})
+
+test('SectionHeading eyebrow: micro label above a tight page heading with mt-1', () => {
+  const html = renderToStaticMarkup(h(SectionHeading, { size: 'page', tight: true, eyebrow: 'E', children: 'T' }))
+  assert.equal(
+    html,
+    '<div><div class="font-medium uppercase text-ink-3 text-micro tracking-[0.08em]">E</div>' +
+      '<h2 class="mt-1 text-title font-medium leading-tight text-ink">T</h2></div>'
+  )
+})
+
+test('SectionHeading tight tracking page heading (opportunity analysis)', () => {
+  const html = renderToStaticMarkup(h(SectionHeading, { size: 'page', tight: true, tracking: true, children: 'T' }))
+  assert.equal(html, '<h2 class="text-title font-medium leading-tight tracking-tight text-ink">T</h2>')
+})
+
+test('SectionHeading action: h3 and the action in a flex row (timeline month)', () => {
+  const html = renderToStaticMarkup(h(SectionHeading, { level: 3, size: 'page', action: h('span', null, 'B'), children: 'T' }))
+  assert.equal(html, '<div class="flex items-center gap-2"><h3 class="text-title font-medium text-ink">T</h3><span>B</span></div>')
+})
+
+test('SectionHeading stacked subtitle (card header)', () => {
+  const html = renderToStaticMarkup(h(SectionHeading, { size: 'section', subtitle: 'S', children: 'T' }))
+  assert.equal(html, '<div><h2 class="text-body-lg font-medium text-ink">T</h2><p class="mt-0.5 text-label text-ink-3">S</p></div>')
+})
+
+test('SectionHeading minor h3 (proposal sub-headings)', () => {
+  const html = renderToStaticMarkup(h(SectionHeading, { level: 3, size: 'minor', children: 'T' }))
+  assert.equal(html, '<h3 class="text-label font-medium text-ink">T</h3>')
+})
+
+test('SectionHeading muted sub h3 with mb-2 (FBAR sub-section)', () => {
+  const html = renderToStaticMarkup(h(SectionHeading, { level: 3, size: 'sub', tone: 'muted', spacing: 'mb-2', children: 'T' }))
+  assert.equal(html, '<h3 class="mb-2 text-body font-medium text-ink-2">T</h3>')
+})
+
+test('SectionHeading forwards id to the heading', () => {
+  const html = renderToStaticMarkup(h(SectionHeading, { id: 'x', children: 'T' }))
+  assert.equal(html, '<h2 id="x" class="text-body-lg font-medium text-ink">T</h2>')
 })

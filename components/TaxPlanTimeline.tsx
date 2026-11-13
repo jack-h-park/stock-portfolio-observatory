@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { updateSavedInstructionExecutionAction } from '@/app/tax-planning/actions'
 import { getPageCopy } from '@/lib/ui-copy'
-import { Badge, Button, Card, EmptyState, Label, Signed, marketTone, type Tone } from '@/components/ui'
+import { Badge, Button, Card, EmptyState, Label, Note, SectionHeading, Signed, marketTone, type Tone } from '@/components/ui'
 import { Stat, StatStrip } from '@/components/layout'
 import { fmtDateShort, fmtMonth, fmtNumber, fmtSigned, localeFor } from '@/lib/format'
 import { useMoneyFormatter } from '@/components/LanguageProvider'
@@ -209,9 +209,9 @@ export function TaxPlanTimeline({
                 {fmtDateShort(plan.summary.startDate, language)} <span className="text-ink-3">{copy.to}</span>{' '}
                 {fmtDateShort(plan.summary.endDate, language)}
               </div>
-              <p className="mt-1 text-label leading-relaxed text-ink-3">
+              <Note spacing="above-1" relaxed>
                 {copy.inspectHint}
-              </p>
+              </Note>
             </div>
             <div className="flex items-center gap-4 text-micro text-ink-3">
               <span className="flex items-center gap-1.5">
@@ -294,13 +294,12 @@ export function TaxPlanTimeline({
           <section className="mt-1 rounded-md border border-line bg-surface/60 p-3 sm:p-4" aria-live="polite">
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-title font-medium text-ink">{fmtMonth(activeMonth.yearMonth, language, { year: true })}</h3>
-                  <Badge>{copy.instructions(fmtNumber(activeMonth.instructionCount))}</Badge>
-                </div>
-                <p className="mt-1 text-label text-ink-3">
+                <SectionHeading level={3} size="page" action={<Badge>{copy.instructions(fmtNumber(activeMonth.instructionCount))}</Badge>}>
+                  {fmtMonth(activeMonth.yearMonth, language, { year: true })}
+                </SectionHeading>
+                <Note spacing="above-1">
                   {copy.monthDetailHint}
-                </p>
+                </Note>
               </div>
               <div className="text-label text-ink-3">
                 {copy.page} <span className="font-medium text-ink">{activePage}</span> {copy.of} {pageCount}

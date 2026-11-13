@@ -1,6 +1,6 @@
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
-import { Badge, Button, Card, EmptyState, InfoTooltip, Label, Panel, Signed, TextLink, marketTone } from '@/components/ui'
+import { Badge, Button, Card, EmptyState, InfoTooltip, Label, Panel, SectionHeading, Signed, TextLink, marketTone } from '@/components/ui'
 import { getOperationalHealth, getOverview, getTaxPlanningLots, getWashSaleReview, getWrapperReview } from '@/lib/adapters/portfolio-db'
 import { WrapperEstimateNote } from '@/components/WrapperReviewCard'
 import { WashSaleBanner } from '@/components/WashSaleBanner'
@@ -165,12 +165,9 @@ export default async function TaxPlanningPage({
 
       <section className="mb-5 rounded-md border border-line bg-card shadow-card">
         <div className="flex flex-col gap-1 border-b border-line-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-body-lg font-medium text-ink">{copy.settings.title}</h2>
-            <p className="mt-0.5 text-label text-ink-3">
-              {copy.settings.subtitle}
-            </p>
-          </div>
+          <SectionHeading size="section" subtitle={copy.settings.subtitle}>
+            {copy.settings.title}
+          </SectionHeading>
           <Badge>{copy.settings.badge}</Badge>
         </div>
         <form className="grid gap-4 p-4 lg:grid-cols-[minmax(14rem,1.4fr)_minmax(11rem,0.8fr)_minmax(10rem,0.7fr)_auto] lg:items-end">

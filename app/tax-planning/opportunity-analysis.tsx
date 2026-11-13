@@ -1,4 +1,4 @@
-import { Badge, Card, EmptyState, Label, MetricField, Panel, Signed, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, Label, MetricField, Panel, SectionHeading, Signed, marketTone } from '@/components/ui'
 import { EMPTY_VALUE, fmtKrw, fmtNumber, fmtPct, fmtSigned } from '@/lib/format'
 import {
   buildTaxPlan,
@@ -275,7 +275,9 @@ export function DecisionSummary({
             <Badge tone={!hasPlanningTarget ? 'warning' : tiedTax ? 'neutral' : 'success'}>
               {!hasPlanningTarget ? copy.opportunity.explore : tiedTax ? copy.opportunity.tie : copy.opportunity.recommendation}
             </Badge>
-            <h2 className="text-title font-medium leading-tight tracking-tight text-ink">{title}</h2>
+            <SectionHeading size="page" tight tracking>
+              {title}
+            </SectionHeading>
           </div>
           <p className="mt-2 max-w-[56rem] text-body leading-relaxed text-ink-2">{body}</p>
           <div className="mt-4 grid gap-2 md:grid-cols-3">

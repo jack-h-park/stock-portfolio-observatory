@@ -4,7 +4,7 @@ import { FilterBar } from '@/components/FilterBar'
 import { PageHeader } from '@/components/PageHeader'
 import { ScrollOnHash } from '@/components/ScrollOnHash'
 import { StackedBarChart } from '@/components/charts'
-import { Badge, Button, Card, MetricField, MetricHeroCard, Panel } from '@/components/ui'
+import { Badge, Button, Card, MetricField, MetricHeroCard, Note, Panel } from '@/components/ui'
 import {
   CASH_INFLOW_CURRENCIES,
   CASH_INFLOW_FILTERS,
@@ -218,8 +218,8 @@ export default async function CashInflowPage({
       {!data.hasBankData ? (
         <Panel bordered={false} text="label-note">{copy.noBankData}</Panel>
       ) : null}
-      {filter === 'investment' ? <p className="text-label text-ink-3">{copy.investmentInfo}</p> : null}
-      {filter === 'unclassified' ? <p className="text-label text-ink-3">{copy.unclassifiedFilterNote}</p> : null}
+      {filter === 'investment' ? <Note>{copy.investmentInfo}</Note> : null}
+      {filter === 'unclassified' ? <Note>{copy.unclassifiedFilterNote}</Note> : null}
 
       <CardRow columns={1}>
         <MetricHeroCard
@@ -274,7 +274,7 @@ export default async function CashInflowPage({
             yAxisLabel={usd ? copy.axisUsd : copy.axisKrw}
             allowDecimals={usd}
           />
-          <p className="mt-2 text-label text-ink-3">{copy.chartNote} {copy.chartHint} {copy.legendHint}</p>
+          <Note spacing="above-2">{copy.chartNote} {copy.chartHint} {copy.legendHint}</Note>
         </Card>
       </CardRow>
 
@@ -323,7 +323,7 @@ export default async function CashInflowPage({
             ]}
           />
           {view === 'year' ? (
-            <p className="mt-2 text-label text-ink-3">{copy.yearlyNote(data.periods.find((p) => p.previousThrough)?.previousThrough ?? null)}</p>
+            <Note spacing="above-2">{copy.yearlyNote(data.periods.find((p) => p.previousThrough)?.previousThrough ?? null)}</Note>
           ) : null}
         </Card>
       </CardRow>
@@ -332,9 +332,9 @@ export default async function CashInflowPage({
         <CardRow columns={1}>
           <Card title={copy.triage.title}>
             <div id="cash-inflow-unclassified" className="flex scroll-mt-24 flex-col gap-3">
-              <p className="text-label text-ink-3">{copy.triage.note}</p>
+              <Note>{copy.triage.note}</Note>
               {unclassifiedGroups.length === 0 ? (
-                <p className="text-body text-ink-3">{copy.triage.none}</p>
+                <Note size="body">{copy.triage.none}</Note>
               ) : (
                 unclassifiedGroups.map((g) => (
                   <details key={`${g.institution}|${g.account}|${g.description}`} className="group rounded-md border border-line px-3 py-2">
@@ -354,7 +354,7 @@ export default async function CashInflowPage({
                         </li>
                       ))}
                     </ul>
-                    <p className="mt-2 text-micro font-medium text-ink-3">{copy.triage.rule}</p>
+                    <Note size="micro" weight="medium" spacing="above-2">{copy.triage.rule}</Note>
                     <pre className="mt-1 overflow-x-auto rounded-sm bg-surface px-2 py-1 text-micro text-ink-2">{ruleSnippet(g)}</pre>
                   </details>
                 ))

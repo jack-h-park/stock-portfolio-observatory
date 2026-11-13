@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
 import { DataTable } from '@/components/DataTable'
 import { FilterBar } from '@/components/FilterBar'
-import { Badge, Card, Label, Panel, Signed, marketTone } from '@/components/ui'
+import { Badge, Card, Label, Note, Panel, Signed, marketTone } from '@/components/ui'
 import { Total, TotalsStrip } from '@/components/layout'
 import { getRealizedLots } from '@/lib/adapters/portfolio-db'
 import { todayLosAngeles } from '@/lib/cli/common'
@@ -117,7 +117,7 @@ export default async function RealizedLotsPage({
             />
           </TotalsStrip>
           {usd && totals.missing_usd > 0 ? (
-            <p className="text-caption text-ink-3">{copy.totals.missing(fmtNumber(totals.missing_usd))}</p>
+            <Note size="caption">{copy.totals.missing(fmtNumber(totals.missing_usd))}</Note>
           ) : null}
           <Panel layout="stack-2">
             <Label>{copy.taxExport.title}</Label>
@@ -155,7 +155,7 @@ export default async function RealizedLotsPage({
               </a>
             </div>
             <p className="text-caption text-ink-2">{copy.taxExport.counts(exportSummary.rows, exportSummary.blankDollar, exportSummary.superseded)}</p>
-            <p className="text-caption text-ink-3">{copy.taxExport.filtersIgnored}</p>
+            <Note size="caption">{copy.taxExport.filtersIgnored}</Note>
             <details open className="text-caption text-ink-3">
               <summary className="cursor-pointer">{copy.taxExport.notCovered}</summary>
               <ul className="mt-1 list-disc space-y-1 pl-5">
