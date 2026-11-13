@@ -8,6 +8,8 @@
 
 **Scope:** Existing recorded tax units, explicitly separated; no implication that they match the asset overview's self-owner scope. No cross-currency total, new estimate or complete settlement claim. Missing categories are unknown rather than zero. Unreviewed or missing-evidence allocations are excluded with visible counts; unknown dates and unallocated events remain explicit. Requested refunds and return-reported prepayments require a later structured-record increment.
 
+**Delivery status:** Subsequently merged and deployed in #290 at `862f968` under separate owner authorization on November 12, 2026 (America/Los_Angeles). The execution holds above/below record the original PR-preparation scope; they do not describe current deployment status. Further annual-calculator work remains design-only.
+
 ## Files and tasks
 
 - [x] Add `tests/annual-tax-summary.test.ts`: split cross-year allocation, payment/refund/reversal separation, withheld principal, interest/penalties, missing categories, stale/unusable basis, incomplete evidence/review, deleted rows, large exact amounts, date uncertainty, unrelated tax units and empty/error rendering, events-only unallocated history and noncash adjustments. Watch the projection test fail before implementation.

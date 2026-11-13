@@ -12,8 +12,8 @@ Status combines source support with the bounded operating acceptance recorded in
 | Complete net worth | Unsupported | No general liabilities ledger; asset totals alone are not net worth |
 | Cash flow | Partial | Income/inflows/transfers from supported records; not a full budget/spending ledger; [asset events](../../lib/asset-events.ts) |
 | KR/US investment tax scenarios | Implemented, bounded | Investment-incremental planning under configured policy; [planner](../../lib/tax-planning.ts), [US engine](../../lib/us-tax-engine.ts) |
-| Annual recorded-tax summary | Review-branch implementation, not deployed | Existing obligation-year amounts with separate units/authorities/currencies; no schema change or new estimate; [increment scope](next-increment.md) |
-| Annual total tax calculator | Planned | Existing ordinary-income assumptions contextualize investment scenarios; they do not establish complete annual return coverage |
+| Annual recorded-tax summary | Merged and operating in #290 | Existing obligation-year amounts with separate units/authorities/currencies; no schema change or new estimate; [increment scope](next-increment.md) |
+| Annual total tax calculator | 2025-first [MVP design](../superpowers/specs/2026-11-12-annual-tax-estimation-mvp-design.md) proposed; not implemented | Reviewed-base components and composed annual results require separate coverage/official-rule gates; current investment assumptions do not establish annual return coverage |
 | Saved tax/rebalance plans | Implemented | Local state with review/execution records; [tax plans](../../lib/tax-plan-store.ts), [proposals](../../lib/rebalance/proposal-store.ts) |
 | Returns/assessments/payments/refunds | Implemented; bounded private adoption verified | Versioned structured import and evidence links operating; private web history writes remain disabled; [workflow](../operations/tax-history.md); no completion inferred from file names |
 | Foreign-account reporting preparation | Partial | Maximum-balance reference tables, not filed FBAR/Form 8938; [FBAR helpers](../../lib/fbar.ts) |
