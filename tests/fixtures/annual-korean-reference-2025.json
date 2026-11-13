@@ -1,0 +1,329 @@
+{
+  "description": "Synthetic exact rate-schedule references only. No reported KR tax rounding assumed; not a private return. Independent Python Decimal150 transcription of NTS2023-2025national rates and2025local form40-3 schedule.",
+  "cases": [
+    {
+      "authority": "KR:national",
+      "baseMinor": "0",
+      "expectedNumerator": "0",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "1",
+      "expectedNumerator": "600",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "83",
+      "expectedNumerator": "49800",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "100",
+      "expectedNumerator": "60000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "13999999",
+      "expectedNumerator": "8399999400",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "14000000",
+      "expectedNumerator": "8400000000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "14000001",
+      "expectedNumerator": "8400001500",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "30000000",
+      "expectedNumerator": "32400000000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "49999999",
+      "expectedNumerator": "62399998500",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "50000000",
+      "expectedNumerator": "62400000000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "50000001",
+      "expectedNumerator": "62400002400",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "87999999",
+      "expectedNumerator": "153599997600",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "88000000",
+      "expectedNumerator": "153600000000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "88000001",
+      "expectedNumerator": "153600003500",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "149999999",
+      "expectedNumerator": "370599996500",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "150000000",
+      "expectedNumerator": "370600000000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "150000001",
+      "expectedNumerator": "370600003800",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "299999999",
+      "expectedNumerator": "940599996200",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "300000000",
+      "expectedNumerator": "940600000000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "300000001",
+      "expectedNumerator": "940600004000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "499999999",
+      "expectedNumerator": "1740599996000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "500000000",
+      "expectedNumerator": "1740600000000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "500000001",
+      "expectedNumerator": "1740600004200",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "999999999",
+      "expectedNumerator": "3840599995800",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "1000000000",
+      "expectedNumerator": "3840600000000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "1000000001",
+      "expectedNumerator": "3840600004500",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:national",
+      "baseMinor": "900719925474099312345",
+      "expectedNumerator": "4053239664632787505552500",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "0",
+      "expectedNumerator": "0",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "1",
+      "expectedNumerator": "60",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "83",
+      "expectedNumerator": "4980",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "100",
+      "expectedNumerator": "6000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "13999999",
+      "expectedNumerator": "839999940",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "14000000",
+      "expectedNumerator": "840000000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "14000001",
+      "expectedNumerator": "840000150",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "30000000",
+      "expectedNumerator": "3240000000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "49999999",
+      "expectedNumerator": "6239999850",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "50000000",
+      "expectedNumerator": "6240000000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "50000001",
+      "expectedNumerator": "6240000240",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "87999999",
+      "expectedNumerator": "15359999760",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "88000000",
+      "expectedNumerator": "15360000000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "88000001",
+      "expectedNumerator": "15360000350",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "149999999",
+      "expectedNumerator": "37059999650",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "150000000",
+      "expectedNumerator": "37060000000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "150000001",
+      "expectedNumerator": "37060000380",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "299999999",
+      "expectedNumerator": "94059999620",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "300000000",
+      "expectedNumerator": "94060000000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "300000001",
+      "expectedNumerator": "94060000400",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "499999999",
+      "expectedNumerator": "174059999600",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "500000000",
+      "expectedNumerator": "174060000000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "500000001",
+      "expectedNumerator": "174060000420",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "999999999",
+      "expectedNumerator": "384059999580",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "1000000000",
+      "expectedNumerator": "384060000000",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "1000000001",
+      "expectedNumerator": "384060000450",
+      "denominator": "10000"
+    },
+    {
+      "authority": "KR:local",
+      "baseMinor": "900719925474099312345",
+      "expectedNumerator": "405323966463278750555250",
+      "denominator": "10000"
+    }
+  ]
+}

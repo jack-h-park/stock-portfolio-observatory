@@ -1,6 +1,6 @@
 # 2025 annual tax rule and contract foundation
 
-The source-pinned rule/contract foundation is merged in [#296](https://github.com/jack-h-park/stock-portfolio-observatory/pull/296), without deployment. The US ordinary/NIIT library is merged in [#297](https://github.com/jack-h-park/stock-portfolio-observatory/pull/297), also without deployment. The follow-up eligible qualified-dividend/capital-gain worksheet is implemented for PR review with an explicitly selected v2 pack, without CLI/UI or operating activation. The existing investment planner, tax history, imports, web pages and operating write/access settings are unchanged.
+The source-pinned rule/contract foundation is merged in [#296](https://github.com/jack-h-park/stock-portfolio-observatory/pull/296), without deployment. The US ordinary/NIIT library is merged in [#297](https://github.com/jack-h-park/stock-portfolio-observatory/pull/297), also without deployment. The eligible qualified-dividend/capital-gain v2 worksheet is merged in [#298](https://github.com/jack-h-park/stock-portfolio-observatory/pull/298), without deployment. A separate [Korean exact rate-reference API](korean-tax-reference.md) is implemented for PR review; Korean reported tax remains blocked. No CLI/UI or operating activation is included. The existing investment planner, tax history, imports, web pages and operating write/access settings are unchanged.
 
 ## Public interfaces
 
@@ -8,6 +8,7 @@ The source-pinned rule/contract foundation is merged in [#296](https://github.co
 - `getAnnualRuleStatus(2025, componentId, optionalPackId)` separates `reference-ready` from `blocked`. `calculationAvailable` is true only for implemented US ordinary/NIIT components and eligible QDCG in the explicit v2 pack and false for the blocked methods. Library availability is separate from PR merge, deployment and operating activation.
 - `validateAnnualEstimateInput(unknown)` checks a reviewed-base scenario and returns an isolated copy. It does not read evidence files, verify their bytes or determine residency.
 - `annualInputDigest(input)` hashes the validated input with recursively sorted object keys and preserved array order.
+- `calculateKoreanTaxReference(unknown)` returns a separately scoped exact national/local rate-schedule rational or an input blocker. It always leaves reported tax unavailable; see [policy boundary](korean-tax-reference.md).
 - `calculateAnnualComponents(unknown)` validates a scenario and returns independently computed or explicitly blocked components, with no I/O. It does not compose or sum an annual return.
 - `validateAnnualEstimateResult(unknown, input)` binds a component result to that exact input revision/hash and the pinned rule-pack ID/hash. It validates shape, provenance metadata, scope and dependencies; it does not certify the submitted amount's arithmetic.
 
@@ -39,7 +40,7 @@ The federal ordinary reference retains all 2,062 official intervals below USD 10
 
 Korean general/local rate schedules are reference data, with calculation readiness blocked pending a calculated-tax-line rounding policy. Collection/disbursement truncation does not establish that intermediate line's policy. The local schedule is independent reference data, not ten percent of final national liability. QDCG remains blocked in v1; an explicit v2 selection supports only the eligible 25-line worksheet described below. Korean and unsupported special-method blockers cannot be bypassed by requesting a computed result or introducing a caller.
 
-The [MVP design](../superpowers/specs/2026-11-12-annual-tax-estimation-mvp-design.md) describes later composition, California and presentation work. The owner authorized #297 merge and a follow-up QDCG PR. That new PR remains unmerged/undeployed; further increments and operating activation require separate scope. Approved-owner-device access and disabled private web history writes remain intended operating constraints.
+The [MVP design](../superpowers/specs/2026-11-12-annual-tax-estimation-mvp-design.md) describes later composition, California and presentation work. The owner authorized #298 merge and the next Korean rule/calculation PR. The exact-reference increment remains for PR review, with reported KR output still blocked because its line-specific policy is unverified. Further merge/deployment and operating activation require separate scope. Approved-owner-device access and disabled private web history writes remain intended operating constraints.
 
 ## Federal calculation and rounding boundary
 
@@ -72,3 +73,9 @@ The worksheet partitions the supplied base across the published preference bands
 Reviewed input form lines use the existing explicit whole-dollar mode. Tax terms on lines 18/21/22/23/24/25 remain exact BigInt dollar numerators over 10,000 through the sum and comparison; only the reported component is rounded. This follows the distinction between reporting and computation in [26 CFR 301.6102-1(c), 2025 edition](https://www.govinfo.gov/content/pkg/CFR-2025-title26-vol20/pdf/CFR-2025-title26-vol20-sec301-6102-1.pdf). The existing ordinary/NIIT v1 results retain their prior rounding and traces.
 
 Every worksheet line appears in the deterministic trace, alongside branch input origins, exact ordinary lookups and the final reported amount. See `examples/annual-tax-qdcg.synthetic.json` and `tests/fixtures/annual-qdcg-2025.json`. The 21 synthetic reference cases cover 25 lines each, including both branches, losses, preference bands, the final ordinary cap and fractional tax terms. Their Python Decimal arithmetic and PDF-extracted Tax Table are independent of the TypeScript calculator. They are not an owner's accepted return. Output remains component-only with no annual total, settlement inference or history comparison.
+
+## Korean reference is separate from reported tax
+
+The Korean reference increment exposes exact rate arithmetic only. Its scope is `rate-schedule-reference`, with a rational numerator/denominator rather than a reported Money value. `reportedAmountMinor` and `annualTotal` are null and comparison eligibility is false, including for integer-valued references. It is deliberately not an `AnnualEstimateResult` and cannot be passed to the annual result validator as one.
+
+The shared input-only eligibility gate is reused without clearing source-readiness gates. `calculateAnnualComponents` still returns blocked Korean components and `getAnnualRuleStatus` still reports calculation unavailable in v1/v2. No pack bytes, schema, operational writer or public interface of the existing investment planner changes. [Required evidence](korean-tax-reference.md#required-next-evidence) remains unresolved; implementation of the reference does not establish filing-grade national/local calculations.
