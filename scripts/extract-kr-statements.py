@@ -41,6 +41,8 @@ ISA statements are not.
 import json
 import os
 import re
+import hashlib
+import io
 import sys
 import unicodedata
 from datetime import datetime, timezone
@@ -827,7 +829,71 @@ def write_tsv(path, columns, rows):
             fh.write("\t".join(str(row.get(col, "")) for col in columns) + "\n")
 
 
-def write_as_of(path, as_of_map):
+def statement_period_receipts(declared, transactions, statements_dir, expected_digests=None):
+    """Preserve parsed page-1 periods independently of pinned/inferred lot dates."""
+    accounts = {}
+    dates = {}
+    for row in transactions:
+        dates.setdefault((row["Account"], row["Source"]), []).append(row["Date"])
+
+    def valid_date(value):
+        if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            return False
+        try:
+            datetime.strptime(value, "%Y-%m-%d")
+            return True
+        except ValueError:
+            return False
+
+    for (account, source), (start, end) in sorted(declared.items()):
+        entry = accounts.setdefault(account, {"state": "declared", "sources": []})
+        if not valid_date(start) or not valid_date(end) or Path(source).name != source or "\\" in source or Path(source).suffix.lower() != ".pdf":
+            if entry["state"] != "conflicting":
+                entry["state"] = "unconfirmed"
+            continue
+        if start > end:
+            entry["state"] = "conflicting"
+            continue
+        try:
+            data = (statements_dir / source).read_bytes()
+            digest = hashlib.sha256(data).hexdigest()
+        except OSError:
+            if entry["state"] != "conflicting":
+                entry["state"] = "unconfirmed"
+            continue
+        if expected_digests is not None and expected_digests.get(source) != digest:
+            if entry["state"] != "conflicting":
+                entry["state"] = "unconfirmed"
+            continue
+        # Each part must declare its OWN page-1 period. Parse the very bytes hashed
+        # here, never a sibling's cached period or a later pathname reopening.
+        pdf = open_pdf(io.BytesIO(data))
+        if pdf is None:
+            if entry["state"] != "conflicting":
+                entry["state"] = "unconfirmed"
+            continue
+        with pdf:
+            actual_start, actual_end = coverage_period(pdf.pages[0].extract_text() if pdf.pages else "")
+        if not valid_date(actual_start) or not valid_date(actual_end):
+            if entry["state"] != "conflicting":
+                entry["state"] = "unconfirmed"
+            continue
+        if actual_start > actual_end:
+            entry["state"] = "conflicting"
+            continue
+        if (start, end) != (actual_start, actual_end):
+            entry["state"] = "conflicting"
+        start, end = actual_start, actual_end
+        receipt = {"source": source, "sha256": digest, "page": 1, "start": start, "end": end}
+        entry["sources"].append(receipt)
+        if any(not valid_date(day) or day < start or day > end for day in dates.get((account, source), [])):
+            entry["state"] = "conflicting"
+    for entry in accounts.values():
+        entry["sources"].sort(key=lambda row: (row["end"], row["source"]))
+    return {"schemaVersion": 1, "accounts": accounts}
+
+
+def write_as_of(path, as_of_map, statement_periods=None):
     """The per-account as-of map, on its own — not only stamped onto open lots.
 
     A lot only carries `As Of Date` while it stays OPEN, and 삼성증권 never has
@@ -843,6 +909,8 @@ def write_as_of(path, as_of_map):
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "accounts": as_of_map,
     }
+    if statement_periods is not None:
+        payload["statementPeriods"] = statement_periods
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
@@ -1697,6 +1765,16 @@ def main():
         print(f"ERROR: no statement directory at {statements_dir}", file=sys.stderr)
         return 1
 
+    # Bind account extraction and later period receipts to unchanged source bytes.
+    # This does not change which statements/rows the legacy parser selects.
+    statement_source_digests = {}
+    for source in statements_dir.iterdir():
+        if source.is_file() and source.suffix.lower() == ".pdf":
+            try:
+                statement_source_digests[source.name] = hashlib.sha256(source.read_bytes()).hexdigest()
+            except OSError:
+                pass  # Later receipt stays unconfirmed; no invented digest.
+
     # Defined before the first statement is opened, because resolving which
     # files to read is itself something that can have findings to report.
     parser_problems = {}
@@ -1908,7 +1986,7 @@ def main():
     write_tsv(OUT_DIR / "dividends.tsv", DIVIDEND_COLUMNS, dividends)
     write_tsv(OUT_DIR / "taxlots.tsv", TAXLOT_COLUMNS, taxlots)
     write_tsv(OUT_DIR / "realized.tsv", REALIZED_COLUMNS, realized)
-    write_as_of(OUT_DIR / "as-of.json", as_of_map)
+    write_as_of(OUT_DIR / "as-of.json", as_of_map, statement_period_receipts(declared, transactions, statements_dir, expected_digests=statement_source_digests))
     cash_rows = end_of_day_cash(cash)
     write_tsv(OUT_DIR / "cash.tsv", CASH_COLUMNS, cash_rows)
     write_tsv(OUT_DIR / "cash-coverage.tsv", CASH_COVERAGE_COLUMNS, cash_coverage(cash, declared))
