@@ -3,6 +3,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { DataTable } from '@/components/DataTable'
 import { FilterBar } from '@/components/FilterBar'
 import { Badge, Card, Label, Signed, marketTone } from '@/components/ui'
+import { Total, TotalsStrip } from '@/components/layout'
 import { getRealizedLots } from '@/lib/adapters/portfolio-db'
 import { todayLosAngeles } from '@/lib/cli/common'
 import { NOT_COVERED_LINES, selectTaxExportRows, summarizeTaxExport } from '@/lib/tax-export'
@@ -106,28 +107,15 @@ export default async function RealizedLotsPage({
               },
             ]}
           />
-          <div className="grid gap-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption sm:grid-cols-4">
-            <div>
-              <Label>{copy.filtered}</Label>
-              <div className="font-medium tabular-nums text-ink">
-                {fmtNumber(filtered.length)} / {fmtNumber(inYear.length)}
-              </div>
-            </div>
-            <div>
-              <Label>{copy.totals.cost}</Label>
-              <div className="font-medium tabular-nums text-ink">{usd ? formatUsd(totals.cost_usd) : formatKrw(totals.cost_krw)}</div>
-            </div>
-            <div>
-              <Label>{copy.totals.proceeds}</Label>
-              <div className="font-medium tabular-nums text-ink">{usd ? formatUsd(totals.proceeds_usd) : formatKrw(totals.proceeds_krw)}</div>
-            </div>
-            <div>
-              <Label>{copy.totals.gain}</Label>
-              <div className="font-medium">
-                <Signed value={usd ? totals.gain_usd : totals.gain_krw} format={(m) => (usd ? formatUsd(m) : formatKrw(m))} />
-              </div>
-            </div>
-          </div>
+          <TotalsStrip columns={4}>
+            <Total label={copy.filtered} value={<>{fmtNumber(filtered.length)} / {fmtNumber(inYear.length)}</>} />
+            <Total label={copy.totals.cost} value={usd ? formatUsd(totals.cost_usd) : formatKrw(totals.cost_krw)} />
+            <Total label={copy.totals.proceeds} value={usd ? formatUsd(totals.proceeds_usd) : formatKrw(totals.proceeds_krw)} />
+            <Total
+              label={copy.totals.gain}
+              value={<Signed value={usd ? totals.gain_usd : totals.gain_krw} format={(m) => (usd ? formatUsd(m) : formatKrw(m))} />}
+            />
+          </TotalsStrip>
           {usd && totals.missing_usd > 0 ? (
             <p className="text-caption text-ink-3">{copy.totals.missing(fmtNumber(totals.missing_usd))}</p>
           ) : null}

@@ -1,7 +1,7 @@
 import { DataTable } from '@/components/DataTable'
 import { FreshnessRows } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, MetricField, MetricHeroCard, type Tone } from '@/components/ui'
+import { Badge, Card, EmptyState, HeroAside, MetricField, MetricHeroCard, type Tone } from '@/components/ui'
 import { getMeta, getOperationalHealth, getSourceInventory } from '@/lib/adapters/portfolio-db'
 import { EMPTY_VALUE, fmtBytes, fmtDateTime, fmtNumber, shortHash } from '@/lib/format'
 import { freshnessDetailText } from '@/lib/freshness-text'
@@ -79,7 +79,6 @@ export default async function DataMapPage({
               value={fmtNumber(inventory.summary.unused)}
               hint={copy.unusedHint}
               tone="info"
-              valueClassName="text-title"
             />
             <MetricField
               label={copy.drift}
@@ -87,41 +86,30 @@ export default async function DataMapPage({
               info={glossary.drift.description}
               hint={copy.driftHint}
               tone={inventory.summary.drift ? 'warning' : 'success'}
-              valueClassName="text-title"
             />
             <MetricField
               label={copy.missing}
               value={fmtNumber(inventory.summary.missing)}
               hint={copy.missingHint}
               tone={inventory.summary.missing ? 'danger' : 'success'}
-              valueClassName="text-title"
             />
           </KpiBand>
         </MetricHeroCard>
 
-        <Card title={copy.inventoryCoverage} info={copy.inventoryCoverageInfo}>
-          <div className="flex min-h-[16rem] flex-col justify-between gap-4">
-            <div className="space-y-4">
-              <MetricField
-                label={copy.used}
-                value={fmtNumber(inventory.summary.used)}
-                hint={copy.usedHint}
-                tone="success"
-                valueClassName="text-metric"
-              />
-              <div className="h-px bg-line-subtle" />
-              <MetricField
-                label={copy.inventorySize}
-                value={fmtBytes(inventory.summary.totalBytes)}
-                hint={copy.inventorySizeHint}
-                valueClassName="text-title"
-              />
-            </div>
-            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
-              {copy.readOrder}
-            </div>
-          </div>
-        </Card>
+        <HeroAside title={copy.inventoryCoverage} info={copy.inventoryCoverageInfo} note={copy.readOrder}>
+          <MetricField
+            label={copy.used}
+            value={fmtNumber(inventory.summary.used)}
+            hint={copy.usedHint}
+            tone="success"
+            size="metric"
+          />
+          <MetricField
+            label={copy.inventorySize}
+            value={fmtBytes(inventory.summary.totalBytes)}
+            hint={copy.inventorySizeHint}
+          />
+        </HeroAside>
       </CardRow>
 
       <Card title={copy.reviewQueue} accent={actionItems.length > 0}>

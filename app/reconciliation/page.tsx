@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, MetricField, MetricHeroCard, TextLink, marketTone, type Tone } from '@/components/ui'
+import { Badge, Card, EmptyState, HeroAside, MetricField, MetricHeroCard, TextLink, marketTone, type Tone } from '@/components/ui'
 import { getReconciliationReview, type ReconciliationReview } from '@/lib/adapters/portfolio-db'
 import { EMPTY_VALUE, fmtNumber, fmtQuantity } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
@@ -69,7 +69,6 @@ export default async function ReconciliationPage({
               label={copy.positions}
               value={fmtNumber(review.totals.position_count)}
               hint={copy.markets(fmtNumber(review.totals.market_count))}
-              valueClassName="text-title"
             />
             <MetricField
               label={copy.tickerlessIncome}
@@ -77,7 +76,6 @@ export default async function ReconciliationPage({
               info={glossary.tickerless.description}
               hint={copy.tickerlessHint}
               tone={review.totals.tickerless_income_count ? 'warning' : 'success'}
-              valueClassName="text-title"
             />
             <MetricField
               label={copy.sourceIssues}
@@ -85,33 +83,23 @@ export default async function ReconciliationPage({
               info={glossary.inputIssues.description}
               hint={copy.sourceIssuesHint}
               tone={sourceIssueCount ? 'danger' : 'success'}
-              valueClassName="text-title"
             />
           </KpiBand>
         </MetricHeroCard>
 
-        <Card title={copy.coverageScope} info={copy.coverageScopeInfo}>
-          <div className="flex min-h-[16rem] flex-col justify-between gap-4">
-            <div className="space-y-4">
-              <MetricField
-                label={copy.brokerages}
-                value={fmtNumber(review.totals.brokerage_count)}
-                hint={copy.marketsCovered(fmtNumber(review.totals.market_count))}
-                valueClassName="text-metric"
-              />
-              <div className="h-px bg-line-subtle" />
-              <MetricField
-                label={copy.lotPositions}
-                value={fmtNumber(review.totals.lot_position_count)}
-                hint={copy.lotPositionsHint}
-                valueClassName="text-title"
-              />
-            </div>
-            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
-              {copy.readOrder}
-            </div>
-          </div>
-        </Card>
+        <HeroAside title={copy.coverageScope} info={copy.coverageScopeInfo} note={copy.readOrder}>
+          <MetricField
+            label={copy.brokerages}
+            value={fmtNumber(review.totals.brokerage_count)}
+            hint={copy.marketsCovered(fmtNumber(review.totals.market_count))}
+            size="metric"
+          />
+          <MetricField
+            label={copy.lotPositions}
+            value={fmtNumber(review.totals.lot_position_count)}
+            hint={copy.lotPositionsHint}
+          />
+        </HeroAside>
       </CardRow>
 
       <Card title={copy.actionQueue} accent={review.actionQueue.length > 0}>

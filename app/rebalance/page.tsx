@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, MetricField, MetricHeroCard, Signed, TextLink, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, HeroAside, MetricField, MetricHeroCard, Signed, TextLink, marketTone } from '@/components/ui'
 import { getOperationalHealth, getRebalanceReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
 import { EMPTY_VALUE, fmtNumber, fmtPct, fmtPctRange } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
@@ -237,50 +237,38 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
               label={copy.baseMarketValue}
               value={money(rebalance.totals.base_market_value)}
               hint={copy.baseMarketValueHint}
-              valueClassName="text-title"
             />
             <MetricField
               label={copy.reduceCandidates}
               value={fmtNumber(rebalance.reduceCandidates.length)}
               hint={copy.reduceCandidatesHint}
               tone={rebalance.reduceCandidates.length ? 'warning' : 'success'}
-              valueClassName="text-title"
             />
             <MetricField
               label={copy.watchBeforeAction}
               value={fmtNumber(rebalance.watchCandidates.length + freshnessIssues)}
               hint={copy.watchBeforeActionHint}
               tone={rebalance.watchCandidates.length + freshnessIssues ? 'warning' : 'success'}
-              valueClassName="text-title"
             />
           </KpiBand>
         </MetricHeroCard>
 
-        <Card title={copy.executionRisk} info={copy.executionRiskInfo}>
-          <div className="flex min-h-[16rem] flex-col justify-between gap-4">
-            <div className="space-y-4">
-              <MetricField
-                label={copy.taxSensitive}
-                value={fmtNumber(rebalance.taxSensitive.length)}
-                hint={copy.taxSensitiveHint}
-                tone={rebalance.taxSensitive.length ? 'warning' : 'success'}
-                valueClassName="text-metric"
-              />
-              <div className="h-px bg-line-subtle" />
-              <MetricField
-                label={copy.freshnessIssuesLabel}
-                value={fmtNumber(freshnessIssues)}
-                info={glossary.freshness.description}
-                hint={copy.freshnessIssuesHint}
-                tone={freshnessIssues ? 'warning' : 'success'}
-                valueClassName="text-title"
-              />
-            </div>
-            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
-              {copy.decisionOrder}
-            </div>
-          </div>
-        </Card>
+        <HeroAside title={copy.executionRisk} info={copy.executionRiskInfo} note={copy.decisionOrder}>
+          <MetricField
+            label={copy.taxSensitive}
+            value={fmtNumber(rebalance.taxSensitive.length)}
+            hint={copy.taxSensitiveHint}
+            tone={rebalance.taxSensitive.length ? 'warning' : 'success'}
+            size="metric"
+          />
+          <MetricField
+            label={copy.freshnessIssuesLabel}
+            value={fmtNumber(freshnessIssues)}
+            info={glossary.freshness.description}
+            hint={copy.freshnessIssuesHint}
+            tone={freshnessIssues ? 'warning' : 'success'}
+          />
+        </HeroAside>
       </CardRow>
 
       <CardRow columns="hero">

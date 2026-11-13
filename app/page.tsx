@@ -4,7 +4,7 @@ import { AssetCoverageNote } from '@/components/AssetCoverageNote'
 import { isSupplementarySource } from '@/lib/supplementary'
 import { FreshnessInline } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, Label, MetricField, MetricHeroCard, TextLink, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, HeroAside, Label, MetricField, MetricHeroCard, TextLink, marketTone } from '@/components/ui'
 import { PortfolioMultiTrendChart, PortfolioTrendChart, StackedAssetChart, TrendBarChart } from '@/components/charts'
 import {
   dbAvailable,
@@ -49,7 +49,7 @@ import { positionHref } from '@/lib/position-url'
 import { signClass, signTone } from '@/lib/tone'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata, routeSection } from '@/lib/page-names'
-import { CardRow, KpiBand } from '@/components/layout'
+import { CardRow, KpiBand, MiniStat, MiniStatGrid } from '@/components/layout'
 import { AssetViewLink } from '@/components/LanguageSwitcher'
 import { WashSaleBanner } from '@/components/WashSaleBanner'
 import { TrendRangeLinks } from '@/components/TrendRangeLinks'
@@ -266,47 +266,36 @@ export default async function OverviewPage({
           ) : copy.valueHint}
         >
           <KpiBand>
-            <MetricField label={copy.totalCost} value={money(globalBase, 'KRW')} info={glossary.costBasis.description} valueClassName="text-title" />
+            <MetricField label={copy.totalCost} value={money(globalBase, 'KRW')} info={glossary.costBasis.description} />
             <MetricField
               label={copy.totalGain}
               value={money(overview.totals.global_base_unrealized_gl, 'KRW')}
               info={glossary.unrealizedGl.description}
               tone={signTone(overview.totals.global_base_unrealized_gl)}
-              valueClassName="text-title"
             />
             <MetricField
               label={copy.returnOnPricedCost}
               value={fmtPct(globalUnrealizedPct, { digits: 2 })}
               info={`${glossary.unrealizedGl.description} ${copy.returnOnPricedCostInfo}`}
               tone={signTone(globalUnrealizedPct)}
-              valueClassName="text-title"
             />
           </KpiBand>
         </MetricHeroCard>
 
-        <Card title={copy.supportingMetrics}>
-          <div className="flex min-h-[16rem] flex-col justify-between gap-4">
-            <div className="space-y-4">
-              <MetricField
-                label={copy.holdings}
-                value={fmtNumber(overview.totals.holding_count)}
-                hint={`${copy.totalQuantity} ${fmtNumber(overview.totals.share_count, 2)}`}
-                valueClassName="text-metric"
-              />
-              <div className="h-px bg-line-subtle" />
-              <MetricField
-                label={copy.dividends}
-                value={money(overview.dividends.krw_amount, 'KRW')}
-                hint={`${money(overview.dividends.usd_amount, 'USD')} · ${copy.count(fmtNumber(overview.dividends.count))}`}
-                tone="success"
-                valueClassName="text-title"
-              />
-            </div>
-            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
-              {copy.fxNote(fxLabel)}
-            </div>
-          </div>
-        </Card>
+        <HeroAside title={copy.supportingMetrics} note={copy.fxNote(fxLabel)}>
+          <MetricField
+            label={copy.holdings}
+            value={fmtNumber(overview.totals.holding_count)}
+            hint={`${copy.totalQuantity} ${fmtNumber(overview.totals.share_count, 2)}`}
+            size="metric"
+          />
+          <MetricField
+            label={copy.dividends}
+            value={money(overview.dividends.krw_amount, 'KRW')}
+            hint={`${money(overview.dividends.usd_amount, 'USD')} · ${copy.count(fmtNumber(overview.dividends.count))}`}
+            tone="success"
+          />
+        </HeroAside>
       </CardRow>
 
       {netWorth ? (
@@ -385,19 +374,21 @@ export default async function OverviewPage({
                 <span className="text-caption tabular-nums text-ink-3">{copy.share} {fmtPct(market.share, { digits: 0 })}</span>
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-caption">
-                <MetricField label={copy.marketValue} value={money(market.marketValue, 'KRW')} labelClassName="normal-case tracking-normal" />
-                <MetricField label={copy.costBasis} value={money(market.cost, 'KRW')} info={glossary.costBasis.description} labelClassName="normal-case tracking-normal" />
+                <MetricField label={copy.marketValue} value={money(market.marketValue, 'KRW')} size="caption" labelClassName="normal-case tracking-normal" />
+                <MetricField label={copy.costBasis} value={money(market.cost, 'KRW')} info={glossary.costBasis.description} size="caption" labelClassName="normal-case tracking-normal" />
                 <MetricField
                   label={copy.gain}
                   value={money(market.gain, 'KRW')}
                   info={glossary.unrealizedGl.description}
                   tone={signTone(market.gain)}
+                  size="caption"
                   labelClassName="normal-case tracking-normal"
                 />
                 <MetricField
                   label={copy.return}
                   value={fmtPct(market.returnPct, { digits: 2 })}
                   tone={signTone(market.returnPct)}
+                  size="caption"
                   labelClassName="normal-case tracking-normal"
                 />
               </div>
@@ -446,20 +437,11 @@ export default async function OverviewPage({
               <div className="h-full bg-warning" style={{ width: `${termSegmentWidth(termShortValue)}%` }} />
               <div className="h-full bg-line" style={{ width: `${termSegmentWidth(termUnclassifiedValue)}%` }} />
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-3 text-caption">
-              <div>
-                <div className="text-ink-3">{copy.longTerm}</div>
-                <div className="font-medium tabular-nums text-ink">{money(termLongValue, 'KRW')}</div>
-              </div>
-              <div>
-                <div className="text-ink-3">{copy.shortTerm}</div>
-                <div className="font-medium tabular-nums text-ink">{money(termShortValue, 'KRW')}</div>
-              </div>
-              <div>
-                <div className="text-ink-3">{copy.unclassifiedTerm}</div>
-                <div className="font-medium tabular-nums text-ink">{money(termUnclassifiedValue, 'KRW')}</div>
-              </div>
-            </div>
+            <MiniStatGrid columns={3} spacing="mt-3">
+              <MiniStat label={copy.longTerm} value={money(termLongValue, 'KRW')} />
+              <MiniStat label={copy.shortTerm} value={money(termShortValue, 'KRW')} />
+              <MiniStat label={copy.unclassifiedTerm} value={money(termUnclassifiedValue, 'KRW')} />
+            </MiniStatGrid>
             <div className="mt-4 grid gap-2 text-caption">
               {termShortByMarket.map((row) => (
                 <div key={row.market} className="flex items-center justify-between gap-3">

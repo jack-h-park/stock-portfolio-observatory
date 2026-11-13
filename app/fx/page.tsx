@@ -64,19 +64,19 @@ export default async function FxPage() {
       <CardRow columns="hero">
         <MetricHeroCard title={copy.deployed} eyebrow="KRW → USD" value={dual(data.summary.krwSpent, data.summary.usdBought)} hint={`${copy.acquired}: ${formatUsd(data.summary.usdBought)}`}>
           <KpiBand>
-            <MetricField label={copy.avg} value={data.summary.weightedAverageRate == null ? EMPTY_VALUE : `₩${fmtNumber(data.summary.weightedAverageRate, 2)}`} hint={copy.rateUnit} valueClassName="text-title" />
-            <MetricField label={copy.savings} value={money(data.summary.spreadSavingsKrw)} hint={copy.savingsHint} tone="success" valueClassName="text-title" />
-            <MetricField label={copy.realized} value={data.summary.realizedFxGlKrw == null ? copy.realizedNone : money(data.summary.realizedFxGlKrw)} hint={copy.realizedHint} valueClassName="text-title" />
+            <MetricField label={copy.avg} value={data.summary.weightedAverageRate == null ? EMPTY_VALUE : `₩${fmtNumber(data.summary.weightedAverageRate, 2)}`} hint={copy.rateUnit} />
+            <MetricField label={copy.savings} value={money(data.summary.spreadSavingsKrw)} hint={copy.savingsHint} tone="success" />
+            <MetricField label={copy.realized} value={data.summary.realizedFxGlKrw == null ? copy.realizedNone : money(data.summary.realizedFxGlKrw)} hint={copy.realizedHint} />
           </KpiBand>
         </MetricHeroCard>
 
         <Card title={copy.method}>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-            <MetricField label={copy.actual} value={fmtNumber(data.summary.actualCount)} hint={copy.actualHint} valueClassName="text-metric" />
-            <MetricField label={copy.estimated} value={fmtNumber(data.summary.estimatedCount)} hint={copy.estimatedHint} tone="warning" valueClassName="text-metric" />
-            <MetricField label={copy.transfers} value={fmtNumber(data.summary.transferCount)} hint={`${copy.missing}: ${fmtNumber(data.summary.missingDestinationCount)}`} valueClassName="text-title" />
-            <MetricField label={copy.balance} value={hana?.latestBalanceUsd == null ? EMPTY_VALUE : money(hana.latestBalanceUsd, 'USD')} hint={hana?.latestBalanceDate ?? EMPTY_VALUE} valueClassName="text-title" />
-            <MetricField label={copy.current} value={data.summary.currentUsdKrw == null ? EMPTY_VALUE : `₩${fmtNumber(data.summary.currentUsdKrw, 2)}`} hint={data.summary.currentUsdKrwAsOf ?? EMPTY_VALUE} valueClassName="text-title" />
+            <MetricField label={copy.actual} value={fmtNumber(data.summary.actualCount)} hint={copy.actualHint} size="metric" />
+            <MetricField label={copy.estimated} value={fmtNumber(data.summary.estimatedCount)} hint={copy.estimatedHint} tone="warning" size="metric" />
+            <MetricField label={copy.transfers} value={fmtNumber(data.summary.transferCount)} hint={`${copy.missing}: ${fmtNumber(data.summary.missingDestinationCount)}`} />
+            <MetricField label={copy.balance} value={hana?.latestBalanceUsd == null ? EMPTY_VALUE : money(hana.latestBalanceUsd, 'USD')} hint={hana?.latestBalanceDate ?? EMPTY_VALUE} />
+            <MetricField label={copy.current} value={data.summary.currentUsdKrw == null ? EMPTY_VALUE : `₩${fmtNumber(data.summary.currentUsdKrw, 2)}`} hint={data.summary.currentUsdKrwAsOf ?? EMPTY_VALUE} />
           </div>
         </Card>
       </CardRow>
@@ -96,16 +96,16 @@ export default async function FxPage() {
 
       <Card title={copy.hanaOutbound} className="mb-5" info={copy.hanaOutboundHint}>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricField label={copy.outbound.total} value={formatUsd(data.summary.hanaOutboundUsd)} hint={copy.outbound.rowCount(fmtNumber(data.summary.hanaOutboundTransferCount))} valueClassName="text-metric" />
-          <MetricField label={copy.knownMirae} value={formatUsd(data.summary.hanaKnownMiraeUsd)} hint={copy.outbound.knownMiraeHint} valueClassName="text-title" />
-          <MetricField label={copy.destinationUnknown} value={formatUsd(data.summary.hanaUnknownDestinationUsd)} hint={copy.outbound.destinationUnknownHint} tone="warning" valueClassName="text-title" />
-          <MetricField label={copy.remittanceCost} value={dual(data.summary.hanaOutboundCostKrw, data.summary.hanaOutboundUsd)} hint={data.summary.hanaOutboundEstimatedCostRate == null ? EMPTY_VALUE : `₩${fmtNumber(data.summary.hanaOutboundEstimatedCostRate, 2)} / USD`} valueClassName="text-title" />
-          <MetricField label={copy.remittanceValue} value={dual(data.summary.hanaOutboundValueKrw, data.summary.hanaOutboundUsd)} hint={data.summary.currentUsdKrwAsOf ?? EMPTY_VALUE} valueClassName="text-title" />
-          <MetricField label={copy.remittanceGl} value={dual(data.summary.hanaOutboundUnrealizedKrw, data.summary.hanaOutboundUnrealizedKrw / (data.summary.currentUsdKrw || 1))} hint={copy.outbound.remittanceGlHint} tone={data.summary.hanaOutboundUnrealizedKrw >= 0 ? 'success' : 'warning'} valueClassName="text-title" />
-          <MetricField label={copy.confirmedGl} value={dual(data.summary.hanaOutboundConfirmedUnrealizedKrw, data.summary.hanaOutboundConfirmedUnrealizedKrw / (data.summary.currentUsdKrw || 1))} hint={copy.outbound.confirmedGlHint} tone={data.summary.hanaOutboundConfirmedUnrealizedKrw >= 0 ? 'success' : 'warning'} valueClassName="text-title" />
-          <MetricField label={copy.estimatedGl} value={dual(data.summary.hanaOutboundEstimatedUnrealizedKrw, data.summary.hanaOutboundEstimatedUnrealizedKrw / (data.summary.currentUsdKrw || 1))} hint={copy.outbound.estimatedGlHint} tone="warning" valueClassName="text-title" />
-          <MetricField label={copy.tossMatched} value={formatUsd(data.summary.hanaTossMatchedUsd)} hint={copy.outbound.tossUnmatched(formatUsd(data.summary.hanaTossUnmatchedUsd))} valueClassName="text-title" />
-          <MetricField label={copy.outbound.otherInbound} value={formatUsd(data.summary.hanaOtherInboundUsd)} hint={copy.outbound.otherInboundHint} valueClassName="text-title" />
+          <MetricField label={copy.outbound.total} value={formatUsd(data.summary.hanaOutboundUsd)} hint={copy.outbound.rowCount(fmtNumber(data.summary.hanaOutboundTransferCount))} size="metric" />
+          <MetricField label={copy.knownMirae} value={formatUsd(data.summary.hanaKnownMiraeUsd)} hint={copy.outbound.knownMiraeHint} />
+          <MetricField label={copy.destinationUnknown} value={formatUsd(data.summary.hanaUnknownDestinationUsd)} hint={copy.outbound.destinationUnknownHint} tone="warning" />
+          <MetricField label={copy.remittanceCost} value={dual(data.summary.hanaOutboundCostKrw, data.summary.hanaOutboundUsd)} hint={data.summary.hanaOutboundEstimatedCostRate == null ? EMPTY_VALUE : `₩${fmtNumber(data.summary.hanaOutboundEstimatedCostRate, 2)} / USD`} />
+          <MetricField label={copy.remittanceValue} value={dual(data.summary.hanaOutboundValueKrw, data.summary.hanaOutboundUsd)} hint={data.summary.currentUsdKrwAsOf ?? EMPTY_VALUE} />
+          <MetricField label={copy.remittanceGl} value={dual(data.summary.hanaOutboundUnrealizedKrw, data.summary.hanaOutboundUnrealizedKrw / (data.summary.currentUsdKrw || 1))} hint={copy.outbound.remittanceGlHint} tone={data.summary.hanaOutboundUnrealizedKrw >= 0 ? 'success' : 'warning'} />
+          <MetricField label={copy.confirmedGl} value={dual(data.summary.hanaOutboundConfirmedUnrealizedKrw, data.summary.hanaOutboundConfirmedUnrealizedKrw / (data.summary.currentUsdKrw || 1))} hint={copy.outbound.confirmedGlHint} tone={data.summary.hanaOutboundConfirmedUnrealizedKrw >= 0 ? 'success' : 'warning'} />
+          <MetricField label={copy.estimatedGl} value={dual(data.summary.hanaOutboundEstimatedUnrealizedKrw, data.summary.hanaOutboundEstimatedUnrealizedKrw / (data.summary.currentUsdKrw || 1))} hint={copy.outbound.estimatedGlHint} tone="warning" />
+          <MetricField label={copy.tossMatched} value={formatUsd(data.summary.hanaTossMatchedUsd)} hint={copy.outbound.tossUnmatched(formatUsd(data.summary.hanaTossUnmatchedUsd))} />
+          <MetricField label={copy.outbound.otherInbound} value={formatUsd(data.summary.hanaOtherInboundUsd)} hint={copy.outbound.otherInboundHint} />
         </div>
       </Card>
 

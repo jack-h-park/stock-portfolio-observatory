@@ -1,6 +1,6 @@
 import { clsx } from 'clsx'
 import Link from 'next/link'
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import { Children, Fragment, isValidElement, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { HelpPopover } from '@/components/HelpPopover'
 import { EMPTY_VALUE, fmtSigned } from '@/lib/format'
 
@@ -120,22 +120,40 @@ export function Badge({ children, tone = 'neutral' }: { children: ReactNode; ton
   )
 }
 
+const METRIC_VALUE_SIZE = {
+  title: 'text-title',
+  metric: 'text-metric',
+  caption: 'text-caption',
+} as const
+
+const METRIC_VALUE_TONE: Record<Tone, string> = {
+  neutral: 'text-ink',
+  info: 'text-info',
+  success: 'text-success',
+  warning: 'text-warning',
+  danger: 'text-danger',
+}
+
 export function MetricField({
   label,
   value,
   hint,
   info,
   tone = 'neutral',
+  size = 'title',
+  truncate,
   labelClassName,
-  valueClassName,
 }: {
   label: ReactNode
   value: ReactNode
   hint?: ReactNode
   info?: ReactNode
   tone?: Tone
+  /** Type size of the value: `title` (default), `metric` for the lead figure, `caption` inside a dense breakdown. */
+  size?: keyof typeof METRIC_VALUE_SIZE
+  /** Clip a long value to one line with an ellipsis. */
+  truncate?: boolean
   labelClassName?: string
-  valueClassName?: string
 }) {
   return (
     <div className="min-w-0">
@@ -146,20 +164,48 @@ export function MetricField({
       <div
         className={clsx(
           'mt-1 font-medium leading-tight tabular-nums',
-          {
-            'text-ink': tone === 'neutral',
-            'text-info': tone === 'info',
-            'text-success': tone === 'success',
-            'text-warning': tone === 'warning',
-            'text-danger': tone === 'danger',
-          },
-          valueClassName
+          METRIC_VALUE_SIZE[size],
+          truncate && 'truncate',
+          METRIC_VALUE_TONE[tone]
         )}
       >
         {value}
       </div>
       {hint ? <div className="mt-1 text-caption text-ink-3">{hint}</div> : null}
     </div>
+  )
+}
+
+/**
+ * The companion card beside a page's hero: stacked fields split by a hairline,
+ * and a read-order note pinned to the bottom.
+ */
+export function HeroAside({
+  title,
+  info,
+  note,
+  children,
+}: {
+  title: ReactNode
+  info?: ReactNode
+  note: ReactNode
+  children: ReactNode
+}) {
+  const items = Children.toArray(children)
+  return (
+    <Card title={title} info={info}>
+      <div className="flex min-h-[16rem] flex-col justify-between gap-4">
+        <div className="space-y-4">
+          {items.map((item, index) => (
+            <Fragment key={isValidElement(item) && item.key != null ? item.key : index}>
+              {index > 0 ? <div className="h-px bg-line-subtle" /> : null}
+              {item}
+            </Fragment>
+          ))}
+        </div>
+        <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{note}</div>
+      </div>
+    </Card>
   )
 }
 

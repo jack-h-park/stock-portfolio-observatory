@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { FreshnessRows } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, MetricField, MetricHeroCard, TextLink, marketTone, type Tone } from '@/components/ui'
+import { Badge, Card, EmptyState, HeroAside, MetricField, MetricHeroCard, TextLink, marketTone, type Tone } from '@/components/ui'
 import {
   getAccountCoverage,
   getDataOpsReview,
@@ -103,9 +103,9 @@ export default async function DataOpsPage() {
 
       <Card title={coverageCopy.title} info={coverageCopy.info} accent={coverage.actionNeeded > 0} className="mb-5" action={<TextLink href="#account-coverage">{coverageCopy.viewAll}</TextLink>}>
         <div className="mb-4 grid grid-cols-3 gap-3">
-          <MetricField label={coverageCopy.actionNeeded} value={fmtNumber(coverage.actionNeeded)} tone={coverage.actionNeeded ? 'danger' : 'success'} valueClassName="text-title" />
-          <MetricField label={coverageCopy.dueSoon} value={fmtNumber(coverage.dueSoon)} tone={coverage.dueSoon ? 'warning' : 'success'} valueClassName="text-title" />
-          <MetricField label={coverageCopy.current} value={fmtNumber(coverage.current)} tone="success" valueClassName="text-title" />
+          <MetricField label={coverageCopy.actionNeeded} value={fmtNumber(coverage.actionNeeded)} tone={coverage.actionNeeded ? 'danger' : 'success'} />
+          <MetricField label={coverageCopy.dueSoon} value={fmtNumber(coverage.dueSoon)} tone={coverage.dueSoon ? 'warning' : 'success'} />
+          <MetricField label={coverageCopy.current} value={fmtNumber(coverage.current)} tone="success" />
         </div>
         <div id="account-coverage">
           <DataTable
@@ -197,14 +197,12 @@ export default async function DataOpsPage() {
               value={fmtNumber(ops.mappingSuggestions.length)}
               hint={copy.mappingSuggestionsHint}
               tone={ops.mappingSuggestions.length ? 'warning' : 'success'}
-              valueClassName="text-title"
             />
             <MetricField
               label={copy.valuationFixes}
               value={fmtNumber(ops.valuationFixes.length)}
               hint={copy.valuationFixesHint}
               tone={ops.valuationFixes.length ? 'warning' : 'success'}
-              valueClassName="text-title"
             />
             <MetricField
               label={copy.sourceCheckIssues}
@@ -212,33 +210,23 @@ export default async function DataOpsPage() {
               info={glossary.inputIssues.description}
               hint={copy.sourceCheckIssuesHint}
               tone={ops.sourceIssues.length + ops.validationIssues.length ? 'warning' : 'success'}
-              valueClassName="text-title"
             />
           </KpiBand>
         </MetricHeroCard>
 
-        <Card title={copy.manualCoverage} info={copy.manualCoverageInfo}>
-          <div className="flex min-h-[16rem] flex-col justify-between gap-4">
-            <div className="space-y-4">
-              <MetricField
-                label={copy.incomeRules}
-                value={fmtNumber(ops.manualMappings.incomeRuleCount)}
-                hint={copy.incomeRulesHint}
-                valueClassName="text-metric"
-              />
-              <div className="h-px bg-line-subtle" />
-              <MetricField
-                label={copy.manualOverrides}
-                value={fmtNumber(ops.manualMappings.overrideCount)}
-                hint={copy.manualOverridesHint}
-                valueClassName="text-title"
-              />
-            </div>
-            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
-              {copy.readOrder}
-            </div>
-          </div>
-        </Card>
+        <HeroAside title={copy.manualCoverage} info={copy.manualCoverageInfo} note={copy.readOrder}>
+          <MetricField
+            label={copy.incomeRules}
+            value={fmtNumber(ops.manualMappings.incomeRuleCount)}
+            hint={copy.incomeRulesHint}
+            size="metric"
+          />
+          <MetricField
+            label={copy.manualOverrides}
+            value={fmtNumber(ops.manualMappings.overrideCount)}
+            hint={copy.manualOverridesHint}
+          />
+        </HeroAside>
       </CardRow>
 
       <Card title={copy.priorityWork} info={copy.priorityWorkInfo} className="mb-5" accent={ops.actionQueue.length > 0}>

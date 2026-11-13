@@ -2,7 +2,8 @@ import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
 import { DataTable } from '@/components/DataTable'
 import { FilterBar } from '@/components/FilterBar'
-import { Badge, Card, Label, Signed } from '@/components/ui'
+import { Badge, Card, Signed } from '@/components/ui'
+import { Total, TotalsStrip } from '@/components/layout'
 import { getCostBasisHoldings, type CostBasisStatus } from '@/lib/adapters/portfolio-db'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
@@ -115,32 +116,16 @@ export default async function CostBasisPage({
               selected: selected[group.key],
             }))}
           />
-          <div className="grid gap-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption sm:grid-cols-5">
-            <div>
-              <Label>{copy.filtered}</Label>
-              <div className="font-medium tabular-nums text-ink">{fmtNumber(filtered.length)} / {fmtNumber(rows.length)}</div>
-            </div>
-            <div>
-              <Label>{copy.totalValue}</Label>
-              <div className="font-medium tabular-nums text-ink">
-                {singleCurrency ? money(totals.value, singleCurrency) : money(totals.baseValue, 'KRW')}
-              </div>
-            </div>
-            <div>
-              <Label>{copy.totalCost}</Label>
-              <div className="font-medium tabular-nums text-ink">
-                {singleCurrency ? money(totals.cost, singleCurrency) : copy.mixedCurrencies}
-              </div>
-            </div>
-            <div>
-              <Label>{copy.missingCost}</Label>
-              <div className={`font-medium tabular-nums ${totals.missing > 0 ? 'text-danger' : 'text-success'}`}>{fmtNumber(totals.missing)}</div>
-            </div>
-            <div>
-              <Label>{copy.estimated}</Label>
-              <div className={`font-medium tabular-nums ${totals.estimated > 0 ? 'text-warning' : 'text-ink'}`}>{fmtNumber(totals.estimated)}</div>
-            </div>
-          </div>
+          <TotalsStrip columns={5}>
+            <Total label={copy.filtered} value={<>{fmtNumber(filtered.length)} / {fmtNumber(rows.length)}</>} />
+            <Total
+              label={copy.totalValue}
+              value={singleCurrency ? money(totals.value, singleCurrency) : money(totals.baseValue, 'KRW')}
+            />
+            <Total label={copy.totalCost} value={singleCurrency ? money(totals.cost, singleCurrency) : copy.mixedCurrencies} />
+            <Total label={copy.missingCost} value={fmtNumber(totals.missing)} tone={totals.missing > 0 ? 'danger' : 'success'} />
+            <Total label={copy.estimated} value={fmtNumber(totals.estimated)} tone={totals.estimated > 0 ? 'warning' : 'neutral'} />
+          </TotalsStrip>
           <DataTable
             rows={filtered}
             sort={sort}

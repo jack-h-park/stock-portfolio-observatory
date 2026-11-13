@@ -298,7 +298,6 @@ export function DecisionSummary({
             label={copy.opportunity.openLots}
             value={fmtNumber(openLotCount)}
             hint={copy.opportunity.openLotsHint}
-            valueClassName="text-title"
           />
           <MetricField
             label={copy.opportunity.inputIssues}
@@ -306,21 +305,18 @@ export function DecisionSummary({
             info={copy.opportunity.inputIssuesInfo}
             hint={copy.opportunity.inputIssuesHint}
             tone={inputIssueCount ? 'warning' : 'success'}
-            valueClassName="text-title"
           />
           <MetricField
             label={hasPlanningTarget ? copy.opportunity.annualTest : copy.opportunity.lossLotProceeds}
             value={hasPlanningTarget ? fmtKrw(bestScenario?.years[0]?.targetCashKrw ?? 0) : fmtKrw(opportunities.lossLotProceedsKrw)}
             hint={!hasPlanningTarget && opportunities.bestLoss ? `${opportunities.bestLoss.year} ${opportunities.bestLoss.market}` : copy.opportunity.scenarioInputAmount}
             tone={hasPlanningTarget ? 'neutral' : 'success'}
-            valueClassName="text-title"
           />
           <MetricField
             label={hasPlanningTarget ? copy.opportunity.estimatedTax : copy.opportunity.lossHarvest}
             value={hasPlanningTarget ? fmtKrw(bestScenario?.summary.taxKrw ?? 0) : fmtKrw(opportunities.lossHarvestKrw)}
             hint={hasPlanningTarget ? fmtPct(bestScenario?.summary.effectiveTaxRatePct) : opportunities.bestLoss ? `${opportunities.bestLoss.year} ${opportunities.bestLoss.market}` : copy.opportunity.modeledLossInventory}
             tone={!hasPlanningTarget ? 'info' : (bestScenario?.summary.taxKrw ?? 0) > 0 ? 'warning' : 'success'}
-            valueClassName="text-title"
           />
         </div>
       </div>

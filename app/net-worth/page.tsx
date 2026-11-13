@@ -181,7 +181,7 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
 
       <CardRow columns={3}>
         <Card>
-          <MetricField label={copy.total} value={money(netWorth.totalKrw)} valueClassName="text-metric" />
+          <MetricField label={copy.total} value={money(netWorth.totalKrw)} size="metric" />
         </Card>
         <Card title={copy.byClass} className="md:col-span-2">
           <div className="grid grid-cols-2 gap-4 p-4 md:grid-cols-5">
@@ -191,7 +191,6 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
                 label={copy.classes[name]}
                 value={money(netWorth.byClass[name])}
                 hint={notesFor(name) || undefined}
-                valueClassName="text-title tabular-nums"
               />
             ))}
           </div>

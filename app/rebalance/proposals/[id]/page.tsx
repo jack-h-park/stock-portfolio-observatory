@@ -5,9 +5,9 @@ import { clsx } from 'clsx'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { SubmitButton } from '@/components/SubmitButton'
-import { Badge, Card, EmptyState, Label, Signed, TextLink } from '@/components/ui'
+import { Badge, Card, EmptyState, Signed, TextLink } from '@/components/ui'
 import { Checkbox, Input, Select } from '@/components/form'
-import { CardRow } from '@/components/layout'
+import { CardRow, Stat, StatStrip } from '@/components/layout'
 import { dbAvailable, portfolioToday } from '@/lib/adapters/portfolio-db'
 import { getRebalanceInput } from '@/lib/adapters/rebalance-input'
 import { EMPTY_VALUE, fmtDateShort, fmtDateTime, fmtKrw, fmtMoney, fmtNumber, fmtPct, fmtPctRange, fmtQuantity, fmtSigned } from '@/lib/format'
@@ -86,16 +86,6 @@ function loadClasses() {
     console.error('[rebalance-proposal] instrument classes:', error)
     return null
   }
-}
-
-function Figure({ label, children, sub }: { label: string; children: React.ReactNode; sub?: React.ReactNode }) {
-  return (
-    <div className="bg-card px-3 py-3">
-      <Label size="micro">{label}</Label>
-      <div className="mt-1 text-title font-medium tabular-nums text-ink">{children}</div>
-      {sub != null && <div className="mt-0.5 text-label tabular-nums text-ink-3">{sub}</div>}
-    </div>
-  )
 }
 
 /** Warnings grouped by code. Known codes read as fixed copy; an unknown code falls back to each message. */
@@ -324,16 +314,15 @@ function HarvestCard({ scenario, live, copy, language }: { scenario: HarvestScen
   return (
     <Card title={h.title} info={h.info} className="mb-5">
       {live && <p className="mb-3 text-label text-ink-3">{h.computedLive}</p>}
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line-subtle bg-line-subtle md:grid-cols-4">
-        <Figure label={h.totalLoss} sub={h.lots(scenario.lotCount)}>
-          {fmtKrw(scenario.totalLossKrw)}
-        </Figure>
-        <Figure label={h.taxEffect}>
-          {scenario.taxEffectKrw < 0 ? `${fmtKrw(scenario.taxEffectKrw)} ${h.taxReduction}` : fmtKrw(scenario.taxEffectKrw)}
-        </Figure>
-        <Figure label={h.yearWith}>{fmtKrw(scenario.yearTotalWithKrw)}</Figure>
-        <Figure label={h.yearWithout}>{fmtKrw(scenario.yearTotalWithoutKrw)}</Figure>
-      </div>
+      <StatStrip columns="md-4">
+        <Stat label={h.totalLoss} sub={h.lots(scenario.lotCount)} value={fmtKrw(scenario.totalLossKrw)} />
+        <Stat
+          label={h.taxEffect}
+          value={scenario.taxEffectKrw < 0 ? `${fmtKrw(scenario.taxEffectKrw)} ${h.taxReduction}` : fmtKrw(scenario.taxEffectKrw)}
+        />
+        <Stat label={h.yearWith} value={fmtKrw(scenario.yearTotalWithKrw)} />
+        <Stat label={h.yearWithout} value={fmtKrw(scenario.yearTotalWithoutKrw)} />
+      </StatStrip>
       <div className="mt-4">
         <DataTable
           minWidth="44rem"
@@ -423,21 +412,20 @@ function SummaryTab({ proposal, copy, language }: { proposal: Proposal; copy: Co
       <OutlookSection proposal={proposal} copy={copy} language={language} />
 
       <Card title={copy.figures.title} info={copy.figures.info} className="mb-5">
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line-subtle bg-line-subtle md:grid-cols-4">
-          <Figure label={copy.figures.turnover}>{fmtPct(tax.turnoverPct)}</Figure>
-          <Figure
+        <StatStrip columns="md-4">
+          <Stat label={copy.figures.turnover} value={fmtPct(tax.turnoverPct)} />
+          <Stat
             label={copy.figures.estimatedTax}
             sub={`${copy.figures.yearTotalTax} ${tax.yearTotalTaxKrw == null ? EMPTY_VALUE : fmtKrw(tax.yearTotalTaxKrw)}`}
-          >
-            {tax.estimatedTaxKrw < 0 ? `${fmtKrw(tax.estimatedTaxKrw)} ${copy.figures.taxReduction}` : fmtKrw(tax.estimatedTaxKrw)}
-          </Figure>
-          <Figure label={copy.figures.harvestedLoss}>{fmtKrw(tax.harvestedLossKrw)}</Figure>
-          <Figure label={copy.figures.krGain}>{fmtKrw(tax.krGainKrw)}</Figure>
-          <Figure label={copy.figures.krDeductionUsed}>{fmtKrw(tax.krDeductionUsedKrw)}</Figure>
-          <Figure label={copy.figures.krDeductionRemaining}>{fmtKrw(tax.krDeductionRemainingKrw)}</Figure>
-          <Figure label={copy.figures.usShort}>{fmtMoney(tax.usShortUsd, 'USD')}</Figure>
-          <Figure label={copy.figures.usLong}>{fmtMoney(tax.usLongUsd, 'USD')}</Figure>
-        </div>
+            value={tax.estimatedTaxKrw < 0 ? `${fmtKrw(tax.estimatedTaxKrw)} ${copy.figures.taxReduction}` : fmtKrw(tax.estimatedTaxKrw)}
+          />
+          <Stat label={copy.figures.harvestedLoss} value={fmtKrw(tax.harvestedLossKrw)} />
+          <Stat label={copy.figures.krGain} value={fmtKrw(tax.krGainKrw)} />
+          <Stat label={copy.figures.krDeductionUsed} value={fmtKrw(tax.krDeductionUsedKrw)} />
+          <Stat label={copy.figures.krDeductionRemaining} value={fmtKrw(tax.krDeductionRemainingKrw)} />
+          <Stat label={copy.figures.usShort} value={fmtMoney(tax.usShortUsd, 'USD')} />
+          <Stat label={copy.figures.usLong} value={fmtMoney(tax.usLongUsd, 'USD')} />
+        </StatStrip>
       </Card>
 
       {harvest && harvest.scenario.totalLossKrw > 0 && <HarvestCard scenario={harvest.scenario} live={harvest.live} copy={copy} language={language} />}

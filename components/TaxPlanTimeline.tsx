@@ -4,7 +4,8 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { updateSavedInstructionExecutionAction } from '@/app/tax-planning/actions'
 import { getPageCopy } from '@/lib/ui-copy'
-import { Badge, Button, Card, EmptyState, Label, Signed, marketTone } from '@/components/ui'
+import { Badge, Button, Card, EmptyState, Label, Signed, marketTone, type Tone } from '@/components/ui'
+import { Stat, StatStrip } from '@/components/layout'
 import { fmtDateShort, fmtMonth, fmtNumber, fmtSigned, localeFor } from '@/lib/format'
 import { useMoneyFormatter } from '@/components/LanguageProvider'
 import type { Language } from '@/lib/i18n'
@@ -122,20 +123,19 @@ function MonthSummary({
 }) {
   const grossGainKrw = month.gainKrw + month.lossKrw
   return (
-    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line-subtle bg-line-subtle sm:grid-cols-5">
-      {[
-        [copy.plannedSales, money(month.proceedsKrw, 'KRW'), 'text-ink'],
-        [copy.position, fmtNumber(month.positionCount), 'text-ink'],
-        [copy.grossGains, money(grossGainKrw, 'KRW'), 'text-success'],
-        [copy.pairedLosses, fmtSigned(-month.lossKrw, (n) => money(n, 'KRW')), 'text-danger'],
-        [copy.netGainLoss, money(month.gainKrw, 'KRW'), month.gainKrw >= 0 ? 'text-success' : 'text-danger'],
-      ].map(([label, value, tone]) => (
-        <div key={label} className="bg-card px-3 py-2.5">
-          <Label size="micro">{label}</Label>
-          <div className={`mt-1 text-body-lg font-medium tabular-nums ${tone}`}>{value}</div>
-        </div>
+    <StatStrip columns="sm-5">
+      {(
+        [
+          [copy.plannedSales, money(month.proceedsKrw, 'KRW'), 'neutral'],
+          [copy.position, fmtNumber(month.positionCount), 'neutral'],
+          [copy.grossGains, money(grossGainKrw, 'KRW'), 'success'],
+          [copy.pairedLosses, fmtSigned(-month.lossKrw, (n) => money(n, 'KRW')), 'danger'],
+          [copy.netGainLoss, money(month.gainKrw, 'KRW'), month.gainKrw >= 0 ? 'success' : 'danger'],
+        ] as [string, string, Tone][]
+      ).map(([label, value, tone]) => (
+        <Stat key={label} label={label} value={value} tone={tone} size="body-lg" dense />
       ))}
-    </div>
+    </StatStrip>
   )
 }
 

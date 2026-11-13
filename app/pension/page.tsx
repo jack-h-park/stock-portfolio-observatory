@@ -47,13 +47,11 @@ export default async function PensionPage() {
                 label={copy.value}
                 value={money(account.valueKrw)}
                 hint={account.snapshotDate ? copy.snapshotAsOf(fmtDate(account.snapshotDate, language)) : undefined}
-                valueClassName="text-title"
               />
-              <MetricField label={copy.cost} value={money(account.costKrw)} valueClassName="text-title" />
+              <MetricField label={copy.cost} value={money(account.costKrw)} />
               <MetricField
                 label={copy.return}
                 value={<Signed value={account.returnPct} format={(n) => fmtPct(n)} nullText={copy.none} />}
-                valueClassName="text-title"
               />
             </div>
           </Card>
