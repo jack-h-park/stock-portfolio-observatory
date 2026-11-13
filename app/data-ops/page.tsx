@@ -58,6 +58,7 @@ export default async function DataOpsPage() {
   const language = await getLanguage()
   const money = createMoneyFormatter(await getCurrencyPreferences())
   const copy = getPageCopy('dataOps', language)
+  const updatesCopy = getPageCopy('accountUpdates', language)
   const glossary = getGlossary(language)
   const priorityLabels = getUiCopy(language).priority
   const ops = getDataOpsReview()
@@ -187,8 +188,8 @@ export default async function DataOpsPage() {
       </Card>
 
       <div id="supplementary-coverage" className="mb-5">
-        <Card title={language === 'ko' ? '은행·연금·금 자료 업데이트' : 'Bank, pension and gold updates'}
-          info={language === 'ko' ? '증권 계좌와 별도로 예금·CMA·연금·금 자료도 확인합니다. 은행·CMA는 90일, 연금은 180일 기준입니다. 종료 계좌는 업데이트 대상에서 제외합니다.' : 'Includes bank/CMA (90-day window), pension (180 days) and gold sources. Closed accounts are excluded.'}>
+        <Card title={updatesCopy.title}
+          info={updatesCopy.info}>
           <SupplementaryCoverageTable language={language} rows={supplementary.rows} />
         </Card>
       </div>
