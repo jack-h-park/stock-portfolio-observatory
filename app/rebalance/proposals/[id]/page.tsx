@@ -5,7 +5,7 @@ import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { Tabs } from '@/components/Tabs'
 import { SubmitButton } from '@/components/SubmitButton'
-import { Badge, Card, EmptyState, Signed, TextLink } from '@/components/ui'
+import { Badge, Callout, Card, EmptyState, Panel, Signed, TextLink } from '@/components/ui'
 import { Checkbox, Input, Select } from '@/components/form'
 import { CardRow, Stat, StatStrip } from '@/components/layout'
 import { dbAvailable, portfolioToday } from '@/lib/adapters/portfolio-db'
@@ -120,20 +120,6 @@ function Warnings({ warnings, copy }: { warnings: EngineWarning[]; copy: Copy })
         )
       })}
     </ul>
-  )
-}
-
-function Banner({ tone, children }: { tone: 'success' | 'warning'; children: React.ReactNode }) {
-  return (
-    <div
-      role="status"
-      className={clsx(
-        'mb-4 rounded-md border px-3 py-2 text-caption',
-        tone === 'success' ? 'border-success/30 bg-success/10 text-success' : 'border-warning/30 bg-warning/10 text-warning'
-      )}
-    >
-      {children}
-    </div>
   )
 }
 
@@ -580,14 +566,14 @@ function TargetsTab({ proposal, copy }: { proposal: Proposal; copy: Copy }) {
   return (
     <Card title={copy.targets.title} info={copy.targets.info} className="mb-5">
       {change.boundsErrors.length > 0 && (
-        <div className="mb-4 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-label text-warning">
+        <Callout tone="warning" emphasis="strong" size="label" spacing="mb-4">
           <div className="font-medium">{copy.targets.boundsErrors}</div>
           <ul className="mt-1 list-disc pl-5">
             {change.boundsErrors.map((e, index) => (
               <li key={index}>{e}</li>
             ))}
           </ul>
-        </div>
+        </Callout>
       )}
       {!policy && <p className="mb-3 text-caption text-warning">{copy.targets.noPolicy}</p>}
       {policy && proposal.status !== 'draft' && <p className="mb-3 text-caption text-ink-3">{copy.targets.readOnly}</p>}
@@ -759,7 +745,7 @@ function PlanTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy;
         </div>
       )}
       {editable && skippedOut.length > 0 && (
-        <div className="mt-4 rounded-md border border-line-subtle bg-surface px-3 py-2">
+        <Panel spacing="mt-4">
           <div className="text-caption font-medium text-ink">{copy.plan.skippedTitle}</div>
           <p className="text-label text-ink-3">{copy.plan.skippedNote}</p>
           <ul className="mt-1 space-y-1">
@@ -770,7 +756,7 @@ function PlanTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy;
               </li>
             ))}
           </ul>
-        </div>
+        </Panel>
       )}
     </>
   )
@@ -783,9 +769,9 @@ function PlanTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy;
 
       <Card title={copy.plan.instructionsTitle} info={copy.plan.instructionsInfo} className="mb-5">
         {changedAt && (
-          <p className="mb-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-label text-warning">
+          <Callout tone="warning" emphasis="strong" size="label" as="p" spacing="mb-3">
             {copy.plan.policyChanged(fmtDateTime(changedAt, language))}
-          </p>
+          </Callout>
         )}
         {editable ? (
           <form action={recomputePlan} className="space-y-4">
@@ -989,15 +975,15 @@ export default async function RebalanceProposalPage({
         action={<TextLink href="/rebalance">{copy.back}</TextLink>}
       />
 
-      <div className="mb-4 rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption text-ink-2" role="note">
+      <Panel text="caption-2" spacing="mb-4" role="note">
         {copy.disclaimer}
-      </div>
+      </Panel>
 
-      {doneMessage && <Banner tone="success">{doneMessage}</Banner>}
+      {doneMessage && <Callout tone="success" emphasis="strong" size="caption" role="status" spacing="mb-4">{doneMessage}</Callout>}
       {errorMessage && (
-        <Banner tone="warning">
+        <Callout tone="warning" emphasis="strong" size="caption" role="status" spacing="mb-4">
           <strong className="font-medium">{copy.errorTitle}:</strong> {errorMessage}
-        </Banner>
+        </Callout>
       )}
 
       <Card

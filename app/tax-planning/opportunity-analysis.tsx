@@ -1,4 +1,4 @@
-import { Badge, Card, EmptyState, Label, MetricField, Signed, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, Label, MetricField, Panel, Signed, marketTone } from '@/components/ui'
 import { EMPTY_VALUE, fmtKrw, fmtNumber, fmtPct, fmtSigned } from '@/lib/format'
 import {
   buildTaxPlan,
@@ -279,46 +279,48 @@ export function DecisionSummary({
           </div>
           <p className="mt-2 max-w-[56rem] text-body leading-relaxed text-ink-2">{body}</p>
           <div className="mt-4 grid gap-2 md:grid-cols-3">
-            <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
+            <Panel>
               <Label size="micro">{copy.opportunity.step1}</Label>
               <div className="mt-1 text-caption text-ink">{copy.opportunity.step1Body}</div>
-            </div>
-            <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
+            </Panel>
+            <Panel>
               <Label size="micro">{copy.opportunity.step2}</Label>
               <div className="mt-1 text-caption text-ink">{copy.opportunity.step2Body}</div>
-            </div>
-            <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
+            </Panel>
+            <Panel>
               <Label size="micro">{copy.opportunity.step3}</Label>
               <div className="mt-1 text-caption text-ink">{copy.opportunity.step3Body}</div>
-            </div>
+            </Panel>
           </div>
         </div>
-        <div className="grid gap-3 rounded-md border border-line-subtle bg-surface p-3 sm:grid-cols-2">
-          <MetricField
-            label={copy.opportunity.openLots}
-            value={fmtNumber(openLotCount)}
-            hint={copy.opportunity.openLotsHint}
-          />
-          <MetricField
-            label={copy.opportunity.inputIssues}
-            value={fmtNumber(inputIssueCount)}
-            info={copy.opportunity.inputIssuesInfo}
-            hint={copy.opportunity.inputIssuesHint}
-            tone={inputIssueCount ? 'warning' : 'success'}
-          />
-          <MetricField
-            label={hasPlanningTarget ? copy.opportunity.annualTest : copy.opportunity.lossLotProceeds}
-            value={hasPlanningTarget ? fmtKrw(bestScenario?.years[0]?.targetCashKrw ?? 0) : fmtKrw(opportunities.lossLotProceedsKrw)}
-            hint={!hasPlanningTarget && opportunities.bestLoss ? `${opportunities.bestLoss.year} ${opportunities.bestLoss.market}` : copy.opportunity.scenarioInputAmount}
-            tone={hasPlanningTarget ? 'neutral' : 'success'}
-          />
-          <MetricField
-            label={hasPlanningTarget ? copy.opportunity.estimatedTax : copy.opportunity.lossHarvest}
-            value={hasPlanningTarget ? fmtKrw(bestScenario?.summary.taxKrw ?? 0) : fmtKrw(opportunities.lossHarvestKrw)}
-            hint={hasPlanningTarget ? fmtPct(bestScenario?.summary.effectiveTaxRatePct) : opportunities.bestLoss ? `${opportunities.bestLoss.year} ${opportunities.bestLoss.market}` : copy.opportunity.modeledLossInventory}
-            tone={!hasPlanningTarget ? 'info' : (bestScenario?.summary.taxKrw ?? 0) > 0 ? 'warning' : 'success'}
-          />
-        </div>
+        <Panel pad="md">
+          <div className="grid h-full gap-3 sm:grid-cols-2">
+            <MetricField
+              label={copy.opportunity.openLots}
+              value={fmtNumber(openLotCount)}
+              hint={copy.opportunity.openLotsHint}
+            />
+            <MetricField
+              label={copy.opportunity.inputIssues}
+              value={fmtNumber(inputIssueCount)}
+              info={copy.opportunity.inputIssuesInfo}
+              hint={copy.opportunity.inputIssuesHint}
+              tone={inputIssueCount ? 'warning' : 'success'}
+            />
+            <MetricField
+              label={hasPlanningTarget ? copy.opportunity.annualTest : copy.opportunity.lossLotProceeds}
+              value={hasPlanningTarget ? fmtKrw(bestScenario?.years[0]?.targetCashKrw ?? 0) : fmtKrw(opportunities.lossLotProceedsKrw)}
+              hint={!hasPlanningTarget && opportunities.bestLoss ? `${opportunities.bestLoss.year} ${opportunities.bestLoss.market}` : copy.opportunity.scenarioInputAmount}
+              tone={hasPlanningTarget ? 'neutral' : 'success'}
+            />
+            <MetricField
+              label={hasPlanningTarget ? copy.opportunity.estimatedTax : copy.opportunity.lossHarvest}
+              value={hasPlanningTarget ? fmtKrw(bestScenario?.summary.taxKrw ?? 0) : fmtKrw(opportunities.lossHarvestKrw)}
+              hint={hasPlanningTarget ? fmtPct(bestScenario?.summary.effectiveTaxRatePct) : opportunities.bestLoss ? `${opportunities.bestLoss.year} ${opportunities.bestLoss.market}` : copy.opportunity.modeledLossInventory}
+              tone={!hasPlanningTarget ? 'info' : (bestScenario?.summary.taxKrw ?? 0) > 0 ? 'warning' : 'success'}
+            />
+  </div>
+        </Panel>
       </div>
     </Card>
   )
@@ -401,9 +403,9 @@ function OpportunityTable({
   const takeaways = buildTakeaways(rows, policy, assumptionsAreExample, copy)
   return (
     <>
-      <div className="mb-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption leading-relaxed text-ink-3">
+      <Panel text="caption-note" spacing="mb-3">
         {copy.opportunity.stressTestNote}
-      </div>
+      </Panel>
       <div className="mb-4 grid overflow-hidden rounded-md border border-line-subtle bg-card sm:grid-cols-2 xl:grid-cols-4">
         <div className="border-b border-line-subtle px-3 py-2 sm:border-r xl:border-b-0">
           <Label size="micro">{copy.opportunity.fullHoldingsGl}</Label>
@@ -425,7 +427,7 @@ function OpportunityTable({
       {takeaways.length > 0 && (
         <div className="mb-4 grid gap-3 lg:grid-cols-3">
           {takeaways.map((takeaway) => (
-            <div key={`${takeaway.title}-${takeaway.metric}`} className="flex min-h-[15rem] flex-col rounded-md border border-line-subtle bg-surface px-3 py-3">
+            <Panel key={`${takeaway.title}-${takeaway.metric}`} pad="tall" layout="tall">
               <div className="flex items-center justify-between gap-2">
                 <Badge tone={takeaway.tone}>{takeaway.label}</Badge>
                 <span className="text-right text-body font-medium tabular-nums text-ink">{takeaway.metric}</span>
@@ -437,7 +439,7 @@ function OpportunityTable({
                 <div className="mt-1 text-label leading-relaxed text-ink">{takeaway.action}</div>
               </div>
               <div className="mt-auto pt-3 text-micro leading-relaxed text-ink-3">{takeaway.caveat}</div>
-            </div>
+            </Panel>
           ))}
         </div>
       )}

@@ -4,7 +4,7 @@ import { FilterBar } from '@/components/FilterBar'
 import { PageHeader } from '@/components/PageHeader'
 import { ScrollOnHash } from '@/components/ScrollOnHash'
 import { StackedBarChart } from '@/components/charts'
-import { Badge, Button, Card, MetricField, MetricHeroCard } from '@/components/ui'
+import { Badge, Button, Card, MetricField, MetricHeroCard, Panel } from '@/components/ui'
 import {
   CASH_INFLOW_CURRENCIES,
   CASH_INFLOW_FILTERS,
@@ -216,7 +216,7 @@ export default async function CashInflowPage({
       />
 
       {!data.hasBankData ? (
-        <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{copy.noBankData}</div>
+        <Panel bordered={false} text="label-note">{copy.noBankData}</Panel>
       ) : null}
       {filter === 'investment' ? <p className="text-label text-ink-3">{copy.investmentInfo}</p> : null}
       {filter === 'unclassified' ? <p className="text-label text-ink-3">{copy.unclassifiedFilterNote}</p> : null}

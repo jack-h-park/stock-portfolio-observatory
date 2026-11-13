@@ -1,5 +1,5 @@
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, HeroAside, Label, MetricField, MetricHeroCard, TextLink } from '@/components/ui'
+import { Badge, Card, HeroAside, Label, MetricField, MetricHeroCard, Panel, TextLink } from '@/components/ui'
 import { fmtDate, fmtNumber } from '@/lib/format'
 import { dbAvailable, getMeta, getWrapperReview } from '@/lib/adapters/portfolio-db'
 import { WrapperEstimateNote } from '@/components/WrapperReviewCard'
@@ -147,9 +147,9 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
             </label>
             <Field label={copy.filingProfile.baseCurrency} name="baseCurrency" defaultValue={policy.baseCurrency} type="text" />
             <Field label={copy.filingProfile.planningHorizon} name="planningHorizonYears" defaultValue={policy.planningHorizonYears ?? 5} suffix={copy.readOrder.years} />
-            <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption leading-relaxed text-ink-3">
+            <Panel text="caption-note">
               {copy.filingProfile.note}
-            </div>
+            </Panel>
           </div>
         </Card>
 
@@ -291,9 +291,9 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
               <Field label={copy.us.ftcForeignSourceShare} name="usFtcForeignSourceGainPct" defaultValue={assumptionNumber(policy, 'US', 'ftcForeignSourceGainPct', 0)} suffix="%" />
               <Field label={copy.us.washSaleBefore} name="usWashSaleBefore" defaultValue={assumptionNumber(policy, 'US', 'washSaleWindowDaysBefore', 30)} suffix={copy.us.days} hint={glossary.washSale.description} />
               <Field label={copy.us.washSaleAfter} name="usWashSaleAfter" defaultValue={assumptionNumber(policy, 'US', 'washSaleWindowDaysAfter', 30)} suffix={copy.us.days} hint={glossary.washSale.description} />
-              <div className="sm:col-span-2 rounded-md border border-line-subtle bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
+              <Panel text="label-note" layout="span-2">
                 {copy.us.note}
-              </div>
+              </Panel>
             </div>
           </Card>
 
@@ -342,22 +342,22 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
 
         <Card title={copy.calculationBasis.title} info={copy.calculationBasis.info}>
           <div className="grid gap-3 text-caption text-ink-2 md:grid-cols-2 xl:grid-cols-4">
-            <a href="https://www.irs.gov/newsroom/irs-releases-tax-inflation-adjustments-for-tax-year-2026-including-amendments-from-the-one-big-beautiful-bill" target="_blank" rel="noreferrer" className="rounded-md border border-line-subtle bg-surface px-3 py-2 hover:border-info">
+            <Panel as="a" href="https://www.irs.gov/newsroom/irs-releases-tax-inflation-adjustments-for-tax-year-2026-including-amendments-from-the-one-big-beautiful-bill" target="_blank" rel="noreferrer">
               <span className="block font-medium text-ink">{copy.calculationBasis.federalBrackets}</span>
               <span className="mt-1 block text-label text-ink-3">{copy.calculationBasis.federalBracketsNote}</span>
-            </a>
-            <a href="https://www.irs.gov/taxtopics/tc409" target="_blank" rel="noreferrer" className="rounded-md border border-line-subtle bg-surface px-3 py-2 hover:border-info">
+            </Panel>
+            <Panel as="a" href="https://www.irs.gov/taxtopics/tc409" target="_blank" rel="noreferrer">
               <span className="block font-medium text-ink">{copy.calculationBasis.capitalGainNetting}</span>
               <span className="mt-1 block text-label text-ink-3">{copy.calculationBasis.capitalGainNettingNote}</span>
-            </a>
-            <a href="https://www.irs.gov/individuals/international-taxpayers/foreign-tax-credit-how-to-figure-the-credit" target="_blank" rel="noreferrer" className="rounded-md border border-line-subtle bg-surface px-3 py-2 hover:border-info">
+            </Panel>
+            <Panel as="a" href="https://www.irs.gov/individuals/international-taxpayers/foreign-tax-credit-how-to-figure-the-credit" target="_blank" rel="noreferrer">
               <span className="block font-medium text-ink">{copy.calculationBasis.foreignTaxCreditLimit}</span>
               <span className="mt-1 block text-label text-ink-3">{copy.calculationBasis.foreignTaxCreditLimitNote}</span>
-            </a>
-            <a href="https://www.ftb.ca.gov/forms/2025/2025-540-booklet.html" target="_blank" rel="noreferrer" className="rounded-md border border-line-subtle bg-surface px-3 py-2 hover:border-info">
+            </Panel>
+            <Panel as="a" href="https://www.ftb.ca.gov/forms/2025/2025-540-booklet.html" target="_blank" rel="noreferrer">
               <span className="block font-medium text-ink">{copy.calculationBasis.californiaSchedule}</span>
               <span className="mt-1 block text-label text-ink-3">{copy.calculationBasis.californiaScheduleNote}</span>
-            </a>
+            </Panel>
           </div>
         </Card>
       </form>

@@ -30,7 +30,6 @@
     "app/rebalance/page.tsx": 6,
     "app/rebalance/proposals/[id]/page.tsx": 9,
     "app/rebalance/settings/page.tsx": 4,
-    "app/review/page.tsx": 1,
     "app/tax-planning/components.tsx": 1,
     "app/tax-planning/page.tsx": 1
   },

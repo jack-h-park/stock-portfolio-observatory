@@ -1,6 +1,6 @@
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
-import { Badge, Button, Card, EmptyState, InfoTooltip, Label, Signed, TextLink, marketTone } from '@/components/ui'
+import { Badge, Button, Card, EmptyState, InfoTooltip, Label, Panel, Signed, TextLink, marketTone } from '@/components/ui'
 import { getOperationalHealth, getOverview, getTaxPlanningLots, getWashSaleReview, getWrapperReview } from '@/lib/adapters/portfolio-db'
 import { WrapperEstimateNote } from '@/components/WrapperReviewCard'
 import { WashSaleBanner } from '@/components/WashSaleBanner'
@@ -370,9 +370,9 @@ export default async function TaxPlanningPage({
           className="mb-5"
           accent
         >
-          <div className="mb-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption leading-relaxed text-ink-3">
+          <Panel text="caption-note" spacing="mb-3">
             {copy.page.annualTargetNote}
-          </div>
+          </Panel>
           <DataTable
             caption={copy.page.annualTargetScenarioComparison}
             rows={multiYearPlan.scenarios}
@@ -410,9 +410,9 @@ export default async function TaxPlanningPage({
             <div className="text-body leading-relaxed text-ink-2">
               {copy.page.annualTargetHidden}
             </div>
-            <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption text-ink-3">
+            <Panel text="caption-3">
               {copy.page.annualTargetHiddenHint}
-            </div>
+            </Panel>
           </div>
         </Card>
       )}
@@ -472,7 +472,7 @@ function ScenarioTimeline({ scenario, copy }: { scenario: MultiYearTaxScenario; 
     <Card title={scenario.label} action={<Badge tone={scenario.summary.taxKrw > 0 ? 'warning' : 'success'}>{fmtKrw(scenario.summary.taxKrw)}</Badge>}>
       <div className="space-y-3">
         {scenario.years.map((year) => (
-          <div key={year.year} className="rounded-md border border-line-subtle bg-surface p-3">
+          <Panel key={year.year} pad="md">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className="font-mono text-body text-ink">{year.year}</span>
@@ -501,7 +501,7 @@ function ScenarioTimeline({ scenario, copy }: { scenario: MultiYearTaxScenario; 
                 ))
               )}
             </div>
-          </div>
+          </Panel>
         ))}
       </div>
     </Card>

@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
-import { Badge, Card, TextLink } from '@/components/ui'
+import { Badge, Card, Panel, TextLink } from '@/components/ui'
 import { Stat, StatStrip } from '@/components/layout'
 import { fmtDateShort, fmtDateTime, fmtKrw, fmtNumber, fmtPct, fmtSigned } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
@@ -120,7 +120,7 @@ export default async function SavedTaxPlanPage({
             </div>
           </div>
 
-          <form action={updateSavedTaxPlanStatusAction} className="rounded-md border border-line-subtle bg-surface p-3">
+          <Panel as="form" pad="md" action={updateSavedTaxPlanStatusAction}>
             <input type="hidden" name="planId" value={saved.id} />
             <label className="block text-micro font-medium uppercase text-ink-3" htmlFor="plan-status">
               {copy.planStatus}
@@ -142,7 +142,7 @@ export default async function SavedTaxPlanPage({
               {copy.created} {fmtDateTime(saved.createdAt, language)}<br />
               {copy.updated} {fmtDateTime(saved.updatedAt, language)}
             </div>
-          </form>
+          </Panel>
         </div>
       </Card>
 

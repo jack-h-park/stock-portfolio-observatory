@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { createSavedTaxPlanAction } from '@/app/tax-planning/actions'
 import { DataTable } from '@/components/DataTable'
-import { Badge, Card, EmptyState, Label, MetricField, Signed, marketTone, type Tone } from '@/components/ui'
+import { Badge, Callout, Card, EmptyState, Label, MetricField, Panel, Signed, marketTone, type Tone } from '@/components/ui'
 import type { createMoneyFormatter } from '@/lib/currency'
 import { fmtDateShort, fmtDateTime, fmtDurationDays, fmtNumber, fmtPct, fmtQuantity, fmtSigned } from '@/lib/format'
 import type { Language } from '@/lib/i18n'
@@ -122,12 +122,12 @@ export function MasterPlanOverview({
           </h2>
           <p className="mt-2 max-w-[58rem] text-body leading-relaxed text-ink-2">{plan.description}</p>
         </div>
-        <div className="shrink-0 rounded-md border border-success/25 bg-success/5 px-3 py-2 lg:max-w-[19rem]">
+        <Callout tone="success" emphasis="soft" layout="aside">
           <Label size="micro" className="text-success">{copy.overview.whyThisMatters}</Label>
           <div className="mt-1 text-label leading-relaxed text-ink-2">
             {copy.overview.longTermTreatment(fmtNumber(plan.summary.longTermSalePct, 1))}
           </div>
-        </div>
+        </Callout>
       </div>
 
       <div className="grid grid-cols-2 divide-x divide-line-subtle border-b border-line-subtle md:grid-cols-4">
@@ -158,37 +158,37 @@ export function MasterPlanOverview({
       </div>
 
       {coverageNeedsReview ? (
-        <div className="mt-3 rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-caption leading-relaxed text-ink-2" role="status">
+        <Callout tone="warning" emphasis="soft" size="caption" relaxed role="status" spacing="mt-3">
           <span className="font-medium text-warning">{copy.overview.reviewInputRange}</span>{' '}
           {copy.overview.coverageWarning}
-        </div>
+        </Callout>
       ) : null}
 
       <div className="mt-3 grid gap-3 lg:grid-cols-3">
-        <div className="border-l-2 border-info px-3 py-1">
+        <Callout tone="info" emphasis="rule">
           <Label size="micro">{copy.overview.lotsStillWaiting}</Label>
           <div className="mt-1 text-caption leading-relaxed text-ink-2">
             <span className="font-medium tabular-nums text-ink">
               {copy.overview.waitingLots(fmtNumber(planSet.timing.waitingLotCount), money(planSet.timing.waitingProceedsKrw), planSet.timing.nextLongTermDate ? fmtDateShort(planSet.timing.nextLongTermDate, language) : null)}
             </span>
           </div>
-        </div>
-        <div className="border-l-2 border-success px-3 py-1">
+        </Callout>
+        <Callout tone="success" emphasis="rule">
           <Label size="micro">{copy.overview.estimatedTermBenefit}</Label>
           <div className="mt-1 text-caption leading-relaxed text-ink-2">
             <span className="font-medium tabular-nums text-success">
               {copy.overview.termBenefit(money(planSet.timing.estimatedFederalTaxAvoidedKrw))}
             </span>
           </div>
-        </div>
-        <div className="border-l-2 border-warning px-3 py-1">
+        </Callout>
+        <Callout tone="warning" emphasis="rule">
           <Label size="micro">{copy.overview.waitingUntil2028}</Label>
           <div className="mt-1 text-caption leading-relaxed text-ink-2">
             <span className={`font-medium tabular-nums ${signClass(waitSavings)}`}>
               {copy.overview.waitUntil2028(waitSavings >= 0 ? copy.overview.saving : copy.overview.extraTax, money(Math.abs(waitSavings)), fmtDurationDays(Math.max(waitDays, 0), language), money(earliestKrTopUp), money(waitKrTopUp))}
             </span>
           </div>
-        </div>
+        </Callout>
       </div>
     </Card>
   )
@@ -315,7 +315,7 @@ export function SavedPlansPanel({
       action={<Badge>{copy.savedPlans.recent(fmtNumber(visiblePlans.length))}</Badge>}
     >
       <div className="grid gap-5 xl:grid-cols-[20rem_minmax(0,1fr)]">
-        <form action={createSavedTaxPlanAction} className="rounded-md border border-line-subtle bg-surface p-3">
+        <Panel as="form" pad="md" action={createSavedTaxPlanAction}>
           <Label size="micro">{copy.savedPlans.saveCurrentCalculation}</Label>
           <p className="mt-1 text-label leading-relaxed text-ink-3">
             {copy.savedPlans.saveDescription}
@@ -339,7 +339,7 @@ export function SavedPlansPanel({
           <div className="mt-2 text-micro leading-relaxed text-ink-3">
             {copy.savedPlans.storageNote}
           </div>
-        </form>
+        </Panel>
 
         <div>
           {visiblePlans.length ? (

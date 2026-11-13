@@ -4,7 +4,7 @@ import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { MiniStat, MiniStatGrid, Stat, StatStrip, Total, TotalsStrip } from '@/components/layout'
-import { HeroAside, MetricField } from '@/components/ui'
+import { Callout, HeroAside, MetricField, Panel } from '@/components/ui'
 import { LinkChip, LinkChips } from '@/components/LinkChips'
 import { Tabs } from '@/components/Tabs'
 
@@ -267,4 +267,145 @@ test('Tabs nav and items', () => {
   assert.equal(attr(tags[0], 'aria-current'), 'page')
   assert.equal(attr(tags[1], 'class'), `${TAB_BASE} border-transparent text-ink-3 hover:text-ink`)
   assert.equal(attr(tags[1], 'aria-current'), undefined)
+})
+
+/** The outer element's tag and attributes, as rendered. */
+function outer(html: string): { tag: string; attrs: string; className: string | undefined } {
+  const match = html.match(/^<(\w+)([^>]*)>/)
+  assert.ok(match, `no element in ${html}`)
+  const className = match[2].match(/ class="([^"]*)"/)?.[1]
+  return { tag: match[1], attrs: match[2], className }
+}
+
+const PANEL = 'rounded-md border border-line-subtle bg-surface'
+
+test('Panel defaults to a bordered div with px-3 py-2 and no text classes', () => {
+  const el = outer(renderToStaticMarkup(h(Panel, { children: 'x' })))
+  assert.equal(el.tag, 'div')
+  assert.equal(el.className, `${PANEL} px-3 py-2`)
+})
+
+test('Panel spacing="mt-4" leads the class string', () => {
+  assert.equal(outer(renderToStaticMarkup(h(Panel, { spacing: 'mt-4', children: 'x' }))).className, `mt-4 ${PANEL} px-3 py-2`)
+})
+
+test('Panel text values', () => {
+  const cls = (text: 'caption' | 'caption-2' | 'caption-3' | 'caption-note' | 'label-note') =>
+    outer(renderToStaticMarkup(h(Panel, { text, children: 'x' }))).className
+  assert.equal(cls('caption'), `${PANEL} px-3 py-2 text-caption`)
+  assert.equal(cls('caption-2'), `${PANEL} px-3 py-2 text-caption text-ink-2`)
+  assert.equal(cls('caption-3'), `${PANEL} px-3 py-2 text-caption text-ink-3`)
+  assert.equal(cls('caption-note'), `${PANEL} px-3 py-2 text-caption leading-relaxed text-ink-3`)
+  assert.equal(cls('label-note'), `${PANEL} px-3 py-2 text-label leading-relaxed text-ink-3`)
+})
+
+test('Panel caption-2 note forwards role and id, with spacing="mb-4"', () => {
+  const el = outer(renderToStaticMarkup(h(Panel, { text: 'caption-2', spacing: 'mb-4', role: 'note', id: 'n', children: 'x' })))
+  assert.equal(el.className, `mb-4 ${PANEL} px-3 py-2 text-caption text-ink-2`)
+  assert.match(el.attrs, / role="note"/)
+  assert.match(el.attrs, / id="n"/)
+})
+
+test('Panel caption-note with spacing="mb-3"', () => {
+  const el = outer(renderToStaticMarkup(h(Panel, { text: 'caption-note', spacing: 'mb-3', children: 'x' })))
+  assert.equal(el.className, `mb-3 ${PANEL} px-3 py-2 text-caption leading-relaxed text-ink-3`)
+})
+
+test('Panel pad values', () => {
+  assert.equal(outer(renderToStaticMarkup(h(Panel, { pad: 'md', children: 'x' }))).className, `${PANEL} p-3`)
+  assert.equal(outer(renderToStaticMarkup(h(Panel, { pad: 'tall', children: 'x' }))).className, `${PANEL} px-3 py-3`)
+})
+
+test('Panel layout values', () => {
+  assert.equal(outer(renderToStaticMarkup(h(Panel, { layout: 'stack-2', children: 'x' }))).className, `${PANEL} px-3 py-2 space-y-2`)
+  assert.equal(
+    outer(renderToStaticMarkup(h(Panel, { pad: 'tall', layout: 'tall', children: 'x' }))).className,
+    `${PANEL} px-3 py-3 flex min-h-[15rem] flex-col`
+  )
+  assert.equal(
+    outer(renderToStaticMarkup(h(Panel, { text: 'label-note', layout: 'span-2', children: 'x' }))).className,
+    `${PANEL} px-3 py-2 text-label leading-relaxed text-ink-3 sm:col-span-2`
+  )
+})
+
+test('Panel as="a" adds the hover border and forwards href, target and rel', () => {
+  const el = outer(
+    renderToStaticMarkup(h(Panel, { as: 'a', href: 'https://example.com/', target: '_blank', rel: 'noreferrer', children: 'x' }))
+  )
+  assert.equal(el.tag, 'a')
+  assert.equal(el.className, `${PANEL} px-3 py-2 hover:border-info`)
+  assert.match(el.attrs, / href="https:\/\/example.com\/"/)
+  assert.match(el.attrs, / target="_blank"/)
+  assert.match(el.attrs, / rel="noreferrer"/)
+})
+
+test('Panel as="form" pad="md" forwards action', () => {
+  const el = outer(renderToStaticMarkup(h(Panel, { as: 'form', pad: 'md', action: '/save', children: 'x' })))
+  assert.equal(el.tag, 'form')
+  assert.equal(el.className, `${PANEL} p-3`)
+  assert.match(el.attrs, / action="\/save"/)
+})
+
+test('Panel bordered={false} text="label-note" is the borderless soft note', () => {
+  const soft = 'rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3'
+  const cls = (spacing?: 'mt-3' | 'mb-3') =>
+    outer(renderToStaticMarkup(h(Panel, { bordered: false, text: 'label-note', spacing, children: 'x' }))).className
+  assert.equal(cls(), soft)
+  assert.equal(cls('mt-3'), `mt-3 ${soft}`)
+  assert.equal(cls('mb-3'), `mb-3 ${soft}`)
+  const p = outer(renderToStaticMarkup(h(Panel, { as: 'p', bordered: false, text: 'label-note', spacing: 'mb-5', children: 'x' })))
+  assert.equal(p.tag, 'p')
+  assert.equal(p.className, `mb-5 ${soft}`)
+})
+
+test('Callout strong caption is the proposal banner, toned by the Badge triplet', () => {
+  const props = { emphasis: 'strong', size: 'caption', role: 'status', spacing: 'mb-4' } as const
+  const success = outer(renderToStaticMarkup(h(Callout, { ...props, tone: 'success', children: 'x' })))
+  assert.equal(success.tag, 'div')
+  assert.equal(success.className, 'mb-4 rounded-md border px-3 py-2 text-caption border-success/30 bg-success/10 text-success')
+  assert.match(success.attrs, / role="status"/)
+  const warning = outer(renderToStaticMarkup(h(Callout, { ...props, tone: 'warning', children: 'x' })))
+  assert.equal(warning.className, 'mb-4 rounded-md border px-3 py-2 text-caption border-warning/30 bg-warning/10 text-warning')
+})
+
+test('Callout strong label, as a div and as a p', () => {
+  const div = outer(renderToStaticMarkup(h(Callout, { tone: 'warning', size: 'label', spacing: 'mb-4', children: 'x' })))
+  assert.equal(div.tag, 'div')
+  assert.equal(div.className, 'mb-4 rounded-md border px-3 py-2 text-label border-warning/30 bg-warning/10 text-warning')
+  assert.doesNotMatch(div.attrs, / role=/)
+  const p = outer(
+    renderToStaticMarkup(h(Callout, { tone: 'warning', emphasis: 'strong', size: 'label', as: 'p', spacing: 'mb-3', children: 'x' }))
+  )
+  assert.equal(p.tag, 'p')
+  assert.equal(p.className, 'mb-3 rounded-md border px-3 py-2 text-label border-warning/30 bg-warning/10 text-warning')
+})
+
+test('Callout soft warning, label relaxed and caption relaxed with role="status"', () => {
+  assert.equal(
+    outer(renderToStaticMarkup(h(Callout, { tone: 'warning', emphasis: 'soft', size: 'label', relaxed: true, children: 'x' }))).className,
+    'rounded-md border px-3 py-2 text-label leading-relaxed border-warning/30 bg-warning/5 text-ink-2'
+  )
+  const status = outer(
+    renderToStaticMarkup(
+      h(Callout, { tone: 'warning', emphasis: 'soft', size: 'caption', relaxed: true, role: 'status', spacing: 'mt-3', children: 'x' })
+    )
+  )
+  assert.equal(status.className, 'mt-3 rounded-md border px-3 py-2 text-caption leading-relaxed border-warning/30 bg-warning/5 text-ink-2')
+  assert.match(status.attrs, / role="status"/)
+})
+
+test('Callout soft success layout="aside" has no size and the aside width', () => {
+  assert.equal(
+    outer(renderToStaticMarkup(h(Callout, { tone: 'success', emphasis: 'soft', layout: 'aside', children: 'x' }))).className,
+    'rounded-md border px-3 py-2 border-success/30 bg-success/5 text-ink-2 shrink-0 lg:max-w-[19rem]'
+  )
+})
+
+test('Callout rule is a left rule in the tone colour', () => {
+  for (const tone of ['info', 'success', 'warning'] as const) {
+    assert.equal(
+      outer(renderToStaticMarkup(h(Callout, { tone, emphasis: 'rule', children: 'x' }))).className,
+      `border-l-2 border-${tone} px-3 py-1`
+    )
+  }
 })

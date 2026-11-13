@@ -4,7 +4,7 @@ import { AssetCoverageNote } from '@/components/AssetCoverageNote'
 import { isSupplementarySource } from '@/lib/supplementary'
 import { FreshnessInline } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, HeroAside, Label, MetricField, MetricHeroCard, TextLink, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, HeroAside, Label, MetricField, MetricHeroCard, Panel, TextLink, marketTone } from '@/components/ui'
 import { PortfolioMultiTrendChart, PortfolioTrendChart, StackedAssetChart, TrendBarChart } from '@/components/charts'
 import {
   dbAvailable,
@@ -323,10 +323,10 @@ export default async function OverviewPage({
             ))}
           </ul>
           {netWorth.asOfNotes.length > 0 ? (
-            <div className="mt-3 rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{copy.asOfNotesHint}</div>
+            <Panel bordered={false} text="label-note" spacing="mt-3">{copy.asOfNotesHint}</Panel>
           ) : null}
           {netWorth.unpricedCash.length > 0 ? (
-            <div className="mt-3 rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{copy.unpricedCash(netWorth.unpricedCash.length)}</div>
+            <Panel bordered={false} text="label-note" spacing="mt-3">{copy.unpricedCash(netWorth.unpricedCash.length)}</Panel>
           ) : null}
           <div className="mt-3">
             <TextLink href="/net-worth">{copy.openNetWorth}</TextLink>
@@ -401,10 +401,10 @@ export default async function OverviewPage({
       <Card title={copy.freshnessTitle} info={glossary.freshness.description} className="mb-5">
         <div className="grid gap-2 lg:grid-cols-3">
           {operational.snapshots.map((item) => (
-            <div key={item.key} className="rounded-md border border-line-subtle bg-surface px-3 py-2">
+            <Panel key={item.key}>
               <Label className="mb-1">{freshnessLabel(item, language)}</Label>
               <FreshnessInline item={item} language={language} />
-            </div>
+            </Panel>
           ))}
         </div>
       </Card>
@@ -532,7 +532,7 @@ export default async function OverviewPage({
           />
         </div>
         {selectedScope === 'GOLD' ? (
-          <div className="mb-3 rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{copy.goldScopeNote}</div>
+          <Panel bordered={false} text="label-note" spacing="mb-3">{copy.goldScopeNote}</Panel>
         ) : null}
         {selectedView === 'combined' ? (
           combinedTrendData.length === 0 ? (

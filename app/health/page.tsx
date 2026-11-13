@@ -1,6 +1,6 @@
 import { PageHeader } from '@/components/PageHeader'
 import { FreshnessRows } from '@/components/Freshness'
-import { Badge, Card, EmptyState, Label, TextLink, marketTone, type Tone } from '@/components/ui'
+import { Badge, Callout, Card, EmptyState, Label, Panel, TextLink, marketTone, type Tone } from '@/components/ui'
 import { getAccountCoverage, getEvidenceReports, getMeta, getOperationalHealth, getOverview, getReconciliationReview, getRefreshRuns, getValidationChecks, type ReconciliationReview } from '@/lib/adapters/portfolio-db'
 import { fmtDateTime, fmtDuration, fmtNumber } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
@@ -189,10 +189,10 @@ export default async function HealthPage() {
             </MiniStatGrid>
 
             {latestRefresh.degradedSteps.length > 0 ? (
-              <div className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-label leading-relaxed text-ink-2">
+              <Callout tone="warning" emphasis="soft" size="label" relaxed>
                 <span className="font-medium text-ink">{copy.degradedLead}</span>{' '}
                 {copy.degradedBody(latestRefresh.degradedSteps)}
-              </div>
+              </Callout>
             ) : null}
 
             <ul className="divide-y divide-line-subtle">
@@ -210,12 +210,12 @@ export default async function HealthPage() {
             </ul>
 
             {latestRefresh.steps.some((step) => step.status === 'failed' && step.stderrTail) ? (
-              <div className="rounded-md border border-line-subtle bg-surface p-3">
+              <Panel pad="md">
                 <Label className="mb-2">{copy.latestErrorTail}</Label>
                 <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-label leading-relaxed text-danger">
                   {latestRefresh.steps.find((step) => step.status === 'failed' && step.stderrTail)?.stderrTail}
                 </pre>
-              </div>
+              </Panel>
             ) : null}
           </div>
         )}

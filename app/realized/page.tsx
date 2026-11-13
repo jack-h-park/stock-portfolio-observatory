@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
 import { DataTable } from '@/components/DataTable'
 import { FilterBar } from '@/components/FilterBar'
-import { Badge, Card, Label, Signed, marketTone } from '@/components/ui'
+import { Badge, Card, Label, Panel, Signed, marketTone } from '@/components/ui'
 import { Total, TotalsStrip } from '@/components/layout'
 import { getRealizedLots } from '@/lib/adapters/portfolio-db'
 import { todayLosAngeles } from '@/lib/cli/common'
@@ -119,7 +119,7 @@ export default async function RealizedLotsPage({
           {usd && totals.missing_usd > 0 ? (
             <p className="text-caption text-ink-3">{copy.totals.missing(fmtNumber(totals.missing_usd))}</p>
           ) : null}
-          <div className="space-y-2 rounded-md border border-line-subtle bg-surface px-3 py-2">
+          <Panel layout="stack-2">
             <Label>{copy.taxExport.title}</Label>
             <form method="get" action={BASE} className="flex flex-wrap items-center gap-3 text-caption text-ink-2">
               {Object.entries(params).map(([key, value]) => {
@@ -164,7 +164,7 @@ export default async function RealizedLotsPage({
                 ))}
               </ul>
             </details>
-          </div>
+          </Panel>
           <DataTable
             rows={sorted}
             sort={sort}

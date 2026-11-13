@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, HeroAside, MetricField, MetricHeroCard, Signed, TextLink, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, HeroAside, MetricField, MetricHeroCard, Panel, Signed, TextLink, marketTone } from '@/components/ui'
 import { getOperationalHealth, getRebalanceReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
 import { EMPTY_VALUE, fmtNumber, fmtPct, fmtPctRange } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
@@ -167,7 +167,7 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
 
         <Card title={pc.title} info={pc.info} accent>
           <div className="space-y-4">
-            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{proposalCopy.disclaimer}</div>
+            <Panel bordered={false} text="label-note">{proposalCopy.disclaimer}</Panel>
             {proposals === null ? (
               <EmptyState>{pc.unreadable}</EmptyState>
             ) : openProposal ? (
@@ -422,12 +422,12 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
         ) : (
           <div className="space-y-4">
             {freshnessIssues > 0 && (
-              <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption text-ink-2">
+              <Panel text="caption-2">
                 <div className="font-medium text-warning">{copy.staleInputs(freshnessIssues)}</div>
                 <Link href="/health" className="mt-1 inline-flex min-h-6 items-center text-label font-medium text-info hover:underline">
                   {copy.openHealth}
                 </Link>
-              </div>
+              </Panel>
             )}
             {rebalance.watchCandidates.length > 0 && (
               <DataTable

@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { FreshnessRows } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, MetricField, Signed, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, Panel, Signed, marketTone } from '@/components/ui'
 import { getOperationalHealth, getPortfolioReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
 import { EMPTY_VALUE, fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
@@ -125,7 +125,7 @@ export default async function ReviewPage() {
         />
       </div>
 
-      <p className="mb-5 rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{copy.readOrder}</p>
+      <Panel as="p" bordered={false} text="label-note" spacing="mb-5">{copy.readOrder}</Panel>
 
       <CardRow columns={3}>
         <Card title={copy.marketSummary}>
