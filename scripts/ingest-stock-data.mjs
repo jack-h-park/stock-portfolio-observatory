@@ -1,3 +1,4 @@
+import { verifiedSourceConfirmations, fidelitySnapshotFacts } from './source-confirmations.mjs'
 import { financeFile, resolveFinancePaths } from './finance-paths.mjs'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -755,6 +756,30 @@ const cashRows = [
     derived: 0,
   })),
 ]
+const sourceConfirmationResult = verifiedSourceConfirmations(accountMap.sourceConfirmations, dataDir)
+const confirmedSources = []
+for (const receipt of sourceConfirmationResult.accepted) {
+  try {
+    if (receipt.scope === 'investment') {
+      const selected = receipt.kind === 'holdings' ? usHoldingFiles : usTransactionFiles
+      const consumed = selected.some(source => source.brokerage === 'Fidelity' && fs.realpathSync(source.filename) === receipt.path)
+      // A prior holdings receipt becomes historical when a newer snapshot supersedes it.
+      if (!consumed && receipt.kind === 'holdings') continue
+      if (!consumed) throw new Error('confirmed transaction source is not selected for ingestion')
+      if (receipt.kind === 'transactions' && !parseCsv(fs.readFileSync(receipt.path, 'utf8').replace(/^\uFEFF/, '')).some(row => row.includes('Run Date') && row.includes('Action'))) throw new Error('confirmed file has no Fidelity transaction header')
+    } else if (receipt.kind === 'transactions') {
+      const consumed = bankBalances.accounts.some(account => account.institution === receipt.institution && account.account === receipt.account && account.sources.includes(path.basename(receipt.source)))
+      if (!consumed) throw new Error('confirmed bank history is not present in the parsed account sources')
+    }
+    const facts = receipt.kind === 'holdings' ? fidelitySnapshotFacts(parseCsv(fs.readFileSync(receipt.path, 'utf8').replace(/^\uFEFF/, '')), receipt, accountMap) : null
+    if (receipt.scope === 'bank' && facts) cashRows.push({
+      institution: receipt.institution, account: receipt.account, owner: 'self', kind: 'cma', currency: 'USD',
+      as_of_date: receipt.through, balance: facts.balance, day_max_balance: null,
+      source: path.basename(receipt.source), derived: 0,
+    })
+    confirmedSources.push(receipt)
+  } catch (error) { sourceConfirmationResult.problems.push(`${path.basename(receipt.source)}: ${error.message}`) }
+}
 const manualMappings = loadManualMappings()
 // Loaded before the first normalizeTicker call: every ticker in this ingest,
 // from any source, is read through the rename table so the old and new symbol
@@ -928,6 +953,11 @@ db.exec(`
 create table meta (
   key text primary key,
   value text not null
+);
+
+create table source_coverage_confirmations (
+  scope text not null, institution text not null, account text not null, kind text not null,
+  through_date text not null, source text not null, sha256 text not null, empty_holdings integer not null
 );
 
 create table source_files (
@@ -1653,6 +1683,10 @@ if (fs.existsSync(accountMapPath)) {
   db.prepare(
     'insert into source_files (name, filename, path, bytes, mtime_ms, sha256, row_count) values (?, ?, ?, ?, ?, ?, ?)'
   ).run('account_map', fp.basename, fp.path, fp.bytes, fp.mtimeMs, fp.sha256, Object.keys(accountMap.accounts).length)
+}
+for (const receipt of confirmedSources) {
+  db.prepare('insert into source_coverage_confirmations values (?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(receipt.scope, receipt.institution, receipt.account, receipt.kind, receipt.through, receipt.source, receipt.sha256, receipt.emptyHoldings === true ? 1 : 0)
 }
 if (fs.existsSync(bankBalancesPath)) {
   const fp = fingerprint(bankBalancesPath)
@@ -5910,6 +5944,9 @@ insertMany(
 // for total assets (deposits, pensions, physical gold); they are stored and
 // printed on their own line, and fail the run only as an error, like any other.
 const checks = []
+check('source_confirmations_valid', !sourceConfirmationResult.problems.length,
+  sourceConfirmationResult.problems.length ? sourceConfirmationResult.problems.join('; ') : `${confirmedSources.length} exact-source owner confirmations verified`)
+
 function check(name, ok, detail, severity = 'error', scope = 'stock') {
   checks.push({ name, status: ok ? 'pass' : 'fail', detail, severity, scope })
 }

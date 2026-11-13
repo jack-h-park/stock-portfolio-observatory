@@ -22,6 +22,7 @@ export function loadAccountMap(file) {
     throw new Error(`account map ${file} is not valid JSON: ${e.message}`)
   }
   return {
+    ...(raw.sourceConfirmations ? { sourceConfirmations: raw.sourceConfirmations } : {}),
     accounts: raw.accounts ?? {},
     bankAccounts: raw.bankAccounts ?? [],
     anchors: raw.anchors ?? [],

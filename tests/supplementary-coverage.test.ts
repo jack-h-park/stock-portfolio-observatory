@@ -24,6 +24,7 @@ const mapPath = path.join(dir, 'accounts.local.json')
 
 const db = new Database(dbPath)
 db.exec(`
+create table source_coverage_confirmations (scope text, institution text, account text, kind text, through_date text, source text, sha256 text, empty_holdings integer);
 create table cash_balances (id integer primary key, institution text, account text, owner text, kind text, currency text, as_of_date text, balance real, source text, derived integer);
 create table holdings_all (id integer primary key, account text, account_wrapper text, asset_class text, as_of_date text, base_market_value real);
 create table transactions_all (id integer primary key, account text, account_wrapper text, asset_class text, type text, date text);
@@ -34,6 +35,8 @@ const cash = db.prepare('insert into cash_balances (institution, account, owner,
 cash.run('Example Bank', '••1234', 'self', 'deposit', 'KRW', daysAgo(200), 1, 'x')
 cash.run('Example Bank', '••1234', 'self', 'deposit', 'KRW', daysAgo(100), 2, 'x')
 cash.run('Sample Securities', 'CMA ••5678', 'self', 'cma', 'KRW', daysAgo(10), 3, 'x')
+cash.run('fidelity', 'Sample CMA', 'self', 'cma', 'USD', daysAgo(100), 1, 'sample.csv')
+db.prepare('insert into source_coverage_confirmations values (?, ?, ?, ?, ?, ?, ?, ?)').run('bank','fidelity','Sample CMA','transactions',daysAgo(0),'sample.csv','0'.repeat(64),0)
 const holding = db.prepare('insert into holdings_all (account, account_wrapper, asset_class, as_of_date, base_market_value) values (?, ?, ?, ?, ?)')
 holding.run('Sample(IRP)', 'irp', 'security', daysAgo(200), 1)
 holding.run('Sample(IRP)', 'irp', 'security', daysAgo(200), 1)
@@ -110,7 +113,7 @@ test('one row per cash account, pension token, gold account and the gold price, 
   assert.equal(goldPrice.maxLagDays, 7)
   assert.equal(goldPrice.status, 'current')
 
-  assert.equal(rows.length, 7)
+  assert.equal(rows.length, 8)
   // Supplementary checks only.
   assert.deepEqual(failingChecks, ['cash_balance_continuity'])
 })
@@ -352,4 +355,12 @@ test('a mapped bank account with no ingested balances is visible as missing', as
   assert.equal(row?.status, 'missing')
   assert.equal(row?.latestDate, null)
   assert.match(row?.action ?? '', /전체/)
+})
+
+
+test('CMA confirmed query end is independent of its last cash movement', async () => {
+ const {getSupplementaryCoverage}=await import('../lib/adapters/portfolio-db')
+ const row=getSupplementaryCoverage().rows.find(row=>row.label==='fidelity Sample CMA')!
+ assert.equal(row.latestDate,daysAgo(0))
+ assert.equal(row.status,'current')
 })
