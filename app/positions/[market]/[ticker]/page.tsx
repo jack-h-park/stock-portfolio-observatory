@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { DataTable } from '@/components/DataTable'
 import { FreshnessInline } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, HeroAside, Label, MetricField, MetricHeroCard, TextLink } from '@/components/ui'
+import { Badge, Card, EmptyState, HeroAside, Label, MetricField, MetricHeroCard, Panel, TextLink } from '@/components/ui'
 import { getOperationalHealth, getPositionDetail, type FreshnessItem } from '@/lib/adapters/portfolio-db'
 import { EMPTY_VALUE, fmtDateTime, fmtNumber, fmtPct, fmtQuantity, shortHash } from '@/lib/format'
 import { freshnessLabel } from '@/lib/freshness-text'
@@ -84,7 +84,7 @@ function ReconciliationStrip({
 }) {
   const ok = Math.abs(diff) < (unit === 'quantity' ? 0.0001 : 1)
   return (
-    <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption">
+    <Panel text="caption">
       <div className="flex items-center justify-between gap-3">
         <span className="font-medium text-ink">{label}</span>
         <Badge tone={ok ? 'success' : 'warning'}>{ok ? copy.matched : copy.needsReview}</Badge>
@@ -105,7 +105,7 @@ function ReconciliationStrip({
           </div>
         </div>
       </div>
-    </div>
+    </Panel>
   )
 }
 
@@ -215,17 +215,17 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
       <Card title={copy.freshness} info={glossary.freshness.description} className="mb-5">
         <div className="grid gap-2 lg:grid-cols-2">
           {freshnessItems.map((item) => (
-            <div key={item.key} className="rounded-md border border-line-subtle bg-surface px-3 py-2">
+            <Panel key={item.key}>
               <Label className="mb-1">{freshnessLabel(item, language)}</Label>
               <FreshnessInline item={item} language={language} />
-            </div>
+            </Panel>
           ))}
         </div>
       </Card>
 
       <Card title={copy.firstChecks} info={copy.firstChecksInfo} className="mb-5" accent={hasReconIssue}>
         <div className="grid gap-3 lg:grid-cols-3">
-          <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
+          <Panel>
             <div className="mb-1 flex items-center justify-between gap-3">
               <span className="text-caption font-medium text-ink">{copy.reconciliationStatus}</span>
               <Badge tone={hasReconIssue ? 'warning' : 'success'}>{hasReconIssue ? copy.needsReview : copy.matched}</Badge>
@@ -233,8 +233,8 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
             <div className="text-label leading-relaxed text-ink-3">
               {copy.reconDetail(fmtQuantity(quantityDiff, 4), money(baseCostDiff, 'KRW'))}
             </div>
-          </div>
-          <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
+          </Panel>
+          <Panel>
             <div className="mb-1 text-caption font-medium text-ink">{copy.evidenceLinks}</div>
             <div className="text-label leading-relaxed text-ink-3">
               {copy.evidenceDetail(
@@ -242,13 +242,13 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
                 fmtNumber(detail.sources.filter((source) => !source.file).length),
               )}
             </div>
-          </div>
-          <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
+          </Panel>
+          <Panel>
             <div className="mb-1 text-caption font-medium text-ink">{copy.activityCoverage}</div>
             <div className="text-label leading-relaxed text-ink-3">
               {copy.activityDetail(fmtNumber(detail.transactions.length), fmtNumber(detail.dividends.length), fmtNumber(detail.lots.length))}
             </div>
-          </div>
+          </Panel>
         </div>
       </Card>
 

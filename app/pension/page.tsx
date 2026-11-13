@@ -1,7 +1,7 @@
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { WrapperReviewCard } from '@/components/WrapperReviewCard'
-import { Badge, Card, EmptyState, MetricField, Signed } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, Note, SectionHeading, Signed } from '@/components/ui'
 import { CardRow } from '@/components/layout'
 import { dbAvailable, getMeta, getPensionAccounts, getWrapperReview, type PensionAccount, type PensionHolding } from '@/lib/adapters/portfolio-db'
 import { createMoneyFormatter } from '@/lib/currency'
@@ -59,7 +59,7 @@ export default async function PensionPage() {
       </CardRow>
 
       <Card title={holdingsTitle} className="mb-5">
-        <p className="mb-3 text-label leading-relaxed text-ink-3">{copy.snapshotNote}</p>
+        <Note spacing="below-3" relaxed>{copy.snapshotNote}</Note>
         <DataTable
           caption={holdingsTitle}
           rows={list.flatMap((account) => account.holdings.map((holding, index) => ({ ...holding, account: account.account, key: `${account.account}:${index}` })))}
@@ -117,8 +117,8 @@ export default async function PensionPage() {
 
       {childAccounts.length ? (
         <section aria-label={copy.childrenTitle} className="mb-5">
-          <h2 className="mb-1 text-title font-medium text-ink">{copy.childrenTitle}</h2>
-          <p className="mb-3 text-label leading-relaxed text-ink-3">{copy.childrenNote}</p>
+          <SectionHeading size="page" spacing="mb-1">{copy.childrenTitle}</SectionHeading>
+          <Note spacing="below-3" relaxed>{copy.childrenNote}</Note>
           {[...new Set(childAccounts.map((account) => account.owner))].map((owner) => {
             const owned = childAccounts.filter((account) => account.owner === owner)
             const label = owned[0].ownerLabel || owner

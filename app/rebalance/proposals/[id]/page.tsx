@@ -5,9 +5,9 @@ import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { Tabs } from '@/components/Tabs'
 import { SubmitButton } from '@/components/SubmitButton'
-import { Badge, Card, EmptyState, Signed, TextLink } from '@/components/ui'
+import { Badge, Callout, Card, EmptyState, Note, Panel, SectionHeading, Signed, TextLink } from '@/components/ui'
 import { Checkbox, Input, Select } from '@/components/form'
-import { CardRow, Stat, StatStrip } from '@/components/layout'
+import { CardRow, Split, Stat, StatStrip } from '@/components/layout'
 import { dbAvailable, portfolioToday } from '@/lib/adapters/portfolio-db'
 import { getRebalanceInput } from '@/lib/adapters/rebalance-input'
 import { EMPTY_VALUE, fmtDateShort, fmtDateTime, fmtKrw, fmtMoney, fmtNumber, fmtPct, fmtPctRange, fmtQuantity, fmtSigned } from '@/lib/format'
@@ -123,25 +123,11 @@ function Warnings({ warnings, copy }: { warnings: EngineWarning[]; copy: Copy })
   )
 }
 
-function Banner({ tone, children }: { tone: 'success' | 'warning'; children: React.ReactNode }) {
-  return (
-    <div
-      role="status"
-      className={clsx(
-        'mb-4 rounded-md border px-3 py-2 text-caption',
-        tone === 'success' ? 'border-success/30 bg-success/10 text-success' : 'border-warning/30 bg-warning/10 text-warning'
-      )}
-    >
-      {children}
-    </div>
-  )
-}
-
 function BulletList({ title, items }: { title: string; items: string[] }) {
   if (items.length === 0) return null
   return (
     <div className="mt-3">
-      <h3 className="text-label font-medium text-ink">{title}</h3>
+      <SectionHeading level={3} size="minor">{title}</SectionHeading>
       <ul className="mt-1 list-disc space-y-0.5 pl-5 text-caption text-ink-2">
         {items.map((item, i) => (
           <li key={i}>{item}</li>
@@ -193,23 +179,23 @@ function OutlookSection({ proposal, copy, language }: { proposal: Proposal; copy
   return (
     <>
       {llm && (
-        <p className={clsx('mb-3 text-caption', llm.status === 'ok' ? 'text-ink-3' : 'text-warning')}>
+        <Note size="caption" spacing="below-3" tone={llm.status === 'ok' ? 'muted' : 'warning'}>
           <span className="font-medium">{copy.outlook.llmTitle}</span> · {llmStatusLine(llm, language)}
-        </p>
+        </Note>
       )}
       {outlook && (
         <Card title={copy.outlook.title} className="mb-5">
           <p className="whitespace-pre-line text-caption leading-relaxed text-ink-2">{outlook.summary}</p>
-          <p className="mt-3 flex items-center gap-2 text-label text-ink-3">
+          <Note row spacing="above-3">
             {copy.outlook.confidence}
             <Badge tone={tone[outlook.confidence] ?? 'neutral'}>{copy.outlook.levels[outlook.confidence] ?? outlook.confidence}</Badge>
-          </p>
+          </Note>
           <BulletList title={copy.outlook.drivers} items={outlook.drivers} />
           <BulletList title={copy.outlook.risks} items={outlook.risks} />
           <BulletList title={copy.outlook.wouldChange} items={outlook.whatWouldChangeMyView} />
           {outlook.sources.length > 0 && (
             <div className="mt-3">
-              <h3 className="text-label font-medium text-ink">{copy.outlook.sources}</h3>
+              <SectionHeading level={3} size="minor">{copy.outlook.sources}</SectionHeading>
               <ul className="mt-1 space-y-0.5 text-caption text-ink-2">
                 {outlook.sources.map((source, i) => {
                   const href = safeSourceHref(source.url)
@@ -313,7 +299,7 @@ function HarvestCard({ scenario, live, copy, language }: { scenario: HarvestScen
   const hasKr = [...scenario.rows, ...scenario.excludedForWashSale].some((r) => r.market === 'KR')
   return (
     <Card title={h.title} info={h.info} className="mb-5">
-      {live && <p className="mb-3 text-label text-ink-3">{h.computedLive}</p>}
+      {live && <Note spacing="below-3">{h.computedLive}</Note>}
       <StatStrip columns="md-4">
         <Stat label={h.totalLoss} sub={h.lots(scenario.lotCount)} value={fmtKrw(scenario.totalLossKrw)} />
         <Stat
@@ -339,11 +325,11 @@ function HarvestCard({ scenario, live, copy, language }: { scenario: HarvestScen
             { key: 'accounts', label: h.accounts, align: 'right', render: (r: Row) => fmtNumber(r.accountCount) },
           ]}
         />
-        {scenario.rows.length > rows.length && <p className="mt-2 text-label text-ink-3">{h.topNote(rows.length, scenario.rows.length)}</p>}
+        {scenario.rows.length > rows.length && <Note spacing="above-2">{h.topNote(rows.length, scenario.rows.length)}</Note>}
       </div>
       {scenario.excludedForWashSale.length > 0 && (
         <div className="mt-4">
-          <h3 className="text-label font-medium text-ink">{h.excludedTitle}</h3>
+          <SectionHeading level={3} size="minor">{h.excludedTitle}</SectionHeading>
           <ul className="mt-1 space-y-0.5 text-label text-ink-2">
             {scenario.excludedForWashSale.map((e) => (
               <li key={`${e.market}:${e.ticker}`}>
@@ -359,7 +345,7 @@ function HarvestCard({ scenario, live, copy, language }: { scenario: HarvestScen
         {hasKr && <li>{scenario.usTaxPerson ? h.caveatKrUs : h.caveatKrNotUs}</li>}
         <li className="text-ink-2">{h.notInstructions}</li>
       </ul>
-      <p className="mt-2 text-label text-ink-3">{h.asOf(fmtDateShort(scenario.asOf, language))}</p>
+      <Note spacing="above-2">{h.asOf(fmtDateShort(scenario.asOf, language))}</Note>
     </Card>
   )
 }
@@ -498,7 +484,7 @@ function SummaryTab({ proposal, copy, language }: { proposal: Proposal; copy: Co
                 },
               ]}
             />
-            <p className="mt-2 text-label text-ink-3">{copy.drift.snapshotDate(fmtDateShort(snapshot.asOf, language))}</p>
+            <Note spacing="above-2">{copy.drift.snapshotDate(fmtDateShort(snapshot.asOf, language))}</Note>
           </>
         )}
       </Card>
@@ -580,17 +566,17 @@ function TargetsTab({ proposal, copy }: { proposal: Proposal; copy: Copy }) {
   return (
     <Card title={copy.targets.title} info={copy.targets.info} className="mb-5">
       {change.boundsErrors.length > 0 && (
-        <div className="mb-4 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-label text-warning">
+        <Callout tone="warning" emphasis="strong" size="label" spacing="mb-4">
           <div className="font-medium">{copy.targets.boundsErrors}</div>
           <ul className="mt-1 list-disc pl-5">
             {change.boundsErrors.map((e, index) => (
               <li key={index}>{e}</li>
             ))}
           </ul>
-        </div>
+        </Callout>
       )}
       {!policy && <p className="mb-3 text-caption text-warning">{copy.targets.noPolicy}</p>}
-      {policy && proposal.status !== 'draft' && <p className="mb-3 text-caption text-ink-3">{copy.targets.readOnly}</p>}
+      {policy && proposal.status !== 'draft' && <Note size="caption" spacing="below-3">{copy.targets.readOnly}</Note>}
       {editable ? (
         <>
           <form action={saveTargetEdits} className="space-y-4">
@@ -759,9 +745,9 @@ function PlanTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy;
         </div>
       )}
       {editable && skippedOut.length > 0 && (
-        <div className="mt-4 rounded-md border border-line-subtle bg-surface px-3 py-2">
+        <Panel spacing="mt-4">
           <div className="text-caption font-medium text-ink">{copy.plan.skippedTitle}</div>
-          <p className="text-label text-ink-3">{copy.plan.skippedNote}</p>
+          <Note>{copy.plan.skippedNote}</Note>
           <ul className="mt-1 space-y-1">
             {skippedOut.map((id, index) => (
               <li key={index} className="flex items-center gap-2 text-label">
@@ -770,7 +756,7 @@ function PlanTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy;
               </li>
             ))}
           </ul>
-        </div>
+        </Panel>
       )}
     </>
   )
@@ -783,9 +769,9 @@ function PlanTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy;
 
       <Card title={copy.plan.instructionsTitle} info={copy.plan.instructionsInfo} className="mb-5">
         {changedAt && (
-          <p className="mb-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-label text-warning">
+          <Callout tone="warning" emphasis="strong" size="label" as="p" spacing="mb-3">
             {copy.plan.policyChanged(fmtDateTime(changedAt, language))}
-          </p>
+          </Callout>
         )}
         {editable ? (
           <form action={recomputePlan} className="space-y-4">
@@ -829,7 +815,7 @@ function FillsTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy
   return (
     <>
       <Card title={copy.fills.title} info={copy.fills.info} className="mb-5">
-        {!open && <p className="mb-3 text-caption text-ink-3">{copy.fills.notOpen}</p>}
+        {!open && <Note size="caption" spacing="below-3">{copy.fills.notOpen}</Note>}
         {instructions.length === 0 ? (
           <EmptyState>{copy.fills.empty}</EmptyState>
         ) : (
@@ -915,7 +901,7 @@ function FillsTab({ proposal, copy, language }: { proposal: Proposal; copy: Copy
           <EmptyState>{copy.reconciliation.none}</EmptyState>
         ) : (
           <div className="space-y-3 text-label">
-            <p className="text-ink-3">{copy.reconciliation.at(fmtDateTime(rec.at, language))}</p>
+            <Note size="inherit">{copy.reconciliation.at(fmtDateTime(rec.at, language))}</Note>
             <ReconList title={copy.reconciliation.matched} items={rec.matched.map((m) => `${describe(m.instructionId)} · ${m.txDate}`)} />
             <ReconList title={copy.reconciliation.missing} items={rec.missing.map((m) => `${describe(m.instructionId)} · ${copy.reconciliation.days(m.daysSinceFill)}`)} warn />
             <ReconList
@@ -989,15 +975,15 @@ export default async function RebalanceProposalPage({
         action={<TextLink href="/rebalance">{copy.back}</TextLink>}
       />
 
-      <div className="mb-4 rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption text-ink-2" role="note">
+      <Panel text="caption-2" spacing="mb-4" role="note">
         {copy.disclaimer}
-      </div>
+      </Panel>
 
-      {doneMessage && <Banner tone="success">{doneMessage}</Banner>}
+      {doneMessage && <Callout tone="success" emphasis="strong" size="caption" role="status" spacing="mb-4">{doneMessage}</Callout>}
       {errorMessage && (
-        <Banner tone="warning">
+        <Callout tone="warning" emphasis="strong" size="caption" role="status" spacing="mb-4">
           <strong className="font-medium">{copy.errorTitle}:</strong> {errorMessage}
-        </Banner>
+        </Callout>
       )}
 
       <Card
@@ -1006,7 +992,7 @@ export default async function RebalanceProposalPage({
         accent
         action={<Badge tone={PROPOSAL_STATUS_TONE[proposal.status]}>{copy.statuses[proposal.status]}</Badge>}
       >
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <Split side="20rem" at="lg" gap={4}>
           <div className="space-y-2">
             <p className="text-caption text-ink">{copy.statusCard.next[nextKey]}</p>
             <dl className="grid grid-cols-2 gap-2 text-label sm:grid-cols-4">
@@ -1036,7 +1022,7 @@ export default async function RebalanceProposalPage({
               </form>
             )}
           </div>
-        </div>
+        </Split>
       </Card>
 
       <Tabs label={copy.title} items={tabs.map((t) => ({ key: t, href: `${base}?tab=${t}`, label: copy.tabs[t] }))} current={tab} />

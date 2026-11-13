@@ -1,6 +1,6 @@
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
-import { Badge, Button, Card, EmptyState, InfoTooltip, Label, Signed, TextLink, marketTone } from '@/components/ui'
+import { Badge, Button, Card, EmptyState, InfoTooltip, Label, Panel, SectionHeading, Signed, TextLink, marketTone } from '@/components/ui'
 import { getOperationalHealth, getOverview, getTaxPlanningLots, getWashSaleReview, getWrapperReview } from '@/lib/adapters/portfolio-db'
 import { WrapperEstimateNote } from '@/components/WrapperReviewCard'
 import { WashSaleBanner } from '@/components/WashSaleBanner'
@@ -34,7 +34,7 @@ import { Select } from '@/components/form'
 import { DataTable } from '@/components/DataTable'
 import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { routeMetadata, routeSection } from '@/lib/page-names'
-import { CardRow } from '@/components/layout'
+import { CardRow, Split } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/tax-planning')
@@ -165,12 +165,9 @@ export default async function TaxPlanningPage({
 
       <section className="mb-5 rounded-md border border-line bg-card shadow-card">
         <div className="flex flex-col gap-1 border-b border-line-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-body-lg font-medium text-ink">{copy.settings.title}</h2>
-            <p className="mt-0.5 text-label text-ink-3">
-              {copy.settings.subtitle}
-            </p>
-          </div>
+          <SectionHeading size="section" subtitle={copy.settings.subtitle}>
+            {copy.settings.title}
+          </SectionHeading>
           <Badge>{copy.settings.badge}</Badge>
         </div>
         <form className="grid gap-4 p-4 lg:grid-cols-[minmax(14rem,1.4fr)_minmax(11rem,0.8fr)_minmax(10rem,0.7fr)_auto] lg:items-end">
@@ -283,7 +280,7 @@ export default async function TaxPlanningPage({
         </div>
       </details>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+      <CardRow columns="main">
         <Card
           title={copy.page.annualFilingProfile}
           info={copy.page.annualFilingProfileInfo}
@@ -361,7 +358,7 @@ export default async function TaxPlanningPage({
             <div className="flex items-center justify-between gap-3"><span>{copy.page.creditModel}</span><span className="text-right text-ink">{plan.assumptions.krForeignTaxCreditMode}</span></div>
           </div>
         </Card>
-      </div>
+      </CardRow>
 
       {hasPlanningTarget ? (
         <Card
@@ -370,9 +367,9 @@ export default async function TaxPlanningPage({
           className="mb-5"
           accent
         >
-          <div className="mb-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption leading-relaxed text-ink-3">
+          <Panel text="caption-note" spacing="mb-3">
             {copy.page.annualTargetNote}
-          </div>
+          </Panel>
           <DataTable
             caption={copy.page.annualTargetScenarioComparison}
             rows={multiYearPlan.scenarios}
@@ -406,14 +403,14 @@ export default async function TaxPlanningPage({
         </Card>
       ) : (
         <Card title={copy.page.annualTargetScenarioComparison} className="mb-5">
-          <div className="grid gap-3 md:grid-cols-[1fr_18rem]">
+          <Split side="18rem" at="md" gap={3}>
             <div className="text-body leading-relaxed text-ink-2">
               {copy.page.annualTargetHidden}
             </div>
-            <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption text-ink-3">
+            <Panel text="caption-3">
               {copy.page.annualTargetHiddenHint}
-            </div>
-          </div>
+            </Panel>
+          </Split>
         </Card>
       )}
 
@@ -472,7 +469,7 @@ function ScenarioTimeline({ scenario, copy }: { scenario: MultiYearTaxScenario; 
     <Card title={scenario.label} action={<Badge tone={scenario.summary.taxKrw > 0 ? 'warning' : 'success'}>{fmtKrw(scenario.summary.taxKrw)}</Badge>}>
       <div className="space-y-3">
         {scenario.years.map((year) => (
-          <div key={year.year} className="rounded-md border border-line-subtle bg-surface p-3">
+          <Panel key={year.year} pad="md">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className="font-mono text-body text-ink">{year.year}</span>
@@ -501,7 +498,7 @@ function ScenarioTimeline({ scenario, copy }: { scenario: MultiYearTaxScenario; 
                 ))
               )}
             </div>
-          </div>
+          </Panel>
         ))}
       </div>
     </Card>

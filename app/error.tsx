@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { Button } from '@/components/ui'
+import { Button, Note } from '@/components/ui'
 import { usePageLanguage } from '@/components/LanguageProvider'
 import { getUiCopy } from '@/lib/ui-copy'
 
@@ -31,9 +31,9 @@ export default function RouteError({ error, reset }: { error: Error & { digest?:
       <h1 className="text-title font-medium text-ink">{copy.title}</h1>
       <p className="mt-2 text-caption leading-relaxed text-ink-2">{copy.body}</p>
       {error.digest ? (
-        <p className="mt-3 text-label text-ink-3">
+        <Note spacing="above-3">
           {copy.reference} <code className="font-mono">{error.digest}</code>
-        </p>
+        </Note>
       ) : null}
       <div className="mt-5 flex flex-wrap gap-2">
         <Button onClick={reset} variant="solid" tone="info">

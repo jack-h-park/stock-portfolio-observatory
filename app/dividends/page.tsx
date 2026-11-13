@@ -1,5 +1,5 @@
 import { PageHeader } from '@/components/PageHeader'
-import { Button, Card } from '@/components/ui'
+import { Button, Card, Note } from '@/components/ui'
 import { TrendBarChart } from '@/components/charts'
 import { getDividendByYear } from '@/lib/adapters/portfolio-db'
 import { dividendChartAmount, fmtNumber } from '@/lib/format'
@@ -44,7 +44,7 @@ export default async function DividendsPage() {
             allowDecimals
             yAxisLabel={copy.axisLabel}
           />
-          <p className="mt-2 text-label text-ink-3">{copy.note}</p>
+          <Note spacing="above-2">{copy.note}</Note>
         </Card>
         <Card title={copy.yearsCard}>
           <ul className="divide-y divide-line-subtle">

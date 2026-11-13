@@ -1,7 +1,7 @@
 import { PortfolioMultiTrendChart } from '@/components/charts'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, MetricField, MetricHeroCard } from '@/components/ui'
+import { Badge, Card, MetricField, MetricHeroCard, Note } from '@/components/ui'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getFxDashboard } from '@/lib/adapters/portfolio-db'
@@ -91,7 +91,7 @@ export default async function FxPage() {
           { key: 'weightedAverageRate', label: copy.exchangeSource.columns.avgRate, align: 'right', render: (r: ExchangeSourceRow) => r.weightedAverageRate == null ? EMPTY_VALUE : `₩${fmtNumber(r.weightedAverageRate, 2)}` },
           { key: 'unrealizedKrw', label: copy.exchangeSource.columns.unrealized, align: 'right', render: (r: ExchangeSourceRow) => r.rowType === 'inbound' ? copy.exchangeSource.includedInRemittance : r.unrealizedKrw == null ? EMPTY_VALUE : dual(r.unrealizedKrw, r.unrealizedKrw / (data.summary.currentUsdKrw || 1)) },
         ]} />
-        <p className="mt-3 text-label leading-relaxed text-ink-3">{copy.exchangeSource.separateNote}</p>
+        <Note spacing="above-3" relaxed>{copy.exchangeSource.separateNote}</Note>
       </Card>
 
       <Card title={copy.hanaOutbound} className="mb-5" info={copy.hanaOutboundHint}>
@@ -122,7 +122,7 @@ export default async function FxPage() {
         </Card>
         <Card title={copy.trend}>
           <PortfolioMultiTrendChart data={chartData} series={[{ dataKey: 'rate', name: 'KRW/USD', color: 'var(--brand-blue)' }]} height={290} valuePrefix="₩" valueSuffix="" axisLabel={copy.rateUnit} />
-          <p className="mt-2 text-label leading-relaxed text-ink-3">{copy.estimateNote}</p>
+          <Note spacing="above-2" relaxed>{copy.estimateNote}</Note>
         </Card>
       </CardRow>
 

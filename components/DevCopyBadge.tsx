@@ -1,4 +1,4 @@
-import { Badge } from '@/components/ui'
+import { Badge, Note } from '@/components/ui'
 import { getMeta } from '@/lib/adapters/portfolio-db'
 import { devCopyNotice } from '@/lib/dev-copy'
 import { fmtDate } from '@/lib/format'
@@ -21,9 +21,9 @@ export function DevCopyBadge({ language }: { language: Language }) {
     ? [copy.ingested(fmtDate(notice.ingestedAt, language)), notice.ageDays == null ? null : copy.age(notice.ageDays)].filter(Boolean).join(' · ')
     : copy.unknown
   return (
-    <p className="mb-4 flex flex-wrap items-center gap-2 text-label text-ink-3" title={copy.description}>
+    <Note row spacing="below-4" title={copy.description}>
       <Badge tone="warning">{copy.label}</Badge>
       <span className="tabular-nums">{when}</span>
-    </p>
+    </Note>
   )
 }

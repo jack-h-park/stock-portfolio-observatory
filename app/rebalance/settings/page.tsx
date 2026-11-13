@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { SubmitButton } from '@/components/SubmitButton'
-import { Badge, Card, EmptyState, TextLink } from '@/components/ui'
+import { Badge, Card, EmptyState, Note, TextLink } from '@/components/ui'
 import { Checkbox, Field, Input, Select } from '@/components/form'
 import { CardRow } from '@/components/layout'
 import { dbAvailable, portfolioToday } from '@/lib/adapters/portfolio-db'
@@ -125,12 +125,12 @@ export default async function RebalanceSettingsPage({ searchParams }: { searchPa
               <li key={message}>{message}</li>
             ))}
           </ul>
-          <p className="mt-2 text-label text-ink-3">{copy.errorsNote}</p>
+          <Note spacing="above-2">{copy.errorsNote}</Note>
         </Card>
       )}
       {state.error && <p className="mb-4 text-caption text-warning">{copy.policyInvalid}</p>}
-      {!state.policy && !state.error && <p className="mb-4 text-caption text-ink-3">{copy.policyMissing}</p>}
-      {!input && <p className="mb-4 text-caption text-ink-3">{copy.noDatabase}</p>}
+      {!state.policy && !state.error && <Note size="caption" spacing="below-4">{copy.policyMissing}</Note>}
+      {!input && <Note size="caption" spacing="below-4">{copy.noDatabase}</Note>}
 
       <Card title={copy.bounds.title} info={copy.bounds.info} accent>
         <form action={saveBoundsAndTargets} className="space-y-4">
@@ -180,7 +180,7 @@ export default async function RebalanceSettingsPage({ searchParams }: { searchPa
 
         <Card title={copy.buyLists.title} info={copy.buyLists.info}>
           <form action={saveBuyLists} className="space-y-4">
-            <p className="text-label text-ink-3">{copy.buyLists.format}</p>
+            <Note>{copy.buyLists.format}</Note>
             {SLEEVES.map((sleeve) => (
               <label key={sleeve} className="block">
                 <span className="mb-1 block text-label font-medium text-ink-2">{copy.sleeves[sleeve]}</span>

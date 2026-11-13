@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { FreshnessRows } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
@@ -19,11 +18,11 @@ import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
 import type { Language } from '@/lib/i18n'
-import { positionHref } from '@/lib/position-url'
 import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 import { priorityTone } from '@/lib/tone'
 import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow, KpiBand } from '@/components/layout'
+import { PositionCell } from '@/components/PositionCell'
 import { maskAccountLabel } from '@/lib/account-label'
 
 export const dynamic = 'force-dynamic'
@@ -320,11 +319,7 @@ export default async function DataOpsPage() {
                 {
                   key: 'ticker',
                   label: copy.columns.position,
-                  render: (r) => (
-                    <Link href={positionHref(r.market, r.ticker)} className="font-mono text-caption font-medium text-info hover:underline">
-                      {r.ticker}
-                    </Link>
-                  ),
+                  render: (r) => <PositionCell market={r.market} ticker={r.ticker} layout="ticker" />,
                 },
                 { key: 'reason', label: copy.columns.reason, render: (r: { reason: ValuationReason }) => copy.valuationReason[r.reason] ?? r.reason },
                 { key: 'suggestion', label: copy.columns.suggestion, render: (r: { reason: ValuationReason }) => <span className="text-caption text-ink-2">{copy.valuationSuggestion[r.reason] ?? r.reason}</span> },
@@ -368,11 +363,7 @@ export default async function DataOpsPage() {
                 {
                   key: 'ticker',
                   label: copy.columns.position,
-                  render: (r) => (
-                    <Link href={positionHref(r.market, r.ticker)} className="font-mono text-caption font-medium text-info hover:underline">
-                      {r.ticker}
-                    </Link>
-                  ),
+                  render: (r) => <PositionCell market={r.market} ticker={r.ticker} layout="ticker" />,
                 },
                 { key: 'name', label: copy.columns.name },
                 { key: 'account', label: copy.columns.account, render: (r) => maskAccountLabel(r.account) },

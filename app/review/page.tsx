@@ -1,37 +1,22 @@
-import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { FreshnessRows } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, MetricField, Signed, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, Panel, Signed, marketTone } from '@/components/ui'
 import { getOperationalHealth, getPortfolioReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
 import { EMPTY_VALUE, fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
-import { positionHref } from '@/lib/position-url'
 import { getPageCopy } from '@/lib/ui-copy'
 import { signTone } from '@/lib/tone'
 import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow } from '@/components/layout'
+import { ProgressBar } from '@/components/bars'
+import { PositionCell } from '@/components/PositionCell'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/review')
-
-function PositionLink({ row }: { row: ReviewPosition }) {
-  return (
-    <div className="min-w-[14rem]">
-      <div className="flex items-center gap-2">
-        <Badge tone={marketTone(row.market)}>{row.market}</Badge>
-        <Link href={positionHref(row.market, row.ticker)} className="font-mono text-caption font-medium text-info hover:underline">
-          {row.ticker}
-        </Link>
-      </div>
-      <div className="mt-1 max-w-[20rem] truncate text-caption font-medium text-ink">{row.name}</div>
-    </div>
-  )
-}
-
 
 type ReviewCopy = ReturnType<typeof getPageCopy<'review'>>
 
@@ -51,7 +36,7 @@ function PositionTable({
     <DataTable
       rows={rows}
       columns={[
-        { key: 'ticker', label: copy.columns.position, render: (r) => <PositionLink row={r} /> },
+        { key: 'ticker', label: copy.columns.position, render: (r) => <PositionCell market={r.market} ticker={r.ticker} name={r.name} /> },
         { key: 'account_count', label: copy.columns.accounts, align: 'right', render: (r) => fmtNumber(r.account_count) },
         { key: 'quantity', label: copy.columns.quantity, align: 'right', render: (r) => fmtQuantity(r.quantity, 4) },
         { key: 'native_market_value', label: copy.columns.market, align: 'right', render: (r) => (r.native_market_value == null ? EMPTY_VALUE : money(r.native_market_value, r.currency)) },
@@ -125,7 +110,7 @@ export default async function ReviewPage() {
         />
       </div>
 
-      <p className="mb-5 rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{copy.readOrder}</p>
+      <Panel as="p" bordered={false} text="label-note" spacing="mb-5">{copy.readOrder}</Panel>
 
       <CardRow columns={3}>
         <Card title={copy.marketSummary}>
@@ -157,9 +142,7 @@ export default async function ReviewPage() {
               <span className="text-ink-3">Top 10</span>
               <span className="font-medium tabular-nums text-ink">{fmtPct(review.concentration.top10Share)}</span>
             </div>
-            <div className="h-2 overflow-hidden rounded-pill bg-surface">
-              <div className="h-full rounded-pill bg-info" style={{ width: `${Math.min(review.concentration.top5Share, 100)}%` }} />
-            </div>
+            <ProgressBar pct={review.concentration.top5Share} tone="info" track="surface" roundedFill />
           </div>
         </Card>
 

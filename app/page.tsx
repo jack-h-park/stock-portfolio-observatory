@@ -4,7 +4,7 @@ import { AssetCoverageNote } from '@/components/AssetCoverageNote'
 import { isSupplementarySource } from '@/lib/supplementary'
 import { FreshnessInline } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, HeroAside, Label, MetricField, MetricHeroCard, TextLink, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, HeroAside, Label, MetricField, MetricHeroCard, Note, Panel, TextLink, marketTone } from '@/components/ui'
 import { PortfolioMultiTrendChart, PortfolioTrendChart, StackedAssetChart, TrendBarChart } from '@/components/charts'
 import {
   dbAvailable,
@@ -50,6 +50,7 @@ import { signClass, signTone } from '@/lib/tone'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow, KpiBand, MiniStat, MiniStatGrid } from '@/components/layout'
+import { ShareBar } from '@/components/bars'
 import { AssetViewLink } from '@/components/LanguageSwitcher'
 import { WashSaleBanner } from '@/components/WashSaleBanner'
 import { TrendRangeLinks } from '@/components/TrendRangeLinks'
@@ -323,10 +324,10 @@ export default async function OverviewPage({
             ))}
           </ul>
           {netWorth.asOfNotes.length > 0 ? (
-            <div className="mt-3 rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{copy.asOfNotesHint}</div>
+            <Panel bordered={false} text="label-note" spacing="mt-3">{copy.asOfNotesHint}</Panel>
           ) : null}
           {netWorth.unpricedCash.length > 0 ? (
-            <div className="mt-3 rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{copy.unpricedCash(netWorth.unpricedCash.length)}</div>
+            <Panel bordered={false} text="label-note" spacing="mt-3">{copy.unpricedCash(netWorth.unpricedCash.length)}</Panel>
           ) : null}
           <div className="mt-3">
             <TextLink href="/net-worth">{copy.openNetWorth}</TextLink>
@@ -349,20 +350,18 @@ export default async function OverviewPage({
               ))}
             </div>
           </div>
-          <div className="flex h-3 overflow-hidden rounded-pill bg-surface">
-            {marketBreakdown.map((market, index) => (
-              <div
-                key={market.key}
-                className="h-full"
-                title={`${market.label} ${fmtPct(market.share, { digits: 0 })}`}
-                style={{
-                  width: `${Math.max(market.share > 0 ? 1 : 0, market.share)}%`,
-                  backgroundImage: market.barStyle,
-                  borderLeft: index === 0 ? undefined : '1px solid var(--bg-card)',
-                }}
-              />
-            ))}
-          </div>
+          <ShareBar
+            segments={marketBreakdown.map((market, index) => ({
+              key: market.key,
+              // A present market keeps a sliver even when it rounds to nothing.
+              pct: Math.max(market.share > 0 ? 1 : 0, market.share),
+              title: `${market.label} ${fmtPct(market.share, { digits: 0 })}`,
+              style: {
+                backgroundImage: market.barStyle,
+                borderLeft: index === 0 ? undefined : '1px solid var(--bg-card)',
+              },
+            }))}
+          />
         </div>
         <div className="grid gap-4 lg:grid-cols-3">
           {marketBreakdown.map((market) => (
@@ -401,10 +400,10 @@ export default async function OverviewPage({
       <Card title={copy.freshnessTitle} info={glossary.freshness.description} className="mb-5">
         <div className="grid gap-2 lg:grid-cols-3">
           {operational.snapshots.map((item) => (
-            <div key={item.key} className="rounded-md border border-line-subtle bg-surface px-3 py-2">
+            <Panel key={item.key}>
               <Label className="mb-1">{freshnessLabel(item, language)}</Label>
               <FreshnessInline item={item} language={language} />
-            </div>
+            </Panel>
           ))}
         </div>
       </Card>
@@ -433,11 +432,15 @@ export default async function OverviewPage({
           <div className="flex h-full min-h-[190px] flex-col justify-center">
             <div className="text-hero font-medium leading-none tabular-nums text-ink">{fmtPct(termCoveragePct, { digits: 0 })}</div>
             <div className="mt-1 text-caption text-ink-3">{copy.termCoverage} · {copy.shortTermExposure} {fmtPct(shortTermExposurePct, { digits: 0 })}</div>
-            <div className="mt-5 flex h-2 overflow-hidden rounded-pill bg-surface">
-              <div className="h-full bg-success" style={{ width: `${termSegmentWidth(termLongValue)}%` }} />
-              <div className="h-full bg-warning" style={{ width: `${termSegmentWidth(termShortValue)}%` }} />
-              <div className="h-full bg-line" style={{ width: `${termSegmentWidth(termUnclassifiedValue)}%` }} />
-            </div>
+            <ShareBar
+              height="md"
+              spacing="mt-5"
+              segments={[
+                { key: 'long', pct: termSegmentWidth(termLongValue), className: 'bg-success' },
+                { key: 'short', pct: termSegmentWidth(termShortValue), className: 'bg-warning' },
+                { key: 'unclassified', pct: termSegmentWidth(termUnclassifiedValue), className: 'bg-line' },
+              ]}
+            />
             <MiniStatGrid columns={3} spacing="mt-3">
               <MiniStat label={copy.longTerm} value={money(termLongValue, 'KRW')} />
               <MiniStat label={copy.shortTerm} value={money(termShortValue, 'KRW')} />
@@ -532,7 +535,7 @@ export default async function OverviewPage({
           />
         </div>
         {selectedScope === 'GOLD' ? (
-          <div className="mb-3 rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{copy.goldScopeNote}</div>
+          <Panel bordered={false} text="label-note" spacing="mb-3">{copy.goldScopeNote}</Panel>
         ) : null}
         {selectedView === 'combined' ? (
           combinedTrendData.length === 0 ? (
@@ -640,7 +643,7 @@ export default async function OverviewPage({
             yAxisSuffix="M"
             yAxisLabel={displayAxisLabel}
           />
-          <p className="mt-2 text-label text-ink-3">{copy.topHoldingsNote}</p>
+          <Note spacing="above-2">{copy.topHoldingsNote}</Note>
         </Card>
 
         <Card title={copy.dividendTrend}>
@@ -654,7 +657,7 @@ export default async function OverviewPage({
             allowDecimals
             yAxisLabel={copy.dividendAxis}
           />
-          <p className="mt-2 text-label text-ink-3">{copy.dividendTrendNote}</p>
+          <Note spacing="above-2">{copy.dividendTrendNote}</Note>
         </Card>
       </CardRow>
 

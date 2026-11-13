@@ -1,4 +1,4 @@
-import { Badge, Card, Signed, TextLink, type Tone } from '@/components/ui'
+import { Badge, Card, Note, Signed, TextLink, type Tone } from '@/components/ui'
 import { DataTable } from '@/components/DataTable'
 import type { WrapperReviewRow } from '@/lib/adapters/portfolio-db'
 import { fmtKrw, fmtNumber } from '@/lib/format'
@@ -22,10 +22,10 @@ export function WrapperEstimateNote({ rows, copy }: { rows: WrapperReviewRow[]; 
   const outside = rows.filter((row) => row.usTreatment !== 'taxable').length
   if (outside === 0) return null
   return (
-    <p className="mb-5 text-label text-ink-3">
+    <Note spacing="below-5">
       {copy.outsideEstimate(fmtNumber(outside))}
       <TextLink href="/pension">{copy.seePension}</TextLink>
-    </p>
+    </Note>
   )
 }
 
@@ -38,7 +38,7 @@ export function WrapperReviewCard({ rows, copy }: { rows: WrapperReviewRow[]; co
   return (
     <Card title={copy.title} info={copy.info} className="mb-5">
       {rows.some((row) => row.usTreatment === 'undecided') && (
-        <p className="mb-3 text-label text-ink-3">{copy.undecidedNote}</p>
+        <Note spacing="below-3">{copy.undecidedNote}</Note>
       )}
       <DataTable
         caption={copy.title}

@@ -1,17 +1,17 @@
 import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, HeroAside, MetricField, MetricHeroCard, Signed, TextLink, marketTone } from '@/components/ui'
-import { getOperationalHealth, getRebalanceReview, type ReviewPosition } from '@/lib/adapters/portfolio-db'
+import { Badge, Card, EmptyState, HeroAside, MetricField, MetricHeroCard, Note, Panel, Signed, TextLink, marketTone } from '@/components/ui'
+import { getOperationalHealth, getRebalanceReview } from '@/lib/adapters/portfolio-db'
 import { EMPTY_VALUE, fmtNumber, fmtPct, fmtPctRange } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
-import { positionHref } from '@/lib/position-url'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata, routeSection } from '@/lib/page-names'
 import { CardRow, KpiBand } from '@/components/layout'
+import { PositionCell } from '@/components/PositionCell'
 import { Field } from '@/components/form'
 import { SubmitButton } from '@/components/SubmitButton'
 import { getRebalancePolicy } from '@/lib/rebalance-policy'
@@ -28,24 +28,9 @@ import { createManualProposal, saveRebalanceTargets } from './actions'
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/rebalance')
 
-function PositionLink({ row }: { row: ReviewPosition }) {
-  return (
-    <div className="min-w-[14rem]">
-      <div className="flex items-center gap-2">
-        <Badge tone={marketTone(row.market)}>{row.market}</Badge>
-        <Link href={positionHref(row.market, row.ticker)} className="font-mono text-caption font-medium text-info hover:underline">
-          {row.ticker}
-        </Link>
-      </div>
-      <div className="mt-1 max-w-[20rem] truncate text-caption font-medium text-ink">{row.name}</div>
-    </div>
-  )
-}
-
 // Matches OPEN_STATUSES in lib/rebalance/proposal-store.ts: a reconciled proposal awaiting its close is listed with
 // the past ones (its page still closes it) and does not hold the open slot.
 const OPEN: ProposalStatus[] = ['draft', 'targets_approved', 'plan_approved', 'executing']
-
 
 const SLEEVE_TONE = { below: 'warning', within: 'success', above: 'warning' } as const
 
@@ -167,7 +152,7 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
 
         <Card title={pc.title} info={pc.info} accent>
           <div className="space-y-4">
-            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">{proposalCopy.disclaimer}</div>
+            <Panel bordered={false} text="label-note">{proposalCopy.disclaimer}</Panel>
             {proposals === null ? (
               <EmptyState>{pc.unreadable}</EmptyState>
             ) : openProposal ? (
@@ -189,11 +174,11 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
               </div>
             ) : (
               <div className="space-y-2">
-                <p className="text-caption text-ink-3">{pc.none}</p>
+                <Note size="caption">{pc.none}</Note>
                 {allocationState.state === 'ok' && (
                   <form action={createManualProposal} className="space-y-1">
                     <SubmitButton variant="solid">{pc.create}</SubmitButton>
-                    <p className="text-label text-ink-3">{pc.createNote}</p>
+                    <Note>{pc.createNote}</Note>
                   </form>
                 )}
               </div>
@@ -202,7 +187,7 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
               <div>
                 <div className="mb-1 text-label font-medium text-ink-2">{pc.past}</div>
                 {pastProposals.length === 0 ? (
-                  <p className="text-label text-ink-3">{pc.noPast}</p>
+                  <Note>{pc.noPast}</Note>
                 ) : (
                   <ul className="divide-y divide-line-subtle">
                     {pastProposals.slice(0, 12).map((p) => (
@@ -293,7 +278,7 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
                 <span>{editor.usLabel}</span>
                 <Badge tone="neutral">{fmtPct(rebalance.policy.marketTargets.find((t) => t.market === 'US')?.targetPct ?? 0, { digits: 1 })}</Badge>
               </div>
-              <p className="text-label leading-relaxed text-ink-3">{editor.derivedNote}</p>
+              <Note relaxed>{editor.derivedNote}</Note>
               <TextLink href="/rebalance/settings">{copy.settingsLink}</TextLink>
             </div>
           ) : (
@@ -303,9 +288,9 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
               <span>{editor.krLabel}</span>
               <Badge tone="neutral">{fmtPct(100 - targetPolicy.usTargetPct, { digits: 0 })}</Badge>
             </div>
-            <p className="text-label leading-relaxed text-ink-3">
+            <Note relaxed>
               {targetPolicy.source === 'default' ? editor.defaultNote : editor.hint}
-            </p>
+            </Note>
             <div className="flex items-center gap-3">
               <SubmitButton>{editor.save}</SubmitButton>
               {params.target === 'saved' && <Badge tone="success">{editor.saved}</Badge>}
@@ -351,9 +336,9 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
                   </li>
                 ))}
               </ul>
-              <p className="mt-2 text-label text-ink-3">
+              <Note spacing="above-2">
                 {copy.outsidePolicyNote(rebalance.policy.marketTargets.map((row) => row.market).join('/'))}
-              </p>
+              </Note>
             </>
           )}
         </Card>
@@ -387,7 +372,7 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
             <DataTable
               rows={rebalance.reduceCandidates}
               columns={[
-                { key: 'ticker', label: copy.columns.position, render: (r) => <PositionLink row={r} /> },
+                { key: 'ticker', label: copy.columns.position, render: (r) => <PositionCell market={r.market} ticker={r.ticker} name={r.name} /> },
                 { key: 'currentPct', label: copy.columns.currentPct, align: 'right', render: (r) => fmtPct(r.currentPct) },
                 { key: 'capGapPct', label: copy.columns.overCap, align: 'right', render: (r) => fmtPct(r.capGapPct) },
                 { key: 'capGapValue', label: copy.columns.gapValue, align: 'right', render: (r) => money(r.capGapValue) },
@@ -405,7 +390,7 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
             <DataTable
               rows={rebalance.taxSensitive}
               columns={[
-                { key: 'ticker', label: copy.columns.position, render: (r) => <PositionLink row={r} /> },
+                { key: 'ticker', label: copy.columns.position, render: (r) => <PositionCell market={r.market} ticker={r.ticker} name={r.name} /> },
                 { key: 'base_market_value', label: copy.columns.baseMarket, align: 'right', render: (r) => (r.base_market_value == null ? EMPTY_VALUE : money(r.base_market_value)) },
                 { key: 'short_term_ratio', label: copy.columns.shortPct, align: 'right', render: (r) => fmtPct(r.short_term_ratio) },
                 { key: 'short_term_qty', label: copy.columns.shortQty, align: 'right', render: (r) => fmtNumber(r.short_term_qty, 4) },
@@ -422,18 +407,18 @@ export default async function RebalancePage({ searchParams }: { searchParams: Pr
         ) : (
           <div className="space-y-4">
             {freshnessIssues > 0 && (
-              <div className="rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption text-ink-2">
+              <Panel text="caption-2">
                 <div className="font-medium text-warning">{copy.staleInputs(freshnessIssues)}</div>
                 <Link href="/health" className="mt-1 inline-flex min-h-6 items-center text-label font-medium text-info hover:underline">
                   {copy.openHealth}
                 </Link>
-              </div>
+              </Panel>
             )}
             {rebalance.watchCandidates.length > 0 && (
               <DataTable
                 rows={rebalance.watchCandidates}
                 columns={[
-                  { key: 'ticker', label: copy.columns.position, render: (r) => <PositionLink row={r} /> },
+                  { key: 'ticker', label: copy.columns.position, render: (r) => <PositionCell market={r.market} ticker={r.ticker} name={r.name} /> },
                   { key: 'base_cost', label: copy.columns.baseCost, align: 'right', render: (r) => money(r.base_cost) },
                   { key: 'native_cost', label: copy.columns.nativeCost, align: 'right', render: (r) => money(r.native_cost, r.currency) },
                   { key: 'reason', label: copy.columns.reason },

@@ -1,6 +1,6 @@
 import { clsx } from 'clsx'
 import Link from 'next/link'
-import { Children, Fragment, isValidElement, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { Children, Fragment, createElement, isValidElement, type ButtonHTMLAttributes, type ComponentProps, type ReactNode } from 'react'
 import { HelpPopover } from '@/components/HelpPopover'
 import { EMPTY_VALUE, fmtSigned } from '@/lib/format'
 
@@ -117,6 +117,267 @@ export function Badge({ children, tone = 'neutral' }: { children: ReactNode; ton
     >
       {children}
     </span>
+  )
+}
+
+const PANEL_PAD = { sm: 'px-3 py-2', md: 'p-3', tall: 'px-3 py-3' } as const
+
+const PANEL_TEXT = {
+  none: '',
+  caption: 'text-caption',
+  'caption-2': 'text-caption text-ink-2',
+  'caption-3': 'text-caption text-ink-3',
+  'caption-note': 'text-caption leading-relaxed text-ink-3',
+  'label-note': 'text-label leading-relaxed text-ink-3',
+} as const
+
+const PANEL_LAYOUT = {
+  'stack-2': 'space-y-2',
+  tall: 'flex min-h-[15rem] flex-col',
+  'span-2': 'sm:col-span-2',
+} as const
+
+/**
+ * The inset panel: a rounded surface box inside a card. Thirty-two pages
+ * wrote the same `rounded-md border border-line-subtle bg-surface px-3 py-2`
+ * with a handful of padding and text variants; `bordered={false}` is the soft
+ * note the same pages used for a muted explanation. A link tile (`as="a"`)
+ * also borders in the info colour on hover.
+ */
+export function Panel({
+  as = 'div',
+  pad = 'sm',
+  text = 'none',
+  bordered = true,
+  spacing,
+  layout,
+  children,
+  href,
+  target,
+  rel,
+  action,
+  role,
+  id,
+}: {
+  as?: 'div' | 'p' | 'form' | 'a' | 'li'
+  pad?: keyof typeof PANEL_PAD
+  text?: keyof typeof PANEL_TEXT
+  bordered?: boolean
+  spacing?: 'mt-3' | 'mt-4' | 'mb-3' | 'mb-4' | 'mb-5'
+  layout?: keyof typeof PANEL_LAYOUT
+  children: ReactNode
+  href?: string
+  target?: string
+  rel?: string
+  /** A server action (or URL) for `as="form"`. */
+  action?: ComponentProps<'form'>['action']
+  role?: string
+  id?: string
+}) {
+  const className = clsx(
+    spacing,
+    'rounded-md',
+    bordered && 'border border-line-subtle',
+    'bg-surface',
+    PANEL_PAD[pad],
+    PANEL_TEXT[text],
+    layout && PANEL_LAYOUT[layout],
+    as === 'a' && 'hover:border-info'
+  )
+  return createElement(as, { className, href, target, rel, action, role, id }, children)
+}
+
+const CALLOUT_SOFT = {
+  info: 'border-info/30 bg-info/5 text-ink-2',
+  success: 'border-success/30 bg-success/5 text-ink-2',
+  warning: 'border-warning/30 bg-warning/5 text-ink-2',
+  danger: 'border-danger/30 bg-danger/5 text-ink-2',
+} as const
+
+const CALLOUT_RULE = {
+  info: 'border-info',
+  success: 'border-success',
+  warning: 'border-warning',
+  danger: 'border-danger',
+} as const
+
+type CalloutTone = keyof typeof CALLOUT_SOFT
+
+/**
+ * A toned message box. `strong` tints with the Badge triplet and colours the
+ * text (a result or an error); `soft` tints lightly and keeps neutral text (a
+ * caution inside a card); `rule` is a left rule with no fill. A soft box with
+ * no `size` sets no font size, for content that sizes itself.
+ */
+export function Callout({
+  tone,
+  emphasis = 'strong',
+  size,
+  relaxed = false,
+  role,
+  as = 'div',
+  spacing,
+  layout,
+  children,
+}: {
+  tone: CalloutTone
+  emphasis?: 'strong' | 'soft' | 'rule'
+  size?: 'caption' | 'label'
+  relaxed?: boolean
+  role?: 'status' | 'alert' | 'note'
+  as?: 'div' | 'p'
+  spacing?: 'mb-3' | 'mb-4' | 'mt-3'
+  layout?: 'aside'
+  children: ReactNode
+}) {
+  const className =
+    emphasis === 'rule'
+      ? clsx(spacing, 'border-l-2', CALLOUT_RULE[tone], 'px-3 py-1', layout === 'aside' && 'shrink-0 lg:max-w-[19rem]')
+      : clsx(
+          spacing,
+          'rounded-md border px-3 py-2',
+          size === 'label' ? 'text-label' : size === 'caption' ? 'text-caption' : null,
+          relaxed && 'leading-relaxed',
+          emphasis === 'strong' ? TONE_STYLES[tone] : CALLOUT_SOFT[tone],
+          layout === 'aside' && 'shrink-0 lg:max-w-[19rem]'
+        )
+  return createElement(as, { className, role }, children)
+}
+
+const NOTE_SIZE = { label: 'text-label', caption: 'text-caption', body: 'text-body', micro: 'text-micro', inherit: '' } as const
+
+const NOTE_SPACING = {
+  none: '',
+  'above-0.5': 'mt-0.5',
+  'above-1': 'mt-1',
+  'above-2': 'mt-2',
+  'above-3': 'mt-3',
+  'below-3': 'mb-3',
+  'below-4': 'mb-4',
+  'below-5': 'mb-5',
+} as const
+
+/**
+ * The muted footnote under a table, chart or form: a `text-ink-3` paragraph.
+ * Fifty-four pages wrote it by hand with eight margins and four sizes; every
+ * margin is a `spacing` value here, so there is no `className`. `row` lays
+ * out text next to a Badge; `band` is the full-bleed strip at the top or
+ * bottom of a card body. The children must be phrasing content (it is a `<p>`).
+ */
+export function Note({
+  size = 'label',
+  relaxed = false,
+  weight,
+  spacing = 'none',
+  tone = 'muted',
+  row = false,
+  band,
+  title,
+  children,
+}: {
+  size?: keyof typeof NOTE_SIZE
+  relaxed?: boolean
+  weight?: 'medium'
+  spacing?: keyof typeof NOTE_SPACING
+  tone?: 'muted' | 'warning'
+  row?: boolean
+  band?: 'top' | 'bottom'
+  title?: string
+  children: ReactNode
+}) {
+  return (
+    <p
+      className={clsx(
+        NOTE_SPACING[spacing],
+        row && 'flex flex-wrap items-center gap-2',
+        band === 'top' && 'border-t border-line-subtle px-4 py-3',
+        band === 'bottom' && 'border-b border-line-subtle bg-surface px-4 py-3',
+        NOTE_SIZE[size],
+        weight === 'medium' && 'font-medium',
+        relaxed && 'leading-relaxed',
+        tone === 'warning' ? 'text-warning' : 'text-ink-3'
+      )}
+      title={title}
+    >
+      {children}
+    </p>
+  )
+}
+
+const HEADING_SIZE = { page: 'text-title', section: 'text-body-lg', sub: 'text-body', minor: 'text-label' } as const
+
+/**
+ * A heading inside a page or a card body, outside `Card title`. `eyebrow`
+ * puts a micro label above it, `subtitle` a muted line below it (or beside
+ * it, in the `band` and `inline` layouts), `action` a Badge after it in a row.
+ * `band` is the page-level section row of the daily briefing.
+ */
+export function SectionHeading({
+  level = 2,
+  size = 'section',
+  tight = false,
+  tracking = false,
+  tone = 'default',
+  eyebrow,
+  subtitle,
+  action,
+  layout = 'stack',
+  spacing,
+  id,
+  children,
+}: {
+  level?: 2 | 3
+  size?: keyof typeof HEADING_SIZE
+  tight?: boolean
+  tracking?: boolean
+  tone?: 'default' | 'muted'
+  eyebrow?: ReactNode
+  subtitle?: ReactNode
+  action?: ReactNode
+  layout?: 'stack' | 'inline' | 'band'
+  spacing?: 'mb-1' | 'mb-2' | 'mt-1'
+  id?: string
+  children: ReactNode
+}) {
+  const heading = createElement(
+    level === 3 ? 'h3' : 'h2',
+    {
+      id,
+      className: clsx(
+        spacing ?? (eyebrow != null && 'mt-1'),
+        HEADING_SIZE[size],
+        'font-medium',
+        tight && 'leading-tight',
+        tracking && 'tracking-tight',
+        tone === 'muted' ? 'text-ink-2' : 'text-ink'
+      ),
+    },
+    children
+  )
+  const titled = action != null ? (
+    <div className="flex items-center gap-2">
+      {heading}
+      {action}
+    </div>
+  ) : (
+    heading
+  )
+  if (layout !== 'stack') {
+    return (
+      <div className={clsx(layout === 'band' && 'mb-3 mt-7', 'flex flex-wrap items-baseline gap-2.5', layout === 'band' && 'first:mt-0')}>
+        {heading}
+        {action}
+        {subtitle != null ? <span className="text-label text-ink-3">{subtitle}</span> : null}
+      </div>
+    )
+  }
+  if (eyebrow == null && subtitle == null) return titled
+  return (
+    <div>
+      {eyebrow != null ? <Label size="micro">{eyebrow}</Label> : null}
+      {titled}
+      {subtitle != null ? <p className="mt-0.5 text-label text-ink-3">{subtitle}</p> : null}
+    </div>
   )
 }
 

@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Button, Card, EmptyState, HeroAside, Label, MetaItem, MetaRow, MetricField, MetricHeroCard, Signed, Table, Tbody, Td, Th, Thead, Tr, type Tone } from '@/components/ui'
+import { Badge, Button, Card, EmptyState, HeroAside, Label, MetaItem, MetaRow, MetricField, MetricHeroCard, Note, SectionHeading, Signed, Table, Tbody, Td, Th, Thead, Tr, type Tone } from '@/components/ui'
 import {
   getArchiveStatus,
   getBriefing,
@@ -129,15 +129,6 @@ function SessionMoverList({ movers, notes, direction, market, copy }: { movers: 
 const TRADE_TONE: Record<string, Tone> = { bought: 'success', opened: 'success', sold: 'danger', closed: 'danger' }
 
 /** Section heading that separates the session band from the cumulative band. */
-function Band({ title, subtitle }: { title: string; subtitle: string }) {
-  return (
-    <div className="mb-3 mt-7 flex flex-wrap items-baseline gap-2.5 first:mt-0">
-      <h2 className="text-body-lg font-medium tracking-tight text-ink">{title}</h2>
-      <span className="text-label text-ink-3">{subtitle}</span>
-    </div>
-  )
-}
-
 function DatePicker({ dates, selected, copy }: { dates: string[]; selected: string; copy: PageCopy }) {
   const i = dates.indexOf(selected)
   // dates are newest-first, so "newer" is the lower index.
@@ -270,10 +261,14 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
         const session = m.session?.available ? m.session : null
         return (
           <section key={m.id} className="mb-2">
-            <Band
-              title={`${m.flag} ${m.label}`}
+            <SectionHeading
+              size="section"
+              tracking
+              layout="band"
               subtitle={`${session ? copy.bandSince(session.previousDate) : copy.bandDayOverDay} · ${m.currency}`}
-            />
+            >
+              {`${m.flag} ${m.label}`}
+            </SectionHeading>
 
             {session?.marketClosed && (
               <Card className="mb-3">
@@ -364,13 +359,15 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                     </li>
                   ))}
                 </ul>
-                <p className="mt-3 text-label leading-relaxed text-ink-3">
+                <Note spacing="above-3" relaxed>
                   {copy.activityNote}
-                </p>
+                </Note>
               </Card>
             )}
 
-            <Band title={copy.standingBand(m.flag, m.label)} subtitle={copy.cumulativeNote} />
+            <SectionHeading size="section" tracking layout="band" subtitle={copy.cumulativeNote}>
+              {copy.standingBand(m.flag, m.label)}
+            </SectionHeading>
 
             <CardRow>
               <Card title={copy.bestVsCost} info={copy.bestVsCostInfo(amount(m.moverMinCost, m))}>
@@ -448,10 +445,10 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
               )
             })}
           </ul>
-          <p className="mt-3 text-label leading-relaxed text-ink-3">
+          <Note spacing="above-3" relaxed>
             {copy.actionsLead} <b>{copy.actNow}</b>{copy.actNowMeaning} <b>{copy.thisWeek}</b>{copy.thisWeekMeaning}{' '}
             <b>{copy.fyi}</b>{copy.fyiMeaning} {copy.disclaimer}
-          </p>
+          </Note>
         </Card>
       )}
 
@@ -461,9 +458,9 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
         <MetaItem label={copy.markets}>{markets.map((m) => m.id).join(', ') || copy.noMarkets}</MetaItem>
         <MetaItem label={copy.archive}>{archive.dir}</MetaItem>
       </MetaRow>
-      <p className="mt-2 text-label leading-relaxed text-ink-3">
+      <Note spacing="above-2" relaxed>
         {copy.footer}
-      </p>
+      </Note>
     </>
   )
 }
