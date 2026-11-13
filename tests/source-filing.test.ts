@@ -68,16 +68,18 @@ const FIDELITY_POSITIONS = (accounts: string[]) =>
   ].join('\r\n')
 
 /** Run the filer over an inbox holding `files`, and return its --dry-run plan. */
-function fileDownloads(files: Record<string, string>) {
+function fileDownloads(files: Record<string, string>, map: object = {}) {
   const dataDir = mkdtempSync(path.join(tmpdir(), 'stock-inbox-'))
   mkdirSync(path.join(dataDir, 'inbox'), { recursive: true })
   for (const [name, body] of Object.entries(files)) {
     writeFileSync(path.join(dataDir, 'inbox', name), body, 'utf8')
   }
+  const mapPath = path.join(dataDir, 'map.json')
+  writeFileSync(mapPath, JSON.stringify(map))
   const result = spawnSync(process.env.STOCK_PYTHON_BIN || 'python3', ['scripts/file-downloads.py', '--dry-run'], {
     cwd: REPO_ROOT,
     encoding: 'utf8',
-    env: { ...process.env, STOCK_DATA_DIR: dataDir },
+    env: { ...process.env, STOCK_DATA_DIR: dataDir, STOCK_ACCOUNT_MAP_PATH: mapPath },
   })
   assert.equal(result.status, 0, `filer exited ${result.status}: ${result.stderr}`)
   return { stdout: result.stdout, dataDir }
@@ -324,4 +326,11 @@ test('a Fidelity transactions export with no rows is refused, not filed as an as
   })
   assert.doesNotMatch(stdout, /→ us-transactions\/fidelity-transactions/)
   assert.match(stdout, /no dated rows/)
+})
+
+
+test('mapped Fidelity CMA positions cannot replace a brokerage holdings snapshot', () => {
+  const { stdout } = fileDownloads({ 'positions.csv': FIDELITY_POSITIONS(['X12345678']) }, { bankAccounts: [{institution:'fidelity',kind:'cma',accountId:'X12345678'}] })
+  assert.doesNotMatch(stdout, /→ us-holdings\/fidelity-holdings/)
+  assert.match(stdout, /CMA/)
 })

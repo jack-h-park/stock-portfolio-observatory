@@ -56,6 +56,7 @@ writeFileSync(
   mapPath,
   JSON.stringify({
     accounts: {},
+    bankAccounts: [{ institution: "New Bank", kind: "savings", alias: "Savings ••9876" }],
     pensionAccounts: [
       { token: 'irp', account: 'Sample(IRP)', wrapper: 'irp', institution: 'Sample' },
       // Listed in the map, nothing filed yet.
@@ -109,7 +110,7 @@ test('one row per cash account, pension token, gold account and the gold price, 
   assert.equal(goldPrice.maxLagDays, 7)
   assert.equal(goldPrice.status, 'current')
 
-  assert.equal(rows.length, 6)
+  assert.equal(rows.length, 7)
   // Supplementary checks only.
   assert.deepEqual(failingChecks, ['cash_balance_continuity'])
 })
@@ -342,4 +343,13 @@ test('a closed multi-currency account, filed as one series per currency, is not 
   } finally {
     config.stockAccountMapPath = saved
   }
+})
+
+
+test('a mapped bank account with no ingested balances is visible as missing', async () => {
+  const { getSupplementaryCoverage } = await import('../lib/adapters/portfolio-db')
+  const row = getSupplementaryCoverage().rows.find(row => row.label === 'New Bank Savings ••9876')
+  assert.equal(row?.status, 'missing')
+  assert.equal(row?.latestDate, null)
+  assert.match(row?.action ?? '', /전체/)
 })

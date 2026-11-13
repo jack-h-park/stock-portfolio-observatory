@@ -21,7 +21,7 @@ import { groupAccountRanges, type AccountDataRange, type AssetType, type RangeKi
 import { foreignAccountMaxima, isUsBrokerage, isUsCashInstitution, maxBalance, treasuryRateFor, type BalancePoint, type ForeignAccountInput, type ForeignAccountMaxima } from '@/lib/fbar'
 import treasuryRates from '@/data/treasury-reporting-rates.json'
 import { isActivePensionEntry, loadAccountMap } from '@/scripts/account-map.mjs'
-import { bankAccountGroup, retiredBankAccounts, retiredBrokerageAccounts, type BankAccountEntry } from '@/lib/bank-accounts'
+import { bankAccountGroup, bankAccountName, brokerageAccountLabel, retiredBankAccounts, retiredBrokerageAccounts, type BankAccountEntry } from '@/lib/bank-accounts'
 import { createLotValuer } from '@/scripts/lot-valuation.mjs'
 import { buildWashSaleWindows, type WashSaleBuy, type WashSaleLot, type WashSaleWindow } from '@/lib/wash-sale'
 import {
@@ -3762,6 +3762,19 @@ function robinhoodAccountLabel(key: string, names: string[]) {
  * the operator's separate question: “how far through the account's activity
  * have the numbers actually reached, and what should I obtain next?”
  */
+export function getBrokerageAccountHints(): Map<string, { suffix: string | null; retired: boolean }> {
+  const map = loadAccountMap(config.stockAccountMapPath)
+  const retired = retiredBrokerageAccounts(map.brokerageAccounts)
+  const hints = new Map<string, { suffix: string | null; retired: boolean }>()
+  for (const entry of map.brokerageAccounts ?? []) {
+    const label = brokerageAccountLabel(entry)
+    if (!label) continue
+    const number = String(entry.accountNumber ?? '').replace(/[^A-Za-z0-9]/g, '')
+    hints.set(label, { suffix: number.length >= 4 ? `…${number.slice(-4)}` : null, retired: retired.has(label) })
+  }
+  return hints
+}
+
 export function getAccountCoverage(): AccountCoverageSummary {
   const conn = db()
   try {
@@ -3827,6 +3840,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
       const previous = statementByKey.get(key)
       if (!previous || String(row.covered_through ?? '') > String(previous.covered_through ?? '')) statementByKey.set(key, row)
     }
+    const accountHints = getBrokerageAccountHints()
     const keys = new Set([...holdingRows, ...transactionRows].map(coverageKey))
     const rows: AccountCoverage[] = []
 
@@ -3837,6 +3851,8 @@ export function getAccountCoverage(): AccountCoverageSummary {
       const statement = statementByKey.get(key)
       const names = [...(accountNames.get(key) ?? new Set<string>())]
       const account = (market === 'US' && brokerage === 'Robinhood' ? robinhoodAccountLabel(rawAccount, names) : names.join(' / ')) || rawAccount || brokerage
+      const hint = accountHints.get(account)
+      if (hint?.retired) continue
       let sources: AccountCoverageSource[] = []
       let missingDisposals: string[] = []
       let coveredThrough = isoDate(holding?.covered_through ?? transaction?.covered_through)
@@ -3973,7 +3989,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
         id: key,
         market,
         brokerage,
-        account,
+        account: hint?.suffix ? `${account} · ${hint.suffix}` : account,
         coveredThrough,
         downloadFrom,
         lagDays,
@@ -4154,6 +4170,7 @@ export function getSupplementaryCoverage(): SupplementaryCoverage {
       accountMap = null
     }
     const retired = retiredBankAccounts(accountMap?.bankAccounts)
+    const seenBanks = new Set<string>()
 
     if (hasTable('cash_balances')) {
       const cash = conn
@@ -4167,6 +4184,7 @@ export function getSupplementaryCoverage(): SupplementaryCoverage {
         // A closed account has nothing more to download. A multi-currency account's
         // per-currency series are retired by its one entry.
         if (retired.has(`${row.institution}|${bankAccountGroup(accountMap?.bankAccounts, row.institution, row.account)}`)) continue
+        seenBanks.add(`${row.institution}|${bankAccountGroup(accountMap?.bankAccounts, row.institution, row.account)}`)
         const label = `${row.institution} ${row.account}`
         // A quiet account has no balance row near its statement's end, so the
         // statement's own period end counts too; otherwise a fresh download of a
@@ -4174,6 +4192,17 @@ export function getSupplementaryCoverage(): SupplementaryCoverage {
         const latest = latestOf(row.latest, ...String(row.sources ?? '').split(',').map(periodEndFromSource))
         push(row.isCma ? 'cma' : 'deposit', label, latest, `${label} 거래내역을 ${isoDate(latest)}부터 받아 inbox에 넣으세요`)
       }
+    }
+
+    for (const entry of accountMap?.bankAccounts ?? []) {
+      if (!entry?.institution) continue
+      const name = bankAccountName(entry)
+      const key = `${entry.institution}|${name}`
+      const hanaLedgerKey = entry.institution === 'hana' && entry.kind === 'fx' ? 'Hana Bank|USD account' : null
+      if (retired.has(key) || seenBanks.has(key) || (hanaLedgerKey && seenBanks.has(hanaLedgerKey))) continue
+      const label = `${entry.institution} ${name}`
+      push(entry.kind === 'cma' ? 'cma' : 'deposit', label, null, `${label} 거래내역의 가능한 전체 기간을 받아 inbox에 넣으세요`)
+      seenBanks.add(key)
     }
 
     // Every pension account the map lists, filed or not: one with no snapshot yet
