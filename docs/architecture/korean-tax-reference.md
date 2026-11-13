@@ -1,6 +1,6 @@
 # Korean calculated-tax reference and unresolved reporting policy
 
-The owner authorized #298 merge and the next Korean calculation PR. The US worksheet #298 is merged without deployment. This increment implements exact Korean rate-schedule reference arithmetic; it does not release reported Korean tax calculations. The serving application remains the previously verified #290 release.
+The US worksheet #298 and Korean exact-reference core [#299](https://github.com/jack-h-park/stock-portfolio-observatory/pull/299) are merged without deployment. The owner subsequently put Hometax verification on hold. The core implements exact Korean rate-schedule reference arithmetic; it does not release reported Korean tax calculations. The serving application remains the previously verified #290 release.
 
 ## Verified versus unresolved
 
@@ -24,7 +24,7 @@ The result binds scenario/revision/input hash, tax unit, authority, currency and
 
 National and local calculations use their respective reviewed bases and schedules; local tax is not ten percent of final national liability. Financial-income comparison, separate-tax/flat-tax/treaty methods and other special cases remain outside the reviewed general profile. No source evidence bytes are opened or verified by this library call.
 
-The reference API is separate from `calculateAnnualComponents`: annual Korean components remain blocked in both v1/v2, rule-pack bytes/defaults and schemas are unchanged, and no annual comparison, CLI, web, persistence, import or operational activation is added. Existing finance/evidence/access settings and disabled private web writes remain intended constraints.
+The reference API is separate from `calculateAnnualComponents`: annual Korean components remain blocked in both v1/v2, rule-pack bytes/defaults and schemas are unchanged, and no annual comparison, web, persistence, import or operational activation is added. The later [component preview CLI](annual-tax-preview-cli.md) preserves these blocked annual results and does not expose the rational as reported money. Existing finance/evidence/access settings and disabled private web writes remain intended constraints.
 
 ## Required next evidence
 
