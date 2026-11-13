@@ -29,7 +29,7 @@ Asset ownership, account regime, economic exposure, and tax-unit membership are 
 
 Automated trading, tax filing/payment, general budgeting, universal tax support, and multi-user SaaS are outside this expansion. The target product name does not authorize a GitHub rename, archive move, or operational restart.
 
-Historical gold correctness and coverage explanations are operating. The next bounded work is [a read-only annual summary of existing tax records](next-increment.md), implemented on the review branch and not deployed. All-assets entry and branding are already implemented; the remaining work is operating acceptance and specific gaps, not another stock-to-assets rewrite.
+Historical gold correctness, coverage explanations and the annual recorded-tax summary (#290) are operating. The current bounded work is the separately authorized [2025 rule-pack/input/component-result contract PR](../architecture/annual-tax-foundation.md). Calculators, annual composition and presentation remain later increments from the [MVP design](../superpowers/specs/2026-11-12-annual-tax-estimation-mvp-design.md); merge and deployment remain unauthorized. All-assets entry and branding are already implemented; the remaining work is operating acceptance and specific gaps, not another stock-to-assets rewrite.
 
 ## References
 

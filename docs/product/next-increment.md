@@ -1,6 +1,6 @@
 # Next Personal Finance Observatory increments
 
-**Status:** Gold correction [#283](https://github.com/jack-h-park/stock-portfolio-observatory/pull/283) and coverage display [#286](https://github.com/jack-h-park/stock-portfolio-observatory/pull/286) are merged and deployed. The existing-record annual tax summary is authorized and implemented on this review branch, not deployed. Updated November 12, 2026 (America/Los_Angeles). Deployment and financial-data mutation require separate authorization.
+**Status:** Gold correction [#283](https://github.com/jack-h-park/stock-portfolio-observatory/pull/283) and coverage display [#286](https://github.com/jack-h-park/stock-portfolio-observatory/pull/286) are merged and deployed. The existing-record annual tax summary #290 is merged and deployed. The first 2025 rule-pack/input/component-result contract increment is authorized and implemented for PR review; calculators and application integration remain later work. Updated November 12, 2026 (America/Los_Angeles). Deployment and financial-data mutation require separate authorization.
 
 The [operating status](implementation-status.md) records the completed foundation and bounded adoption. The read-only review established the immediate priority: resolve the historical gold calculation gap before expanding the overview or annual tax engine. Private examples, account inventory, dates, balances and evidence remain in the operator's private review.
 
@@ -46,11 +46,15 @@ Configured brokerage/crypto and supplementary coverage, validation failures and 
 
 The second increment is deployed. Observation dates describe evidence used by the existing valuation; they do not certify current market quotes, full statement reconciliation or complete account coverage.
 
-## Current PR: annual summary of existing tax records
+## Completed: annual summary of existing tax records
 
 The overview replaces record counts with year-by-year obligation amounts and scoped links. Tax unit, authority, tax type and currency remain separate; no combined monetary total is added. The selected liability must have a current usable evidence-linked basis. Payments, withholding, refund receipts and reversals are separated, with interest, penalties and signed noncash adjustments outside principal. Only the allocated shares of reviewed, evidence-linked settlement events enter recorded amounts. Missing categories and unknown balances remain unconfirmed, while excluded allocations, missing dates and unallocated events are visible.
 
-This is a read-only projection of the existing history, independent of the portfolio DB. The schema, importer, state, evidence and write settings do not change. The implementation is on the review branch, not merged or deployed. Synthetic tests cover cross-year allocations, stale/submitted bases, missing review/evidence, deleted rows, large integer amounts and bilingual empty/error views.
+This is a read-only projection of the existing history, independent of the portfolio DB. The schema, importer, state, evidence and write settings do not change. The implementation is merged and deployed in [#290](https://github.com/jack-h-park/stock-portfolio-observatory/pull/290), with existing-record projection parity, bilingual web checks and preserved operating boundaries. Synthetic tests cover cross-year allocations, stale/submitted bases, missing review/evidence, deleted rows, large integer amounts and bilingual empty/error views.
+
+## Current design: 2025 annual tax calculation foundation
+
+The owner selected finalized 2025 rules first. The [MVP design](../superpowers/specs/2026-11-12-annual-tax-estimation-mvp-design.md) recommends reviewed annual taxable bases, independently scoped federal/Korean general-tax components, explicit unknowns and permitted reviewed composition. California is a separately gated extension. Computed components are not complete annual totals; full comparison requires matching form boundaries and reviewed coverage. The owner separately authorized the first [rule/contract library PR](../architecture/annual-tax-foundation.md), with no calculator or application integration. Data entry, migration, merge and deployment remain unauthorized. The accepted final historical return package is not a new validation target.
 
 ## Later increments
 

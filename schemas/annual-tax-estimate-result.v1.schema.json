@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://personal-finance-observatory.invalid/schemas/annual-tax-estimate-result.v1.schema.json",
+  "title": "2025 annual tax estimate result v1",
+  "$comment": "Structural contract only. Use the TypeScript validator for cross-field, provenance and readiness checks; validation is not tax calculation certification.",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "scenarioId": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+    },
+    "inputRevision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "inputSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}(?![\\s\\S])"
+    },
+    "taxYear": {
+      "const": 2025
+    },
+    "taxUnitId": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+    },
+    "authority": {
+      "enum": [
+        "US:federal",
+        "KR:national",
+        "KR:local"
+      ]
+    },
+    "currency": {
+      "enum": [
+        "USD",
+        "KRW"
+      ]
+    },
+    "taxType": {
+      "const": "income"
+    },
+    "calculationScope": {
+      "const": "component"
+    },
+    "status": {
+      "enum": [
+        "components-only",
+        "blocked"
+      ]
+    },
+    "annualTotal": {
+      "type": "null"
+    },
+    "comparisonEligible": {
+      "const": false
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "enum": [
+              "us.regular.ordinary",
+              "us.regular.qdcg",
+              "us.niit",
+              "kr.global.calculated",
+              "kr.local.calculated"
+            ]
+          },
+          "mode": {
+            "enum": [
+              "computed",
+              "reviewed-input",
+              "not-applicable",
+              "unknown",
+              "unsupported"
+            ]
+          },
+          "amountMinor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(0|-?[1-9][0-9]*)(?![\\s\\S])",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "sourceRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "minItems": 0,
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "inputRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "minItems": 0,
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "trace": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1000
+                }
+              },
+              "required": [
+                "label"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 0,
+            "maxItems": 100
+          },
+          "reviewedAt": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\\s\\S])"
+          }
+        },
+        "required": [
+          "id",
+          "mode",
+          "amountMinor",
+          "reason",
+          "sourceRefs",
+          "inputRefs",
+          "trace"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 5
+    },
+    "rulePackId": {
+      "const": "annual-2025-foundation-v1"
+    },
+    "rulePackSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}(?![\\s\\S])"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "scenarioId",
+    "inputRevision",
+    "inputSha256",
+    "taxYear",
+    "taxUnitId",
+    "authority",
+    "currency",
+    "taxType",
+    "calculationScope",
+    "status",
+    "annualTotal",
+    "comparisonEligible",
+    "components",
+    "rulePackId",
+    "rulePackSha256"
+  ],
+  "additionalProperties": false
+}
