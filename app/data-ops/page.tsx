@@ -1,9 +1,10 @@
 import Link from 'next/link'
+import { SupplementaryCoverageTable } from '@/components/SupplementaryCoverageTable'
 import { DataTable } from '@/components/DataTable'
 import { FreshnessRows } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, MetricField, MetricHeroCard, TextLink, marketTone, type Tone } from '@/components/ui'
-import { getAccountCoverage, getDataOpsReview, type AccountCoverage } from '@/lib/adapters/portfolio-db'
+import { getAccountCoverage, getSupplementaryCoverage, getDataOpsReview, type AccountCoverage } from '@/lib/adapters/portfolio-db'
 import { fmtDate, fmtNumber } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
@@ -61,10 +62,11 @@ export default async function DataOpsPage() {
   const priorityLabels = getUiCopy(language).priority
   const ops = getDataOpsReview()
   const coverage = getAccountCoverage()
+  const supplementary = getSupplementaryCoverage()
   const issueCount = ops.actionQueue.reduce((sum, item) => sum + item.count, 0)
   const coverageCopy = language === 'ko'
     ? {
-        title: '계좌 데이터 업데이트',
+        title: '증권·가상자산 계좌 업데이트',
         info: '파일 무결성(Fresh)과 별도로, 각 계좌의 자료가 어느 날짜까지 반영되었는지와 다음 다운로드 시작일을 보여줍니다. 시작일은 누락 방지를 위해 기존 기준일보다 하루 빠릅니다.',
         action: '지금 필요한 계좌',
         due: '곧 필요한 계좌',
@@ -82,7 +84,7 @@ export default async function DataOpsPage() {
         none: '모든 계좌가 허용 범위 안에 있습니다.',
       }
     : {
-        title: 'Account data updates',
+        title: 'Investment account updates',
         info: 'Separate from file integrity: this shows the actual cutoff and the next download start date. The start date is one day before the cutoff to guarantee overlap.',
         action: 'Action needed',
         due: 'Due soon',
@@ -183,6 +185,13 @@ export default async function DataOpsPage() {
           />
         </div>
       </Card>
+
+      <div id="supplementary-coverage" className="mb-5">
+        <Card title={language === 'ko' ? '은행·연금·금 자료 업데이트' : 'Bank, pension and gold updates'}
+          info={language === 'ko' ? '증권 계좌와 별도로 예금·CMA·연금·금 자료도 확인합니다. 은행·CMA는 90일, 연금은 180일 기준입니다. 종료 계좌는 업데이트 대상에서 제외합니다.' : 'Includes bank/CMA (90-day window), pension (180 days) and gold sources. Closed accounts are excluded.'}>
+          <SupplementaryCoverageTable language={language} rows={supplementary.rows} />
+        </Card>
+      </div>
 
       <CardRow columns="hero">
         <MetricHeroCard

@@ -13,6 +13,12 @@ import Database from 'better-sqlite3'
 const dir = mkdtempSync(path.join(tmpdir(), 'account-coverage-'))
 const dbPath = path.join(dir, 'portfolio.db')
 const snapshotPath = path.join(dir, 'robinhood-snapshot.json')
+const mapPath = path.join(dir, 'accounts.local.json')
+writeFileSync(mapPath, JSON.stringify({ brokerageAccounts: [
+  {institution:'mirae',kind:'general',accountNumber:'000000001234'},
+  {institution:'mirae',kind:'general',label:'Sample second',accountNumber:'000000005678',retiredOn:'2024-01-01'}
+] }))
+process.env.STOCK_ACCOUNT_MAP_PATH = mapPath
 
 const daysAgo = (days: number) => {
   const date = new Date()
@@ -37,6 +43,8 @@ transaction.run('US', 'Robinhood', 'Agentic', 'Robinhood Agentic', daysAgo(57))
 transaction.run('US', 'Robinhood', 'Mid-term', 'Robinhood Mid-term', daysAgo(59))
 // Long-term has trades but nothing open: no holdings row, still one account.
 transaction.run('US', 'Robinhood', 'Long-term', 'Robinhood Long-term', daysAgo(3))
+transaction.run('KR', '미래에셋증권', 'General', 'Sample second', daysAgo(200))
+transaction.run('KR', '미래에셋증권', 'General', '미래에셋증권(종합)', daysAgo(200))
 db.close()
 
 writeFileSync(
@@ -122,4 +130,13 @@ test('without a snapshot to tie them, holdings and transaction labels stay apart
   const rows = getAccountCoverage().rows.filter((row) => row.brokerage === 'Robinhood')
   assert.ok(rows.some((row) => row.account === 'Robinhood 1111' && row.sources.length === 1))
   assert.ok(rows.some((row) => row.account === 'Robinhood Agentic' && row.sources.length === 2))
+})
+
+
+test('closed explicitly labelled brokerage accounts are excluded while the active account displays a masked number', async () => {
+  const { getAccountCoverage, getBrokerageAccountHints } = await import('../lib/adapters/portfolio-db')
+  const rows = getAccountCoverage().rows
+  assert(!rows.some(row => row.account.startsWith('Sample second')))
+  assert(rows.some(row => row.account === '미래에셋증권(종합) · …1234'))
+  assert.deepEqual(getBrokerageAccountHints().get('Sample second'), { suffix: '…5678', retired: true })
 })

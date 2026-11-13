@@ -77,6 +77,22 @@ def parse_boa(text):
     return out
 
 
+def parse_amex_savings(text):
+    """An explicitly identified headerless AMEX savings export; never infer its account."""
+    rows = []
+    for i, r in enumerate(_csv_rows(text)):
+        if not r or not any(c.strip() for c in r):
+            continue
+        if len(r) != 3 or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", r[0].strip()):
+            raise ValueError("expected date, description, amount in every savings row")
+        datetime.strptime(r[0].strip(), "%Y-%m-%d")
+        amount = _num(r[2])
+        if amount is None:
+            raise ValueError("savings amount is not numeric")
+        rows.append({"date": r[0].strip(), "seq": i, "description": r[1], "amount": amount, "balance": None})
+    return sorted(rows, key=lambda row: (row["date"], row["seq"]))
+
+
 def parse_robinhood_bank(text):
     rows = _csv_rows(text)[1:]
     out = []
@@ -1032,6 +1048,7 @@ def parse_amex(path, findings, notes=None):
 
 
 FAMILIES = [
+    ("amex-savings-", "amex", "savings", "USD", lambda p, f, n: parse_amex_savings(p.read_text(encoding="utf-8-sig")), r"^amex-savings-(\d{4})-"),
     # (filename prefix, institution, kind, currency, parser, account-key regex or None)
     # A key regex splits one prefix into one account per captured key (the last4 in the file name).
     ("chase-checking-", "chase", "checking", "USD", lambda p, f, n: parse_chase(p.read_text(encoding="utf-8-sig")), None),

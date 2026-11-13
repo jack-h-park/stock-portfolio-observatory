@@ -74,6 +74,8 @@ export type BrokerageAccountEntry = {
   institution?: unknown
   kind?: unknown
   account?: unknown
+  label?: unknown
+  accountNumber?: unknown
   retired?: unknown
   retiredOn?: unknown
 }
@@ -90,7 +92,7 @@ const BROKERAGE_LABELS: Record<string, string> = {
 
 /** The transaction `account` label a `brokerageAccounts` entry's rows carry, or null when it has none. */
 export function brokerageAccountLabel(entry: BrokerageAccountEntry): string | null {
-  const named = typeof entry.account === 'string' ? entry.account.trim() : ''
+  const named = typeof entry.label === 'string' && entry.label.trim() ? entry.label.trim() : typeof entry.account === 'string' ? entry.account.trim() : ''
   if (named) return named
   return BROKERAGE_LABELS[`${String(entry.institution ?? '')}|${String(entry.kind ?? '')}`] ?? null
 }

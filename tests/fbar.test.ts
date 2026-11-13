@@ -504,6 +504,7 @@ test('retiredBrokerageAccounts keys closed brokerage accounts by their transacti
   assert.equal(brokerageAccountLabel({ institution: 'mirae', kind: 'general' }), '미래에셋증권(종합)')
   assert.equal(brokerageAccountLabel({ institution: 'mirae', kind: 'isa' }), '미래에셋증권(ISA)')
   assert.equal(brokerageAccountLabel({ institution: 'mirae', kind: 'general', account: 'Example Broker(second)' }), 'Example Broker(second)')
+  assert.equal(brokerageAccountLabel({ institution: 'mirae', kind: 'general', label: 'Sample second account' }), 'Sample second account')
   assert.equal(brokerageAccountLabel({ institution: 'example', kind: 'general' }), null)
   const retired = retiredBrokerageAccounts([
     { institution: 'mirae', kind: 'general', retiredOn: '2024-05-20' },

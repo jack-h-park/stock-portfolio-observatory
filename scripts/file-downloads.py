@@ -1362,6 +1362,14 @@ def detect_fidelity_positions(doc):
             "`Account number` column and drop the parts in separately",
         )
 
+    cma_ids, problem = mapped_cma_ids()
+    if problem:
+        return Refusal("Fidelity positions export", problem)
+    if accounts[0] in cma_ids:
+        return Refusal("Fidelity CMA positions export",
+                       "this account is a mapped CMA; it must not replace the brokerage holdings snapshot",
+                       "use the CMA history export for the bank balance series")
+
     return Plan(
         DIR_US_HOLDINGS,
         f"fidelity-holdings-{compact(downloaded)}.csv",
