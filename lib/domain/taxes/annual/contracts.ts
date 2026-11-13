@@ -95,6 +95,11 @@ export function annualInputDigest(input: AnnualEstimateInput): string {
 export function getAnnualComponentBlocker(input: AnnualEstimateInput, id: AnnualComponentId): { mode: 'unknown' | 'unsupported'; reason: string } | null {
   const readiness = getAnnualRuleStatus(input.taxYear, id, input.rulePackId)
   if (readiness.status !== 'reference-ready') return { mode: 'unsupported', reason: `Component rules blocked: ${readiness.blockers.join('; ')}` }
+  return getAnnualComponentInputBlocker(input, id)
+}
+
+/** Input eligibility only, not rule readiness or permission to emit a computed amount. */
+export function getAnnualComponentInputBlocker(input: AnnualEstimateInput, id: AnnualComponentId): { mode: 'unknown' | 'unsupported'; reason: string } | null {
   for (const [name, fact, ready] of [
     ['residency', input.residency, 'reviewed-full-year'],
     ['special method', input.specialMethod, 'none-reviewed'],
