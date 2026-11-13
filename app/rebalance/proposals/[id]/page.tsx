@@ -1,9 +1,9 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { clsx } from 'clsx'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
+import { Tabs } from '@/components/Tabs'
 import { SubmitButton } from '@/components/SubmitButton'
 import { Badge, Card, EmptyState, Signed, TextLink } from '@/components/ui'
 import { Checkbox, Input, Select } from '@/components/form'
@@ -1039,21 +1039,7 @@ export default async function RebalanceProposalPage({
         </div>
       </Card>
 
-      <nav aria-label={copy.title} className="mb-5 flex flex-wrap gap-1 border-b border-line-subtle">
-        {tabs.map((t) => (
-          <Link
-            key={t}
-            href={`${base}?tab=${t}`}
-            aria-current={t === tab ? 'page' : undefined}
-            className={clsx(
-              '-mb-px inline-flex min-h-8 items-center border-b-2 px-3 text-caption font-medium',
-              t === tab ? 'border-info text-ink' : 'border-transparent text-ink-3 hover:text-ink'
-            )}
-          >
-            {copy.tabs[t]}
-          </Link>
-        ))}
-      </nav>
+      <Tabs label={copy.title} items={tabs.map((t) => ({ key: t, href: `${base}?tab=${t}`, label: copy.tabs[t] }))} current={tab} />
 
       {tab === 'summary' && <SummaryTab proposal={proposal} copy={copy} language={language} />}
       {tab === 'targets' && <TargetsTab proposal={proposal} copy={copy} />}

@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import { AssetCoverageNote } from '@/components/AssetCoverageNote'
 import { DataTable, type DataTableColumn } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
@@ -17,6 +16,7 @@ import { chartMarkers, snapEventDates } from '@/lib/asset-events'
 import { AssetEventList } from '@/components/AssetEventList'
 import { AllocationShares } from '@/components/AllocationShares'
 import { TrendRangeLinks } from '@/components/TrendRangeLinks'
+import { LinkChip, LinkChips } from '@/components/LinkChips'
 import { DEFAULT_TREND_RANGE, resolveTrendRange, trendRangeDays, type TrendRange } from '@/lib/trend-ranges'
 import type { AllocationClass, AllocationWrapper } from '@/lib/asset-allocation'
 import { getPageCopy } from '@/lib/ui-copy'
@@ -244,15 +244,15 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
         action={
           <div className="flex flex-wrap items-center justify-end gap-1">
             <TrendRangeLinks selected={selectedRange} hrefFor={(trend) => hrefWith({ trend })} />
-            <Link
+            <LinkChip
               href={hrefWith({ children: !includeChildren })}
-              scroll={false}
+              active={includeChildren}
+              current="none"
               aria-label={childCopy.toggleAria(includeChildren)}
               title={childCopy.toggleHint}
-              className={`rounded-sm border px-2 py-1 text-label font-medium ${includeChildren ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
             >
               {childCopy.toggle}
-            </Link>
+            </LinkChip>
           </div>
         }
       >
@@ -409,19 +409,13 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
         title={fbarCopy.title}
         className="mt-5"
         action={
-          <nav aria-label={fbarCopy.yearLabel} className="flex flex-wrap items-center justify-end gap-1">
-            {fbarYears.map((year) => (
-              <Link
-                key={year}
-                href={hrefWith({ fbarYear: year })}
-                scroll={false}
-                aria-current={year === fbarYear ? 'page' : undefined}
-                className={`rounded-sm border px-2 py-1 text-label font-medium ${year === fbarYear ? 'border-info bg-info/10 text-info' : 'border-line text-ink-3 hover:border-info hover:text-info'}`}
-              >
-                {year}
-              </Link>
-            ))}
-          </nav>
+          <LinkChips
+            as="nav"
+            label={fbarCopy.yearLabel}
+            ariaCurrent="page"
+            items={fbarYears.map((year) => ({ key: String(year), href: hrefWith({ fbarYear: year }), label: year }))}
+            current={String(fbarYear)}
+          />
         }
       >
         <div className="mb-3 flex flex-col gap-1 text-label leading-relaxed text-ink-3">
