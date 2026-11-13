@@ -64,6 +64,6 @@
     "app/rebalance/settings/page.tsx": 1,
     "app/reconciliation/page.tsx": 1,
     "app/tax-planning/page.tsx": 1,
-    "components/ui.tsx": 1
+    "components/metric.tsx": 1
   }
 }

@@ -1,7 +1,7 @@
 import { clsx } from 'clsx'
 import Link from 'next/link'
 import { Fragment, type ReactNode } from 'react'
-import { EmptyState, InfoTooltip, Table } from '@/components/ui'
+import { EmptyState, HelpPopover, Table } from '@/components/ui'
 import { CommonLabel } from '@/components/LanguageProvider'
 import { nextSort, type SortDirection, type TableSort } from '@/lib/table-sort'
 
@@ -113,7 +113,7 @@ export function DataTable({
                   ) : (
                     col.label
                   )}
-                  {col.description ? <InfoTooltip>{col.description}</InfoTooltip> : null}
+                  {col.description ? <HelpPopover>{col.description}</HelpPopover> : null}
                 </span>
               </th>
             ))}
