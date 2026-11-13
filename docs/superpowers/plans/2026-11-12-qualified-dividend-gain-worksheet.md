@@ -43,19 +43,21 @@
 
 ## Task 2: Full worksheet and orchestration
 
-**Files:** `us-federal.ts`, new `us-ordinary.ts` shared exact subcalculation, `calculate.ts`, QDCG tests.
+**Files:** `us-federal.ts`, new `us-ordinary.ts` shared exact subcalculation and focused `us-qdcg.ts` worksheet, `calculate.ts`, QDCG tests.
 
 **Interfaces:** Extend `calculateFederalComponent` and `calculateAnnualComponents` with `us.regular.qdcg`. The shared ordinary subcalculation returns exact dollar numerator/denominator and trace; the ordinary component still rounds once exactly as before. QDCG trace includes every worksheet line and source input origin.
 
-- [ ] Add red synthetic tests for all preference bands/filing profiles, Schedule D minimum/loss selection, distributions-only/qualified-dividend-only paths, gains exceeding taxable income, line-5 and line-1 table/worksheet boundaries, final ordinary-tax cap and fractional intermediate rounding. Include independent expected fixtures and a large exact-money case.
-- [ ] Observe failure before adding QDCG arithmetic.
-- [ ] Implement lines 1-25 in order, with exact tax numerators through the final minimum. Return explicit blockers and preserve independent NIIT; no ordinary fallback for unsupported QDCG.
-- [ ] Independently verify synthetic worksheet reference cases using Python Decimal and the official pinned data. Run focused/full tests, typecheck, lint, guardrails and isolated sample build; expected green. Commit.
+- [x] Add red synthetic tests for all preference bands/filing profiles, Schedule D minimum/loss selection, distributions-only/qualified-dividend-only paths, gains exceeding taxable income, line-5 and line-1 table/worksheet boundaries, final ordinary-tax cap and fractional intermediate rounding. Include independent expected fixtures and a large exact-money case.
+- [x] Observe failure before adding QDCG arithmetic.
+- [x] Implement lines 1-25 in order, with exact tax numerators through the final minimum. Return explicit blockers and preserve independent NIIT; no ordinary fallback for unsupported QDCG.
+- [x] Independently verify synthetic worksheet reference cases using Python Decimal and the official pinned data. Run focused/full tests, typecheck, lint, guardrails and isolated sample build; expected green. Commit.
 
 ## Task 3: Review and delivery
 
 **Files:** Status/support/master-plan/design/library-boundary docs and this plan.
 
-- [ ] Record #297 merged but undeployed, v2 QDCG implemented for PR review, and unchanged #290 operating baseline. Keep remaining Korean, composition, special-method and UI work explicit.
-- [ ] Perform one fresh whole-branch review; resolve material findings with red/green tests. Check protected runtime/source/evidence hashes read-only and changed Markdown links.
-- [ ] Verify clean committed tree, then push/open the PR and verify exact-head CI. External delivery is recorded in the PR/private receipt; leave the new PR unmerged/undeployed and retain its active worktree.
+- [x] Record #297 merged but undeployed, v2 QDCG implemented for PR review, and unchanged #290 operating baseline. Keep remaining Korean, composition, special-method and UI work explicit.
+- [x] Perform one fresh whole-branch review; resolve material findings with red/green tests. Check protected runtime/source/evidence hashes read-only and changed Markdown links.
+- [x] Verify the committed tree and delivery readiness.
+
+**Delivery gate:** Push/open the PR after these checks and confirm exact-head CI. External delivery is recorded in the PR/private receipt. Leave the new PR unmerged/undeployed and retain its active worktree.

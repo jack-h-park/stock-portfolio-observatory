@@ -6,6 +6,8 @@ export const ANNUAL_COMPONENTS = ['us.regular.ordinary', 'us.regular.qdcg', 'us.
 export type AnnualComponentId = typeof ANNUAL_COMPONENTS[number]
 const PACKS = { 'annual-2025-foundation-v1': rawPack, 'annual-2025-qualified-gains-v2': qualifiedPack } as const
 export type AnnualRulePackId = keyof typeof PACKS
+// Capture primitive identities once: imported JSON objects can be shared with other modules.
+const PINNED_DIGESTS: Record<AnnualRulePackId, string> = { 'annual-2025-foundation-v1': rawPack.contentSha256, 'annual-2025-qualified-gains-v2': qualifiedPack.contentSha256 }
 export type AnnualRulePack = typeof rawPack | typeof qualifiedPack
 
 /** Stable hashing for plain JSON values; no private file or network access. */
@@ -32,7 +34,7 @@ export function validateAnnualRulePack(value: unknown): AnnualRulePack {
   const pack = value as AnnualRulePack
   if (pack.schemaVersion !== 1 || pack.taxYear !== 2025 || !Object.hasOwn(PACKS, pack.id)) throw new Error('Unsupported annual rule year/version')
   const { contentSha256, ...payload } = pack
-  if (!/^[a-f0-9]{64}$/.test(contentSha256) || annualJsonDigest(payload) !== contentSha256 || contentSha256 !== PACKS[pack.id as AnnualRulePackId].contentSha256) throw new Error('Annual rule pack integrity mismatch')
+  if (!/^[a-f0-9]{64}$/.test(contentSha256) || annualJsonDigest(payload) !== contentSha256 || contentSha256 !== PINNED_DIGESTS[pack.id as AnnualRulePackId]) throw new Error('Annual rule pack integrity mismatch')
   return structuredClone(pack)
 }
 
@@ -46,5 +48,5 @@ export function getAnnualRuleStatus(year: number, component: AnnualComponentId, 
   const pack = getAnnualRulePack(year, id)
   if (!ANNUAL_COMPONENTS.includes(component)) throw new Error('Unknown annual component')
   const readiness = pack.readiness[component]
-  return { ...readiness, calculationAvailable: readiness.status === 'reference-ready' && ['us.regular.ordinary', 'us.niit'].includes(component) }
+  return { ...readiness, calculationAvailable: readiness.status === 'reference-ready' && ['us.regular.ordinary', 'us.regular.qdcg', 'us.niit'].includes(component) }
 }

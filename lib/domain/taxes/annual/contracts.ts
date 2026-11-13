@@ -105,7 +105,7 @@ export function getAnnualComponentBlocker(input: AnnualEstimateInput, id: Annual
     const method = id === 'us.regular.ordinary' ? 'ordinary-reviewed' : id === 'us.regular.qdcg' ? 'qdcg-reviewed' : 'general-reviewed'
     if (input.regularTaxMethod.state !== method) return { mode: input.regularTaxMethod.state === 'unknown' ? 'unknown' : 'unsupported', reason: 'Unreviewed/unsupported regular-tax method' }
   }
-  if (id === 'us.regular.ordinary' && ['qualifiedDividends', 'netLongTermGain', 'netCapitalGain'].some(key => input.amounts[key as AmountKey] && BigInt(input.amounts[key as AmountKey]!.minor) > 0n)) {
+  if (id === 'us.regular.ordinary' && ['qualifiedDividends', 'netLongTermGain', 'netCapitalGain', 'capitalGainDistributions'].some(key => input.amounts[key as AmountKey] && BigInt(input.amounts[key as AmountKey]!.minor) > 0n)) {
     return { mode: 'unsupported', reason: 'Positive preferential-income amount contradicts ordinary-only scope' }
   }
   if (id === 'us.regular.qdcg') {

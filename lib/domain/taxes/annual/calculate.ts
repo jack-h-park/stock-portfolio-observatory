@@ -7,7 +7,7 @@ export function calculateAnnualComponents(value: unknown): AnnualEstimateResult 
   const input = validateAnnualEstimateInput(value)
   const pack = getAnnualRulePack(input.taxYear, input.rulePackId)
   const components: AnnualComponentResult[] = input.requestedComponents.map(id => {
-    if (input.authority === 'US:federal' && (id === 'us.regular.ordinary' || id === 'us.niit')) return calculateFederalComponent(input, id)
+    if (input.authority === 'US:federal' && (id === 'us.regular.ordinary' || id === 'us.regular.qdcg' || id === 'us.niit')) return calculateFederalComponent(input, id)
     const blocker = getAnnualComponentBlocker(input, id) ?? { mode: 'unsupported' as const, reason: 'Component calculator is not implemented' }
     return {
       id, ...blocker, amountMinor: null,
