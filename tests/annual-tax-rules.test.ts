@@ -24,12 +24,12 @@ test('pack identity is year-specific, verified for data integrity and isolated f
   assert.throws(()=>validateAnnualRulePack(metadata),/integrity/i)
 })
 
-test('unresolved rounding/worksheet coverage stays blocked and no component is a calculator', () => {
+test('unresolved rounding/worksheet coverage stays blocked as federal library support expands', () => {
   for(const id of ['kr.global.calculated','kr.local.calculated','us.regular.qdcg'] as const){
     const s=getAnnualRuleStatus(2025,id);assert.equal(s.status,'blocked');assert.ok(s.blockers.length);assert.equal(s.calculationAvailable,false)
   }
   assert.equal(getAnnualRuleStatus(2025,'us.regular.ordinary').status,'reference-ready')
-  assert.equal(getAnnualRuleStatus(2025,'us.niit').calculationAvailable,false)
+  assert.equal(getAnnualRuleStatus(2025,'us.niit').calculationAvailable,true)
   const p=getAnnualRulePack(2025)
   assert.deepEqual(p.data.krGlobal[1],{upToKrw:'50000000',rateBasisPoints:1500,deductionKrw:'1260000'})
   assert.deepEqual(p.data.krLocal[1],{upToKrw:'50000000',rateBasisPoints:150,deductionKrw:'126000'})

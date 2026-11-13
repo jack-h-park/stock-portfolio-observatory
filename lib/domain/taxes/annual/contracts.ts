@@ -18,7 +18,7 @@ export type AnnualEstimateInput = {
   sources: { id: string; sha256: string; locator: string }[]
   amounts: Partial<Record<AmountKey, AnnualAmount>>
 }
-type AmountKey = 'taxableIncome' | 'ordinaryDividends' | 'qualifiedDividends' | 'netLongTermGain' | 'netCapitalGain' | 'niitMagi' | 'netInvestmentIncome' | 'taxableBase'
+export type AmountKey = 'taxableIncome' | 'ordinaryDividends' | 'qualifiedDividends' | 'netLongTermGain' | 'netCapitalGain' | 'niitMagi' | 'netInvestmentIncome' | 'taxableBase'
 export type AnnualComponentResult = Provenance & {
   id: AnnualComponentId; mode: 'computed' | 'reviewed-input' | 'not-applicable' | 'unknown' | 'unsupported'
   amountMinor: string | null; inputRefs: AmountKey[]; trace: { label: string }[]
@@ -29,12 +29,13 @@ export type AnnualEstimateResult = {
   calculationScope: 'component'; status: 'components-only' | 'blocked'; annualTotal: null; comparisonEligible: false
   components: AnnualComponentResult[]
 }
-const requiredAmounts: Record<AnnualComponentId, AmountKey[]> = {
-  'us.regular.ordinary': ['taxableIncome'],
-  'us.regular.qdcg': ['taxableIncome', 'ordinaryDividends', 'qualifiedDividends', 'netLongTermGain', 'netCapitalGain'],
-  'us.niit': ['niitMagi', 'netInvestmentIncome'],
-  'kr.global.calculated': ['taxableBase'], 'kr.local.calculated': ['taxableBase'],
-}
+const amountKeys = (...keys: AmountKey[]) => Object.freeze(keys)
+export const ANNUAL_REQUIRED_AMOUNTS: Readonly<Record<AnnualComponentId, readonly AmountKey[]>> = Object.freeze({
+  'us.regular.ordinary': amountKeys('taxableIncome'),
+  'us.regular.qdcg': amountKeys('taxableIncome', 'ordinaryDividends', 'qualifiedDividends', 'netLongTermGain', 'netCapitalGain'),
+  'us.niit': amountKeys('niitMagi', 'netInvestmentIncome'),
+  'kr.global.calculated': amountKeys('taxableBase'), 'kr.local.calculated': amountKeys('taxableBase'),
+})
 function requireCondition(value: unknown, message: string): asserts value {
   if (!value) throw new Error(`Invalid annual contract: ${message}`)
 }
@@ -79,6 +80,27 @@ export function annualInputDigest(input: AnnualEstimateInput): string {
   return annualJsonDigest(validateAnnualEstimateInput(input))
 }
 
+/** Shared eligibility policy for computed assertions and calculators; input must be validated. */
+export function getAnnualComponentBlocker(input: AnnualEstimateInput, id: AnnualComponentId): { mode: 'unknown' | 'unsupported'; reason: string } | null {
+  const readiness = getAnnualRuleStatus(input.taxYear, id)
+  if (readiness.status !== 'reference-ready') return { mode: 'unsupported', reason: `Component rules blocked: ${readiness.blockers.join('; ')}` }
+  for (const [name, fact, ready] of [
+    ['residency', input.residency, 'reviewed-full-year'],
+    ['special method', input.specialMethod, 'none-reviewed'],
+  ] as const) {
+    if (fact.state !== ready) return { mode: fact.state === 'unsupported' ? 'unsupported' : 'unknown', reason: `Unreviewed/unsupported ${name}` }
+  }
+  if (id !== 'us.niit') {
+    const method = id === 'us.regular.ordinary' ? 'ordinary-reviewed' : id === 'us.regular.qdcg' ? 'qdcg-reviewed' : 'general-reviewed'
+    if (input.regularTaxMethod.state !== method) return { mode: input.regularTaxMethod.state === 'unknown' ? 'unknown' : 'unsupported', reason: 'Unreviewed/unsupported regular-tax method' }
+  }
+  if (id === 'us.regular.ordinary' && ['qualifiedDividends', 'netLongTermGain', 'netCapitalGain'].some(key => input.amounts[key as AmountKey] && BigInt(input.amounts[key as AmountKey]!.minor) > 0n)) {
+    return { mode: 'unsupported', reason: 'Positive preferential-income amount contradicts ordinary-only scope' }
+  }
+  const missing = ANNUAL_REQUIRED_AMOUNTS[id].filter(key => !input.amounts[key])
+  return missing.length ? { mode: 'unknown', reason: `Missing calculation base: ${missing.join(', ')}` } : null
+}
+
 export function validateAnnualEstimateResult(value: unknown, inputValue: AnnualEstimateInput): AnnualEstimateResult {
   const input = validateAnnualEstimateInput(inputValue)
   assertAnnualSchema(value, resultSchema)
@@ -102,16 +124,9 @@ export function validateAnnualEstimateResult(value: unknown, inputValue: AnnualE
     requireCondition(component.amountMinor !== null && BigInt(component.amountMinor) >= 0n, 'known component requires nonnegative amount')
     if (component.mode === 'computed') {
       const readiness = getAnnualRuleStatus(input.taxYear, component.id)
-      requireCondition(readiness.status === 'reference-ready', 'component rules blocked')
-      requireCondition(input.residency.state === 'reviewed-full-year' && input.specialMethod.state === 'none-reviewed', 'unreviewed/unsupported calculation profile')
-      if (component.id !== 'us.niit') {
-        const method = component.id === 'us.regular.ordinary' ? 'ordinary-reviewed' : component.id === 'us.regular.qdcg' ? 'qdcg-reviewed' : 'general-reviewed'
-        requireCondition(input.regularTaxMethod.state === method, 'unreviewed/unsupported regular-tax method')
-      }
-      if (component.id === 'us.regular.ordinary') {
-        requireCondition(['qualifiedDividends', 'netLongTermGain', 'netCapitalGain'].every(key => !input.amounts[key as AmountKey] || BigInt(input.amounts[key as AmountKey]!.minor) <= 0n), 'preferential-income amount contradicts ordinary-only scope')
-      }
-      requireCondition(requiredAmounts[component.id].every(key => input.amounts[key] && component.inputRefs.includes(key)), 'missing calculation base/trace input')
+      const blocker = getAnnualComponentBlocker(input, component.id)
+      requireCondition(!blocker, blocker?.reason ?? 'blocked calculation')
+      requireCondition(ANNUAL_REQUIRED_AMOUNTS[component.id].every(key => component.inputRefs.includes(key)), 'missing calculation base/trace input')
       requireCondition(component.trace.length && component.sourceRefs.length && component.sourceRefs.some(id => (readiness.sourceIds as string[]).includes(id)), 'computed component requires rule trace')
       provenance(component, publicIds, false)
     } else {

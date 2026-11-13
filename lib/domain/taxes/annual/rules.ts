@@ -41,5 +41,6 @@ export function getAnnualRulePack(year: number): AnnualRulePack {
 export function getAnnualRuleStatus(year: number, component: AnnualComponentId) {
   const pack = getAnnualRulePack(year)
   if (!ANNUAL_COMPONENTS.includes(component)) throw new Error('Unknown annual component')
-  return { ...pack.readiness[component], calculationAvailable: false as const }
+  const readiness = pack.readiness[component]
+  return { ...readiness, calculationAvailable: readiness.status === 'reference-ready' && ['us.regular.ordinary', 'us.niit'].includes(component) }
 }
