@@ -18,7 +18,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { marketTone, type Tone } from '@/lib/tone'
+import { ASSET_CLASS_COLOR, CHILDREN_COLOR, marketColor } from '@/lib/palette'
 import { EMPTY_VALUE, fmtNumber } from '@/lib/format'
 
 const AXIS = { fontSize: 10, fill: 'var(--text-tertiary)' }
@@ -38,24 +38,9 @@ const TOOLTIP_SURFACE = {
   fontSize: 12,
 } as const
 
-/**
- * A market's colour on a chart, derived from the same rule that colours its
- * badge — so a new market cannot end up green in a table and orange in a chart.
- * Currency codes map to the market that trades in them.
- */
-const TONE_VAR: Record<Tone, string> = {
-  neutral: 'var(--text-tertiary)',
-  info: 'var(--accent-info)',
-  success: 'var(--accent-success)',
-  warning: 'var(--accent-warning)',
-  danger: 'var(--accent-danger)',
-}
-
-const CURRENCY_MARKET: Record<string, string> = { KRW: 'KR', USD: 'US' }
-
-export function marketColor(key: string) {
-  return TONE_VAR[marketTone(CURRENCY_MARKET[key] ?? key)]
-}
+// marketColor lives in lib/palette.ts with the other chart colours.
+// Re-exported here for the modules that import it from this one.
+export { marketColor }
 
 const MARKET_BARS: Record<string, string> = Object.fromEntries(
   ['KR', 'US', 'CRYPTO', 'KRW', 'USD'].map((key) => [key, marketColor(key)])
@@ -305,14 +290,6 @@ export function PortfolioMultiTrendChart({
 
 type AssetClass = 'stocks' | 'crypto' | 'cash' | 'pensions' | 'gold'
 const STACK_ORDER: readonly AssetClass[] = ['stocks', 'crypto', 'cash', 'pensions', 'gold']
-/** One fixed colour per class, from the theme tokens, so a class keeps its colour across pages. */
-const ASSET_COLORS: Record<AssetClass, string> = {
-  stocks: 'var(--brand-blue)',
-  crypto: marketColor('CRYPTO'),
-  cash: 'var(--accent-success)',
-  pensions: 'var(--brand-purple)',
-  gold: 'var(--brand-pink)',
-}
 
 /**
  * `children` is the children's accounts, present only when the page includes
@@ -320,7 +297,6 @@ const ASSET_COLORS: Record<AssetClass, string> = {
  * maintainer's own.
  */
 export type StackedAssetPoint = { date: string; total: number; children?: number | null } & Record<AssetClass, number | null>
-const CHILDREN_COLOR = 'var(--brand-cyan)'
 
 /**
  * Every asset class stacked, one area each, values already in the display
@@ -381,7 +357,7 @@ export function StackedAssetChart({
                 ) : null}
                 {[...STACK_ORDER].reverse().map((key) => (
                   <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                    <span style={{ color: ASSET_COLORS[key] }}>{labels[key]}</span>
+                    <span style={{ color: ASSET_CLASS_COLOR[key] }}>{labels[key]}</span>
                     <span style={{ fontVariantNumeric: 'tabular-nums' }}>{point[key] == null ? EMPTY_VALUE : formatValue(point[key]!)}</span>
                   </div>
                 ))}
@@ -401,7 +377,7 @@ export function StackedAssetChart({
         />
         <Legend wrapperStyle={{ fontSize: 11 }} />
         {starts.map((key) => (
-          <ReferenceLine key={key} x={startsOn[key]} stroke={ASSET_COLORS[key]} strokeDasharray="3 3" />
+          <ReferenceLine key={key} x={startsOn[key]} stroke={ASSET_CLASS_COLOR[key]} strokeDasharray="3 3" />
         ))}
         {markers.map((marker) => (
           <ReferenceLine
@@ -419,8 +395,8 @@ export function StackedAssetChart({
             dataKey={key}
             name={labels[key]}
             stackId="assets"
-            stroke={ASSET_COLORS[key]}
-            fill={ASSET_COLORS[key]}
+            stroke={ASSET_CLASS_COLOR[key]}
+            fill={ASSET_CLASS_COLOR[key]}
             fillOpacity={0.35}
             strokeWidth={1.5}
             connectNulls={false}

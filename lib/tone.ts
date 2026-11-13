@@ -10,9 +10,13 @@
  * functions (two of them byte-identical), and six local `Record<_, Tone>`
  * maps. They are collected here so a status can only mean one colour.
  */
-import type { Tone } from '@/components/ui'
-
-export type { Tone }
+/**
+ * The five tones every badge, metric and chart colour is drawn from. Owned here,
+ * not by components/ui.tsx, so this module imports nothing from a component and
+ * components/ui.tsx can import from it without a cycle.
+ */
+export const TONES = ['neutral', 'info', 'success', 'warning', 'danger'] as const
+export type Tone = (typeof TONES)[number]
 
 /**
  * Badge tone for a market code.
@@ -35,6 +39,18 @@ export function marketTone(market: string): Tone {
  */
 export function signTone(value: number | null | undefined): Tone {
   return Number(value ?? 0) >= 0 ? 'success' : 'danger'
+}
+
+/**
+ * A change between two readings: up is success, down is danger, and no change
+ * (or no reading) is neutral. Unlike `signTone`, zero is not a gain here: a
+ * drift of nothing should not read as good news.
+ */
+export function deltaTone(value: number | null | undefined): Tone {
+  if (value == null) return 'neutral'
+  if (value > 0) return 'success'
+  if (value < 0) return 'danger'
+  return 'neutral'
 }
 
 /**

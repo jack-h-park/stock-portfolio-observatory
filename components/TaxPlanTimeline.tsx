@@ -12,7 +12,7 @@ import type { Language } from '@/lib/i18n'
 import { positionHref } from '@/lib/position-url'
 import type { MasterPlanMonth, MonthlySaleMasterPlan } from '@/lib/tax-planning'
 import type { SavedInstructionExecution, SavedInstructionStatus } from '@/lib/tax-plan-store'
-import { bucketTone } from '@/lib/tone'
+import { bucketTone, signTone } from '@/lib/tone'
 import { Input, Select } from '@/components/form'
 import { DataTable } from '@/components/DataTable'
 import { SubmitButton } from '@/components/SubmitButton'
@@ -130,7 +130,7 @@ function MonthSummary({
           [copy.position, fmtNumber(month.positionCount), 'neutral'],
           [copy.grossGains, money(grossGainKrw, 'KRW'), 'success'],
           [copy.pairedLosses, fmtSigned(-month.lossKrw, (n) => money(n, 'KRW')), 'danger'],
-          [copy.netGainLoss, money(month.gainKrw, 'KRW'), month.gainKrw >= 0 ? 'success' : 'danger'],
+          [copy.netGainLoss, money(month.gainKrw, 'KRW'), signTone(month.gainKrw)],
         ] as [string, string, Tone][]
       ).map(([label, value, tone]) => (
         <Stat key={label} label={label} value={value} tone={tone} size="body-lg" dense />

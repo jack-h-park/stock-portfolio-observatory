@@ -10,6 +10,7 @@ import { formatKrw, formatUsd } from '@/lib/currency'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata, routeSection } from '@/lib/page-names'
+import { signTone } from '@/lib/tone'
 import { CardRow, KpiBand } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
@@ -101,8 +102,8 @@ export default async function FxPage() {
           <MetricField label={copy.destinationUnknown} value={formatUsd(data.summary.hanaUnknownDestinationUsd)} hint={copy.outbound.destinationUnknownHint} tone="warning" />
           <MetricField label={copy.remittanceCost} value={dual(data.summary.hanaOutboundCostKrw, data.summary.hanaOutboundUsd)} hint={data.summary.hanaOutboundEstimatedCostRate == null ? EMPTY_VALUE : `₩${fmtNumber(data.summary.hanaOutboundEstimatedCostRate, 2)} / USD`} />
           <MetricField label={copy.remittanceValue} value={dual(data.summary.hanaOutboundValueKrw, data.summary.hanaOutboundUsd)} hint={data.summary.currentUsdKrwAsOf ?? EMPTY_VALUE} />
-          <MetricField label={copy.remittanceGl} value={dual(data.summary.hanaOutboundUnrealizedKrw, data.summary.hanaOutboundUnrealizedKrw / (data.summary.currentUsdKrw || 1))} hint={copy.outbound.remittanceGlHint} tone={data.summary.hanaOutboundUnrealizedKrw >= 0 ? 'success' : 'warning'} />
-          <MetricField label={copy.confirmedGl} value={dual(data.summary.hanaOutboundConfirmedUnrealizedKrw, data.summary.hanaOutboundConfirmedUnrealizedKrw / (data.summary.currentUsdKrw || 1))} hint={copy.outbound.confirmedGlHint} tone={data.summary.hanaOutboundConfirmedUnrealizedKrw >= 0 ? 'success' : 'warning'} />
+          <MetricField label={copy.remittanceGl} value={dual(data.summary.hanaOutboundUnrealizedKrw, data.summary.hanaOutboundUnrealizedKrw / (data.summary.currentUsdKrw || 1))} hint={copy.outbound.remittanceGlHint} tone={signTone(data.summary.hanaOutboundUnrealizedKrw)} />
+          <MetricField label={copy.confirmedGl} value={dual(data.summary.hanaOutboundConfirmedUnrealizedKrw, data.summary.hanaOutboundConfirmedUnrealizedKrw / (data.summary.currentUsdKrw || 1))} hint={copy.outbound.confirmedGlHint} tone={signTone(data.summary.hanaOutboundConfirmedUnrealizedKrw)} />
           <MetricField label={copy.estimatedGl} value={dual(data.summary.hanaOutboundEstimatedUnrealizedKrw, data.summary.hanaOutboundEstimatedUnrealizedKrw / (data.summary.currentUsdKrw || 1))} hint={copy.outbound.estimatedGlHint} tone="warning" />
           <MetricField label={copy.tossMatched} value={formatUsd(data.summary.hanaTossMatchedUsd)} hint={copy.outbound.tossUnmatched(formatUsd(data.summary.hanaTossUnmatchedUsd))} />
           <MetricField label={copy.outbound.otherInbound} value={formatUsd(data.summary.hanaOtherInboundUsd)} hint={copy.outbound.otherInboundHint} />
