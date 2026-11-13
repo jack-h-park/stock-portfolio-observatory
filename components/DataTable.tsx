@@ -34,7 +34,7 @@ const PRIORITY_CLASS = {
   tertiary: 'hidden xl:table-cell',
 } as const
 
-export function DataTable({
+export function DataTable<Row = any>({
   columns,
   rows,
   caption,
@@ -45,12 +45,15 @@ export function DataTable({
   minWidth,
   expandedRowKey,
   renderExpanded,
+  size = 'body',
 }: {
-  columns: DataTableColumn[]
-  rows: any[]
+  /** `Row` is inferred from `rows` alone, so a column that annotates its
+   *  `render` parameter with a narrower type does not decide it. */
+  columns: DataTableColumn<NoInfer<Row>>[]
+  rows: Row[]
   caption?: string
   emptyMessage?: ReactNode
-  getRowKey?: (row: any, index: number) => string | number
+  getRowKey?: (row: Row, index: number) => string | number
   /** The sort currently applied, so the header can show and reverse it. */
   sort?: TableSort | null
   /** Builds the link a header cell points at. Without it, `sortable` columns
@@ -64,12 +67,14 @@ export function DataTable({
    *  full-width row directly beneath it — a drill-down that opens where the
    *  reader clicked rather than at the bottom of the page. */
   expandedRowKey?: string | number | null
-  renderExpanded?: (row: any) => ReactNode
+  renderExpanded?: (row: Row) => ReactNode
+  /** Text size for the whole table, passed to `Table`. */
+  size?: 'body' | 'caption'
 }) {
   if (rows.length === 0) return <EmptyState>{emptyMessage ?? <CommonLabel label="noRows" />}</EmptyState>
 
   return (
-    <Table scroll minWidth={minWidth ?? '48rem'} className="border-separate border-spacing-0">
+    <Table scroll minWidth={minWidth ?? '48rem'} size={size} className="border-separate border-spacing-0">
         {caption ? <caption className="sr-only">{caption}</caption> : null}
         <thead>
           <tr>
@@ -121,7 +126,7 @@ export function DataTable({
         </thead>
         <tbody>
           {rows.map((row, i) => {
-            const rowKey = getRowKey?.(row, i) ?? row.id ?? i
+            const rowKey = getRowKey?.(row, i) ?? (row as { id?: string | number }).id ?? i
             const expanded = renderExpanded && expandedRowKey != null && rowKey === expandedRowKey
             return (
             <Fragment key={rowKey}>
@@ -137,7 +142,7 @@ export function DataTable({
                     col.nowrap && 'whitespace-nowrap'
                   )}
                 >
-                  {col.render ? col.render(row) : row[col.key]}
+                  {col.render ? col.render(row) : (row as Record<string, ReactNode>)[col.key]}
                 </td>
               ))}
             </tr>

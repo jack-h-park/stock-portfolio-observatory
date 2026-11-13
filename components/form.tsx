@@ -41,7 +41,7 @@ const CONTROL_SIZE = {
   lg: 'px-3 py-2 text-body',
 } as const
 
-export type ControlSize = keyof typeof CONTROL_SIZE
+type ControlSize = keyof typeof CONTROL_SIZE
 
 // `size` is ours, not the DOM's: <input size> and <select size> are numbers,
 // and leaving both in scope resolves the prop to `never`.

@@ -12,7 +12,6 @@ export function Card({
   action,
   fill,
   accent,
-  hover,
 }: {
   children: ReactNode
   className?: string
@@ -26,14 +25,11 @@ export function Card({
   /** Brand gradient accent bar across the card's top edge. Use sparingly — once
    *  per surface for the hero/primary card (gradient guideline §3.2). */
   accent?: boolean
-  /** Subtle elevation lift on hover (motion tokens). For clickable cards. */
-  hover?: boolean
 }) {
   return (
     <section
       className={clsx(
         'relative rounded-md border border-line bg-card shadow-card',
-        hover && 'jp-card-hover',
         fill && 'flex flex-col',
         className
       )}

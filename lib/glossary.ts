@@ -17,16 +17,6 @@ export const GLOSSARY_BY_LANG = {
       alias: 'Base',
       description: 'A market-currency amount converted to KRW using the FX rate shown in the dashboard.',
     },
-    fx: {
-      label: 'FX Rate',
-      alias: 'FX',
-      description: 'The rate and date used to convert foreign-currency amounts into KRW.',
-    },
-    taxLot: {
-      label: 'Tax Lot',
-      alias: 'Lot',
-      description: 'A tax-calculation group split by purchase date, price, and quantity for the same security.',
-    },
     reconciliation: {
       label: 'Reconciliation',
       alias: 'Data Match',
@@ -41,16 +31,6 @@ export const GLOSSARY_BY_LANG = {
       label: 'Source Drift',
       alias: 'Drift',
       description: 'A source file changed size or modified time after ingestion and should be reviewed again.',
-    },
-    longTerm: {
-      label: 'Long Term',
-      alias: 'LT',
-      description: 'Quantity or tax lots that satisfy the long-term holding-period rule for tax review.',
-    },
-    shortTerm: {
-      label: 'Short Term',
-      alias: 'ST',
-      description: 'Quantity or tax lots that have not yet satisfied the long-term holding-period rule.',
     },
     tickerless: {
       label: 'Tickerless Income',
@@ -77,11 +57,6 @@ export const GLOSSARY_BY_LANG = {
       alias: 'Allocation Gap',
       description: 'The difference between current market weight and the configured target weight.',
     },
-    concentration: {
-      label: 'Concentration',
-      alias: 'Position Concentration',
-      description: 'How much of the portfolio is held in the largest positions. Higher concentration means fewer holdings drive more of the outcome.',
-    },
     inputIssues: {
       label: 'Input Issues',
       alias: 'Data Issues',
@@ -91,11 +66,6 @@ export const GLOSSARY_BY_LANG = {
       label: 'Wash Sale',
       alias: 'Wash Sale Window',
       description: 'A tax rule that can defer a loss when substantially identical securities are bought near the sale date.',
-    },
-    degraded: {
-      label: 'Degraded',
-      alias: 'Partial Success',
-      description: 'Required calculations completed, but an optional step or source refresh failed.',
     },
   },
   ko: {
@@ -114,16 +84,6 @@ export const GLOSSARY_BY_LANG = {
       alias: 'Base',
       description: '각 시장의 통화 금액을 화면에 표시된 환율로 원화 환산한 값입니다.',
     },
-    fx: {
-      label: '환율',
-      alias: 'FX',
-      description: '달러 등 외화 금액을 원화로 환산할 때 사용한 비율과 기준일입니다.',
-    },
-    taxLot: {
-      label: '세금 단위',
-      alias: '세금 단위',
-      description: '같은 종목이라도 매수 시점과 가격별로 나눈 세금 계산용 묶음입니다.',
-    },
     reconciliation: {
       label: '데이터 일치 확인',
       alias: 'Reconciliation',
@@ -138,16 +98,6 @@ export const GLOSSARY_BY_LANG = {
       label: '원본 데이터 변경',
       alias: 'Drift',
       description: '수집 이후 원본 파일의 크기나 수정 시간이 달라져 다시 확인해야 하는 상태입니다.',
-    },
-    longTerm: {
-      label: '장기 보유',
-      alias: 'LT',
-      description: '세금상 장기 보유 요건을 충족한 수량 또는 세금 단위입니다.',
-    },
-    shortTerm: {
-      label: '단기 보유',
-      alias: 'ST',
-      description: '세금상 장기 보유 요건을 아직 충족하지 않은 수량 또는 세금 단위입니다.',
     },
     tickerless: {
       label: '종목 미연결 수익',
@@ -174,11 +124,6 @@ export const GLOSSARY_BY_LANG = {
       alias: 'Market Gap',
       description: '현재 시장별 비중과 설정한 목표 비중 사이의 차이입니다.',
     },
-    concentration: {
-      label: '집중도',
-      alias: 'Concentration',
-      description: '상위 종목이 포트폴리오에서 차지하는 비중입니다. 높을수록 소수 종목이 결과를 더 크게 좌우합니다.',
-    },
     inputIssues: {
       label: '입력 데이터 문제',
       alias: 'Input Issues',
@@ -189,16 +134,10 @@ export const GLOSSARY_BY_LANG = {
       alias: 'Wash Sale',
       description: '매도일 전후에 실질적으로 같은 증권을 다시 사면 손실 공제가 이연될 수 있는 세금 규칙입니다.',
     },
-    degraded: {
-      label: '일부 기능 저하',
-      alias: 'Degraded',
-      description: '필수 계산은 완료됐지만 선택 기능이나 일부 원본 갱신에 실패한 상태입니다.',
-    },
   },
 } as const
 
 export const GLOSSARY = GLOSSARY_BY_LANG.en
-export type GlossaryKey = keyof typeof GLOSSARY
 
 export function getGlossary(language: Language = 'en') {
   return GLOSSARY_BY_LANG[language]

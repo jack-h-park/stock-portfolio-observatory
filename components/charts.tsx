@@ -38,8 +38,9 @@ const TOOLTIP_SURFACE = {
   fontSize: 12,
 } as const
 
-// marketColor lives in lib/palette.ts with the other chart colours.
-// Re-exported here for the modules that import it from this one.
+// marketColor lives in lib/palette.ts with the other chart colours. This
+// re-export has no reader left and is kept for one release only; import it
+// from '@/lib/palette'.
 export { marketColor }
 
 const MARKET_BARS: Record<string, string> = Object.fromEntries(
@@ -296,7 +297,7 @@ const STACK_ORDER: readonly AssetClass[] = ['stocks', 'crypto', 'cash', 'pension
  * them: drawn as its own band on top, never folded into `total`, which stays the
  * maintainer's own.
  */
-export type StackedAssetPoint = { date: string; total: number; children?: number | null } & Record<AssetClass, number | null>
+type StackedAssetPoint = { date: string; total: number; children?: number | null } & Record<AssetClass, number | null>
 
 /**
  * Every asset class stacked, one area each, values already in the display
