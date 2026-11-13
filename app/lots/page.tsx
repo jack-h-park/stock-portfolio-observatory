@@ -2,7 +2,8 @@ import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
 import { DataTable } from '@/components/DataTable'
 import { FilterBar } from '@/components/FilterBar'
-import { Badge, Card, Label, marketTone } from '@/components/ui'
+import { Badge, Card, marketTone } from '@/components/ui'
+import { Total, TotalsStrip } from '@/components/layout'
 import { getTaxLots } from '@/lib/adapters/portfolio-db'
 import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
@@ -83,22 +84,11 @@ export default async function LotsPage({
               selected: selected[group.key],
             }))}
           />
-          <div className="grid gap-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption sm:grid-cols-3">
-            <div>
-              <Label>{copy.filtered}</Label>
-              <div className="font-medium tabular-nums text-ink">
-                {fmtNumber(filtered.length)} / {fmtNumber(rows.length)}
-              </div>
-            </div>
-            <div>
-              <Label>{copy.openQuantity}</Label>
-              <div className="font-medium tabular-nums text-ink">{fmtQuantity(totals.quantity, 2)}</div>
-            </div>
-            <div>
-              <Label>{copy.baseCost}</Label>
-              <div className="font-medium tabular-nums text-ink">{money(totals.cost, 'KRW')}</div>
-            </div>
-          </div>
+          <TotalsStrip columns={3}>
+            <Total label={copy.filtered} value={<>{fmtNumber(filtered.length)} / {fmtNumber(rows.length)}</>} />
+            <Total label={copy.openQuantity} value={fmtQuantity(totals.quantity, 2)} />
+            <Total label={copy.baseCost} value={money(totals.cost, 'KRW')} />
+          </TotalsStrip>
           <DataTable
             rows={filtered}
             sort={sort}

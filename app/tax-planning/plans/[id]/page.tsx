@@ -3,7 +3,8 @@ import { notFound } from 'next/navigation'
 import { getTaxPlanningLots } from '@/lib/adapters/portfolio-db'
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
-import { Badge, Card, Label, TextLink } from '@/components/ui'
+import { Badge, Card, TextLink } from '@/components/ui'
+import { Stat, StatStrip } from '@/components/layout'
 import { fmtDateShort, fmtDateTime, fmtKrw, fmtNumber, fmtPct, fmtSigned } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { buildMonthlySalePlanSet } from '@/lib/tax-planning'
@@ -97,19 +98,16 @@ export default async function SavedTaxPlanPage({
       >
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
           <div>
-            <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line-subtle bg-line-subtle md:grid-cols-4">
+            <StatStrip columns="md-4">
               {[
                 [copy.plannedSales, fmtKrw(saved.plan.summary.proceedsKrw)],
                 [copy.estimatedTax, fmtKrw(saved.plan.summary.estimatedTaxKrw)],
                 [copy.instructions, fmtNumber(progress.total)],
                 [copy.complete, fmtPct(progress.completionPct, { digits: 1 })],
               ].map(([label, value]) => (
-                <div key={label} className="bg-card px-3 py-3">
-                  <Label size="micro">{label}</Label>
-                  <div className="mt-1 text-title font-medium tabular-nums text-ink">{value}</div>
-                </div>
+                <Stat key={label} label={label} value={value} />
               ))}
-            </div>
+            </StatStrip>
             <div className="mt-4 h-2 overflow-hidden rounded-pill bg-line-subtle">
               <div className="h-full bg-success" style={{ width: `${progress.completionPct}%` }} />
             </div>
@@ -154,21 +152,21 @@ export default async function SavedTaxPlanPage({
         className="mb-5"
         action={<Badge tone={changed ? 'warning' : 'success'}>{changed ? copy.reviewChanges : copy.noMaterialChange}</Badge>}
       >
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line-subtle bg-line-subtle lg:grid-cols-4">
+        <StatStrip columns="lg-4">
           {[
             [copy.plannedSales, deltaLabel(drift.proceedsKrw, copy.noChange), drift.proceedsKrw],
             [copy.estimatedTax, deltaLabel(drift.estimatedTaxKrw, copy.noChange), -drift.estimatedTaxKrw],
             [copy.afterTaxCash, deltaLabel(drift.afterTaxKrw, copy.noChange), drift.afterTaxKrw],
             [copy.instructions, deltaLabel(drift.instructionCount, copy.noChange, (value) => fmtNumber(value)), -Math.abs(drift.instructionCount)],
           ].map(([label, value, toneValue]) => (
-            <div key={String(label)} className="bg-card px-3 py-3">
-              <Label size="micro">{label}</Label>
-              <div className={`mt-1 text-title font-medium tabular-nums ${Number(toneValue) > 0 ? 'text-success' : Number(toneValue) < 0 ? 'text-warning' : 'text-ink'}`}>
-                {value}
-              </div>
-            </div>
+            <Stat
+              key={String(label)}
+              label={label}
+              value={value}
+              tone={Number(toneValue) > 0 ? 'success' : Number(toneValue) < 0 ? 'warning' : 'neutral'}
+            />
           ))}
-        </div>
+        </StatStrip>
         <div className="mt-3 flex flex-col gap-2 text-label leading-relaxed text-ink-3 sm:flex-row sm:items-center sm:justify-between">
           <span>
             {copy.driftSummary(saved.asOfDate, livePlanSet.asOfDate, saved.policyVersion, policyState.policy.version)}

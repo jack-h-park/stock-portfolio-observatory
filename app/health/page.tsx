@@ -8,7 +8,7 @@ import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
 
 type HealthCopy = ReturnType<typeof getPageCopy<'health'>>
 import { routeMetadata, routeSection } from '@/lib/page-names'
-import { CardRow } from '@/components/layout'
+import { CardRow, MiniStat, MiniStatGrid } from '@/components/layout'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/health')
@@ -111,32 +111,20 @@ export default async function HealthPage() {
 
       <CardRow columns={3}>
         <Card title={copy.accountCoverage} info={copy.accountCoverageInfo} accent={accountCoverage.actionNeeded > 0} className="xl:col-span-3" action={<TextLink href="/data-ops#account-coverage">{copy.openUpdates}</TextLink>}>
-          <div className="grid grid-cols-3 gap-3 text-caption">
-            <div><div className="text-caption text-ink-3">{copy.actionNeeded}</div><div className="font-medium tabular-nums text-danger">{fmtNumber(accountCoverage.actionNeeded)}</div></div>
-            <div><div className="text-caption text-ink-3">{copy.dueSoon}</div><div className="font-medium tabular-nums text-warning">{fmtNumber(accountCoverage.dueSoon)}</div></div>
-            <div><div className="text-caption text-ink-3">{copy.current}</div><div className="font-medium tabular-nums text-success">{fmtNumber(accountCoverage.current)}</div></div>
-          </div>
+          <MiniStatGrid columns={3}>
+            <MiniStat label={copy.actionNeeded} value={fmtNumber(accountCoverage.actionNeeded)} tone="danger" />
+            <MiniStat label={copy.dueSoon} value={fmtNumber(accountCoverage.dueSoon)} tone="warning" />
+            <MiniStat label={copy.current} value={fmtNumber(accountCoverage.current)} tone="success" />
+          </MiniStatGrid>
           <div className="mt-3 text-label leading-relaxed text-ink-3">{copy.accountCoverageNote}</div>
         </Card>
         <Card title={copy.operationalStatus} info={copy.operationalStatusInfo} accent={issueCount > 0}>
-          <div className="grid grid-cols-2 gap-3 text-caption">
-            <div>
-              <div className="text-caption text-ink-3">{freshnessLabels.fresh}</div>
-              <div className="font-medium tabular-nums text-success">{fmtNumber(operational.summary.fresh)}</div>
-            </div>
-            <div>
-              <div className="text-caption text-ink-3">{freshnessLabels.stale}</div>
-              <div className="font-medium tabular-nums text-warning">{fmtNumber(operational.summary.stale)}</div>
-            </div>
-            <div>
-              <div className="text-caption text-ink-3">{freshnessLabels.drift}</div>
-              <div className="font-medium tabular-nums text-warning">{fmtNumber(operational.summary.drift)}</div>
-            </div>
-            <div>
-              <div className="text-caption text-ink-3">{freshnessLabels.missing}</div>
-              <div className="font-medium tabular-nums text-danger">{fmtNumber(operational.summary.missing)}</div>
-            </div>
-          </div>
+          <MiniStatGrid columns={2}>
+            <MiniStat label={freshnessLabels.fresh} value={fmtNumber(operational.summary.fresh)} tone="success" />
+            <MiniStat label={freshnessLabels.stale} value={fmtNumber(operational.summary.stale)} tone="warning" />
+            <MiniStat label={freshnessLabels.drift} value={fmtNumber(operational.summary.drift)} tone="warning" />
+            <MiniStat label={freshnessLabels.missing} value={fmtNumber(operational.summary.missing)} tone="danger" />
+          </MiniStatGrid>
           <div className="mt-3 text-label leading-relaxed text-ink-3">{copy.stalenessNote}</div>
         </Card>
 
@@ -186,26 +174,19 @@ export default async function HealthPage() {
           </EmptyState>
         ) : (
           <div className="space-y-4">
-            <div className="grid gap-3 text-caption sm:grid-cols-4">
-              <div>
-                <div className="text-caption text-ink-3">{copy.latestStart}</div>
-                <div className="font-medium tabular-nums text-ink">{fmtDateTime(latestRefresh.startedAt, language)}</div>
-              </div>
-              <div>
-                <div className="text-caption text-ink-3">{copy.duration}</div>
-                <div className="font-medium tabular-nums text-ink">{fmtDuration(latestRefresh.durationMs, language)}</div>
-              </div>
-              <div>
-                <div className="text-caption text-ink-3">{copy.completedSteps}</div>
-                <div className="font-medium tabular-nums text-ink">
-                  {fmtNumber(latestRefresh.steps.filter((step) => step.status === 'success').length)} / {fmtNumber(latestRefresh.steps.length)}
-                </div>
-              </div>
-              <div>
-                <div className="text-caption text-ink-3">{copy.totalRuns}</div>
-                <div className="font-medium tabular-nums text-ink">{fmtNumber(refreshRuns.length)}</div>
-              </div>
-            </div>
+            <MiniStatGrid columns="sm-4">
+              <MiniStat label={copy.latestStart} value={fmtDateTime(latestRefresh.startedAt, language)} />
+              <MiniStat label={copy.duration} value={fmtDuration(latestRefresh.durationMs, language)} />
+              <MiniStat
+                label={copy.completedSteps}
+                value={
+                  <>
+                    {fmtNumber(latestRefresh.steps.filter((step) => step.status === 'success').length)} / {fmtNumber(latestRefresh.steps.length)}
+                  </>
+                }
+              />
+              <MiniStat label={copy.totalRuns} value={fmtNumber(refreshRuns.length)} />
+            </MiniStatGrid>
 
             {latestRefresh.degradedSteps.length > 0 ? (
               <div className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-label leading-relaxed text-ink-2">

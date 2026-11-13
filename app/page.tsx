@@ -49,7 +49,7 @@ import { positionHref } from '@/lib/position-url'
 import { signClass, signTone } from '@/lib/tone'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata, routeSection } from '@/lib/page-names'
-import { CardRow, KpiBand } from '@/components/layout'
+import { CardRow, KpiBand, MiniStat, MiniStatGrid } from '@/components/layout'
 import { AssetViewLink } from '@/components/LanguageSwitcher'
 import { WashSaleBanner } from '@/components/WashSaleBanner'
 import { TrendRangeLinks } from '@/components/TrendRangeLinks'
@@ -437,20 +437,11 @@ export default async function OverviewPage({
               <div className="h-full bg-warning" style={{ width: `${termSegmentWidth(termShortValue)}%` }} />
               <div className="h-full bg-line" style={{ width: `${termSegmentWidth(termUnclassifiedValue)}%` }} />
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-3 text-caption">
-              <div>
-                <div className="text-ink-3">{copy.longTerm}</div>
-                <div className="font-medium tabular-nums text-ink">{money(termLongValue, 'KRW')}</div>
-              </div>
-              <div>
-                <div className="text-ink-3">{copy.shortTerm}</div>
-                <div className="font-medium tabular-nums text-ink">{money(termShortValue, 'KRW')}</div>
-              </div>
-              <div>
-                <div className="text-ink-3">{copy.unclassifiedTerm}</div>
-                <div className="font-medium tabular-nums text-ink">{money(termUnclassifiedValue, 'KRW')}</div>
-              </div>
-            </div>
+            <MiniStatGrid columns={3} spacing="mt-3">
+              <MiniStat label={copy.longTerm} value={money(termLongValue, 'KRW')} />
+              <MiniStat label={copy.shortTerm} value={money(termShortValue, 'KRW')} />
+              <MiniStat label={copy.unclassifiedTerm} value={money(termUnclassifiedValue, 'KRW')} />
+            </MiniStatGrid>
             <div className="mt-4 grid gap-2 text-caption">
               {termShortByMarket.map((row) => (
                 <div key={row.market} className="flex items-center justify-between gap-3">
