@@ -29,7 +29,7 @@ export function usePageLanguage() {
   return useContext(LanguageContext)
 }
 
-export function useCurrencyPreferences() {
+function useCurrencyPreferences() {
   return useContext(CurrencyContext)
 }
 

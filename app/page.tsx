@@ -582,7 +582,7 @@ export default async function OverviewPage({
               <LinkChip
                 href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}${includeChildren ? '' : '&children=1'}`}
                 active={includeChildren}
-                current="none"
+                ariaCurrent="none"
                 aria-label={childCopy.toggleAria(includeChildren)}
                 title={childCopy.toggleHint}
               >

@@ -1,6 +1,6 @@
 import { PageHeader } from '@/components/PageHeader'
 import { TaxPlanTimeline } from '@/components/TaxPlanTimeline'
-import { Badge, Button, Card, EmptyState, InfoTooltip, Label, Panel, SectionHeading, Signed, TextLink, marketTone } from '@/components/ui'
+import { Badge, Button, Card, EmptyState, HelpPopover, Label, Panel, SectionHeading, Signed, TextLink, marketTone } from '@/components/ui'
 import { getOperationalHealth, getOverview, getTaxPlanningLots, getWashSaleReview, getWrapperReview } from '@/lib/adapters/portfolio-db'
 import { WrapperEstimateNote } from '@/components/WrapperReviewCard'
 import { WashSaleBanner } from '@/components/WashSaleBanner'
@@ -175,7 +175,7 @@ export default async function TaxPlanningPage({
             <Label as="span" size="micro" className="mb-1.5 flex items-center">
               <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface text-micro text-ink">1</span>
               {copy.settings.schedulingRule}
-              <InfoTooltip align="left">{copy.settings.schedulingRuleInfo}</InfoTooltip>
+              <HelpPopover align="left">{copy.settings.schedulingRuleInfo}</HelpPopover>
             </Label>
             <Select name="master" defaultValue={selectedMasterStrategy} className="w-full">
               <option value="STAGED">{copy.settings.staged}</option>
@@ -189,7 +189,7 @@ export default async function TaxPlanningPage({
             <Label as="span" size="micro" className="mb-1.5 flex items-center">
               <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface text-micro text-ink">2</span>
               {copy.settings.executionWindow}
-              <InfoTooltip align="left">{copy.settings.executionWindowInfo}</InfoTooltip>
+              <HelpPopover align="left">{copy.settings.executionWindowInfo}</HelpPopover>
             </Label>
             <Select name="pace" defaultValue={executionMonths} className="w-full">
               {[12, 18, 24, 36, 48].map((months) => (

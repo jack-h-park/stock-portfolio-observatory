@@ -185,12 +185,13 @@ export function MiniStat({ label, value, tone = 'neutral' }: { label: ReactNode;
   )
 }
 
-const TOTALS_COLUMNS = { 3: 'sm:grid-cols-3', 4: 'sm:grid-cols-4', 5: 'sm:grid-cols-5' } as const
+const TOTALS_COLUMNS = { 'sm-3': 'sm:grid-cols-3', 'sm-4': 'sm:grid-cols-4', 'sm-5': 'sm:grid-cols-5' } as const
 
 /**
  * The totals above a list table. A sibling of the table, not a table footer:
  * the table renders an empty state when a filter matches nothing, and the
  * totals still have to show `0 / N` then.
+ * Repeats Panel's recipe (border, surface, padding) because grid classes must live in this file.
  */
 export function TotalsStrip({ columns, children }: { columns: keyof typeof TOTALS_COLUMNS; children: ReactNode }) {
   return (

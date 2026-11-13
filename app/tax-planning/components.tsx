@@ -181,6 +181,8 @@ export function MasterPlanOverview({
   )
 }
 
+const SCENARIO_TONE = { cheapest: 'success', other: 'warning' } as const
+
 export function MasterScenarioComparison({
   planSet,
   horizonYears,
@@ -247,8 +249,7 @@ export function MasterScenarioComparison({
                 </div>
                 <ProgressBar
                   pct={taxWidth}
-                  // Not a gain/loss sign: the cheapest scenario is marked, the rest warn.
-                  tone={scenarioRow.summary.estimatedTaxKrw !== minTax ? 'warning' : 'success'}
+                  tone={SCENARIO_TONE[scenarioRow.summary.estimatedTaxKrw === minTax ? 'cheapest' : 'other']}
                   height="sm"
                   spacing="mt-1.5"
                 />

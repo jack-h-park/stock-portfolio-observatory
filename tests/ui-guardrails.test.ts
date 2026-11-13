@@ -286,6 +286,18 @@ test('G11 catches a footnote written as a bare text-ink-3 paragraph', () => {
   assert.deepEqual(findBareFootnote('<p>{copy.note}</p>'), [])
 })
 
+test('G11 scans components/ but skips components/metric.tsx, which owns Note', () => {
+  type Check = { id: string; roots: string[]; exclude: string[]; find: (source: string, file: string) => Hit[] }
+  const g11 = (CHECKS as Check[]).find((c) => c.id === 'bare-footnote')!
+  const planted = '<p className="text-label text-ink-3">x</p>'
+  // The runner's own filter: a file under one of the roots, not in exclude.
+  const scan = (file: string) =>
+    g11.roots.some((root) => file.startsWith(`${root}/`)) && !g11.exclude.includes(file) ? g11.find(planted, file) : []
+  assert.deepEqual(scan('components/Planted.tsx').map((h) => h.file), ['components/Planted.tsx'])
+  assert.deepEqual(scan('app/planted/page.tsx').map((h) => h.file), ['app/planted/page.tsx'])
+  assert.deepEqual(scan('components/metric.tsx'), [])
+})
+
 test('G12 catches an English word in the Korean half of a copy module', () => {
   const module = [
     'export const page = defineCopy({',
@@ -410,7 +422,8 @@ test('the counted checks are registered in order with their scopes', () => {
   assert.deepEqual(byCode.G8.roots, ['app'])
   assert.ok(byCode.G8.include?.test('app/rebalance/settings/page.tsx'))
   assert.ok(!byCode.G8.include?.test('app/tax-planning/components.tsx'))
-  assert.deepEqual(byCode.G11.roots, ['app'])
+  assert.deepEqual(byCode.G11.roots, ['app', 'components'])
+  assert.deepEqual(byCode.G11.exclude, ['components/metric.tsx'])
   assert.equal(byCode.G11.include, null)
   assert.deepEqual(byCode.G12.roots, ['lib/ui-copy'])
   assert.equal(byCode.G12.include, null)

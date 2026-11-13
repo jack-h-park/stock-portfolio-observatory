@@ -28,14 +28,14 @@ export type ChipCurrent = 'true' | 'page' | 'none'
 
 /**
  * One link chip. Server component: the href is a precomputed string. A toggle
- * (current="none") carries no aria-current, and never aria-pressed, which an
+ * (ariaCurrent="none") carries no aria-current, and never aria-pressed, which an
  * <a> may not carry.
  */
 export function LinkChip({
   href,
   active,
   variant = 'info',
-  current = 'true',
+  ariaCurrent = 'true',
   title,
   'aria-label': ariaLabel,
   scroll = false,
@@ -44,7 +44,7 @@ export function LinkChip({
   href: string
   active: boolean
   variant?: ChipVariant
-  current?: ChipCurrent
+  ariaCurrent?: ChipCurrent
   title?: string
   'aria-label'?: string
   scroll?: boolean
@@ -57,7 +57,7 @@ export function LinkChip({
       scroll={scroll}
       title={title}
       aria-label={ariaLabel}
-      aria-current={active && current !== 'none' ? current : undefined}
+      aria-current={active && ariaCurrent !== 'none' ? ariaCurrent : undefined}
       className={`${classes.base} ${active ? classes.active : classes.inactive}`}
     >
       {children}
@@ -92,7 +92,7 @@ export function LinkChips<K extends string>({
   label?: string
 }) {
   const chips = items.map((item) => (
-    <LinkChip key={item.key} href={item.href} active={item.key === current} variant={variant} current={ariaCurrent} title={item.title}>
+    <LinkChip key={item.key} href={item.href} active={item.key === current} variant={variant} ariaCurrent={ariaCurrent} title={item.title}>
       {item.label}
     </LinkChip>
   ))

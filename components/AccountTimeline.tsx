@@ -8,7 +8,7 @@ import type { DateRange } from '@/lib/account-ranges'
  * across table cells, and a chart per cell would each pick its own.
  */
 
-export type TimelineAxis = { start: string; end: string }
+type TimelineAxis = { start: string; end: string }
 
 const DAY = 86_400_000
 

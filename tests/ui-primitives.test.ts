@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { CardRow, MiniStat, MiniStatGrid, Split, Stat, StatStrip, Total, TotalsStrip } from '@/components/layout'
 import { ProgressBar, ShareBar } from '@/components/bars'
 import { PositionCell } from '@/components/PositionCell'
-import { Callout, HeroAside, MetricField, Note, Panel, SectionHeading } from '@/components/ui'
+import { Badge, Callout, HeroAside, MetricField, Note, Panel, SectionHeading } from '@/components/ui'
 import { LinkChip, LinkChips } from '@/components/LinkChips'
 import { Tabs } from '@/components/Tabs'
 
@@ -155,18 +155,18 @@ test('MiniStat defaults to neutral ink', () => {
 
 const TOTALS = 'grid gap-3 rounded-md border border-line-subtle bg-surface px-3 py-2 text-caption'
 
-test('TotalsStrip columns={3}', () => {
-  const html = renderToStaticMarkup(h(TotalsStrip, { columns: 3 , children: 'x' }))
+test('TotalsStrip columns="sm-3"', () => {
+  const html = renderToStaticMarkup(h(TotalsStrip, { columns: 'sm-3', children: 'x' }))
   assert.equal(outerClass(html), `${TOTALS} sm:grid-cols-3`)
 })
 
-test('TotalsStrip columns={4}', () => {
-  const html = renderToStaticMarkup(h(TotalsStrip, { columns: 4 , children: 'x' }))
+test('TotalsStrip columns="sm-4"', () => {
+  const html = renderToStaticMarkup(h(TotalsStrip, { columns: 'sm-4', children: 'x' }))
   assert.equal(outerClass(html), `${TOTALS} sm:grid-cols-4`)
 })
 
-test('TotalsStrip columns={5}', () => {
-  const html = renderToStaticMarkup(h(TotalsStrip, { columns: 5 , children: 'x' }))
+test('TotalsStrip columns="sm-5"', () => {
+  const html = renderToStaticMarkup(h(TotalsStrip, { columns: 'sm-5', children: 'x' }))
   assert.equal(outerClass(html), `${TOTALS} sm:grid-cols-5`)
 })
 
@@ -212,22 +212,22 @@ for (const [name, variant, active, expected] of chipCases) {
   })
 }
 
-test('LinkChip current defaults to "true": aria-current only when active', () => {
+test('LinkChip ariaCurrent defaults to "true": aria-current only when active', () => {
   const on = anchorTag(renderToStaticMarkup(h(LinkChip, { href: '/x', active: true, children: 'C' })))
   const off = anchorTag(renderToStaticMarkup(h(LinkChip, { href: '/x', active: false, children: 'C' })))
   assert.equal(attr(on, 'aria-current'), 'true')
   assert.equal(attr(off, 'aria-current'), undefined)
 })
 
-test('LinkChip current="page" emits aria-current="page" when active', () => {
-  const on = anchorTag(renderToStaticMarkup(h(LinkChip, { href: '/x', active: true, current: 'page', children: 'C' })))
-  const off = anchorTag(renderToStaticMarkup(h(LinkChip, { href: '/x', active: false, current: 'page', children: 'C' })))
+test('LinkChip ariaCurrent="page" emits aria-current="page" when active', () => {
+  const on = anchorTag(renderToStaticMarkup(h(LinkChip, { href: '/x', active: true, ariaCurrent: 'page', children: 'C' })))
+  const off = anchorTag(renderToStaticMarkup(h(LinkChip, { href: '/x', active: false, ariaCurrent: 'page', children: 'C' })))
   assert.equal(attr(on, 'aria-current'), 'page')
   assert.equal(attr(off, 'aria-current'), undefined)
 })
 
-test('LinkChip current="none" emits no aria-current and no aria-pressed, and forwards aria-label and title', () => {
-  const tag = anchorTag(renderToStaticMarkup(h(LinkChip, { href: '/x', active: true, current: 'none', title: 'T', 'aria-label': 'A', children: 'C' })))
+test('LinkChip ariaCurrent="none" emits no aria-current and no aria-pressed, and forwards aria-label and title', () => {
+  const tag = anchorTag(renderToStaticMarkup(h(LinkChip, { href: '/x', active: true, ariaCurrent: 'none', title: 'T', 'aria-label': 'A', children: 'C' })))
   assert.equal(attr(tag, 'aria-current'), undefined)
   assert.equal(attr(tag, 'aria-pressed'), undefined)
   assert.equal(attr(tag, 'aria-label'), 'A')
@@ -246,6 +246,16 @@ test('LinkChips as="fragment" (default) renders bare chips, keyed by the caller'
   assert.equal((html.match(/<a /g) ?? []).length, 2)
   assert.ok(html.includes('aria-current="true"'))
   assert.ok(html.includes('title="Bee"'))
+})
+
+test('LinkChips ariaCurrent="page" variant="subtle" marks the active chip with page and the subtle classes', () => {
+  const html = renderToStaticMarkup(h(LinkChips, { items: [...ITEMS], current: 'b', ariaCurrent: 'page', variant: 'subtle' }))
+  const tags = html.match(/<a [^>]*>/g) ?? []
+  assert.equal(tags.length, 2)
+  assert.equal(attr(tags[0], 'aria-current'), undefined)
+  assert.equal(attr(tags[0], 'class'), `${CHIP_SUBTLE} border-transparent text-ink-3 hover:border-line hover:text-ink`)
+  assert.equal(attr(tags[1], 'aria-current'), 'page')
+  assert.equal(attr(tags[1], 'class'), `${CHIP_SUBTLE} border-line bg-surface font-medium text-ink`)
 })
 
 test('LinkChips as="nav" wraps in a labelled nav', () => {
@@ -454,8 +464,8 @@ for (const [name, props, expected] of NOTE_CASES) {
 }
 
 test('Note forwards title and keeps a Badge child inside the paragraph', () => {
-  const html = renderToStaticMarkup(h(Note, { row: true, spacing: 'below-4', title: 'why', children: h('span', null, 'b') }))
-  assert.match(html, /^<p class="[^"]*" title="why"><span>b<\/span><\/p>$/)
+  const html = renderToStaticMarkup(h(Note, { row: true, spacing: 'below-4', title: 'why', children: h(Badge, { tone: 'warning', children: 'b' }) }))
+  assert.match(html, /^<p class="[^"]*" title="why"><span class="[^"]*">b<\/span><\/p>$/)
 })
 
 // — SectionHeading ————————————————————————————————————————————————————————————

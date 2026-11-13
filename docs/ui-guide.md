@@ -55,15 +55,37 @@ a leading substring instead.
 
 | you want | use |
 |---|---|
-| a row of cards under the header | `<CardRow>` — `columns` 1 / 2 / 3 / `hero`, `spacing` below / above / none |
+| a row of cards under the header | `<CardRow>` — `columns` 1 / 2 / 3 / `hero` / `main` / `side-main`, `spacing` below / above / none |
 | the metric strip inside a hero card | `<KpiBand>` |
 | a link beside a heading | `<TextLink>` |
 | a submit button | `<SubmitButton>` — shows a pending state |
 | a table | `Table` with `size`, or `DataTable` |
+| a boxed strip of figures | `<StatStrip>` of `<Stat>`; `<MiniStatGrid>` of `<MiniStat>` for small tiles; `<TotalsStrip>` of `<Total>` above a list table |
+| a row of link chips (filters, scopes) | `<LinkChips>` or one `<LinkChip>` — a selection carries `aria-current`, a toggle does not |
+| tabs that change the page | `<Tabs>` — the current tab carries `aria-current="page"` |
+| an inset box inside a card | `<Panel>` — `pad`, `text`, `bordered`, `as="a"` for a link tile |
+| a toned message box | `<Callout>` — `tone`, `emphasis` strong / soft / rule |
+| a muted footnote | `<Note>` — `size`, `spacing`, `row`, `band`; phrasing content only |
+| a heading inside a page or card body | `<SectionHeading>` — `size`, `eyebrow`, `subtitle`, `layout` |
+| a share or progress bar | `<ShareBar>` for segments, `<ProgressBar>` for one percentage (clamped to 0–100) |
+| a position in a table cell | `<PositionCell>` — market badge and ticker link, with the name under them or alone |
+| a main column and a fixed side column inside a card | `<Split>` — `side`, `at`, `gap`, `sideFirst` |
 
 Do not write the grid class by hand. Fifty-one copies of five arrangements
 existed before `CardRow`, which is how a fifty-second comes to differ by one
 utility.
+
+Import the primitives from `@/components/ui`; it stays the import path and
+re-exports four modules: `components/card.tsx` (`Card`, `MetricHeroCard`,
+`EmptyState`, `HeroAside`, `Panel`, `Callout`), `components/metric.tsx`
+(`MetricField`, `Signed`, `Label`, `MetaRow`, `MetaItem`, `Note`,
+`SectionHeading`), `components/table.tsx` (`Table`, `Thead`, `Th`, `Tbody`,
+`Tr`, `Td`) and `components/controls.tsx` (`Button`, `SegmentedControl`,
+`TextLink`, `Badge`). The rest are imported from their own files:
+`components/layout.tsx` (`CardRow`, `Split`, `KpiBand` and the strips, the one
+file allowed to write `grid-cols-*`), `components/bars.tsx`,
+`components/PositionCell.tsx`, `components/LinkChips.tsx` and
+`components/Tabs.tsx`.
 
 ## All assets
 
@@ -198,7 +220,9 @@ state). Routes that only redirect (`/positions`, `/positions/KR`,
 and `/tax-planning` twice. Nor is the rebalance proposal detail
 (`/rebalance/proposals/[id]`): the sample state holds no proposal, so there is
 nothing for it to render. Its markup is pinned instead by the class-string
-assertions in `tests/ui-primitives.test.ts`, added in R2. `a11y-audit` and
+assertions in `tests/ui-primitives.test.ts`, added in R2. The saved-plan detail
+page with a real plan (`/tax-planning/plans/[id]`) is, like the proposal page,
+not in the net: only its not-found state is. `a11y-audit` and
 `mobile-audit` keep the same list in the same order; add a new page to all
 three.
 

@@ -115,7 +115,7 @@ export default async function CostBasisPage({
               selected: selected[group.key],
             }))}
           />
-          <TotalsStrip columns={5}>
+          <TotalsStrip columns="sm-5">
             <Total label={copy.filtered} value={<>{fmtNumber(filtered.length)} / {fmtNumber(rows.length)}</>} />
             <Total
               label={copy.totalValue}

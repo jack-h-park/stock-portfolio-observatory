@@ -1,22 +1,5 @@
-/* ================================================================
-   JHP Studio — J·P Theme  (v1.1, aligned with Brand Guidelines v1.0)
-
-   CSS scope: [data-theme="jp"]
-   Applied to:
-     - components/admin/layout/AdminPageShell.tsx   (all /admin/* pages)
-     - components/chat/ChatFullPage.tsx              (/chat route)
-     - components/chat/ChatFloatingWindow.tsx        (floating widget)
-
-   Source of truth: jhp-studio-design-system/project/colors_and_type.css
-   Shared brand tokens (--brand-*, --gradient-*) live in
-   styles/ai-design-system.css :root — available to both surfaces.
-
-   GUARDRAIL NOTE: This file is a theme token definition file, equivalent
-   in role to the :root block in ai-design-system.css. Color literals are
-   intentional here (they ARE the token values). This file is intentionally
-   excluded from featureCssFiles in scripts/check-css-guardrails.mjs.
-   Do not add feature-specific component selectors here.
-   ================================================================ */
+/* A copy of the J·P theme, not shared with any other repo: edit it here.
+   Live classes: .t-h2, .t-eyebrow, .t-emph-gradient, .ai-page-header, .jp-stagger. */
 
 /* ── Light mode neutrals (Notion-ink foundation) ───────────────── */
 [data-theme="jp"] {
@@ -55,7 +38,6 @@
   --shadow-card:     0 1px 2px rgba(15,15,15,0.04), 0 4px 12px rgba(15,15,15,0.05);
   --shadow-elevated: 0 10px 20px rgba(15,15,15,0.05);
   --shadow-popover:  0 18px 35px rgba(15,15,15,0.08);
-  --shadow-card-dark: 0 1px 2px rgba(0,0,0,0.30), 0 4px 12px rgba(0,0,0,0.40);
 
   /* 5.2 · Radius */
   --radius-sm:   6px;
@@ -65,46 +47,14 @@
   --radius-pill: 999px;
 
   /* 4.3 · Type scale */
-  --t-display: 40px;  --lh-display: 1.12;  --tr-display: -0.025em;
-  --t-h1:      28px;  --lh-h1:     1.18;  --tr-h1:      -0.020em;
   --t-h2:      22px;  --lh-h2:     1.25;  --tr-h2:      -0.015em;
-  --t-h3:      18px;  --lh-h3:     1.35;  --tr-h3:      -0.010em;
   --t-body:    14px;  --lh-body:   1.65;
-  --t-caption: 12px;  --lh-caption: 1.50;
   --t-eyebrow: 11px;  --tr-eyebrow: 0.10em;
-  --t-mono:    12px;  --lh-mono:    1.50;
 
   /* Font families — resolved from next/font CSS variables on the root element */
   --font-sans: var(--font-geist-sans, ui-sans-serif, system-ui, -apple-system, sans-serif);
   --font-mono: var(--font-geist-mono, ui-monospace, "SFMono-Regular", monospace);
 
-}
-
-/* ── Dark mode ──────────────────────────────────────────────────── */
-/* body.dark / body.dark-mode are set by DarkModeProvider — the jp wrapper
-   is a descendant, so we need these selectors in addition to the self/child
-   variants to correctly inherit the jp dark palette. */
-[data-theme="jp"].dark-mode,
-[data-theme="jp"] .dark-mode,
-[data-theme="jp"].dark,
-[data-theme="jp"] .dark,
-body.dark [data-theme="jp"],
-body.dark-mode [data-theme="jp"] {
-  --bg-page:        #191919;
-  --bg-surface:     #252525;
-  --bg-card:        #252525;
-  --text-primary:   #F2F0EA;
-  --text-secondary: #B4B2A9;
-  --text-tertiary:  #9B9A97;
-  --border-subtle:  rgba(255,255,255,0.10);
-  --border-default: #2A2A2A;
-
-  --accent-info:    #529CCA;
-  --accent-success: #97C459;
-  --accent-warning: #FFA344;
-  --accent-danger:  #FF7369;
-
-  --shadow-card: var(--shadow-card-dark);
 }
 
 /* ── Component overrides ─────────────────────────────────────────── */
@@ -177,15 +127,6 @@ body.dark-mode [data-theme="jp"] {
   [data-theme="jp"] .jp-stagger > *:nth-child(n+8) { animation-delay: 350ms; }
 }
 
-/* Card hover lift — opt-in via the `hover` prop on <Card>. Uses motion tokens. */
-[data-theme="jp"] .jp-card-hover {
-  transition: box-shadow var(--dur-3) var(--ease-std), transform var(--dur-3) var(--ease-std);
-}
-[data-theme="jp"] .jp-card-hover:hover {
-  box-shadow: var(--shadow-elevated);
-  transform: translateY(-1px);
-}
-
 /* Gradient primary button — one per surface for the primary CTA */
 
 /* ── Label / overline ───────────────────────────────────────────── */
@@ -199,22 +140,6 @@ body.dark-mode [data-theme="jp"] {
    inside [data-theme="jp"] surfaces. They respond to the theme toggle.
    ─────────────────────────────────────────────────────────────────── */
 
-[data-theme="jp"] .t-display {
-  font-family: var(--font-sans);
-  font-size: var(--t-display);
-  font-weight: 500;
-  line-height: var(--lh-display);
-  letter-spacing: var(--tr-display);
-  color: var(--text-primary);
-}
-[data-theme="jp"] .t-h1 {
-  font-family: var(--font-sans);
-  font-size: var(--t-h1);
-  font-weight: 500;
-  line-height: var(--lh-h1);
-  letter-spacing: var(--tr-h1);
-  color: var(--text-primary);
-}
 [data-theme="jp"] .t-h2 {
   font-family: var(--font-sans);
   font-size: var(--t-h2);
@@ -222,28 +147,6 @@ body.dark-mode [data-theme="jp"] {
   line-height: var(--lh-h2);
   letter-spacing: var(--tr-h2);
   color: var(--text-primary);
-}
-[data-theme="jp"] .t-h3 {
-  font-family: var(--font-sans);
-  font-size: var(--t-h3);
-  font-weight: 500;
-  line-height: var(--lh-h3);
-  letter-spacing: var(--tr-h3);
-  color: var(--text-primary);
-}
-[data-theme="jp"] .t-body {
-  font-family: var(--font-sans);
-  font-size: var(--t-body);
-  font-weight: 400;
-  line-height: var(--lh-body);
-  color: var(--text-primary);
-}
-[data-theme="jp"] .t-caption {
-  font-family: var(--font-sans);
-  font-size: var(--t-caption);
-  font-weight: 400;
-  line-height: var(--lh-caption);
-  color: var(--text-secondary);
 }
 [data-theme="jp"] .t-eyebrow {
   font-family: var(--font-sans);
@@ -253,19 +156,6 @@ body.dark-mode [data-theme="jp"] {
   letter-spacing: var(--tr-eyebrow);
   text-transform: uppercase;
   color: var(--text-secondary);
-}
-[data-theme="jp"] .t-mono {
-  font-family: var(--font-mono);
-  font-size: var(--t-mono);
-  font-weight: 400;
-  line-height: var(--lh-mono);
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
-}
-[data-theme="jp"] .t-mono-num {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum", "zero";
 }
 
 /* Gradient text emphasis — for a single key word per heading */

@@ -128,7 +128,6 @@ function SessionMoverList({ movers, notes, direction, market, copy }: { movers: 
 // wording lives in lib/ui-copy/pages/dailyBriefing.ts, where it can be tested.
 const TRADE_TONE: Record<string, Tone> = { bought: 'success', opened: 'success', sold: 'danger', closed: 'danger' }
 
-/** Section heading that separates the session band from the cumulative band. */
 function DatePicker({ dates, selected, copy }: { dates: string[]; selected: string; copy: PageCopy }) {
   const i = dates.indexOf(selected)
   // dates are newest-first, so "newer" is the lower index.
