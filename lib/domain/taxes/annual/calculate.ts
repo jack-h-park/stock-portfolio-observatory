@@ -1,18 +1,18 @@
-import { annualInputDigest, ANNUAL_REQUIRED_AMOUNTS, getAnnualComponentBlocker, validateAnnualEstimateInput, validateAnnualEstimateResult, type AnnualComponentResult, type AnnualEstimateResult } from './contracts'
+import { annualInputDigest, getAnnualRequiredAmounts, getAnnualComponentBlocker, validateAnnualEstimateInput, validateAnnualEstimateResult, type AnnualComponentResult, type AnnualEstimateResult } from './contracts'
 import { getAnnualRulePack } from './rules'
 import { calculateFederalComponent } from './us-federal'
 
 /** Pure component preview: no state, evidence reads, persistence, annual composition or comparison. */
 export function calculateAnnualComponents(value: unknown): AnnualEstimateResult {
   const input = validateAnnualEstimateInput(value)
-  const pack = getAnnualRulePack(input.taxYear)
+  const pack = getAnnualRulePack(input.taxYear, input.rulePackId)
   const components: AnnualComponentResult[] = input.requestedComponents.map(id => {
-    if (input.authority === 'US:federal' && (id === 'us.regular.ordinary' || id === 'us.niit')) return calculateFederalComponent(input, id)
+    if (input.authority === 'US:federal' && (id === 'us.regular.ordinary' || id === 'us.regular.qdcg' || id === 'us.niit')) return calculateFederalComponent(input, id)
     const blocker = getAnnualComponentBlocker(input, id) ?? { mode: 'unsupported' as const, reason: 'Component calculator is not implemented' }
     return {
       id, ...blocker, amountMinor: null,
       sourceRefs: [...pack.readiness[id].sourceIds],
-      inputRefs: ANNUAL_REQUIRED_AMOUNTS[id].filter(key => input.amounts[key]), trace: [],
+      inputRefs: getAnnualRequiredAmounts(input, id).filter(key => input.amounts[key]), trace: [],
     }
   })
   return validateAnnualEstimateResult({

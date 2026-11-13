@@ -1,6 +1,6 @@
 import inputSchema from '@/schemas/annual-tax-estimate-input.v1.schema.json'
 import resultSchema from '@/schemas/annual-tax-estimate-result.v1.schema.json'
-import { annualJsonDigest, getAnnualRulePack, getAnnualRuleStatus, type AnnualComponentId } from './rules'
+import { annualJsonDigest, getAnnualRulePack, getAnnualRuleStatus, type AnnualComponentId, type AnnualRulePackId } from './rules'
 import { assertAnnualSchema } from './schema'
 
 type Authority = 'US:federal' | 'KR:national' | 'KR:local'
@@ -8,23 +8,24 @@ type Currency = 'USD' | 'KRW'
 type Provenance = { reason: string; sourceRefs: string[]; reviewedAt?: string }
 export type AnnualAmount = Provenance & { minor: string; currency: Currency; origin: 'reviewed-input' | 'synthetic' | 'assumption' }
 export type AnnualEstimateInput = {
-  schemaVersion: 1; rulePackId: 'annual-2025-foundation-v1'; id: string; revision: number; taxYear: 2025
+  schemaVersion: 1; rulePackId: AnnualRulePackId; id: string; revision: number; taxYear: 2025
   taxUnit: { id: string; kind: 'individual' | 'joint'; ownerIds: string[] }
   authority: Authority; currency: Currency; taxType: 'income'; filingStatus: 'single' | 'mfj' | 'individual'
   requestedComponents: AnnualComponentId[]
   residency: Provenance & { state: 'reviewed-full-year' | 'unknown' | 'unsupported' }
   specialMethod: Provenance & { state: 'none-reviewed' | 'unknown' | 'unsupported' }
   regularTaxMethod: Provenance & { state: 'ordinary-reviewed' | 'qdcg-reviewed' | 'general-reviewed' | 'unknown' | 'unsupported' }
+  qdcgWorksheet?: Provenance & { state: 'schedule-d-reviewed' | 'distributions-only-reviewed' | 'unknown' | 'unsupported' }
   sources: { id: string; sha256: string; locator: string }[]
   amounts: Partial<Record<AmountKey, AnnualAmount>>
 }
-export type AmountKey = 'taxableIncome' | 'ordinaryDividends' | 'qualifiedDividends' | 'netLongTermGain' | 'netCapitalGain' | 'niitMagi' | 'netInvestmentIncome' | 'taxableBase'
+export type AmountKey = 'taxableIncome' | 'ordinaryDividends' | 'qualifiedDividends' | 'netLongTermGain' | 'netCapitalGain' | 'niitMagi' | 'netInvestmentIncome' | 'taxableBase' | 'capitalGainDistributions'
 export type AnnualComponentResult = Provenance & {
   id: AnnualComponentId; mode: 'computed' | 'reviewed-input' | 'not-applicable' | 'unknown' | 'unsupported'
   amountMinor: string | null; inputRefs: AmountKey[]; trace: { label: string }[]
 }
 export type AnnualEstimateResult = {
-  schemaVersion: 1; rulePackId: 'annual-2025-foundation-v1'; rulePackSha256: string; scenarioId: string; inputRevision: number; inputSha256: string; taxYear: 2025
+  schemaVersion: 1; rulePackId: AnnualRulePackId; rulePackSha256: string; scenarioId: string; inputRevision: number; inputSha256: string; taxYear: 2025
   taxUnitId: string; authority: Authority; currency: Currency; taxType: 'income'
   calculationScope: 'component'; status: 'components-only' | 'blocked'; annualTotal: null; comparisonEligible: false
   components: AnnualComponentResult[]
@@ -36,6 +37,12 @@ export const ANNUAL_REQUIRED_AMOUNTS: Readonly<Record<AnnualComponentId, readonl
   'us.niit': amountKeys('niitMagi', 'netInvestmentIncome'),
   'kr.global.calculated': amountKeys('taxableBase'), 'kr.local.calculated': amountKeys('taxableBase'),
 })
+/** Branch-dependent dependencies; explicit reviewed zero is still required where a line is blank. */
+export function getAnnualRequiredAmounts(input: AnnualEstimateInput, id: AnnualComponentId): readonly AmountKey[] {
+  if (id === 'us.regular.qdcg' && input.qdcgWorksheet?.state === 'distributions-only-reviewed') return amountKeys('taxableIncome', 'ordinaryDividends', 'qualifiedDividends', 'capitalGainDistributions')
+  return ANNUAL_REQUIRED_AMOUNTS[id]
+}
+
 function requireCondition(value: unknown, message: string): asserts value {
   if (!value) throw new Error(`Invalid annual contract: ${message}`)
 }
@@ -66,6 +73,10 @@ export function validateAnnualEstimateInput(value: unknown): AnnualEstimateInput
   provenance(input.specialMethod, sources, input.specialMethod.state === 'none-reviewed')
   provenance(input.regularTaxMethod, sources, input.regularTaxMethod.state.endsWith('-reviewed'))
   requireCondition(us ? input.regularTaxMethod.state !== 'general-reviewed' : !['ordinary-reviewed', 'qdcg-reviewed'].includes(input.regularTaxMethod.state), 'authority/method mismatch')
+  if (input.qdcgWorksheet) {
+    requireCondition(us, 'QDCG worksheet requires a federal scenario')
+    provenance(input.qdcgWorksheet, sources, input.qdcgWorksheet.state.endsWith('-reviewed'))
+  }
   for (const [key, amount] of Object.entries(input.amounts)) {
     requireCondition(us ? key !== 'taxableBase' : key === 'taxableBase', 'authority/base mismatch')
     requireCondition(amount.currency === input.currency, 'amount currency mismatch')
@@ -82,7 +93,7 @@ export function annualInputDigest(input: AnnualEstimateInput): string {
 
 /** Shared eligibility policy for computed assertions and calculators; input must be validated. */
 export function getAnnualComponentBlocker(input: AnnualEstimateInput, id: AnnualComponentId): { mode: 'unknown' | 'unsupported'; reason: string } | null {
-  const readiness = getAnnualRuleStatus(input.taxYear, id)
+  const readiness = getAnnualRuleStatus(input.taxYear, id, input.rulePackId)
   if (readiness.status !== 'reference-ready') return { mode: 'unsupported', reason: `Component rules blocked: ${readiness.blockers.join('; ')}` }
   for (const [name, fact, ready] of [
     ['residency', input.residency, 'reviewed-full-year'],
@@ -94,11 +105,21 @@ export function getAnnualComponentBlocker(input: AnnualEstimateInput, id: Annual
     const method = id === 'us.regular.ordinary' ? 'ordinary-reviewed' : id === 'us.regular.qdcg' ? 'qdcg-reviewed' : 'general-reviewed'
     if (input.regularTaxMethod.state !== method) return { mode: input.regularTaxMethod.state === 'unknown' ? 'unknown' : 'unsupported', reason: 'Unreviewed/unsupported regular-tax method' }
   }
-  if (id === 'us.regular.ordinary' && ['qualifiedDividends', 'netLongTermGain', 'netCapitalGain'].some(key => input.amounts[key as AmountKey] && BigInt(input.amounts[key as AmountKey]!.minor) > 0n)) {
+  if (id === 'us.regular.ordinary' && ['qualifiedDividends', 'netLongTermGain', 'netCapitalGain', 'capitalGainDistributions'].some(key => input.amounts[key as AmountKey] && BigInt(input.amounts[key as AmountKey]!.minor) > 0n)) {
     return { mode: 'unsupported', reason: 'Positive preferential-income amount contradicts ordinary-only scope' }
   }
-  const missing = ANNUAL_REQUIRED_AMOUNTS[id].filter(key => !input.amounts[key])
-  return missing.length ? { mode: 'unknown', reason: `Missing calculation base: ${missing.join(', ')}` } : null
+  if (id === 'us.regular.qdcg') {
+    const branch = input.qdcgWorksheet?.state
+    if (!branch || branch === 'unknown' || branch === 'unsupported') return { mode: branch === 'unsupported' ? 'unsupported' : 'unknown', reason: 'QDCG worksheet branch/eligibility is unreviewed or unsupported' }
+  }
+  const missing = getAnnualRequiredAmounts(input, id).filter(key => !input.amounts[key])
+  if (missing.length) return { mode: 'unknown', reason: `Missing calculation base: ${missing.join(', ')}` }
+  if (id === 'us.regular.qdcg') {
+    if (BigInt(input.amounts.qualifiedDividends!.minor) > BigInt(input.amounts.ordinaryDividends!.minor)) return { mode: 'unsupported', reason: 'Qualified dividends exceed ordinary dividends' }
+    const unused: AmountKey[] = input.qdcgWorksheet!.state === 'distributions-only-reviewed' ? ['netLongTermGain', 'netCapitalGain'] : ['capitalGainDistributions']
+    if (unused.some(key => input.amounts[key] && BigInt(input.amounts[key]!.minor) !== 0n)) return { mode: 'unsupported', reason: 'Conflicting Schedule D/distribution branch amounts' }
+  }
+  return null
 }
 
 export function validateAnnualEstimateResult(value: unknown, inputValue: AnnualEstimateInput): AnnualEstimateResult {
@@ -109,7 +130,7 @@ export function validateAnnualEstimateResult(value: unknown, inputValue: AnnualE
   requireCondition(result.taxYear === input.taxYear && result.taxUnitId === input.taxUnit.id && result.authority === input.authority && result.currency === input.currency && result.taxType === input.taxType, 'result scope mismatch')
   const ids = new Set(result.components.map(component => component.id))
   requireCondition(ids.size === result.components.length && ids.size === input.requestedComponents.length && input.requestedComponents.every(id => ids.has(id)), 'component set mismatch')
-  const pack = getAnnualRulePack(input.taxYear)
+  const pack = getAnnualRulePack(input.taxYear, input.rulePackId)
   requireCondition(result.rulePackId === input.rulePackId && result.rulePackSha256 === pack.contentSha256, 'rule-pack identity mismatch')
   const publicIds = new Set(pack.sources.map(source => source.id))
   const inputSourceIds = new Set(input.sources.map(source => source.id))
@@ -123,10 +144,10 @@ export function validateAnnualEstimateResult(value: unknown, inputValue: AnnualE
     }
     requireCondition(component.amountMinor !== null && BigInt(component.amountMinor) >= 0n, 'known component requires nonnegative amount')
     if (component.mode === 'computed') {
-      const readiness = getAnnualRuleStatus(input.taxYear, component.id)
+      const readiness = getAnnualRuleStatus(input.taxYear, component.id, input.rulePackId)
       const blocker = getAnnualComponentBlocker(input, component.id)
       requireCondition(!blocker, blocker?.reason ?? 'blocked calculation')
-      requireCondition(ANNUAL_REQUIRED_AMOUNTS[component.id].every(key => component.inputRefs.includes(key)), 'missing calculation base/trace input')
+      requireCondition(getAnnualRequiredAmounts(input, component.id).every(key => component.inputRefs.includes(key)), 'missing calculation base/trace input')
       requireCondition(component.trace.length && component.sourceRefs.length && component.sourceRefs.some(id => (readiness.sourceIds as string[]).includes(id)), 'computed component requires rule trace')
       provenance(component, publicIds, false)
     } else {

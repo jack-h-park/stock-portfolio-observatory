@@ -1,6 +1,6 @@
 # Personal finance implementation and operating status
 
-Updated November 12, 2026 (America/Los_Angeles). This is the current status of the [master plan](../superpowers/plans/2026-11-10-personal-finance-observatory.md). Code implementation, deployment, bounded private acceptance, and complete financial coverage are separate claims.
+Updated November 13, 2026 (America/Los_Angeles). This is the current status of the [master plan](../superpowers/plans/2026-11-10-personal-finance-observatory.md). Code implementation, deployment, bounded private acceptance, and complete financial coverage are separate claims.
 
 ## Delivery and acceptance
 
@@ -18,7 +18,7 @@ Updated November 12, 2026 (America/Los_Angeles). This is the current status of t
 | Asset dates and coverage | [#286](https://github.com/jack-h-park/stock-portfolio-observatory/pull/286) deployed on both asset overviews; nonzero cash dates, valuation methods, source review and freshness are separate | Declared statement period-end provenance and complete account coverage remain unconfirmed |
 | Annual recorded-tax summary | [#290](https://github.com/jack-h-park/stock-portfolio-observatory/pull/290) merged and deployed; operating fields and scoped links verified in English/Korean | No new tax records, structured return-reported prepayments/refund requests, annual estimate or settlement-completeness claim |
 | Annual tax rules/contracts | [#296](https://github.com/jack-h-park/stock-portfolio-observatory/pull/296) merged, not deployed | Pinned 2025 references and component-only contracts; no operating activation |
-| Annual component calculators | US ordinary/NIIT [pure library](../architecture/annual-tax-foundation.md) implemented for PR review, not merged/deployed | Reviewed bases and method gates; Korean rounding/preferential worksheet remain blocked; no CLI/UI |
+| Annual component calculators | US ordinary/NIIT [#297](https://github.com/jack-h-park/stock-portfolio-observatory/pull/297) merged, not deployed; eligible QDCG v2 [library](../architecture/annual-tax-foundation.md) implemented for PR review | Explicit reviewed method/branch and version; Korean rounding and special-rate methods remain blocked; no CLI/UI |
 | Annual total composition/comparison | [MVP design](../superpowers/specs/2026-11-12-annual-tax-estimation-mvp-design.md), not implemented | Independent components cannot be treated as a complete annual return or compared with recorded liability |
 | Liabilities / complete net worth | Deferred | Require separate design and evidenced asset-minus-liability acceptance |
 
@@ -53,7 +53,7 @@ The foundation's tax-route mobile/accessibility checks and bilingual read-only c
 
 ## Next work and preserved gates
 
-See [next increment scope](next-increment.md). The gold correction and coverage display are merged and deployed. The existing-record annual tax summary is also merged and deployed in #290. The rule/contract foundation #296 is merged without deployment. The current authorized work is the follow-up [US ordinary/NIIT calculator PR](../architecture/annual-tax-foundation.md), implemented as a pure component library. Its merge, deployment and CLI/UI activation remain unauthorized; composition/comparison and other methods remain later increments. Broader annual tax, liabilities, module extraction and repository/operational renames remain separately designed work packages.
+See [next increment scope](next-increment.md). The gold correction and coverage display are merged and deployed. The existing-record annual tax summary is also merged and deployed in #290. The rule/contract foundation #296 is merged without deployment. The US ordinary/NIIT library #297 is also merged without deployment. The current authorized work is the follow-up [eligible QDCG worksheet PR](../architecture/annual-tax-foundation.md), with explicit v2 selection and reviewed branch eligibility. Its merge/deployment and CLI/UI activation remain unauthorized; composition/comparison and other methods remain later increments. Broader annual tax, liabilities, module extraction and repository/operational renames remain separately designed work packages.
 
 Keep private web tax-history writes disabled. Each later record change needs a reviewed candidate, current revision, one writing authority and applicable execution authorization. Preserve approved-device access, original archives and existing CLI/briefing contracts. Repository rename, archive moves, deployment, restart and legacy removal remain independent execution decisions.
 

@@ -158,7 +158,10 @@
       "maxItems": 5
     },
     "rulePackId": {
-      "const": "annual-2025-foundation-v1"
+      "enum": [
+        "annual-2025-foundation-v1",
+        "annual-2025-qualified-gains-v2"
+      ]
     },
     "rulePackSha256": {
       "type": "string",

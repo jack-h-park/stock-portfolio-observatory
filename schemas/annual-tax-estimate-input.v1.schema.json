@@ -594,13 +594,66 @@
             "sourceRefs"
           ],
           "additionalProperties": false
+        },
+        "capitalGainDistributions": {
+          "type": "object",
+          "properties": {
+            "minor": {
+              "type": "string",
+              "pattern": "^(0|-?[1-9][0-9]*)(?![\\s\\S])",
+              "maxLength": 100
+            },
+            "currency": {
+              "enum": [
+                "USD",
+                "KRW"
+              ]
+            },
+            "origin": {
+              "enum": [
+                "reviewed-input",
+                "synthetic",
+                "assumption"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "sourceRefs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+              },
+              "minItems": 0,
+              "maxItems": 100,
+              "uniqueItems": true
+            },
+            "reviewedAt": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\\s\\S])"
+            }
+          },
+          "required": [
+            "minor",
+            "currency",
+            "origin",
+            "reason",
+            "sourceRefs"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [],
       "additionalProperties": false
     },
     "rulePackId": {
-      "const": "annual-2025-foundation-v1"
+      "enum": [
+        "annual-2025-foundation-v1",
+        "annual-2025-qualified-gains-v2"
+      ]
     },
     "regularTaxMethod": {
       "type": "object",
@@ -610,6 +663,44 @@
             "ordinary-reviewed",
             "qdcg-reviewed",
             "general-reviewed",
+            "unknown",
+            "unsupported"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "sourceRefs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])"
+          },
+          "minItems": 0,
+          "maxItems": 100,
+          "uniqueItems": true
+        },
+        "reviewedAt": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\\s\\S])"
+        }
+      },
+      "required": [
+        "state",
+        "reason",
+        "sourceRefs"
+      ],
+      "additionalProperties": false
+    },
+    "qdcgWorksheet": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "enum": [
+            "schedule-d-reviewed",
+            "distributions-only-reviewed",
             "unknown",
             "unsupported"
           ]
