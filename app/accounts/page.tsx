@@ -57,14 +57,14 @@ export default async function AccountsPage() {
             label={copy.accounts}
             value={fmtNumber(summary.total)}
             hint={copy.accountsHint(Object.entries(summary.byMarket).map(([market, count]) => copy.marketCount(market, fmtNumber(count))))}
-            valueClassName="text-metric"
+            size="metric"
           />
         </Card>
         <Card>
-          <MetricField label={copy.firstDate} value={fmtDate(summary.firstDate, language)} hint={copy.firstDateHint} valueClassName="text-title tabular-nums" />
+          <MetricField label={copy.firstDate} value={fmtDate(summary.firstDate, language)} hint={copy.firstDateHint} />
         </Card>
         <Card>
-          <MetricField label={copy.lastDate} value={fmtDate(summary.lastDate, language)} hint={copy.lastDateHint} valueClassName="text-title tabular-nums" />
+          <MetricField label={copy.lastDate} value={fmtDate(summary.lastDate, language)} hint={copy.lastDateHint} />
         </Card>
       </CardRow>
 

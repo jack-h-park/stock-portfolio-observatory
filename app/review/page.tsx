@@ -103,13 +103,11 @@ export default async function ReviewPage() {
           label={copy.positions}
           value={fmtNumber(review.totals.position_count)}
           hint={copy.accounts(fmtNumber(review.totals.account_count))}
-          valueClassName="text-title"
         />
         <MetricField
           label={copy.positiveNegative}
           value={`${fmtNumber(review.totals.positive_positions)} / ${fmtNumber(review.totals.negative_positions)}`}
           hint={copy.positionsByResult}
-          valueClassName="text-title"
         />
         <MetricField
           label={copy.unrealizedGl}
@@ -117,7 +115,6 @@ export default async function ReviewPage() {
           info={glossary.unrealizedGl.description}
           hint={fmtPct(totalReturnPct)}
           tone={signTone(review.totals.base_unrealized_gl)}
-          valueClassName="text-title"
         />
         <MetricField
           label={copy.freshnessIssuesLabel}
@@ -125,7 +122,6 @@ export default async function ReviewPage() {
           info={glossary.freshness.description}
           hint={copy.inputsNeedingReview}
           tone={issueCount > 0 ? 'warning' : 'success'}
-          valueClassName="text-title"
         />
       </div>
 

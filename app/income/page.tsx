@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
 import { TrendBarChart } from '@/components/charts'
-import { Badge, Card, EmptyState, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, HeroAside, MetricField, MetricHeroCard, marketTone } from '@/components/ui'
 import { getIncomeReview } from '@/lib/adapters/portfolio-db'
 import { EMPTY_VALUE, fmtNumber, fmtPct } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
@@ -61,49 +61,37 @@ export default async function IncomePage() {
               value={money(income.totals.ytd_base_income, income.currency)}
               hint={copy.latestMonth(latestMonthLabel)}
               tone="success"
-              valueClassName="text-title"
             />
             <MetricField
               label={copy.yieldOnMarket}
               value={fmtPct(income.totals.yield_on_market)}
               info={glossary.yieldOnMarket.description}
               hint={copy.yieldOnMarketHint}
-              valueClassName="text-title"
             />
             <MetricField
               label={copy.yieldOnCost}
               value={fmtPct(income.totals.yield_on_cost)}
               info={glossary.yieldOnCost.description}
               hint={copy.yieldOnCostHint}
-              valueClassName="text-title"
             />
           </KpiBand>
         </MetricHeroCard>
 
-        <Card title={copy.incomeCoverage} info={copy.incomeCoverageInfo}>
-          <div className="flex min-h-[16rem] flex-col justify-between gap-4">
-            <div className="space-y-4">
-              <MetricField
-                label={copy.nativeTotals}
-                value={`${money(income.totals.krw_income, 'KRW')} / ${money(income.totals.usd_income, 'USD')}`}
-                hint={copy.sourceRows(fmtNumber(income.totals.row_count))}
-                valueClassName="text-title"
-              />
-              <div className="h-px bg-line-subtle" />
-              <MetricField
-                label={copy.tickerlessRowsLabel}
-                value={fmtNumber(income.totals.tickerless_count)}
-                info={glossary.tickerless.description}
-                hint={copy.tickerlessHint}
-                tone={income.totals.tickerless_count ? 'warning' : 'success'}
-                valueClassName="text-metric"
-              />
-            </div>
-            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
-              {copy.readOrder}
-            </div>
-          </div>
-        </Card>
+        <HeroAside title={copy.incomeCoverage} info={copy.incomeCoverageInfo} note={copy.readOrder}>
+          <MetricField
+            label={copy.nativeTotals}
+            value={`${money(income.totals.krw_income, 'KRW')} / ${money(income.totals.usd_income, 'USD')}`}
+            hint={copy.sourceRows(fmtNumber(income.totals.row_count))}
+          />
+          <MetricField
+            label={copy.tickerlessRowsLabel}
+            value={fmtNumber(income.totals.tickerless_count)}
+            info={glossary.tickerless.description}
+            hint={copy.tickerlessHint}
+            tone={income.totals.tickerless_count ? 'warning' : 'success'}
+            size="metric"
+          />
+        </HeroAside>
       </CardRow>
 
       <CardRow columns={3}>

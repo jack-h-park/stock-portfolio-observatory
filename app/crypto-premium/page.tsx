@@ -1,7 +1,7 @@
 import { PortfolioMultiTrendChart } from '@/components/charts'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, MetricField, MetricHeroCard, Signed } from '@/components/ui'
+import { Badge, Card, EmptyState, HeroAside, MetricField, MetricHeroCard, Signed } from '@/components/ui'
 import { getCryptoPremium } from '@/lib/adapters/portfolio-db'
 import { EMPTY_VALUE, fmtDateTime, fmtNumber, fmtPct, fmtQuantity } from '@/lib/format'
 import { createMoneyFormatter } from '@/lib/currency'
@@ -84,47 +84,35 @@ export default async function CryptoPremiumPage() {
                   label={copy.premiumBearingValue}
                   value={money(premium.exposure.heldValueKrw)}
                   hint={copy.premiumBearingHint}
-                  valueClassName="text-title"
                 />
                 <MetricField
                   label={copy.valueFromPremium}
                   value={money(premium.exposure.premiumValueKrw)}
                   hint={copy.valueFromPremiumHint}
                   tone={signTone(premium.exposure.premiumValueKrw)}
-                  valueClassName="text-title"
                 />
                 <MetricField
                   label={copy.coinsCompared}
                   value={fmtNumber(premium.spot.length)}
                   hint={copy.withHistoryHint(String(premium.symbols.length))}
-                  valueClassName="text-title"
                 />
               </KpiBand>
             </MetricHeroCard>
 
-            <Card title={copy.readOrder} info={copy.readOrderInfo}>
-              <div className="flex min-h-[16rem] flex-col justify-between gap-4">
-                <div className="space-y-4">
-                  <MetricField
-                    label={copy.threshold}
-                    value={`±${NOTABLE_PREMIUM_PCT}%`}
-                    hint={copy.thresholdHint}
-                    valueClassName="text-metric"
-                  />
-                  <div className="h-px bg-line-subtle" />
-                  <MetricField
-                    label={copy.coverage}
-                    value={coverageStart && coverageEnd ? `${coverageStart} → ${coverageEnd}` : EMPTY_VALUE}
-                    info={glossary.coverage.description}
-                    hint={copy.coverageHint}
-                    valueClassName="text-title"
-                  />
-                </div>
-                <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
-                  {copy.readOrderNote}
-                </div>
-              </div>
-            </Card>
+            <HeroAside title={copy.readOrder} info={copy.readOrderInfo} note={copy.readOrderNote}>
+              <MetricField
+                label={copy.threshold}
+                value={`±${NOTABLE_PREMIUM_PCT}%`}
+                hint={copy.thresholdHint}
+                size="metric"
+              />
+              <MetricField
+                label={copy.coverage}
+                value={coverageStart && coverageEnd ? `${coverageStart} → ${coverageEnd}` : EMPTY_VALUE}
+                info={glossary.coverage.description}
+                hint={copy.coverageHint}
+              />
+            </HeroAside>
           </CardRow>
 
           <CardRow columns={3}>

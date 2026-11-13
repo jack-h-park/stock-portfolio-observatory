@@ -74,7 +74,7 @@ function PlanMetric({
         info={info}
         tone={tone}
         labelClassName="tracking-normal"
-        valueClassName="truncate text-title"
+        truncate
       />
     </div>
   )

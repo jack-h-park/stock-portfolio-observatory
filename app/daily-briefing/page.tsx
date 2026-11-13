@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Button, Card, EmptyState, Label, MetaItem, MetaRow, MetricField, MetricHeroCard, Signed, Table, Tbody, Td, Th, Thead, Tr, type Tone } from '@/components/ui'
+import { Badge, Button, Card, EmptyState, HeroAside, Label, MetaItem, MetaRow, MetricField, MetricHeroCard, Signed, Table, Tbody, Td, Th, Thead, Tr, type Tone } from '@/components/ui'
 import {
   getArchiveStatus,
   getBriefing,
@@ -308,13 +308,11 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                     value={session ? fmtPct(session.totals!.plPct, { signed: true }) : EMPTY_VALUE}
                     hint={session ? copy.priorValueHint(amount(session.totals!.priorMarketValue, m)) : noValue}
                     tone={session ? signTone(session.totals!.plPct) : 'neutral'}
-                    valueClassName="text-title"
                   />
                   <MetricField
                     label={copy.portfolioValue}
                     value={amount(totals.marketValue, m)}
                     hint={copy.positionCount(totals.positions)}
-                    valueClassName="text-title"
                   />
                   <MetricField
                     label={copy.unrealized}
@@ -322,34 +320,24 @@ export default async function DailyBriefingPage({ searchParams }: { searchParams
                     info={glossary.unrealizedGl.description}
                     hint={copy.unrealizedHint(fmtPct(totals.pct, { signed: true }), amount(totals.cost, m))}
                     tone={signTone(totals.gl)}
-                    valueClassName="text-title"
                   />
                 </KpiBand>
               </MetricHeroCard>
 
-              <Card title={copy.readOrder} info={copy.readOrderInfo}>
-                <div className="flex min-h-[16rem] flex-col justify-between gap-4">
-                  <div className="space-y-4">
-                    <MetricField
-                      label={copy.market}
-                      value={m.label}
-                      hint={copy.reportingCurrency(m.currency)}
-                      valueClassName="text-metric"
-                    />
-                    <div className="h-px bg-line-subtle" />
-                    <MetricField
-                      label={copy.costBasis}
-                      value={amount(totals.cost, m)}
-                      info={glossary.costBasis.description}
-                      hint={copy.standingVsCost}
-                      valueClassName="text-title"
-                    />
-                  </div>
-                  <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
-                    {copy.readOrderNote}
-                  </div>
-                </div>
-              </Card>
+              <HeroAside title={copy.readOrder} info={copy.readOrderInfo} note={copy.readOrderNote}>
+                <MetricField
+                  label={copy.market}
+                  value={m.label}
+                  hint={copy.reportingCurrency(m.currency)}
+                  size="metric"
+                />
+                <MetricField
+                  label={copy.costBasis}
+                  value={amount(totals.cost, m)}
+                  info={glossary.costBasis.description}
+                  hint={copy.standingVsCost}
+                />
+              </HeroAside>
             </CardRow>
 
             {session && !session.marketClosed && (

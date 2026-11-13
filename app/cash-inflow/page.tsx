@@ -231,17 +231,17 @@ export default async function CashInflowPage({
           {/* Unclassified money is a to-do, not income: no average and no comparison, only how much is left to sort. */}
           {filter === 'unclassified' ? (
             <KpiBand>
-              <MetricField label={copy.triage.count} value={fmtNumber(data.unclassifiedCount)} valueClassName="text-title" />
-              <MetricField label={copy.triage.groups} value={fmtNumber(unclassifiedGroups.length)} valueClassName="text-title" />
+              <MetricField label={copy.triage.count} value={fmtNumber(data.unclassifiedCount)} />
+              <MetricField label={copy.triage.groups} value={fmtNumber(unclassifiedGroups.length)} />
             </KpiBand>
           ) : (
             <KpiBand>
-              <MetricField label={copy.monthlyAverage} value={money(data.totals.monthlyAverage, data.currency)} valueClassName="text-title" />
+              <MetricField label={copy.monthlyAverage} value={money(data.totals.monthlyAverage, data.currency)} />
               {filter === 'All' ? (
                 <>
-                  <MetricField label={copy.kpi.salary} value={money(data.totals.salary, data.currency)} valueClassName="text-title" />
-                  <MetricField label={copy.kpi.investment} value={money(data.totals.investment, data.currency)} valueClassName="text-title" />
-                  <MetricField label={copy.kpi.investmentShare} value={fmtPct(fractionPct(data.totals.investmentShare), { nullText: copy.notAvailable })} valueClassName="text-title" />
+                  <MetricField label={copy.kpi.salary} value={money(data.totals.salary, data.currency)} />
+                  <MetricField label={copy.kpi.investment} value={money(data.totals.investment, data.currency)} />
+                  <MetricField label={copy.kpi.investmentShare} value={fmtPct(fractionPct(data.totals.investmentShare), { nullText: copy.notAvailable })} />
                 </>
               ) : null}
               <MetricField
@@ -249,7 +249,6 @@ export default async function CashInflowPage({
                 info={copy.changeInfo}
                 value={fmtPct(fractionPct(data.totals.change), { signed: true, nullText: copy.notAvailable })}
                 tone={data.totals.change == null ? undefined : signTone(data.totals.change)}
-                valueClassName="text-title"
               />
             </KpiBand>
           )}

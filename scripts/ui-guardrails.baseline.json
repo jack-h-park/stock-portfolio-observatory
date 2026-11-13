@@ -92,24 +92,5 @@
     "app/tax-planning/page.tsx": 1,
     "components/TaxPlanTimeline.tsx": 1,
     "components/ui.tsx": 1
-  },
-  "metric-value-size": {
-    "app/accounts/page.tsx": 3,
-    "app/cash-inflow/page.tsx": 7,
-    "app/crypto-premium/page.tsx": 5,
-    "app/daily-briefing/page.tsx": 5,
-    "app/data-map/page.tsx": 5,
-    "app/data-ops/page.tsx": 8,
-    "app/fx/page.tsx": 18,
-    "app/income/page.tsx": 5,
-    "app/net-worth/page.tsx": 2,
-    "app/page.tsx": 5,
-    "app/pension/page.tsx": 3,
-    "app/positions/[market]/[ticker]/page.tsx": 5,
-    "app/rebalance/page.tsx": 5,
-    "app/reconciliation/page.tsx": 5,
-    "app/review/page.tsx": 4,
-    "app/tax-planning/opportunity-analysis.tsx": 4,
-    "app/tax-settings/page.tsx": 5
   }
 }

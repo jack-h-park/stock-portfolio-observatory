@@ -1,5 +1,5 @@
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, Label, MetricField, MetricHeroCard, TextLink } from '@/components/ui'
+import { Badge, Card, HeroAside, Label, MetricField, MetricHeroCard, TextLink } from '@/components/ui'
 import { fmtDate, fmtNumber } from '@/lib/format'
 import { dbAvailable, getMeta, getWrapperReview } from '@/lib/adapters/portfolio-db'
 import { WrapperEstimateNote } from '@/components/WrapperReviewCard'
@@ -103,45 +103,33 @@ export default async function TaxSettingsPage({ searchParams }: { searchParams: 
               label={copy.hero.scenario}
               value={scenarioLabel(policy.activeScenario, copy)}
               hint={copy.hero.scenarioHint}
-              valueClassName="text-title"
             />
             <MetricField
               label={copy.hero.jurisdictions}
               value={fmtNumber(policy.jurisdictions.filter((item) => item.enabled).length)}
               hint={copy.hero.jurisdictionsHint}
-              valueClassName="text-title"
             />
             <MetricField
               label={copy.hero.updated}
               value={state.updatedAt ? fmtDate(state.updatedAt, language) : copy.hero.notAvailable}
               hint={copy.hero.updatedHint}
-              valueClassName="text-title"
             />
           </KpiBand>
         </MetricHeroCard>
 
-        <Card title={copy.readOrder.title} info={copy.readOrder.info}>
-          <div className="flex min-h-[16rem] flex-col justify-between gap-4">
-            <div className="space-y-4">
-              <MetricField
-                label={copy.readOrder.planningHorizon}
-                value={`${fmtNumber(policy.planningHorizonYears ?? 5)} ${copy.readOrder.years}`}
-                hint={copy.readOrder.planningHorizonHint}
-                valueClassName="text-metric"
-              />
-              <div className="h-px bg-line-subtle" />
-              <MetricField
-                label={copy.readOrder.baseCurrency}
-                value={policy.baseCurrency}
-                hint={copy.readOrder.baseCurrencyHint}
-                valueClassName="text-title"
-              />
-            </div>
-            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
-              {copy.readOrder.note}
-            </div>
-          </div>
-        </Card>
+        <HeroAside title={copy.readOrder.title} info={copy.readOrder.info} note={copy.readOrder.note}>
+          <MetricField
+            label={copy.readOrder.planningHorizon}
+            value={`${fmtNumber(policy.planningHorizonYears ?? 5)} ${copy.readOrder.years}`}
+            hint={copy.readOrder.planningHorizonHint}
+            size="metric"
+          />
+          <MetricField
+            label={copy.readOrder.baseCurrency}
+            value={policy.baseCurrency}
+            hint={copy.readOrder.baseCurrencyHint}
+          />
+        </HeroAside>
       </CardRow>
 
       <WrapperEstimateNote rows={wrapperReview} copy={wrapperReviewCopy} />

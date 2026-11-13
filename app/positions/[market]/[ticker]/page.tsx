@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { DataTable } from '@/components/DataTable'
 import { FreshnessInline } from '@/components/Freshness'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, EmptyState, Label, MetricField, MetricHeroCard, TextLink } from '@/components/ui'
+import { Badge, Card, EmptyState, HeroAside, Label, MetricField, MetricHeroCard, TextLink } from '@/components/ui'
 import { getOperationalHealth, getPositionDetail, type FreshnessItem } from '@/lib/adapters/portfolio-db'
 import { EMPTY_VALUE, fmtDateTime, fmtNumber, fmtPct, fmtQuantity, shortHash } from '@/lib/format'
 import { freshnessLabel } from '@/lib/freshness-text'
@@ -266,7 +266,6 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               value={money(detail.totals.native_cost, detail.currency)}
               info={glossary.costBasis.description}
               hint={glossary.costBasis.description}
-              valueClassName="text-title"
             />
             <MetricField
               label={copy.unrealized}
@@ -274,7 +273,6 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               info={glossary.unrealizedGl.description}
               hint={fmtPct(nativeUnrealizedPct)}
               tone={signTone(detail.totals.native_unrealized_gl)}
-              valueClassName="text-title"
             />
             <MetricField
               label={copy.baseUnrealized}
@@ -282,34 +280,24 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
               info={`${glossary.unrealizedGl.description} ${glossary.baseAmount.description}`}
               hint={baseUnrealizedPct == null ? glossary.baseAmount.description : `${fmtPct(baseUnrealizedPct)} · ${glossary.baseAmount.description}`}
               tone={signTone(detail.totals.base_unrealized_gl)}
-              valueClassName="text-title"
             />
           </KpiBand>
         </MetricHeroCard>
 
-        <Card title={copy.coverage} info={copy.coverageInfo}>
-          <div className="flex min-h-[16rem] flex-col justify-between gap-4">
-            <div className="space-y-4">
-              <MetricField
-                label={copy.quantity}
-                value={fmtQuantity(detail.totals.quantity, 4)}
-                hint={copy.holdingRowsHint(fmtNumber(detail.holdings.length))}
-                valueClassName="text-metric"
-              />
-              <div className="h-px bg-line-subtle" />
-              <MetricField
-                label={copy.dividends}
-                value={money(detail.dividendTotals.native_amount, detail.currency)}
-                hint={copy.rowCount(fmtNumber(detail.dividendTotals.count))}
-                tone="success"
-                valueClassName="text-title"
-              />
-            </div>
-            <div className="rounded-md bg-surface px-3 py-2 text-label leading-relaxed text-ink-3">
-              {copy.readOrderNote}
-            </div>
-          </div>
-        </Card>
+        <HeroAside title={copy.coverage} info={copy.coverageInfo} note={copy.readOrderNote}>
+          <MetricField
+            label={copy.quantity}
+            value={fmtQuantity(detail.totals.quantity, 4)}
+            hint={copy.holdingRowsHint(fmtNumber(detail.holdings.length))}
+            size="metric"
+          />
+          <MetricField
+            label={copy.dividends}
+            value={money(detail.dividendTotals.native_amount, detail.currency)}
+            hint={copy.rowCount(fmtNumber(detail.dividendTotals.count))}
+            tone="success"
+          />
+        </HeroAside>
       </CardRow>
 
       <CardRow columns={3}>
