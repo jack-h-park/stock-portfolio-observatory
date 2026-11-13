@@ -12,7 +12,7 @@ const summary = () => summarizeNetWorth({ stocksKrw: 100, cryptoKrw: 0, usdKrw: 
 ] })
 const readers = () => ({
   accounts: () => ({ rows: [
-    { status: 'action_needed', statementPeriodEnd: '2026-06-30' },
+    { status: 'action_needed', statementPeriodEnd: '2026-06-30', statementPeriodEvidence: { state: 'declared' as const, periodEnd: '2026-06-30', sources: [{ source: 'example.pdf', sha256: 'a'.repeat(64), page: 1 as const, start: '2026-01-01', end: '2026-06-30' }] } },
     // Legacy lot/transaction cutoff is deliberately not a declared period end.
     { status: 'missing', statementCoveredThrough: '2026-11-11' },
   ] }),
@@ -130,5 +130,66 @@ test('legacy KR as-of dates stay unconfirmed as declared periods, including tran
     const row = getAccountCoverage().rows[0]
     assert.equal(row.statementCoveredThrough, asOf)
     assert.equal(row.statementPeriodEnd, null)
+  }
+})
+
+test('actual account adapter connects declared receipts while pins and conflicting sources stay independent', async t => {
+  const fs = await import('node:fs'), path = await import('node:path'), { tmpdir } = await import('node:os')
+  const { default: Database } = await import('better-sqlite3'), { config } = await import('../config')
+  const root = fs.mkdtempSync(path.join(tmpdir(), 'period-receipts-'))
+  const oldDb = config.stockDbPath, oldDir = config.stockKrStatementsDir
+  t.after(() => { config.stockDbPath = oldDb; config.stockKrStatementsDir = oldDir; fs.rmSync(root, { recursive: true, force: true }) })
+  const file = path.join(root, 'synthetic.db'), db = new Database(file)
+  db.exec(`create table source_files (name text, filename text);
+    create table holdings (market text, brokerage text, account text, account_type text, as_of_date text, account_wrapper text);
+    create table transactions (market text, brokerage text, account text, account_type text, date text, source_system text);
+    create table tax_lots (market text, brokerage text, account text, account_type text, as_of_date text);
+    create table validation_checks (name text, detail text, status text);
+    insert into holdings values ('KR','Example','Synthetic','taxable','2026-11-01','taxable');`)
+  db.close(); config.stockDbPath = file; config.stockKrStatementsDir = root
+  const { getAccountCoverage } = await import('../lib/adapters/portfolio-db')
+  const source = { source: 'synthetic-statement.pdf', sha256: 'a'.repeat(64), page: 1, start: '2026-01-01', end: '2026-06-30' }
+  const metadata = { accounts: { Synthetic: '2026-12-31' }, statementPeriods: { schemaVersion: 1, accounts: { Synthetic: { state: 'declared', sources: [source] } } } }
+  fs.writeFileSync(path.join(root, 'as-of.json'), JSON.stringify(metadata))
+  let row = getAccountCoverage().rows[0]
+  assert.equal(row.statementCoveredThrough, '2026-12-31')
+  assert.equal(row.statementPeriodEnd, '2026-06-30')
+  assert.equal((row as any).statementPeriodEvidence.sources[0].source, 'synthetic-statement.pdf')
+  const review = collectAssetCoverage(summary(), { ...readers(), accounts: () => ({ rows: [row] }) })
+  assert.equal(review.statementPeriods?.newest, '2026-06-30')
+  for (const language of ['en', 'ko'] as const) {
+    const html = renderToStaticMarkup(React.createElement(AssetCoverageNote, { summary: summary(), language, review }))
+    assert.match(html, /synthetic-statement.pdf/)
+    assert.match(html, /2026-06-30/)
+    assert.doesNotMatch(html, /2026-12-31/)
+  }
+  metadata.statementPeriods.accounts.Synthetic.state = 'conflicting'
+  fs.writeFileSync(path.join(root, 'as-of.json'), JSON.stringify(metadata))
+  row = getAccountCoverage().rows[0]
+  assert.equal(row.statementPeriodEnd, null)
+  assert.equal((row as any).statementPeriodEvidence.state, 'conflicting')
+  const conflicted = collectAssetCoverage(summary(), { ...readers(), accounts: () => ({ rows: [row] }) })
+  assert.equal((conflicted as any).statementEvidence[0].state, 'conflicting')
+  assert.equal(conflicted.statementPeriods?.newest, null)
+  assert.equal(summary().totalKrw, 150)
+})
+
+test('an unbacked date field cannot create a declared-period range', () => {
+  const review = collectAssetCoverage(summary(), { ...readers(), accounts: () => ({ rows: [{ status: 'current', statementPeriodEnd: '2026-12-31' }] }) })
+  assert.equal(review.statementPeriods?.newest, null)
+  assert.equal(review.statementPeriods?.undated, 1)
+})
+
+test('declared, conflicting and unconfirmed period counts stay distinct in both languages', () => {
+  const evidence = (state: 'declared' | 'conflicting' | 'unconfirmed') => ({ state, periodEnd: state === 'declared' ? '2026-06-30' : null, sources: [] })
+  const review = collectAssetCoverage(summary(), { ...readers(), accounts: () => ({ rows: [
+    { status: 'current', statementPeriodEvidence: evidence('declared') },
+    { status: 'current', statementPeriodEvidence: evidence('conflicting') },
+    { status: 'current' },
+  ] }) })
+  assert.deepEqual((review as any).statementPeriodCounts, { declared: 1, conflicting: 1, unconfirmed: 1 })
+  for (const language of ['en', 'ko'] as const) {
+    const html = renderToStaticMarkup(React.createElement(AssetCoverageNote, { summary: summary(), language, review }))
+    assert.match(html, language === 'en' ? /1 declared · 1 conflicting · 1 unconfirmed/ : /확인 1 · 충돌 1 · 미확인 1/)
   }
 })

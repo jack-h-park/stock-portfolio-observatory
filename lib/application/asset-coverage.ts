@@ -1,7 +1,8 @@
+import type { StatementPeriodEvidence } from '@/lib/domain/assets/statement-periods'
 import type { NetWorth } from '@/lib/net-worth'
 
 type StatusRow = { status: string }
-type AccountRow = StatusRow & { statementPeriodEnd?: string | null }
+type AccountRow = StatusRow & { account?: string; statementPeriodEnd?: string | null; statementPeriodEvidence?: StatementPeriodEvidence }
 type FileSummary = { fresh: number; stale: number; drift: number; missing: number }
 export type CoverageReaders = {
   accounts: () => { rows: AccountRow[] }
@@ -34,11 +35,14 @@ export function collectAssetCoverage(summary: NetWorth, readers: CoverageReaders
   const accounts = read(readers.accounts), supplementary = read(readers.supplementary)
   const checks = read(readers.checks), files = read(readers.files)
   const nonzero = summary.cash.filter(row => row.balance !== 0)
+  const statementEvidence = accounts?.rows.map(row => ({ account: row.account ?? null, ...(row.statementPeriodEvidence ?? { state: 'unconfirmed' as const, periodEnd: null, sources: [] }) })) ?? null
   return {
     cash: { ...dateRange(nonzero.map(row => row.asOfDate)), nonzero: nonzero.length, zero: summary.cash.length - nonzero.length },
     accounts: counts(accounts?.rows),
     supplementary: counts(supplementary?.rows),
-    statementPeriods: accounts?.rows.length ? dateRange(accounts.rows.map(row => row.statementPeriodEnd)) : null,
+    statementPeriods: accounts?.rows.length ? dateRange(accounts.rows.map(row => row.statementPeriodEvidence?.state === 'declared' ? row.statementPeriodEvidence.periodEnd : null)) : null,
+    statementEvidence,
+    statementPeriodCounts: statementEvidence?.length ? { declared: statementEvidence.filter(row => row.state === 'declared').length, conflicting: statementEvidence.filter(row => row.state === 'conflicting').length, unconfirmed: statementEvidence.filter(row => row.state === 'unconfirmed').length } : null,
     failedChecks: checks?.length ? checks.filter(row => row.status !== 'pass').length : null,
     files: files?.summary ?? null,
   }

@@ -1,3 +1,4 @@
+import { readStatementPeriodEvidence, type StatementPeriodEvidence } from '@/lib/domain/assets/statement-periods'
 import { collectAssetCoverage, dateRange } from '@/lib/application/asset-coverage'
 import { getFinanceOverview } from '@/lib/application/finance-overview'
 import fs from 'node:fs'
@@ -361,6 +362,7 @@ export type AccountCoverage = {
   apiLagDays: number | null
   /** Only a declared statement period end; never inferred from lots or transactions. */
   statementPeriodEnd?: string | null
+  statementPeriodEvidence?: StatementPeriodEvidence
   statementCoveredThrough: string | null
   statementLagDays: number | null
   maxLagDays: number
@@ -3794,7 +3796,8 @@ export function getAccountCoverage(): AccountCoverageSummary {
     // so its coverage read as its last vest, weeks before the statement's own
     // end; and 토스증권's lots include fills bridged from the Open API, so its
     // "statement" date ran ahead of the statement.
-    const krStatementAsOf: Record<string, string> = readJson(path.join(config.stockKrStatementsDir, 'as-of.json'))?.accounts ?? {}
+    const krStatementMetadata = readJson(path.join(config.stockKrStatementsDir, 'as-of.json'))
+    const krStatementAsOf: Record<string, string> = krStatementMetadata?.accounts ?? {}
     const statementRows = conn
       .prepare(`select market, coalesce(brokerage, 'Unknown') as brokerage, account, account_type, max(as_of_date) as covered_through
                 from tax_lots group by market, brokerage, account, account_type`)
@@ -3858,6 +3861,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
       let coveredThrough = isoDate(holding?.covered_through ?? transaction?.covered_through)
       let apiCoveredThrough: string | null = null
       const statementCoveredThrough = isoDate(market === 'KR' ? krStatementAsOf[account] ?? statement?.covered_through : statement?.covered_through)
+      const statementPeriodEvidence = readStatementPeriodEvidence(market === 'KR' ? krStatementMetadata : null, account)
       let maxLagDays = market === 'US' ? 14 : market === 'CRYPTO' ? 35 : 35
       let method: AccountCoverage['method'] = 'inbox'
       let requiredArtifact = '최근 거래내역서'
@@ -3996,9 +4000,9 @@ export function getAccountCoverage(): AccountCoverageSummary {
         apiCoveredThrough,
         apiLagDays,
         statementCoveredThrough,
-        // Legacy as-of metadata can be pinned or inferred from transactions.
-        // Until declared-period provenance is retained, do not promote it.
-        statementPeriodEnd: null,
+        // Only parser-recorded receipts; legacy as-of pins/transaction fallbacks are independent.
+        statementPeriodEnd: statementPeriodEvidence.periodEnd,
+        statementPeriodEvidence,
         statementLagDays,
         maxLagDays,
         overdueDays,

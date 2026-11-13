@@ -1,6 +1,6 @@
 # Read-only annual component preview
 
-This PR adds the first executable preview surface for the annual component library. It is separate from the operating tax-history summary, investment-incremental planner and original evidence. No deployment or web activation is included.
+Merged PR #300 adds the first executable preview surface for the annual component library. It is separate from the operating tax-history summary, investment-incremental planner and original evidence. No deployment or web activation was included in that increment. See the [current installation observation](../operations/installation-status.md) for later source presence; no private annual-tax workflow acceptance is implied.
 
 From the repository checkout with dependencies installed:
 

@@ -39,11 +39,23 @@ export function AssetCoverageNote({ summary, language, review }: { summary: NetW
             <dl className="space-y-2">
               <div><dt className="text-label text-ink-3">{copy.accounts}</dt><dd>{statuses(review?.accounts ?? null)}</dd></div>
               <div><dt className="text-label text-ink-3">{copy.supplementary}</dt><dd>{statuses(review?.supplementary ?? null)}</dd></div>
-              <div><dt className="text-label text-ink-3">{copy.periods}</dt><dd className="tabular-nums">{range(review?.statementPeriods)}</dd></div>
+              <div><dt className="text-label text-ink-3">{copy.periods}</dt><dd className="tabular-nums">{range(review?.statementPeriods)}{review?.statementPeriodCounts ? <span className="block">{copy.periodCounts(review.statementPeriodCounts.declared, review.statementPeriodCounts.conflicting, review.statementPeriodCounts.unconfirmed)}</span> : null}</dd></div>
               <div><dt className="text-label text-ink-3">{copy.checks}</dt><dd>{review?.failedChecks ?? copy.unknown}</dd></div>
               <div><dt className="text-label text-ink-3">{copy.files}</dt><dd>{review?.files ? copy.fileCounts(review.files.fresh, review.files.stale, review.files.drift, review.files.missing) : copy.unknown}</dd></div>
             </dl>
             <p className="text-label text-ink-3">{copy.periodHint}</p>
+            {review?.statementEvidence?.length ? <details className="mt-2">
+              <summary className="cursor-pointer text-label font-medium">{copy.evidenceTitle}</summary>
+              <p className="mt-2 text-label text-ink-3">{copy.evidenceHint}</p>
+              <ul className="mt-2 space-y-2">
+                {review.statementEvidence.map((entry, index) => <li key={index} className="text-label break-words">
+                  <span className="font-medium">{entry.account ?? copy.unknown}</span>{' · '}{copy.periodState(entry.state)}
+                  {entry.sources.length ? <ul className="mt-1 space-y-1 pl-3">
+                    {entry.sources.map(source => <li key={source.source}>{source.source}{' · '}{copy.page(source.page)}{' · '}<span className="tabular-nums">{source.start} – {source.end}</span></li>)}
+                  </ul> : null}
+                </li>)}
+              </ul>
+            </details> : null}
           </div>
         </CardRow>
         <p className="mt-3 text-label text-ink-3">{copy.freshnessHint}</p>
