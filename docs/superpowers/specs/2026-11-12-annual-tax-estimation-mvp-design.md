@@ -1,7 +1,7 @@
 # KR/US annual tax estimation MVP design
 
 **Date:** November 12, 2026 (America/Los_Angeles)
-**Status:** The owner selected finalized **2025** rules and authorized the first rule-pack/input/component-result contract PR. That bounded foundation is implemented for review; see [implementation boundary](../../architecture/annual-tax-foundation.md) and [execution plan](../plans/2026-11-12-annual-tax-rule-contracts.md). Calculators, composition/comparison, California and UI integration below remain proposed later increments. Merge, deployment, configuration and financial-data changes are not authorized.
+**Status:** The owner selected finalized **2025** rules and authorized the first rule-pack/input/component-result contract PR. That bounded foundation is merged in #296 without deployment, and the owner separately authorized the follow-up US ordinary/NIIT calculator PR (implemented as a pure library for review); see [implementation boundary](../../architecture/annual-tax-foundation.md) and [execution plan](../plans/2026-11-12-annual-tax-rule-contracts.md). Other calculators, composition/comparison, California and UI integration below remain proposed later increments. Merge, deployment, configuration and financial-data changes are not authorized.
 **Parent:** [Observatory design](2026-11-10-personal-finance-observatory-design.md) and [P5 program](../plans/2026-11-10-personal-finance-observatory.md).
 **Operating baseline:** [#290](https://github.com/jack-h-park/stock-portfolio-observatory/pull/290), merge `862f968`, includes the deployed annual recorded-tax summary. The owner-accepted final historical return package is **not** a test oracle, extraction target or investigation task for this design.
 
@@ -131,7 +131,7 @@ Keep pure jurisdiction calculations separate from orchestration and existing inv
 - `composeAnnualEstimate(components, reviewedCoverage)` applies only the selected form-boundary contract and returns a known annual result or explicit blockers.
 - `compareAnnualEstimateToHistory(estimate, historySelection)` is read-only and applies section 7's additional gates.
 
-Suggested future units: `lib/domain/taxes/annual/{input,rules,us-federal,kr-global,kr-local,california}.ts` and `lib/application/annual-tax-estimate.ts`, plus synthetic fixtures. These are proposals only; no modules, schemas or routes are created by this documentation task.
+Suggested future units: `lib/domain/taxes/annual/{input,rules,us-federal,kr-global,kr-local,california}.ts` and `lib/application/annual-tax-estimate.ts`, plus synthetic fixtures. The rule/contract and US ordinary/NIIT library boundaries are now implemented in their scoped increments. Other units remain proposals; no route, writer or operating integration is activated.
 
 Reuse native `Money`, tax-unit/evidence identifiers and history read projections. Do not reuse the current `estimateUsCapitalGainTax` entry point as the annual calculator: its incremental/state/FTC assumptions and projected rule bases have a different contract. Any reuse of a low-level helper requires separate reference-case proof without modifying existing planner results.
 
@@ -180,7 +180,7 @@ The first rule/contract increment adds synthetic contract and source-integrity t
 4. **CA extension and read-only presentation PRs:** add only after state-specific rule/credit boundary tests; preserve unrelated services and existing access controls.
 5. **Separate operational acceptance:** only after authorization, preview a reviewed scenario, verify writer/backup/isolation and existing-history parity, then separately authorize deployment. No request to revisit the accepted final historical return package is implied; any future private validation needs its own scope.
 
-No dates are promised. Release blockers are unresolved rounding/table provenance, unsupported applicable tax methods, unreviewed comparison mappings, incomplete input coverage, financial regression or access/write-boundary regression. Finalized 2025 rules first is the owner decision; only the first rule-pack/input/component-result contract increment is authorized; later calculator and composition scope remains proposed for review. Later years, automatic deductions/credits, broader filing profiles and cross-border engines require new scope decisions.
+No dates are promised. Release blockers are unresolved rounding/table provenance, unsupported applicable tax methods, unreviewed comparison mappings, incomplete input coverage, financial regression or access/write-boundary regression. Finalized 2025 rules first is the owner decision; the first rule/contract increment is merged and the follow-up US ordinary/NIIT calculator PR is authorized. Other calculator and composition scope remains proposed for review. Later years, automatic deductions/credits, broader filing profiles and cross-border engines require new scope decisions.
 
 ## 12. Official source register
 

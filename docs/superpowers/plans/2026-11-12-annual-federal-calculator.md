@@ -49,20 +49,22 @@
 
 **Interfaces:** `calculateAnnualComponents(value: unknown): AnnualEstimateResult` validates input, computes supported requested federal components, emits explicit unknown/unsupported results for blocked methods/profiles/authorities, validates the resulting contract and returns an isolated result. No I/O or runtime state reads. Registry calculation availability becomes true only for implemented ordinary/NIIT components; source readiness is unchanged.
 
-- [ ] Write failing tests for independent partial output, unknown/missing versus known zero, unsupported methods/Korean scope, invalid scope/year rejection, immutable input/result copies and deterministic hash/trace/provenance.
-- [ ] Run focused tests; expected missing orchestrator/failing feature assertion.
-- [ ] Implement orchestration with component-only scope, null annual total, false comparison eligibility, exact source/input identities and traces identifying synthetic/assumed bases. No reviewed/manual component fabrication.
-- [ ] Update availability tests to distinguish implemented library from merged/deployed/operating availability. Preserve blocked rule readiness and pinned reference digest.
-- [ ] Run focused/full tests, typecheck, lint, guardrails and isolated sample build; expected green. Commit.
+- [x] Write failing tests for independent partial output, unknown/missing versus known zero, unsupported methods/Korean scope, invalid scope/year rejection, immutable input/result copies and deterministic hash/trace/provenance.
+- [x] Run focused tests; expected missing orchestrator/failing feature assertion.
+- [x] Implement orchestration with component-only scope, null annual total, false comparison eligibility, exact source/input identities and traces identifying synthetic/assumed bases. No reviewed/manual component fabrication.
+- [x] Update availability tests to distinguish implemented library from merged/deployed/operating availability. Preserve blocked rule readiness and pinned reference digest.
+- [x] Run focused/full tests, typecheck, lint, guardrails and isolated sample build; expected green. Commit.
 
 ## Task 3: Review, status and PR
 
 **Files:** `docs/architecture/annual-tax-foundation.md`, product status/support/next-increment docs, MVP design and this plan.
 
-- [ ] Record #296 as merged but not deployed; calculator implementation is a review-branch library only. No annual-total, operating web or settlement claim.
-- [ ] Cross-check public source identities and synthetic expected outputs independently; check no private source identifiers enter git. Record any rulings/limitations in the private ledger and public boundary documentation.
-- [ ] Perform a fresh whole-branch review, resolve material issues with red/green tests, and verify protected operation/source hashes read-only.
-- [ ] Verify changed Markdown links and clean committed tree. Push/open the calculator PR and confirm exact-head CI; leave it unmerged and undeployed. Preserve worktree while its PR remains active.
+- [x] Record #296 as merged but not deployed; calculator implementation is a review-branch library only. No annual-total, operating web or settlement claim.
+- [x] Cross-check public source identities and synthetic expected outputs independently; check no private source identifiers enter git. Record any rulings/limitations in the private ledger and public boundary documentation.
+- [x] Perform a fresh whole-branch review, resolve material issues with red/green tests, and verify protected operation/source hashes read-only.
+- [x] Verify changed Markdown links and the committed tree.
+
+**Delivery gate:** Push/open the calculator PR after these checks and confirm exact-head CI. External delivery state is tracked in the PR and private receipt. Leave it unmerged and undeployed; preserve the worktree while its PR remains active.
 
 ## Later separately scoped work
 
