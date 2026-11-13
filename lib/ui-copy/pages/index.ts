@@ -1,3 +1,4 @@
+import { annualTaxSummary } from '@/lib/ui-copy/pages/annualTaxSummary'
 import { assetCoverage } from '@/lib/ui-copy/pages/assetCoverage'
 import { taxSettings } from '@/lib/ui-copy/pages/taxSettings'
 import { taxHistory } from '@/lib/ui-copy/pages/taxHistory'
@@ -31,6 +32,7 @@ import { assetEvents } from '@/lib/ui-copy/pages/assetEvents'
 import { washSale } from '@/lib/ui-copy/pages/washSale'
 
 export const PAGE_COPY = {
+  annualTaxSummary,
   assetCoverage,
   taxHistory,
   taxSettings,

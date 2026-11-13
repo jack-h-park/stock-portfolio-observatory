@@ -29,7 +29,7 @@ Asset ownership, account regime, economic exposure, and tax-unit membership are 
 
 Automated trading, tax filing/payment, general budgeting, universal tax support, and multi-user SaaS are outside this expansion. The target product name does not authorize a GitHub rename, archive move, or operational restart.
 
-The next bounded work is [historical gold correctness followed by coverage explanations](next-increment.md). All-assets entry and branding are already implemented; the remaining work is operating acceptance and specific gaps, not another stock-to-assets rewrite.
+Historical gold correctness and coverage explanations are operating. The next bounded work is [a read-only annual summary of existing tax records](next-increment.md), implemented on the review branch and not deployed. All-assets entry and branding are already implemented; the remaining work is operating acceptance and specific gaps, not another stock-to-assets rewrite.
 
 ## References
 

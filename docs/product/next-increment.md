@@ -1,6 +1,6 @@
 # Next Personal Finance Observatory increments
 
-**Status:** First increment merged in [#283](https://github.com/jack-h-park/stock-portfolio-observatory/pull/283), not deployed. Second increment authorized and implemented on a review branch, not deployed. Updated November 12, 2026 (America/Los_Angeles). Deployment and financial-data mutation require separate authorization.
+**Status:** Gold correction [#283](https://github.com/jack-h-park/stock-portfolio-observatory/pull/283) and coverage display [#286](https://github.com/jack-h-park/stock-portfolio-observatory/pull/286) are merged and deployed. The existing-record annual tax summary is authorized and implemented on this review branch, not deployed. Updated November 12, 2026 (America/Los_Angeles). Deployment and financial-data mutation require separate authorization.
 
 The [operating status](implementation-status.md) records the completed foundation and bounded adoption. The read-only review established the immediate priority: resolve the historical gold calculation gap before expanding the overview or annual tax engine. Private examples, account inventory, dates, balances and evidence remain in the operator's private review.
 
@@ -22,7 +22,7 @@ Likely files: `lib/adapters/portfolio-db.ts`, `lib/net-worth.ts`, their existing
 
 Out of scope: rewriting source statements, refreshing prices, reimporting tax history, changing asset classifications, applying transactions, renaming repositories or enabling web writes. Deployment requires its own applicable authorization and a read-only operating recheck.
 
-Correction boundary: unknown quantities and oversold account histories remain null; missing purchase basis blocks cost fallback only for unknown lots still open. A known closed account remains zero even without price/basis. An unresolved account makes that date's gold class unknown rather than reporting an unlabeled partial gold total. The shared matcher and investment/tax calculations are unchanged. The service is still running the pre-correction code until separately authorized deployment.
+Correction boundary: unknown quantities and oversold account histories remain null; missing purchase basis blocks cost fallback only for unknown lots still open. A known closed account remains zero even without price/basis. An unresolved account makes that date's gold class unknown rather than reporting an unlabeled partial gold total. The shared matcher and investment/tax calculations are unchanged. The correction is operating following the separately authorized #286 deployment, with independent FIFO and post-sale web checks.
 
 ## Second PR: explain the coverage behind current assets
 
@@ -44,10 +44,16 @@ Both asset overviews share a disclosure that separates self-owned nonzero cash d
 
 Configured brokerage/crypto and supplementary coverage, validation failures and file freshness are independent signals and may include other owners; they are not a self-only inventory or completeness percentage. An unavailable or empty coverage/check reader remains unconfirmed. Declared statement period ends remain unconfirmed in this increment: existing KR as-of metadata can be overridden or inferred from transactions, and does not retain declared-period provenance. Neither it nor legacy lot/transaction dates is promoted to a declared period end. A later provenance-preserving extraction change can supply those dates. Read-only links lead to existing review screens. No source acquisition, ingest, classification change or web write is added.
 
-The second increment is not deployed. Observation dates describe evidence used by the existing valuation; they do not certify current market quotes, full statement reconciliation or complete account coverage.
+The second increment is deployed. Observation dates describe evidence used by the existing valuation; they do not certify current market quotes, full statement reconciliation or complete account coverage.
+
+## Current PR: annual summary of existing tax records
+
+The overview replaces record counts with year-by-year obligation amounts and scoped links. Tax unit, authority, tax type and currency remain separate; no combined monetary total is added. The selected liability must have a current usable evidence-linked basis. Payments, withholding, refund receipts and reversals are separated, with interest, penalties and signed noncash adjustments outside principal. Only the allocated shares of reviewed, evidence-linked settlement events enter recorded amounts. Missing categories and unknown balances remain unconfirmed, while excluded allocations, missing dates and unallocated events are visible.
+
+This is a read-only projection of the existing history, independent of the portfolio DB. The schema, importer, state, evidence and write settings do not change. The implementation is on the review branch, not merged or deployed. Synthetic tests cover cross-year allocations, stale/submitted bases, missing review/evidence, deleted rows, large integer amounts and bilingual empty/error views.
 
 ## Later increments
 
-After those two increments, consider structured return-reported payments/refund requests and more useful tax summary links. Keep requested refunds distinct from actual receipts and annual return liability distinct from investment-incremental estimates. A complete annual tax calculator, liabilities/net worth, broader parser coverage and repository/path renames retain their own design and acceptance gates from the [master plan](../superpowers/plans/2026-11-10-personal-finance-observatory.md).
+After the existing-record summary, consider structured return-reported payments/refund requests. Keep requested refunds distinct from actual receipts and annual return liability distinct from investment-incremental estimates. A complete annual tax calculator, liabilities/net worth, broader parser coverage and repository/path renames retain their own design and acceptance gates from the [master plan](../superpowers/plans/2026-11-10-personal-finance-observatory.md).
 
 This review does not reopen the owner's accepted final return package or require further tax investigation before the asset work can proceed.

@@ -29,3 +29,9 @@ If a file moved, request a matching-document search on its record page. Searches
 `FINANCE_STATE_WRITABLE=0` is the private default. Enable writes only on the application host after confirming backup coverage and restore. Source push does not carry the state root. A writer lock is not automatically stolen; inspect the recorded PID and active processes before manually recovering a stale lock. Preserve the file and backup before recovery.
 
 Follow [backup and restore](finance-state-backup-and-restore.md) and [the cutover checklist](personal-finance-cutover.md). Sample state is disposable and regenerated only inside its owned sample root.
+
+## Existing-record annual summary
+
+The review-branch overview adds a year-by-year summary of existing obligations, keeping tax units, authorities, tax types and currencies separate. It does not calculate annual tax or import any new amount. A selected liability is shown only for a usable current basis with evidence references. Recorded payments, withholding, refund receipts and reversals use reviewed events and evidence references on both event and allocation; only that obligation's allocated share is counted. Categories without qualifying records remain unknown, not zero. Interest, penalties and noncash credits/adjustments are signed and separate from principal. Adjustment subtotals remain unavailable when their evidence references are incomplete. Reconciliation balances remain unavailable when the existing reconciliation cannot confirm them.
+
+Evidence references are not a fresh verification of file bytes or authority posting. Missing event dates are labeled; allocation to an obligation year does not establish a payment-year date. Unallocated amounts remain outside obligation rows. Tax-unit scope can include owners outside the self-owned asset total. Requested refunds and return-reported prepayments remain a separate structured-record follow-up. The summary is not deployed until separately authorized.
