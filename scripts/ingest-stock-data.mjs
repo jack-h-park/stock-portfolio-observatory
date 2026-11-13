@@ -13,6 +13,7 @@ import { pensionProductId } from './pension-ids.mjs'
 import { matchGoldLots } from './gold-lots.mjs'
 import { buildPathFor, publishBuiltDb, removeAbandonedBuilds, removeDbFiles } from './db-swap.mjs'
 import { BANK_INFLOW_BOUND_KEYS, BANK_INFLOW_CATEGORIES, BANK_INFLOW_MATCH_KEYS } from './bank-inflow-rules.mjs'
+import { loadConnectorShadow, compareConnectorPositions } from './connector-import.mjs'
 
 loadLocalEnv()
 
@@ -5911,6 +5912,30 @@ insertMany(
 const checks = []
 function check(name, ok, detail, severity = 'error', scope = 'stock') {
   checks.push({ name, status: ok ? 'pass' : 'fail', detail, severity, scope })
+}
+
+// Opt-in shadow observations never enter economic rows or tax state.
+const connectorShadow = loadConnectorShadow()
+if (connectorShadow) {
+  check('connector_shadow_valid', connectorShadow.ok,
+    connectorShadow.ok ? 'Verified connector export in shadow mode; economic records unchanged' : `Connector shadow unavailable: ${connectorShadow.errorCode}`, 'warning')
+  if (connectorShadow.ok) {
+    check('connector_shadow_fresh', connectorShadow.freshness === 'fresh', `Shadow export fetch age: ${Math.floor(connectorShadow.ageHours)}h; provider data can be older`, 'warning')
+    check('connector_last_collection', connectorShadow.latestStatus.status === 'success', 'Last connector collection status; last-good export is preserved independently', 'warning')
+    let connectorMappings = {}
+    try {
+      const mapPath = financeFile('STOCK_CONNECTOR_ACCOUNT_MAP_PATH')
+      if (fs.existsSync(mapPath)) {
+        const raw = JSON.parse(fs.readFileSync(mapPath, 'utf8'))
+        if (raw.schemaVersion !== 1 || !raw.accounts || Array.isArray(raw.accounts) || typeof raw.accounts !== 'object') throw new Error('Invalid map')
+        connectorMappings = raw.accounts
+      }
+      const findings = compareConnectorPositions(connectorShadow.data.positions, holdingRows, connectorMappings)
+      check('connector_shadow_positions', findings.length === 0, findings.length ? `Shadow findings: ${[...new Set(findings.map(x => x.code))].join(', ')}` : 'Mapped position quantities match; shadow only', 'warning')
+    } catch {
+      check('connector_shadow_positions', false, 'Connector account map is invalid; no automatic account matching performed', 'warning')
+    }
+  }
 }
 
 // A wrapper outside the known four is what a typo in the account map looks like

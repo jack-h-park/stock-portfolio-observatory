@@ -1,0 +1,6 @@
+{
+  "sourceRepository": "https://github.com/jack-h-park/finance-connectors",
+  "sourcePath": "contracts/v1/run.schema.json",
+  "schemaVersion": "1.0",
+  "sha256": "78440482528805b0144113009a053a5375fe00c85b0d72e671d6aef9e931077d"
+}
