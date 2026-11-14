@@ -14,6 +14,8 @@ const dir = mkdtempSync(path.join(tmpdir(), 'account-coverage-'))
 const dbPath = path.join(dir, 'portfolio.db')
 const snapshotPath = path.join(dir, 'robinhood-snapshot.json')
 const mapPath = path.join(dir, 'accounts.local.json')
+const cryptoPath = path.join(dir, 'crypto-activity.json')
+process.env.STOCK_CRYPTO_ACTIVITY_PATH = cryptoPath
 writeFileSync(mapPath, JSON.stringify({ brokerageAccounts: [
   {institution:'mirae',kind:'general',accountNumber:'000000001234'},
   {institution:'mirae',kind:'general',label:'Sample second',accountNumber:'000000005678',retiredOn:'2024-01-01'}
@@ -169,4 +171,32 @@ test('newer Fidelity observations supersede a retained confirmation', async () =
   db.prepare("update source_coverage_confirmations set through_date = ? where institution = 'Fidelity'").run(daysAgo(0))
   db.close()
  }
+})
+
+
+test('Bithumb uses declared full-scope PDF periods even with no recent activity', async () => {
+  const db = new Database(dbPath)
+  db.prepare('insert into transactions (market, brokerage, account_type, account, date) values (?,?,?,?,?)').run('CRYPTO', 'Bithumb', 'Crypto', 'Bithumb', daysAgo(32))
+  db.close()
+  const { getAccountCoverage } = await import('../lib/adapters/portfolio-db')
+  const document = (start: string, end: string) => ({ category: 'bithumb_statement', venue: 'Bithumb', account: 'Bithumb', filename: 'statement.pdf', metrics: { periodStart: start, periodEnd: end, scopeAssets: '전체', scopeTypes: '매수/매도/입금/출금' } })
+  const row = () => getAccountCoverage().rows.find(row => row.brokerage === 'Bithumb')!
+  const first = document(daysAgo(60), daysAgo(32))
+  const recent = document(daysAgo(33), daysAgo(0))
+  writeFileSync(cryptoPath, JSON.stringify({ documents: [first, recent] }))
+  assert.equal(row().coveredThrough, daysAgo(0))
+  assert.equal(row().status, 'current')
+  for (const invalid of [
+    { ...recent, account: 'Another account' },
+    { ...recent, category: 'bithumb_ledger' },
+    { ...recent, metrics: { ...recent.metrics, scopeAssets: 'BTC' } },
+    { ...recent, metrics: { ...recent.metrics, scopeTypes: '매도' } },
+    document(daysAgo(30), daysAgo(0)), // a missing day between statements
+    document(daysAgo(33), '2099-01-01'),
+    document('2026-02-30', daysAgo(0)),
+  ]) {
+    writeFileSync(cryptoPath, JSON.stringify({ documents: [first, invalid] }))
+    assert.equal(row().coveredThrough, daysAgo(32))
+    assert.equal(row().status, 'action_needed')
+  }
 })
