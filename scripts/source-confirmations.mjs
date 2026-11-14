@@ -10,7 +10,7 @@ export function verifiedSourceConfirmations(entries, root, {today = new Date().t
   for (const entry of entries ?? []) {
     try {
       if (!entry || entry.basis !== 'owner-confirmed' || !isoDay(entry.through) || entry.through > today || !isoDay(entry.confirmedAt) || entry.confirmedAt > today) throw new Error('invalid confirmation date or basis')
-      const supported = entry.scope === 'bank' ? ((entry.institution === 'fidelity' && entry.kind === 'holdings') || (['fidelity','amex','boa','chase','mg','mirae','robinhood-bank','tossbank'].includes(entry.institution) && entry.kind === 'transactions')) : entry.institution === 'Fidelity' || (['Merrill','Chase'].includes(entry.institution) && entry.kind === 'transactions')
+      const supported = entry.scope === 'bank' ? ((entry.institution === 'fidelity' && entry.kind === 'holdings') || (['fidelity','amex','boa','chase','mg','mirae','robinhood-bank','tossbank'].includes(entry.institution) && entry.kind === 'transactions')) : ['Fidelity','Chase'].includes(entry.institution) || (entry.institution === 'Merrill' && entry.kind === 'transactions')
       if (!['investment','bank'].includes(entry.scope) || !['transactions','holdings'].includes(entry.kind) || !supported || !String(entry.account ?? '').trim()) throw new Error('unsupported account or source kind')
       const dir = entry.scope === 'bank' ? 'bank-statements' : entry.kind === 'holdings' ? 'us-holdings' : 'us-transactions'
       if (typeof entry.source !== 'string' || path.posix.dirname(entry.source) !== dir || !/^[a-zA-Z0-9._-]+\.csv$/.test(path.posix.basename(entry.source))) throw new Error('source must be a CSV under its owning directory')

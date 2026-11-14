@@ -797,7 +797,14 @@ for (const receipt of sourceConfirmationResult.accepted) {
         if (receipt.emptyTransactions !== true || !entry || (receipt.institution === 'fidelity' && entry.kind !== 'cma') || !knownEmpty || !path.basename(receipt.source).startsWith(expectedPrefix)) throw new Error('confirmed bank history is not present in the parsed account sources')
       }
     }
-    const facts = receipt.kind === 'holdings' ? fidelitySnapshotFacts(parseCsv(fs.readFileSync(receipt.path, 'utf8').replace(/^\uFEFF/, '')), receipt, accountMap) : null
+    if (receipt.institution === 'Chase' && receipt.kind === 'holdings') {
+      const rows = parseCsv(fs.readFileSync(receipt.path,'utf8').replace(/^\uFEFF/,''))
+      const headerAt = rows.findIndex(row => row.includes('Account name') && row.includes('Account number') && row.includes('Ticker'))
+      const header = rows[headerAt]
+      const accounts = new Set(header ? rows.slice(headerAt+1).filter(row => text(row[header.indexOf('Ticker')]) && text(row[header.indexOf('Account name')]) && text(row[header.indexOf('Account number')])).map(row => `Chase ${text(row[header.indexOf('Account name')])} ${text(row[header.indexOf('Account number')])}`.trim()) : [])
+      if (headerAt < 0 || accounts.size !== 1 || !accounts.has(receipt.account)) throw new Error('confirmed Chase holdings header or account does not match')
+    }
+    const facts = receipt.kind === 'holdings' && receipt.institution !== 'Chase' ? fidelitySnapshotFacts(parseCsv(fs.readFileSync(receipt.path, 'utf8').replace(/^\uFEFF/, '')), receipt, accountMap) : null
     if (receipt.scope === 'bank' && facts) cashRows.push({
       institution: receipt.institution, account: receipt.account, owner: 'self', kind: 'cma', currency: 'USD',
       as_of_date: receipt.through, balance: facts.balance, day_max_balance: null,
@@ -939,9 +946,9 @@ const statementAccounts = new Set((krStatements.transactions?.rows ?? []).map((r
 // are always empty and it would otherwise be invisible to any freshness check
 // built off them. See `samsung_statement_fresh` below.
 const krAsOfPath = path.join(krStatementsDir, 'as-of.json')
-const krAsOfByAccount = fs.existsSync(krAsOfPath)
-  ? JSON.parse(fs.readFileSync(krAsOfPath, 'utf8'))?.accounts ?? {}
-  : {}
+const krStatementMetadata = fs.existsSync(krAsOfPath)
+  ? JSON.parse(fs.readFileSync(krAsOfPath, 'utf8'))
+  : null
 
 // What the statement parser could not handle, written beside the TSVs.
 //
@@ -6792,7 +6799,12 @@ check(
 // Aug, Nov, Apr, Jul) and vests are rarer, so a threshold tuned to catch a
 // missed quarter's dividend catches a missed vest for free.
 const samsungAccountLabel = '삼성증권(주식보상)'
-const samsungAsOf = krAsOfByAccount[samsungAccountLabel] || null
+const samsungPeriod = krStatementMetadata?.statementPeriods?.schemaVersion === 1 ? krStatementMetadata.statementPeriods.accounts?.[samsungAccountLabel] : null
+const samsungPeriodSources = samsungPeriod?.state === 'declared' && Array.isArray(samsungPeriod.sources) ? samsungPeriod.sources : []
+const samsungAsOf = samsungPeriodSources.length && samsungPeriodSources.every(source =>
+  source && typeof source.source === 'string' && /^[^/\\]+\.pdf$/i.test(source.source) && /^[a-f0-9]{64}$/.test(source.sha256 ?? '') && source.page === 1 &&
+  validCoverageDate(source.start) && validCoverageDate(source.end) && source.start <= source.end && source.end <= now.slice(0,10))
+  ? samsungPeriodSources.map(source => source.end).sort().at(-1) : null
 const samsungAgeDays = daysSince(samsungAsOf)
 const samsungStatementMaxDays = Number(process.env.STOCK_SAMSUNG_STATEMENT_MAX_DAYS || 120)
 check(
