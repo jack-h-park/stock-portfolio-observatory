@@ -7,7 +7,7 @@ export const cashInflow = defineCopy({
     headlineEyebrow: 'Total inflow', notAvailable: 'n/a',
     monthly: 'Monthly', yearly: 'Yearly',
     monthlyAverage: 'Monthly average',
-    categories: { salary: 'Salary', dividend: 'Dividends', interest: 'Interest', other: 'Other', unclassified: 'Unclassified' },
+    categories: { salary: 'Salary', dividend: 'Dividends', interest: 'Interest', other: 'Other', reimbursement: 'Purchase reimbursement', unclassified: 'Unclassified' },
     trendCard: 'Inflow by period', tableCard: 'Periods',
     unclassified: (count: string) => `${count} unclassified credit(s)`,
     unclassifiedHint: 'Not in the totals. Add a bankInflowRules entry in manual-mappings.json to classify one.',
@@ -17,7 +17,7 @@ export const cashInflow = defineCopy({
     axisKrw: 'KRW thousand', axisUsd: 'USD',
     filter: {
       label: 'Show',
-      options: { All: 'All', salary: 'Salary', investment: 'Investment income', dividend: 'Dividends', interest: 'Interest', other: 'Other', unclassified: 'Unclassified' },
+      options: { All: 'All', salary: 'Salary', investment: 'Investment income', dividend: 'Dividends', interest: 'Interest', other: 'Other', reimbursement: 'Purchase reimbursement', unclassified: 'Unclassified' },
     },
     scope: {
       source: { label: 'Source', options: { All: 'All', bank: 'Bank', broker: 'Brokers' } },
@@ -42,6 +42,7 @@ export const cashInflow = defineCopy({
     yoyColumn: 'vs previous year',
     yearlyNote: (through: string | null) => `Whole calendar years, so they need not add up to the range total above.${through ? ` This year is compared with January to ${through}.` : ''}`,
     investmentInfo: 'Investment income is dividends plus interest.',
+    reimbursementNote: 'Purchase reimbursements are shown separately and excluded from total inflow.',
     unclassifiedFilterNote: 'Unclassified credits are shown here but are not in any other total.',
     cellLink: (amount: string, period: string, category: string) => `${amount}: ${category.toLowerCase()} credits of ${period}`,
     detailTitle: (period: string, category: string, count: string, amount: string) => `${period} · ${category}: ${count} credit(s), ${amount}`,
@@ -62,7 +63,7 @@ export const cashInflow = defineCopy({
     headlineEyebrow: '총 유입', notAvailable: '해당 없음',
     monthly: '월간', yearly: '연간',
     monthlyAverage: '월평균',
-    categories: { salary: '급여', dividend: '배당', interest: '이자', other: '기타', unclassified: '미분류' },
+    categories: { salary: '급여', dividend: '배당', interest: '이자', other: '기타', reimbursement: '구매대행 정산', unclassified: '미분류' },
     trendCard: '기간별 유입', tableCard: '기간별 합계',
     unclassified: (count: string) => `미분류 입금 ${count}건`,
     unclassifiedHint: '합계에 포함되지 않습니다. manual-mappings.json의 bankInflowRules에 규칙을 추가하면 분류됩니다.',
@@ -72,7 +73,7 @@ export const cashInflow = defineCopy({
     axisKrw: '천 원', axisUsd: '달러',
     filter: {
       label: '보기',
-      options: { All: '전체', salary: '급여', investment: '투자 수익', dividend: '배당', interest: '이자', other: '기타', unclassified: '미분류' },
+      options: { All: '전체', salary: '급여', investment: '투자 수익', dividend: '배당', interest: '이자', other: '기타', reimbursement: '구매대행 정산', unclassified: '미분류' },
     },
     scope: {
       source: { label: '출처', options: { All: '전체', bank: '은행', broker: '증권사' } },
@@ -97,6 +98,7 @@ export const cashInflow = defineCopy({
     yoyColumn: '전년 대비',
     yearlyNote: (through: string | null) => `달력 연도 단위라 위의 기간 합계와 다를 수 있습니다.${through ? ` 올해는 작년 1월~${through}와 비교합니다.` : ''}`,
     investmentInfo: '투자 수익은 배당과 이자를 합친 값입니다.',
+    reimbursementNote: '구매대행 정산은 별도로 표시하며 총 유입에 포함하지 않습니다.',
     unclassifiedFilterNote: '미분류 입금은 여기에만 표시되고 다른 합계에는 들어가지 않습니다.',
     cellLink: (amount: string, period: string, category: string) => `${amount}: ${period} ${category} 입금`,
     detailTitle: (period: string, category: string, count: string, amount: string) => `${period} · ${category}: ${count}건, ${amount}`,
