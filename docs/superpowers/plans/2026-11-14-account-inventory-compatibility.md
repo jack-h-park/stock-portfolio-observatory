@@ -32,8 +32,12 @@
 
 **Interfaces:** `readRobinhoodSnapshotIdentities(accounts)` returns labels or explicit identity issues for the existing account/accountNumber/account_number/nickname shapes. `inventoryPensionPolicies(mapRead, asOfDate)` returns a per-row declared-policy annotation. New projection metadata does not replace canonical identity or review state.
 
-- [ ] Write failing tests for exact snapshot schemas, ambiguity/suffix isolation, closed/tokenless policies, active primary requirements and English/Korean messages.
-- [ ] Implement pure resolvers and adapter/view wiring; preserve raw input, files and existing domain/legacy behavior. Verify focused GREEN.
-- [ ] Independently review; fix important findings with RED→GREEN regressions. Run full isolated synthetic suite, typecheck, lint, guardrails and build.
-- [ ] If needed for acceptance, rerun the private existing-data preview with the candidate source in its own directory, no deployment; compare source/metadata/config preservation. Do not create or edit inventory metadata.
-- [ ] Document limits, push and open the PR. Do not merge or deploy it.
+- [x] Write failing tests for exact snapshot schemas, ambiguity/suffix isolation, closed/tokenless policies, active primary requirements and English/Korean messages.
+- [x] Implement pure resolvers and adapter/view wiring; preserve raw input, files and existing domain/legacy behavior. Verify focused GREEN.
+- [x] Independently review; fix important findings with RED→GREEN regressions. Run full isolated synthetic suite, typecheck, lint, guardrails and build.
+- [x] If needed for acceptance, rerun the private existing-data preview with the candidate source in its own directory, no deployment; compare source/metadata/config preservation. Do not create or edit inventory metadata.
+- [x] Document limits, push and open the PR. Do not merge or deploy it.
+
+## Verified source checkpoint
+
+The independent cross-schema label collision finding was reproduced and fixed. On current main including #319, 1,416 tests ran: 1,401 passed, 15 skipped, zero failed; typecheck, lint, guardrails and sample build passed. The bounded private read-only candidate replay confirmed compatibility and policy annotations while retaining unconfirmed inventory/owner scope. No private data, map, original or access/write settings changed, and no deployment was performed. PR review, merge and rollout remain separate.
