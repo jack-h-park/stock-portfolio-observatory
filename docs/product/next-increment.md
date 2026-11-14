@@ -18,7 +18,9 @@ The next independent increment should connect a reviewed account inventory to th
 
 The proposed [expected-account design](../superpowers/specs/2026-11-13-account-inventory-design.md) defines additive metadata on the existing private map, canonical identities, explicit ownership, scoped review receipts and separate missing-evidence judgments. It is a design proposal, not implementation or a completed private account review. Merged [#314](https://github.com/jack-h-park/stock-portfolio-observatory/pull/314) already adds explicit bank historical-gap signals; reuse them rather than duplicating that work. No deployment of #314 is established by this document.
 
-The design PR is the current review step. Proposed later implementation scope, subject to separate authorization:
+The design is merged in #316. The [first standalone foundation](../architecture/account-inventory-foundation.md) adds types, explicit read-result validation, semantic digest and a pure synthetic projection for review. Existing loader, app, CLI and reminders remain unchanged. Next review that contract before separately authorizing real read-only adapter/display wiring. Private metadata adoption, owner review and deployment remain later gates.
+
+Proposed later adapter/display scope, subject to separate authorization:
 
 - Identify the existing authoritative inventory inputs and account/owner keys. Document gaps rather than inventing a second mutable inventory or silently merging aliases.
 - Reuse existing account, supplementary-asset and statement-period adapters. Separate valuation dates, query/statement intervals, fetch age, evidence review and reconciliation.
