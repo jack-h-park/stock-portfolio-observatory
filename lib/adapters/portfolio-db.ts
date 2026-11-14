@@ -4144,6 +4144,8 @@ export type SupplementaryCoverageRow = {
   status: AccountCoverageStatus
   /** What to file next, in the reminder's words. */
   action: string
+  historyGap?: { from: string; to: string }
+  staleWithHistoryGap?: boolean
 }
 
 export type SupplementaryCoverage = {
@@ -4202,7 +4204,7 @@ export function getSupplementaryCoverage(): SupplementaryCoverage {
     const retired = retiredBankAccounts(accountMap?.bankAccounts)
     const seenBanks = new Set<string>()
     const confirmations = confirmedSourceCoverage(conn)
-    const declaredBanks = hasTable('bank_statement_coverage') ? conn.prepare('select institution,account,period_end from bank_statement_coverage').all() as {institution:string;account:string;period_end:string}[] : []
+    const declaredBanks = hasTable('bank_statement_coverage') ? conn.prepare('select institution,account,period_start,period_end from bank_statement_coverage').all() as {institution:string;account:string;period_start:string|null;period_end:string}[] : []
     const bankEnd = (institution:string,account:string) => latestOf(
       ...declaredBanks.filter(row => row.institution === institution && bankAccountGroup(accountMap?.bankAccounts,institution,row.account) === bankAccountGroup(accountMap?.bankAccounts,institution,account)).map(row => row.period_end),
       ...confirmations.filter(row => row.scope === 'bank' && row.kind === 'transactions' && row.institution === institution && row.account === account).map(row => row.through_date))
@@ -4248,6 +4250,32 @@ export function getSupplementaryCoverage(): SupplementaryCoverage {
       const label = `${entry.institution} ${name}`
       push(entry.kind === 'cma' ? 'cma' : 'deposit', label, null, `${label} 거래내역을 가능한 전체 기간 ~ ${portfolioToday()}까지 받아 inbox에 넣으세요`)
       seenBanks.add(key)
+    }
+
+    // Explicitly requested historical coverage is separate from freshness.
+    for (const entry of accountMap?.bankAccounts ?? []) {
+      const start = strictIsoDate(entry.historyFrom)
+      if (!start || !entry.institution) continue
+      const institution = String(entry.institution)
+      const name = bankAccountName(entry)
+      const row = rows.find(item => item.label === `${institution} ${name}`)
+      if (!row) continue
+      const periods = declaredBanks.filter(item => item.institution === institution && bankAccountGroup(accountMap?.bankAccounts, institution, item.account) === name && strictIsoDate(item.period_start) && strictIsoDate(item.period_end)).sort((a,b) => String(a.period_start).localeCompare(String(b.period_start)))
+      if (!periods.length) continue
+      let cursor = start
+      for (const period of periods) {
+        if (period.period_end < cursor) continue
+        if (period.period_start! > cursor) {
+          const before = new Date(`${period.period_start}T00:00:00Z`); before.setUTCDate(before.getUTCDate() - 1)
+          row.historyGap = { from: cursor, to: before.toISOString().slice(0,10) }
+          row.staleWithHistoryGap = row.status === 'action_needed'
+          const freshnessAction = row.staleWithHistoryGap ? ` ${row.action}` : ''
+          row.status = 'action_needed'
+          row.action = `${row.label} 거래내역을 ${row.historyGap.from} ~ ${row.historyGap.to} 기간으로 받아 inbox에 넣으세요.${freshnessAction}`
+          break
+        }
+        const next = new Date(`${period.period_end}T00:00:00Z`); next.setUTCDate(next.getUTCDate() + 1); cursor = next.toISOString().slice(0,10)
+      }
     }
 
     // Every pension account the map lists, filed or not: one with no snapshot yet

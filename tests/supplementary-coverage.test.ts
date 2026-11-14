@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -122,6 +122,37 @@ test('one row per cash account, pension token, gold account and the gold price, 
   assert.equal(rows.length, 8)
   // Supplementary checks only.
   assert.deepEqual(failingChecks, ['cash_balance_continuity'])
+})
+
+test('a fresh bank statement still requests an uncovered opening period', async () => {
+  const map = JSON.parse(readFileSync(mapPath, 'utf8'))
+  map.bankAccounts.push({ institution: 'Example Bank', kind: 'checking', alias: '••1234', historyFrom: '2024-01-01' })
+  writeFileSync(mapPath, JSON.stringify(map))
+  const conn = new Database(dbPath)
+  conn.prepare('insert into bank_statement_coverage values (?,?,?,?,?,?)').run('Example Bank','••1234','recent.pdf','2025-01-01',daysAgo(0),'a'.repeat(64))
+  conn.close()
+  try {
+    const { getSupplementaryCoverage } = await import('../lib/adapters/portfolio-db')
+    const row = getSupplementaryCoverage().rows.find(r => r.label === 'Example Bank ••1234')!
+    assert.equal(row.status, 'action_needed')
+    assert.match(row.action, /2024-01-01.*2024-12-31/)
+  } finally {
+    map.bankAccounts.pop(); writeFileSync(mapPath, JSON.stringify(map))
+    const cleanup = new Database(dbPath); cleanup.prepare("delete from bank_statement_coverage where source='recent.pdf'").run(); cleanup.close()
+  }
+})
+
+test('a historical gap does not hide a separately stale bank update', async () => {
+  const map = JSON.parse(readFileSync(mapPath, 'utf8'))
+  map.bankAccounts.push({ institution: 'Example Bank', kind: 'checking', alias: '••1234', historyFrom: '2020-01-01' })
+  writeFileSync(mapPath, JSON.stringify(map))
+  try {
+    const { getSupplementaryCoverage } = await import('../lib/adapters/portfolio-db')
+    const row = getSupplementaryCoverage().rows.find(r => r.label === 'Example Bank ••1234')!
+    assert.equal(row.status, 'action_needed')
+    assert.match(row.action, /2020-01-01/)
+    assert.match(row.action, new RegExp(daysAgo(100)))
+  } finally { map.bankAccounts.pop(); writeFileSync(mapPath, JSON.stringify(map)) }
 })
 
 test('an empty or older database gives no rows rather than an error', async () => {
