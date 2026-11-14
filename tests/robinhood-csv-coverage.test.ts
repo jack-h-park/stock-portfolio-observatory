@@ -75,9 +75,10 @@ test('fills bridged from orders do not make a stale CSV read current', async () 
   assert.equal(csv.status, 'action_needed')
 })
 
-test('a period ending in the future is ignored, and the rows decide', async () => {
+test('a period ending in the future leaves query coverage unconfirmed', async () => {
   const csv = await csvSource('Long-term')
-  assert.equal(csv.coveredThrough, daysAgo(20))
+  assert.equal(csv.coveredThrough, null)
+  assert.equal(csv.status, 'unconfirmed')
 })
 
 test('reads the three filename shapes the specs accept', async () => {

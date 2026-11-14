@@ -128,7 +128,8 @@ test('legacy KR as-of dates stay unconfirmed as declared periods, including tran
   for (const asOf of ['2026-10-01', '2026-11-01']) {
     fs.writeFileSync(path.join(root, 'as-of.json'), JSON.stringify({ accounts: { Synthetic: asOf } }))
     const row = getAccountCoverage().rows[0]
-    assert.equal(row.statementCoveredThrough, asOf)
+    assert.equal(row.statementCoveredThrough, null)
+    assert.equal(row.status, 'unconfirmed')
     assert.equal(row.statementPeriodEnd, null)
   }
 })
@@ -152,7 +153,7 @@ test('actual account adapter connects declared receipts while pins and conflicti
   const metadata = { accounts: { Synthetic: '2026-12-31' }, statementPeriods: { schemaVersion: 1, accounts: { Synthetic: { state: 'declared', sources: [source] } } } }
   fs.writeFileSync(path.join(root, 'as-of.json'), JSON.stringify(metadata))
   let row = getAccountCoverage().rows[0]
-  assert.equal(row.statementCoveredThrough, '2026-12-31')
+  assert.equal(row.statementCoveredThrough, '2026-06-30')
   assert.equal(row.statementPeriodEnd, '2026-06-30')
   assert.equal((row as any).statementPeriodEvidence.sources[0].source, 'synthetic-statement.pdf')
   const review = collectAssetCoverage(summary(), { ...readers(), accounts: () => ({ rows: [row] }) })

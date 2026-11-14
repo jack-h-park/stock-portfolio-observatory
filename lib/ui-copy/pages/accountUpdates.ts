@@ -17,8 +17,9 @@ export const accountUpdates = defineCopy({
     rows: (count: string) => `${count} records`,
     window: (days: number) => `${days}-day window`,
     kinds: { deposit: 'Deposits', cma: 'CMA', pension: 'Pension', gold: 'Gold', gold_price: 'Gold price' },
-    statuses: { action_needed: 'Update needed', missing: 'No data', due_soon: 'Due soon', current: 'Current' },
+    statuses: { unconfirmed: 'Confirm query period', action_needed: 'Update needed', missing: 'No data', due_soon: 'Due soon', current: 'Current' },
     action: (kind: string, date: string | null, original: string) => {
+      if (!date && original.includes('조회 종료일')) return 'Confirm the query end date of the existing file before deciding whether to download again.'
       if (kind === 'gold_price') return 'Refresh KRX gold prices.'
       if (kind === 'pension') return 'Capture current holdings and file the pension CSV in inbox.'
       return date ? `Download history from ${date} and place it in inbox.` : 'Download the full available history and place it in inbox.'
@@ -40,7 +41,7 @@ export const accountUpdates = defineCopy({
     rows: (count: string) => `${count}건`,
     window: (days: number) => `${days}일 기준`,
     kinds: { deposit: '예금', cma: 'CMA', pension: '연금', gold: '금현물', gold_price: '금 시세' },
-    statuses: { action_needed: '업데이트 필요', missing: '자료 없음', due_soon: '곧 필요', current: '현재 기준' },
+    statuses: { unconfirmed: '조회기간 확인 필요', action_needed: '업데이트 필요', missing: '자료 없음', due_soon: '곧 필요', current: '현재 기준' },
     action: (kind: string, date: string | null, original: string) => original,
   },
 })

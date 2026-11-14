@@ -24,6 +24,7 @@ const mapPath = path.join(dir, 'accounts.local.json')
 
 const db = new Database(dbPath)
 db.exec(`
+create table bank_statement_coverage(institution text,account text,source text,period_start text,period_end text,sha256 text);
 create table source_coverage_confirmations (scope text, institution text, account text, kind text, through_date text, source text, sha256 text, empty_holdings integer);
 create table cash_balances (id integer primary key, institution text, account text, owner text, kind text, currency text, as_of_date text, balance real, source text, derived integer);
 create table holdings_all (id integer primary key, account text, account_wrapper text, asset_class text, as_of_date text, base_market_value real);
@@ -53,6 +54,11 @@ const checkRow = db.prepare("insert into validation_checks (name, status, detail
 checkRow.run('cash_balance_continuity', 'fail', 'supplementary')
 checkRow.run('gold_priced', 'pass', 'supplementary')
 checkRow.run('toss_positions_fresh', 'fail', 'stock')
+const declared = db.prepare('insert into bank_statement_coverage values (?,?,?,?,?,?)')
+declared.run('Example Bank','••1234','sample.pdf',daysAgo(200),daysAgo(100),'a'.repeat(64))
+declared.run('Sample Securities','CMA ••5678','sample.pdf',daysAgo(200),daysAgo(10),'a'.repeat(64))
+writeFileSync(path.join(dir,'as-of.json'),JSON.stringify({statementPeriods:{schemaVersion:1,accounts:{'Sample(금현물)':{state:'declared',sources:[{source:'gold.pdf',sha256:'a'.repeat(64),page:1,start:daysAgo(120),end:daysAgo(30)}]}}}}))
+process.env.STOCK_KR_STATEMENTS_DIR=dir
 db.close()
 
 writeFileSync(

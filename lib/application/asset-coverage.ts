@@ -26,7 +26,7 @@ function counts(rows: StatusRow[] | undefined) {
     current: rows.filter(row => row.status === 'current').length,
     dueSoon: rows.filter(row => row.status === 'due_soon').length,
     actionNeeded: rows.filter(row => row.status === 'action_needed').length,
-    missing: rows.filter(row => row.status === 'missing').length,
+    missing: rows.filter(row => row.status === 'missing' || row.status === 'unconfirmed').length,
   }
 }
 
