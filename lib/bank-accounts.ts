@@ -12,6 +12,7 @@ export type BankAccountEntry = {
   alias?: unknown
   retired?: unknown
   retiredOn?: unknown
+  historyFrom?: unknown
   /** A multi-currency account (the 토스뱅크 외화통장): its balances are filed as one series per currency. */
   multiCurrency?: unknown
 }

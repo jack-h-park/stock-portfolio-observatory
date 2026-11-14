@@ -25,6 +25,86 @@ m.main()
 }
 
 const boa = 'Description,,Summary Amt.\nBeginning balance as of 01/01/2026,,10\nEnding balance as of 11/13/2026,,10\nDate,Description,Amount,Running Bal.\n'
+test('Hana and KB workbooks identify mapped accounts, deduplicate overlapping downloads, and retain declared periods', () => {
+  const doc = extract({ 'hana-deposit-one.xls': 'a', 'hana-deposit-two.xls': 'b', 'kb-deposit-one.xls': 'c' }, [
+    { institution: 'hana', kind: 'checking', accountNumber: '123-456', alias: 'Hana sample' },
+    { institution: 'kb', kind: 'checking', accountNumber: '999-111', alias: 'KB sample' },
+  ], `
+hana=[['계좌번호','123-456','','예금종류','수신','','조회기간','2026-01-01 ~ 2026-11-14'],['거래일시','구분','적요','출금액','입금액','잔액'],['2026-10-01 12:00:00','대체','sample','0','10','20']]
+kb=[['조회기간','2026-01-01 ~ 2026-11-14'],['계좌번호','999-111'],['거래일시','적요','보낸분/받는분','송금메모','출금액','입금액','잔액'],['2026-10-02 11:00:00','입금','sample','','0','5','25']]
+def source_rows(p,f):
+ global hana
+ return (kb if p.name.startswith('kb-') else [hana[0],hana[1],[*hana[2][:2], 'sample  interest' if p.name.endswith('one.xls') else 'sample interest',*hana[2][3:]]]) + [['','','합 계','0','10','']]
+m._xls_rows=source_rows
+`)
+  assert.deepEqual(doc.coverage.map((row: { account: string }) => row.account).sort(), ['Hana sample', 'Hana sample', 'KB sample'])
+  assert.ok(doc.coverage.every((row: { periodEnd: string }) => row.periodEnd === '2026-11-14'))
+  assert.deepEqual(doc.accounts.map((row: { balances: unknown[] }) => row.balances.length), [1, 1])
+  assert.equal(doc.inflows.length, 2)
+})
+test('a bank export with missing transaction columns cannot certify coverage', () => {
+  const doc = extract({ 'hana-deposit-invalid.xls': 'a' }, [
+    { institution: 'hana', kind: 'checking', accountNumber: '123-456', alias: 'Hana sample' },
+  ], `m._xls_rows=lambda p,f: [['계좌번호','123-456','','','','','조회기간','2026-01-01 ~ 2026-11-14'],['거래일시','적요','잔액']]`)
+  assert.deepEqual(doc.coverage, [])
+  assert.match(doc.findings.join(' '), /header|columns/)
+})
+test('unrecognized transaction rows and missing amounts cannot certify coverage', () => {
+  for (const row of [['2026/10/01 12:00','sample','0','5','10'], ['2026-10-01 12:00','sample','','','10']]) {
+    const doc = extract({ 'hana-deposit-invalid.xls': 'a' }, [
+      { institution: 'hana', kind: 'checking', accountNumber: '123-456', alias: 'Hana sample' },
+    ], `m._xls_rows=lambda p,f: [['계좌번호','123-456','','','','','조회기간','2026-01-01 ~ 2026-11-14'],['거래일시','적요','출금액','입금액','잔액'],${JSON.stringify(row)}]`)
+    assert.deepEqual(doc.coverage, [])
+    assert.match(doc.findings.join(' '), /could not be parsed/)
+  }
+})
+test('overlapping bank files order same-day movements by time before selecting the closing balance', () => {
+  const doc = extract({ 'hana-deposit-one.xls': 'a', 'hana-deposit-two.xls': 'b' }, [
+    { institution: 'hana', kind: 'checking', accountNumber: '123-456', alias: 'Hana sample' },
+  ], `
+def source_rows(p,f):
+ header=[['계좌번호','123-456','','','','','조회기간','2026-01-01 ~ 2026-11-14'],['거래일시','적요','출금액','입금액','잔액']]
+ return header + ([['2026-10-01 18:00:00','late','0','10','30']] if p.name.endswith('one.xls') else [['2026-10-01 09:00:00','early','0','10','20']])
+m._xls_rows=source_rows
+`)
+  assert.equal(doc.accounts[0].balances[0].balance, 30)
+})
+test('different overlapping transactions with ambiguous minute precision do not invent an order', () => {
+  const doc = extract({ 'hana-deposit-one.xls': 'a', 'hana-deposit-two.xls': 'b' }, [
+    { institution: 'hana', kind: 'checking', accountNumber: '123-456', alias: 'Hana sample' },
+  ], `
+def source_rows(p,f):
+ header=[['계좌번호','123-456','','','','','조회기간','2026-01-01 ~ 2026-11-14'],['거래일시','적요','출금액','입금액','잔액']]
+ return header + ([['2026-10-01 09:00','one','0','10','20']] if p.name.endswith('one.xls') else [['2026-10-01 09:00:12','two','0','10','30']])
+m._xls_rows=source_rows
+`)
+  assert.deepEqual(doc.accounts, [])
+  assert.deepEqual(doc.coverage, [])
+  assert.match(doc.findings.join(' '), /ambiguous.*time/)
+})
+test('a named Toss transfer matches its opposite KB bank leg', () => {
+  const output = execFileSync('python3', ['-c', `
+import importlib.util, json
+spec=importlib.util.spec_from_file_location('bank','scripts/extract-bank-statements.py'); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+a={'date':'2026-10-01','seq':0,'amount':-100,'counterpartyInstitution':'국민은행','description':'transfer'}
+b={'date':'2026-10-01','seq':0,'amount':100,'description':'transfer'}
+m.estimate_closed_accounts([('tossbank','toss-1',[a]),('kb','kb-1',[b])],[],{},[])
+print(json.dumps([a.get('ownTransfer',False),b.get('ownTransfer',False)]))
+`], { cwd: root, encoding: 'utf8' })
+  assert.deepEqual(JSON.parse(output), [true, true])
+})
+test('an unmatched KB transaction never creates an estimated Mirae account', () => {
+  const output = execFileSync('python3', ['-c', `
+import importlib.util, json
+spec=importlib.util.spec_from_file_location('bank','scripts/extract-bank-statements.py'); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.MIN_ESTIMATE_KRW=1
+row={'date':'2026-10-01','seq':0,'amount':-100,'description':'대체'}
+row2={'date':'2026-10-02','seq':1,'amount':100,'description':'대체'}
+estimated,_=m.estimate_closed_accounts([('kb','kb-1',[row,row2])],[],{},[])
+print(json.dumps(estimated))
+`], { cwd: root, encoding: 'utf8' })
+  assert.deepEqual(JSON.parse(output), [])
+})
 test('an empty mapped BoA statement advances declared coverage without inventing a balance, using content rather than its name', () => {
   const name = 'boa-checking-20260101-20260102.csv'
   const doc = extract({ [name]: boa }, [{ institution: 'boa', kind: 'checking', alias: 'Sample bank' }])

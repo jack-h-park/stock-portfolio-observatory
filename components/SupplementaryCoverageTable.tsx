@@ -16,7 +16,7 @@ export function SupplementaryCoverageTable({ rows, language, accounts }: {
   accounts?: AccountDataRange[]
 }) {
   const copy = getPageCopy('accountUpdates', language)
-  const nextAction = (coverage: SupplementaryCoverageRow) => maskAccountLabel(copy.action(
+  const nextAction = (coverage: SupplementaryCoverageRow) => coverage.historyGap ? <>{copy.historyGap(fmtDate(coverage.historyGap.from), fmtDate(coverage.historyGap.to))}{coverage.staleWithHistoryGap ? <> {copy.action(coverage.kind, coverage.latestDate ? fmtDate(coverage.latestDate) : null, coverage.action, fmtDate(portfolioToday()))}</> : null}</> : maskAccountLabel(copy.action(
     coverage.kind, coverage.latestDate ? fmtDate(coverage.latestDate) : null, coverage.action, fmtDate(portfolioToday()),
   ))
   const data = rows.map(coverage => ({
