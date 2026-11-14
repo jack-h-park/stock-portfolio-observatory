@@ -939,9 +939,9 @@ const statementAccounts = new Set((krStatements.transactions?.rows ?? []).map((r
 // are always empty and it would otherwise be invisible to any freshness check
 // built off them. See `samsung_statement_fresh` below.
 const krAsOfPath = path.join(krStatementsDir, 'as-of.json')
-const krAsOfByAccount = fs.existsSync(krAsOfPath)
-  ? JSON.parse(fs.readFileSync(krAsOfPath, 'utf8'))?.accounts ?? {}
-  : {}
+const krStatementMetadata = fs.existsSync(krAsOfPath)
+  ? JSON.parse(fs.readFileSync(krAsOfPath, 'utf8'))
+  : null
 
 // What the statement parser could not handle, written beside the TSVs.
 //
@@ -6792,7 +6792,12 @@ check(
 // Aug, Nov, Apr, Jul) and vests are rarer, so a threshold tuned to catch a
 // missed quarter's dividend catches a missed vest for free.
 const samsungAccountLabel = '삼성증권(주식보상)'
-const samsungAsOf = krAsOfByAccount[samsungAccountLabel] || null
+const samsungPeriod = krStatementMetadata?.statementPeriods?.schemaVersion === 1 ? krStatementMetadata.statementPeriods.accounts?.[samsungAccountLabel] : null
+const samsungPeriodSources = samsungPeriod?.state === 'declared' && Array.isArray(samsungPeriod.sources) ? samsungPeriod.sources : []
+const samsungAsOf = samsungPeriodSources.length && samsungPeriodSources.every(source =>
+  source && typeof source.source === 'string' && /^[^/\\]+\.pdf$/i.test(source.source) && /^[a-f0-9]{64}$/.test(source.sha256 ?? '') && source.page === 1 &&
+  validCoverageDate(source.start) && validCoverageDate(source.end) && source.start <= source.end && source.end <= now.slice(0,10))
+  ? samsungPeriodSources.map(source => source.end).sort().at(-1) : null
 const samsungAgeDays = daysSince(samsungAsOf)
 const samsungStatementMaxDays = Number(process.env.STOCK_SAMSUNG_STATEMENT_MAX_DAYS || 120)
 check(
