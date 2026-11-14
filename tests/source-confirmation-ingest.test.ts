@@ -102,3 +102,19 @@ test('declared bank coverage is bound to source bytes and advances no balances',
  db.close()
  }
 })
+
+
+test('Chase holdings confirmation identifies its account independently of the quote date',()=>{
+ const dir=mkdtempSync(path.join(tmpdir(),'chase-snapshot-'))
+ const env=writeScenario(dir,{withPensions:false})
+ const source='us-holdings/chase-holdings-20260113.csv'
+ const body='Account name,Account number,Account type,Ticker,Quantity,As of,Base CCY,Cost,Value\nSAMPLE,...1234,Brokerage,ACME,1,01/12/2026,USD,10,10\nA,Average cost footnote\n'
+ mkdirSync(path.join(dir,'us-holdings'),{recursive:true});writeFileSync(path.join(dir,source),body)
+ const mapPath=path.join(dir,'map.json')
+ const receipt={scope:'investment',institution:'Chase',account:'Chase SAMPLE ...1234',kind:'holdings',source,sha256:createHash('sha256').update(body).digest('hex'),basis:'owner-confirmed',through:'2026-01-13',confirmedAt:'2026-01-13'}
+ writeFileSync(mapPath,JSON.stringify({sourceConfirmations:[receipt]}))
+ const result=runIngestWithOutput(dir,{env:{...env,STOCK_ACCOUNT_MAP_PATH:mapPath},allowFailure:true})
+ const db=new Database(result.dbPath)
+ assert.equal((db.prepare('select through_date from source_coverage_confirmations').get() as {through_date:string}|undefined)?.through_date,'2026-01-13')
+ db.close()
+})
