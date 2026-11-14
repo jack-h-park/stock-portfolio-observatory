@@ -54,7 +54,7 @@ export const accountUpdates = defineCopy({
     inboxAction: `자료를 다운로드해 ${INBOX_DIRECTORY}에 넣으세요.`,
     saveAction: (destination: string) => `받은 파일을 ${destination}에 저장하세요.`,
     confirmPeriod: '기존 파일의 조회 종료일을 확인해주세요.',
-    historyGap: (from: string, to: string) => `누락된 계좌 거래내역을 ${from} ~ ${to} 기간으로 받아 inbox에 넣으세요.`,
+    historyGap: (from: string, to: string) => `누락된 계좌 거래내역을 ${from} ~ ${to} 기간으로 받아 ${INBOX_DIRECTORY}에 넣으세요.`,
     missingDisposals: (symbols: string) => `매도 기록 누락: ${symbols}`,
     closed: '종료 계좌',
     closedAction: '추가 다운로드 불필요 · 과거 기록 보존',
