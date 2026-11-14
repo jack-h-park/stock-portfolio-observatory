@@ -1,65 +1,63 @@
 # Next Personal Finance Observatory increments
 
-**Status:** Gold correction #283, coverage display #286 and annual recorded-tax summary #290 have prior operating acceptance. Annual libraries #296-#299 and the standalone CLI #300 are merged. The independently updated operating checkout/build was observed at #303; see [installation observation](../operations/installation-status.md) for the distinction between installed source and accepted live behavior. The current PR connects KR statement-period provenance to all-assets coverage. Hometax verification and deployment remain on hold; no financial-data or configuration mutation is included.
+Updated November 13, 2026 (America/Los_Angeles). The original program is still the [master plan](../superpowers/plans/2026-11-10-personal-finance-observatory.md): public reusable code, private sources/state, evidence-linked financial visibility and bounded tax planning. Foundation/branding, all-assets entry and historical-tax adoption are implemented. Historical gold, date/coverage disclosure and the recorded-tax summary have prior operating acceptance. The first expanded custodian backup now also has separate-location recovery evidence. These completed increments should not remain the next implementation tasks.
 
-The [operating status](implementation-status.md) records the completed foundation and bounded adoption. The read-only review established the immediate priority: resolve the historical gold calculation gap before expanding the overview or annual tax engine. Private examples, account inventory, dates, balances and evidence remain in the operator's private review.
+The [implementation status](implementation-status.md) and [installation observation](../operations/installation-status.md) separate source, installation, historical acceptance and current gaps. Hometax and deployment remain held. This document authorizes no implementation, merge, private-data mutation or operating change.
 
-## First PR: sale-aware historical gold
+## Before functional work: framework security review
 
-**Suggested title:** `fix(assets): reconcile historical gold quantities after sales`.
+The November 13 read-only check found installed Next.js 15.5.27 and two open framework Dependabot alerts: [GHSA-2464-fhr4-w9xw](https://github.com/advisories/GHSA-2464-fhr4-w9xw) (critical) and [GHSA-p3m5-59mp-jv5r](https://github.com/advisories/GHSA-p3m5-59mp-jv5r) (high). The advisory metadata identifies 15.5.28 as a patched version. This is a reported dependency/version match, not a verified exploit or proof that this installation meets every affected configuration condition. Two additional medium transitive alerts also need classification.
 
-Original defect: [getTotalAssetsSeries](../../lib/adapters/portfolio-db.ts) supplied only gold purchases to [totalAssetsSeries](../../lib/net-worth.ts), which accumulated purchased grams on every later historical date. The merged correction reads purchases and sales per account and uses the existing FIFO matcher for remaining grams and fee-inclusive cost. The current endpoint is independently replaced with current covered assets, so agreement at that endpoint cannot detect historical gold retained after a sale.
+Prepare a separate minimal dependency-security PR before further feature implementation: review applicability against the app configuration, choose the supported patched resolution, inspect lockfile/transitive changes and run the existing synthetic CI/build. Do not probe production for an exploit, loosen access or combine this with a large feature/framework migration. Source review and any operational rollout are separate; deployment remains held. This status PR changes no dependency or runtime setting.
 
-Scope:
+## Priority 1: finish account/source coverage visibility
 
-- Read the relevant dated gold purchase and sale quantities, preserving account and self-owner scope. Define sign normalization explicitly; do not treat cash transfers, fees or interest as gram changes.
-- Compute remaining grams on each requested date. Before supported history begins, retain unknown/null semantics; a supported fully closed position has zero grams rather than an invented continuing position.
-- Use only price evidence available on or before the requested date. A missing price must not restore the original gross purchase cost after a sale. Define remaining-cost fallback against the existing basis contract; where it cannot be supported, preserve unknown valuation rather than inventing basis. Unexpected negative holdings or ambiguous quantity events require an explicit limitation.
-- Keep today's covered-total card, current asset inclusion, economic-exposure mapping and investment tax/rebalance scope unchanged. Historical values may intentionally change where the defect is corrected.
-- Use synthetic fixtures for full sale, partial sale, multiple accounts, non-self ownership, no future-price leakage, missing price/basis, pre-first-observation null and post-close zero. Verify both overview callers and current-endpoint parity.
+Build on merged [#308](https://github.com/jack-h-park/stock-portfolio-observatory/pull/308), which addresses query-period evidence across accounts and is present in the latest observed checkout/build. This documentation task performed neither its merge nor deployment and claims no new browser acceptance. Do not create a duplicate query-period PR. Merged #304–#307 already address KR receipts and selected Fidelity/Bithumb/Merrill period/date cases.
 
-Likely files: `lib/adapters/portfolio-db.ts`, `lib/net-worth.ts`, their existing historical-assets tests, and the affected explanatory copy if its algorithm description changes. Reuse the current code structure; no broad adapter/module extraction is necessary for this correction.
+The next independent increment should connect a reviewed account inventory to the existing coverage/read-only review surfaces. Its question is: which expected assets/accounts are represented, which have missing or stale evidence, and which still need reconciliation? A fresh file or recent API fetch must not imply complete history.
 
-Out of scope: rewriting source statements, refreshing prices, reimporting tax history, changing asset classifications, applying transactions, renaming repositories or enabling web writes. Deployment requires its own applicable authorization and a read-only operating recheck.
+Proposed PR scope, after checking the merged #308 boundaries:
 
-Correction boundary: unknown quantities and oversold account histories remain null; missing purchase basis blocks cost fallback only for unknown lots still open. A known closed account remains zero even without price/basis. An unresolved account makes that date's gold class unknown rather than reporting an unlabeled partial gold total. The shared matcher and investment/tax calculations are unchanged. The correction is operating following the separately authorized #286 deployment, with independent FIFO and post-sale web checks.
+- Identify the existing authoritative inventory inputs and account/owner keys. Document gaps rather than inventing a second mutable inventory or silently merging aliases.
+- Reuse existing account, supplementary-asset and statement-period adapters. Separate valuation dates, query/statement intervals, fetch age, evidence review and reconciliation.
+- Distinguish an expected account with no supplied source from a supported closed/zero account, a provider's absent row, an omitted observation and conflicting evidence. Keep source review that includes other owners distinct from the self-owned covered total.
+- Add read-only links to existing account/source review details. Preserve totals, ownership scope, tax/rebalance boundaries and missing-value behavior; no completeness percentage without a defensible inventory.
+- Verify with synthetic stale/missing/partial/conflicting/zero/other-owner/alias cases and unchanged covered totals. Private account names, balances and screenshots must never become fixtures.
 
-## Second PR: explain the coverage behind current assets
+Exit: a reviewer can trace a supported total and an actionable gap to existing evidence without a refresh, importer, provider call or write surface. Where existing contracts cannot establish an authoritative inventory, produce the small contract/design decision first rather than creating guessed records. Private acceptance later uses an explicitly authorized read-only review; deployment remains held.
 
-**Suggested title:** `feat(assets): distinguish valuation freshness from source coverage`.
+## Priority 2: complete operating ownership and recovery boundaries
 
-Build on [finance-overview](../../lib/application/finance-overview.ts), existing account/supplementary coverage and validation readers, [AssetCoverageNote](../../components/AssetCoverageNote.tsx), and the two existing overview pages.
+The wider durable-state inventory and first expanded MacBook snapshot recovery are done for their documented scope. Do not repeat that same restore merely to generate another success receipt.
 
-- Present valuation dates, statement coverage, unresolved reconciliation and omitted observations separately. Do not turn an unconfirmed account inventory into a completeness percentage.
-- Give read-only links from actionable coverage issues to existing data-review screens. Keep manual review and source acquisition separate from this summary.
-- Distinguish current nonzero cash-balance dates from old zero/retired observations while retaining the original rows. Show available statement period ends separately from last transaction/balance dates; do not relabel one as the other.
-- Make wrapper/asset-class grouping and economic exposure understandable without forcing their category subtotals to be identical.
-- Preserve the covered-total amount, owner default, currencies, exclusions and missing-value behavior. Keep a fresh file/status badge from asserting that all balances or tax treatments are current and reconciled.
+Remaining work:
 
-Acceptance uses synthetic stale-but-readable data, a zero retired balance, missing account evidence, conflicting observations and non-self accounts. Real account names, amounts or screenshots must not be committed as fixtures.
+- Clarify the editing authority for curated FX/evidence inputs and reconcile the briefing producer's effective archive paths. Existing backed-up files must not be replayed or rewritten to resolve ownership.
+- Document targeted backup installation versus the shared runtime checkout's auto-update behavior, preserving the held monthly drill. Broader runtime updates must not unintentionally activate its new marker namespace.
+- If authorized later, select compatible pinned stock-management/ops-runtime snapshots and validate policies, proposals/events and delivery deduplication/thread state alongside the recovered sources. Never infer an atomic recovery set from nearby timestamps.
+- Observe an ordinary scheduled daily backup independently. The manual first capture and loaded registration are not evidence of that future scheduled run.
+- Decide retention/cleanup for the private decrypted recovery specimen; keep receipts if its payload is removed. No automatic deletion or production promotion is proposed.
 
-### Second-increment implementation boundary
+Exit: explicit authority/consumer boundaries and bounded cross-repository recovery evidence, with no notification replay, live-path overwrite or web-write activation. Any execution beyond documentation/read-only inspection needs its own scope and authorization.
 
-Both asset overviews share a disclosure that separates self-owned nonzero cash dates, market/snapshot/cost observation dates and the conversion-rate date from configured-account source review. Zero balance observations remain stored and listed; their old dates no longer set the nonzero-cash class note. Zero does not establish account closure.
+## Priority 3: expand recorded-tax usefulness only with available evidence
 
-Configured brokerage/crypto and supplementary coverage, validation failures and file freshness are independent signals and may include other owners; they are not a self-only inventory or completeness percentage. An unavailable or empty coverage/check reader remains unconfirmed. Declared statement period ends remain unconfirmed in this increment: existing KR as-of metadata can be overridden or inferred from transactions, and does not retain declared-period provenance. Neither it nor legacy lot/transaction dates is promoted to a declared period end. A later provenance-preserving extraction change can supply those dates. Read-only links lead to existing review screens. No source acquisition, ingest, classification change or web write is added.
+The annual summary already operates in #290. A later bounded change may model return-reported prepayments and requested refunds separately from actual payment/refund settlement events. Requested refunds must never appear as received cash; missing settlement proof remains unknown.
 
-The second increment has prior operating acceptance. The current provenance PR connects only independently recorded KR statement periods; it is not deployed and does not regenerate old metadata. Observation dates describe evidence used by the existing valuation; they do not certify current market quotes, full statement reconciliation or complete account coverage.
+Design the fields and synthetic projection tests before importing anything. Add a historical fact only from available reviewed evidence and applicable write authorization. The accepted final historical return is not reopened, and no tax-document investigation is a prerequisite for Priority1. Further years or settlement completeness are not established by the existing minimal-year adoption.
 
-## Completed: annual summary of existing tax records
+## Priority 4: advance the annual estimate MVP within explicit scope
 
-The overview replaces record counts with year-by-year obligation amounts and scoped links. Tax unit, authority, tax type and currency remain separate; no combined monetary total is added. The selected liability must have a current usable evidence-linked basis. Payments, withholding, refund receipts and reversals are separated, with interest, penalties and signed noncash adjustments outside principal. Only the allocated shares of reviewed, evidence-linked settlement events enter recorded amounts. Missing categories and unknown balances remain unconfirmed, while excluded allocations, missing dates and unallocated events are visible.
+The [2025-first design](../superpowers/specs/2026-11-12-annual-tax-estimation-mvp-design.md), #296 contracts, #297 ordinary/NIIT, #298 eligible QDCG, #299 Korean exact reference and #300 component preview CLI are merged and present in observed installed source. They are not a complete annual return calculator or a newly accepted operating tax workflow.
 
-This is a read-only projection of the existing history, independent of the portfolio DB. The schema, importer, state, evidence and write settings do not change. The implementation is merged and deployed in [#290](https://github.com/jack-h-park/stock-portfolio-observatory/pull/290), with existing-record projection parity, bilingual web checks and preserved operating boundaries. Synthetic tests cover cross-year allocations, stale/submitted bases, missing review/evidence, deleted rows, large integer amounts and bilingual empty/error views.
+A separately approved next design can define reviewed annual inputs and permitted US component composition, retaining unsupported-method/credit/coverage blocks. It must not sum independent component outputs into an unlabeled annual total or compare them with recorded liability at a different scope. Korean reported amounts remain blocked; Hometax is held. California, special-rate methods and a read-only estimate UI retain separate designs/gates. Keep real input entry, state mutation and deployment out of a synthetic calculator PR.
 
-## Current design: 2025 annual tax calculation foundation
+## Later: liabilities, extraction and naming
 
-The owner selected finalized 2025 rules first. The [MVP design](../superpowers/specs/2026-11-12-annual-tax-estimation-mvp-design.md) recommends reviewed annual taxable bases, independently scoped federal/Korean general-tax components, explicit unknowns and permitted reviewed composition. California is a separately gated extension. Computed components are not complete annual totals; full comparison requires matching form boundaries and reviewed coverage. The Korean [exact rate-reference core](../architecture/korean-tax-reference.md) is merged in #299 without deployment, with reported amounts always unavailable. Hometax verification is on hold at the owner's request. The [read-only component preview CLI](../architecture/annual-tax-preview-cli.md) is merged in #300. The current independent increment is [KR statement-period provenance](../architecture/statement-period-provenance.md), preserving totals and unknown coverage. Deployment, private data entry and migration remain unauthorized. The accepted final historical return package is not a new validation target.
+Complete net worth requires a designed/evidenced liabilities model and no duplicate reserve/debt subtraction. It remains unsupported. Module extraction follows demonstrated maintenance boundaries and preserves public interfaces; no whole-repository rewrite is needed. GitHub slug/local path/job renames are optional compatibility cutovers after consumer inventory and rollback planning, not a prerequisite for the current product name.
 
-## Later increments
+Connector exports remain shadow-only. Seven distinct successful daily observations, statement comparison and separate position/cash/activity/lot acceptance are required before a promotion decision; a backed-up or recovered export does not satisfy those gates. Keep collector authentication, API acquisition and economic promotion separate from read-only coverage improvements.
 
-The Korean calculated-tax-line rounding policy remains unresolved independently for national/local reporting, and its Hometax investigation is on hold. Exact reference arithmetic does not resolve or bypass that gate. The full eligible federal worksheet is merged without deployment; Schedule D special-rate methods remain outside scope. The merged CLI makes existing supported and blocked component results inspectable with synthetic files. After the current provenance PR, prioritize the wider durable-state/backup inventory and isolated recovery gaps; annual composition/comparison and new web estimate surfaces retain their own gates. Annual composition/comparison, California and a read-only web estimate view remain separate increments; CLI availability does not establish operating availability.
+## Preserved gates
 
-After the existing-record summary, consider structured return-reported payments/refund requests. Keep requested refunds distinct from actual receipts and annual return liability distinct from investment-incremental estimates. A complete annual tax calculator, liabilities/net worth, broader parser coverage and repository/path renames retain their own design and acceptance gates from the [master plan](../superpowers/plans/2026-11-10-personal-finance-observatory.md).
-
-This review does not reopen the owner's accepted final return package or require further tax investigation before the asset work can proceed.
+Keep actual financial records, original evidence, approved-device access and private web-write prohibition unchanged. Hometax and deployment remain held. Source PRs, merge, installation, scheduled observation, private operating acceptance and recovery/promotion are separate outcomes. No recommendation above authorizes those later actions.
