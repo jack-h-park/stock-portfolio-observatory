@@ -87,9 +87,9 @@ test('one row per cash account, pension token, gold account and the gold price, 
     label: 'Example Bank ••1234',
     latestDate: daysAgo(100),
     lagDays: 100,
-    maxLagDays: 90,
+    maxLagDays: 30,
     status: 'action_needed',
-    action: `Example Bank ••1234 거래내역을 ${daysAgo(100)}부터 받아 inbox에 넣으세요`,
+    action: `Example Bank ••1234 거래내역을 ${daysAgo(100)} ~ ${new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())} 기간으로 받아 inbox에 넣으세요`,
   })
   assert.equal(byLabel['Sample Securities CMA ••5678'].kind, 'cma')
   assert.equal(byLabel['Sample Securities CMA ••5678'].status, 'current')
@@ -112,7 +112,7 @@ test('one row per cash account, pension token, gold account and the gold price, 
   assert.equal(gold.latestDate, daysAgo(30))
   assert.equal(gold.maxLagDays, 90)
   assert.equal(gold.status, 'current')
-  assert.match(gold.action, /금현물/)
+  assert.equal(gold.action, '추가 자료 필요 없음')
 
   const goldPrice = rows.find((row) => row.kind === 'gold_price')!
   assert.equal(goldPrice.latestDate, daysAgo(2))

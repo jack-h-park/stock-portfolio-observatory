@@ -1,3 +1,4 @@
+import {InvestmentUpdateAction} from '@/components/AccountUpdateAction'
 import Link from 'next/link'
 import { SupplementaryCoverageTable } from '@/components/SupplementaryCoverageTable'
 import { DataTable } from '@/components/DataTable'
@@ -46,14 +47,6 @@ function coverageLagLabel(row: AccountCoverage, language: string): string {
   }
   return days(row.lagDays)
 }
-
-function coverageDownloadLabel(row: AccountCoverage, language: string): string {
-  if (!row.downloadFrom) return language === 'ko' ? '기존 기준일 없음 — 가능한 전체 기간' : 'No existing cutoff — download the full available period'
-  return language === 'ko'
-    ? `${fmtDate(row.downloadFrom)}부터 (기존 자료와 1일 overlap)`
-    : `From ${fmtDate(row.downloadFrom)} (1-day overlap)`
-}
-
 
 export default async function DataOpsPage() {
   const language = await getLanguage()
@@ -154,32 +147,20 @@ export default async function DataOpsPage() {
               },
               {
                 key: 'artifact',
-                label: coverageCopy.artifact,
+                label: updatesCopy.next,
                 render: (row: AccountCoverage) => (
-                  <div className="max-w-[24rem]">
-                    <div className="font-medium text-ink">{row.requiredArtifact}</div>
-                    <div className="mt-1 text-label text-ink-3">{row.format}</div>
-                    <div className="mt-1 text-label font-medium leading-relaxed text-info">
-                      {language === 'ko' ? '추가 다운로드' : 'Download range'}: {coverageDownloadLabel(row, language)}
-                    </div>
-                    <div className="mt-1 text-label leading-relaxed text-ink-3">{row.action}</div>
-                    {row.lastFile ? (
-                      <code className="mt-1 block truncate text-micro text-ink-3" title={row.lastFile}>
-                        last: {row.lastFile}
-                      </code>
-                    ) : null}
-                  </div>
+                  <div className="max-w-[24rem]"><InvestmentUpdateAction row={row} language={language} /></div>
                 ),
               },
-              { key: 'method', label: coverageCopy.method, nowrap: true, priority: 'secondary', render: (row: AccountCoverage) => coverageCopy.methodLabel[row.method] },
+              { key: 'method', label: coverageCopy.method, nowrap: true, priority: 'secondary', render: (row: AccountCoverage) => ['current','due_soon','unconfirmed'].includes(row.status) ? updatesCopy.none : coverageCopy.methodLabel[row.method] },
               {
                 key: 'destination',
                 label: coverageCopy.destination,
                 priority: 'tertiary',
-                render: (row: AccountCoverage) => (
+                render: (row: AccountCoverage) => ['current','due_soon','unconfirmed'].includes(row.status) ? updatesCopy.none : (
                   <>
-                    <code className="text-label text-ink-3">{row.destination}</code>
-                    <div className="mt-1 max-w-[15rem] text-label leading-relaxed text-ink-3">{row.detail}</div>
+                    <code className="text-label text-ink-3">{row.sources.length > 1 ? row.sources.filter(source => ['action_needed','missing'].includes(source.status)).map(source => source.destination).join(' · ') : row.destination}</code>
+                    {row.sources.length <= 1 ? <div className="mt-1 max-w-[15rem] text-label leading-relaxed text-ink-3">{row.detail}</div> : null}
                   </>
                 ),
               },

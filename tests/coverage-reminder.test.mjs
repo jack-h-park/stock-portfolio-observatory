@@ -218,3 +218,10 @@ test('unconfirmed query periods request confirmation rather than a new download'
  assert.match(message,/조회 종료일을 확인/)
  assert.doesNotMatch(message,/다운로드 →|반영된 자료 없음/)
 })
+
+
+test('due-soon reminders do not request a download before it is needed',()=>{
+ const message=coverageMessage(doc([row({status:'due_soon'})]))
+ assert.match(message,/현재 추가 자료 필요 없음/)
+ assert.doesNotMatch(message,/다운로드 →|inbox에/)
+})
