@@ -1,8 +1,10 @@
+import {AccountUpdateAction} from '@/components/AccountUpdateAction'
 import { getPageCopy } from '@/lib/ui-copy'
 import type { Language } from '@/lib/i18n'
 import { DataTable } from '@/components/DataTable'
 import { Badge } from '@/components/ui'
 import type { AccountDataRange } from '@/lib/account-ranges'
+import {portfolioToday} from '@/lib/adapters/portfolio-db'
 import type { SupplementaryCoverageRow } from '@/lib/adapters/portfolio-db'
 import { maskAccountLabel } from '@/lib/account-label'
 import { fmtDate, fmtNumber } from '@/lib/format'
@@ -15,7 +17,7 @@ export function SupplementaryCoverageTable({ rows, language, accounts }: {
 }) {
   const copy = getPageCopy('accountUpdates', language)
   const nextAction = (coverage: SupplementaryCoverageRow) => maskAccountLabel(copy.action(
-    coverage.kind, coverage.latestDate ? fmtDate(coverage.latestDate) : null, coverage.action,
+    coverage.kind, coverage.latestDate ? fmtDate(coverage.latestDate) : null, coverage.action, fmtDate(portfolioToday()),
   ))
   const data = rows.map(coverage => ({
     label: coverage.label,
@@ -47,7 +49,7 @@ export function SupplementaryCoverageTable({ rows, language, accounts }: {
       { key: 'status', label: copy.status, render: (row: typeof data[number]) => row.coverage
         ? <Badge tone={row.coverage.status === 'current' ? 'success' : (row.coverage.status === 'due_soon' || row.coverage.status === 'unconfirmed') ? 'warning' : 'danger'}>{copy.statuses[row.coverage.status]}</Badge>
         : <Badge>{copy.closed}</Badge> },
-      { key: 'next', label: copy.next, render: (row: typeof data[number]) => <div className="max-w-80 text-label leading-relaxed text-ink-2">{row.coverage ? nextAction(row.coverage) : copy.closedAction}</div> },
+      { key: 'next', label: copy.next, render: (row: typeof data[number]) => <div className="max-w-80 text-label leading-relaxed text-ink-2">{row.coverage ? <AccountUpdateAction status={row.coverage.status} language={language} confirmation={maskAccountLabel(row.coverage.action)}>{nextAction(row.coverage)}</AccountUpdateAction> : copy.closedAction}</div> },
     ]}
   />
 }

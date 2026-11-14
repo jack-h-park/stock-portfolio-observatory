@@ -82,6 +82,7 @@ function accountLabel(group) {
 }
 
 function line(group) {
+  if (group.status === 'due_soon') return `• ${accountLabel(group)} — 곧 갱신 예정\n  → 현재 추가 자료 필요 없음`
   if (group.status === 'unconfirmed') return `• ${accountLabel(group)} — 조회기간 확인 필요\n  → 기존 자료의 조회 종료일을 확인해주세요. 재다운로드 필요 여부는 아직 판단하지 않습니다.`
   const reach =
     group.coveredThrough == null
@@ -113,7 +114,7 @@ function line(group) {
  * they are, and a snapshot that is not a file anyone downloads.
  */
 function footer(groups) {
-  groups = groups.filter(group => group.status !== 'unconfirmed')
+  groups = groups.filter(group => !['unconfirmed','due_soon'].includes(group.status))
   const lines = []
   if (groups.some((group) => group.method !== 'mcp' && group.method !== 'manual')) {
     lines.push('받은 파일은 inbox에 넣으면 다음 refresh에 반영됩니다.')
@@ -140,6 +141,7 @@ function supplementaryItems(doc) {
 }
 
 function supplementaryLine(row) {
+  if (row.status === 'due_soon') return `• ${row.label} — 곧 갱신 예정\n  → 현재 추가 자료 필요 없음`
   const reach =
     row.status === 'unconfirmed' ? '조회기간 확인 필요' : row.latestDate == null ? '반영된 자료 없음' : `${row.latestDate}까지 반영 (${row.lagDays}일 경과, 기준 ${row.maxLagDays}일)`
   return `• ${row.label} — ${reach}\n  → ${row.action}`

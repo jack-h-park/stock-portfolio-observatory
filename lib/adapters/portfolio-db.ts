@@ -4001,6 +4001,8 @@ export function getAccountCoverage(): AccountCoverageSummary {
       const statementLagDays = calendarAgeDays(statementCoveredThrough)
       const overdueDays = lagDays == null ? null : Math.max(0, lagDays - maxLagDays)
       const status = sources.length ? worstSource(sources).status : coveredThrough ? coverageStatus(lagDays, maxLagDays) : (holding || transaction ? 'unconfirmed' : 'missing')
+      if (status === 'current') action = '추가 자료 필요 없음'
+      if (status === 'due_soon') action = '현재 추가 자료 필요 없음 · 곧 갱신 예정'
       if (status === 'unconfirmed') {
         detail = `조회기간 근거가 확인되지 않았습니다. 마지막 거래일 ${isoDate(transaction?.covered_through) ?? '없음'}은 조회 종료일이 아닙니다.`
         action = '기존 자료의 조회 종료일을 확인해주세요. 확인 전에는 새 다운로드가 필요한지 판단하지 않습니다.'
@@ -4152,8 +4154,8 @@ export type SupplementaryCoverage = {
 
 /** Days each kind may go without a newer file before the reminder names it. */
 const SUPPLEMENTARY_MAX_LAG_DAYS: Record<SupplementaryCoverageKind, number> = {
-  deposit: 90,
-  cma: 90,
+  deposit: 30,
+  cma: 30,
   pension: 180,
   gold: 90,
   gold_price: 7,
@@ -4185,7 +4187,8 @@ export function getSupplementaryCoverage(): SupplementaryCoverage {
       const latestDate = isoDate(latest)
       const lagDays = calendarAgeDays(latestDate)
       const maxLagDays = SUPPLEMENTARY_MAX_LAG_DAYS[kind]
-      rows.push({ kind, label, latestDate, lagDays, maxLagDays, status: unconfirmed && !latestDate ? 'unconfirmed' : coverageStatus(lagDays, maxLagDays), action })
+      const status = unconfirmed && !latestDate ? 'unconfirmed' : coverageStatus(lagDays, maxLagDays)
+      rows.push({ kind, label, latestDate, lagDays, maxLagDays, status, action: status === 'current' ? '추가 자료 필요 없음' : status === 'due_soon' ? '현재 추가 자료 필요 없음 · 곧 갱신 예정' : action })
     }
 
     // The map's retired accounts, and its pension list. An unreadable map is the
@@ -4203,7 +4206,7 @@ export function getSupplementaryCoverage(): SupplementaryCoverage {
     const bankEnd = (institution:string,account:string) => latestOf(
       ...declaredBanks.filter(row => row.institution === institution && bankAccountGroup(accountMap?.bankAccounts,institution,row.account) === bankAccountGroup(accountMap?.bankAccounts,institution,account)).map(row => row.period_end),
       ...confirmations.filter(row => row.scope === 'bank' && row.kind === 'transactions' && row.institution === institution && row.account === account).map(row => row.through_date))
-    const bankAction = (label:string,latest:string|null) => latest ? `${label} 거래내역을 ${latest}부터 받아 inbox에 넣으세요` : `${label} 기존 자료의 조회 종료일을 확인해주세요. 마지막 거래일로 다운로드 필요 여부를 판단하지 않습니다.`
+    const bankAction = (label:string,latest:string|null) => latest ? `${label} 거래내역을 ${latest} ~ ${portfolioToday()} 기간으로 받아 inbox에 넣으세요` : `${label} 기존 자료의 조회 종료일을 확인해주세요. 마지막 거래일로 다운로드 필요 여부를 판단하지 않습니다.`
 
     if (hasTable('cash_balances')) {
       const cash = conn
@@ -4243,7 +4246,7 @@ export function getSupplementaryCoverage(): SupplementaryCoverage {
       const hanaLedgerKey = entry.institution === 'hana' && entry.kind === 'fx' ? 'Hana Bank|USD account' : null
       if (retired.has(key) || seenBanks.has(key) || (hanaLedgerKey && seenBanks.has(hanaLedgerKey))) continue
       const label = `${entry.institution} ${name}`
-      push(entry.kind === 'cma' ? 'cma' : 'deposit', label, null, `${label} 거래내역의 가능한 전체 기간을 받아 inbox에 넣으세요`)
+      push(entry.kind === 'cma' ? 'cma' : 'deposit', label, null, `${label} 거래내역을 가능한 전체 기간 ~ ${portfolioToday()}까지 받아 inbox에 넣으세요`)
       seenBanks.add(key)
     }
 
@@ -4284,7 +4287,7 @@ export function getSupplementaryCoverage(): SupplementaryCoverage {
     for (const account of goldAccounts) {
       const declaredEnd = readStatementPeriodEvidence(krMetadata,account).periodEnd
       const latest = declaredEnd && declaredEnd <= new Date().toISOString().slice(0,10) ? declaredEnd : null
-      push('gold',account,latest,latest ? `${account} 금현물 거래내역증명서를 ${latest}부터 새로 받아 inbox에 넣으세요` : `${account} 기존 증명서의 조회 종료일을 확인해주세요`,true)
+      push('gold',account,latest,latest ? `${account} 금현물 거래내역증명서를 ${latest} ~ ${portfolioToday()} 기간으로 받아 inbox에 넣으세요` : `${account} 기존 증명서의 조회 종료일을 확인해주세요`,true)
     }
     const holdsGold = hasTable('holdings_all') && Boolean(conn.prepare(`select 1 from holdings_all where ${GOLD_ROW_SQL} limit 1`).get())
     if (holdsGold) {
