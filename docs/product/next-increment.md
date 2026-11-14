@@ -12,11 +12,11 @@ Prepare a separate minimal dependency-security PR before further feature impleme
 
 ## Priority 1: finish account/source coverage visibility
 
-First coordinate with open [#308](https://github.com/jack-h-park/stock-portfolio-observatory/pull/308), which already addresses query-period evidence across accounts. Review and integration are separate decisions; do not create a duplicate query-period PR or treat the open change as delivered. Merged #304–#307 already address KR receipts and selected Fidelity/Bithumb/Merrill period/date cases.
+Build on merged [#308](https://github.com/jack-h-park/stock-portfolio-observatory/pull/308), which addresses query-period evidence across accounts and is present in the latest observed checkout/build. This documentation task performed neither its merge nor deployment and claims no new browser acceptance. Do not create a duplicate query-period PR. Merged #304–#307 already address KR receipts and selected Fidelity/Bithumb/Merrill period/date cases.
 
 The next independent increment should connect a reviewed account inventory to the existing coverage/read-only review surfaces. Its question is: which expected assets/accounts are represented, which have missing or stale evidence, and which still need reconciliation? A fresh file or recent API fetch must not imply complete history.
 
-Proposed PR scope, after checking #308's final boundaries:
+Proposed PR scope, after checking the merged #308 boundaries:
 
 - Identify the existing authoritative inventory inputs and account/owner keys. Document gaps rather than inventing a second mutable inventory or silently merging aliases.
 - Reuse existing account, supplementary-asset and statement-period adapters. Separate valuation dates, query/statement intervals, fetch age, evidence review and reconciliation.
