@@ -50,7 +50,7 @@ test('a bank export with missing transaction columns cannot certify coverage', (
   assert.match(doc.findings.join(' '), /header|columns/)
 })
 test('unrecognized transaction rows and missing amounts cannot certify coverage', () => {
-  for (const row of [['2026/10/01 12:00','sample','0','5','10'], ['2026-10-01 12:00','sample','','','10']]) {
+  for (const row of [['2026/10/01 12:00','sample','0','5','10'], ['2026-10-01 12:00','sample','','','10'], ['2026-10-01 12:00','sample','-','-','10'], ['2026-10-01 12:00','sample','0','NaN','10']]) {
     const doc = extract({ 'hana-deposit-invalid.xls': 'a' }, [
       { institution: 'hana', kind: 'checking', accountNumber: '123-456', alias: 'Hana sample' },
     ], `m._xls_rows=lambda p,f: [['계좌번호','123-456','','','','','조회기간','2026-01-01 ~ 2026-11-14'],['거래일시','적요','출금액','입금액','잔액'],${JSON.stringify(row)}]`)

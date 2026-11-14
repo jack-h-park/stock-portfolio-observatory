@@ -2888,11 +2888,12 @@ if (robinhoodSnapshot?.accounts?.length) {
       const symbol = normalizeTicker(text(firstOf(position, ['symbol', 'instrument_symbol', 'ticker'])))
       if (!symbol) continue
       const tally = lotTallyBySymbol.get(symbol)
+      const held = number(firstOf(position, ['quantity', 'open_quantity', 'units']))
       if (!tally) {
+        if (held === 0) continue
         robinhoodSymbolsWithoutLots.push(`${label} ${symbol}`)
         continue
       }
-      const held = number(firstOf(position, ['quantity', 'open_quantity', 'units']))
       if (held == null) continue
       // One millionth of slack per lot, which is more rounding than six-decimal
       // input can produce and still orders of magnitude below the smallest lot
