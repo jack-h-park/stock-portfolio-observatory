@@ -1,18 +1,20 @@
 # Owner installation observation
 
-Observed November 13, 2026 (America/Los_Angeles). This records a read-only checkout/build observation, not a deployment performed by this documentation change or a new live-browser acceptance.
+Observed November 13, 2026 (America/Los_Angeles). This is a read-only source/build and protection observation, not a deployment or a new browser/application acceptance by this documentation task.
 
 | Layer | Observed state | Interpretation |
 | --- | --- | --- |
-| Repository main | [#300](https://github.com/jack-h-park/stock-portfolio-observatory/pull/300) and [#303](https://github.com/jack-h-park/stock-portfolio-observatory/pull/303) merged | The annual component preview CLI and independent account-coverage improvements are source changes on main |
-| Operating checkout | `abea942ab706ec9fbf11fe03747f88a044dd207b` (#303) | Includes #300 and the earlier annual library commits as ancestors; installed source presence does not establish accepted execution of a private annual-tax workflow |
-| Installed build identifier | `8sP2QlhBmYhXQCm6FB41t` | Read from the installed build; not proof of the code currently loaded by every running process or browser |
-| Prior bounded operating acceptance | #290 history summary; #283/#286 historical gold/coverage rollout | Historical browser/projection/evidence/recovery checks retain their original scope |
-| Current statement-period provenance PR | Development only | Not installed, deployed or accepted with private source files; legacy generated metadata remains unconfirmed |
-| Protected boundaries | Existing tax history, original sources/evidence, environment, launch agent and persisted/live gateway rules matched prior preservation receipts | Private web writes remain disabled and approved-device access is unchanged; scheduled generated outputs are classified separately |
+| Repository main | Through [#307](https://github.com/jack-h-park/stock-portfolio-observatory/pull/307), `dbd015af978b7b9bf37f3f12aba256357b215ab7` | Includes the annual component libraries/CLI, connector shadow reader and merged coverage increments #304–#307 |
+| Operating checkout | Same `dbd015af978b7b9bf37f3f12aba256357b215ab7` | Installed source identity matches the observed main baseline; it does not prove every feature's accepted live behavior |
+| Installed build identifier | `TeH6p-nlL-939uel7ygC2` | Read from the installed build; no assertion about every running process/browser |
+| Prior bounded web acceptance | #290 recorded-tax summary; #283/#286 historical gold/coverage rollout | Historical verification retains its original scope; no new live-browser acceptance is claimed here |
+| Coverage changes | #304 KR statement-period receipts, #305 Fidelity dates, #306 Bithumb periods and #307 Merrill periods merged and present in observed source | Individual source improvements do not prove a complete account inventory, continuous history or all-account reconciliation |
+| All-account query-period follow-up | [#308](https://github.com/jack-h-park/stock-portfolio-observatory/pull/308) open at this observation | Not merged or accepted as part of this status update; coordinate with it rather than duplicating its work |
+| Backup/recovery | Expanded custodian backup activated and its first pinned snapshot recovered separately; see [backup status](finance-state-backup-and-restore.md#observed-operating-acceptance-november-13-2026) | File integrity, reference/readability checks and process isolation passed for that snapshot; operating-host/cross-repository/application recovery remains separate |
+| Protected state and access | Environment, app launch-agent file, tax history and persisted/live gateway hashes matched the latest recovery preservation receipts | Private web writes remain disabled; existing approved-device access rules are unchanged |
 
-The checkout/build advanced independently from the earlier #302 observation while this task was active. This task did not deploy, restart, extract, ingest or modify financial sources/settings, and did not roll back that independent work. Earlier documents describing #296-#300 as merged without deployment describe those increments' delivery at that time; the current observation above supersedes any implication that the installed source is still #290.
+The checkout/build advanced independently from the older #303 observation. This documentation task did not deploy, restart, extract, ingest, collect, import, change backup settings or alter access rules. Earlier statements that #296–#300 were merged without deployment describe those increments' delivery at that time; they must not be read as proof that current installed source is still #290 or #303. Conversely, source presence does not establish a complete operating annual-tax workflow.
 
-Hometax verification is on hold. Korean reported tax remains blocked; exact references and a CLI do not establish complete annual returns or comparison eligibility. The current feature PR requires separate merge and deployment authorization. No new private scenario execution, browser/service release acceptance, backup-setting change or restoration exercise is claimed by this observation.
+Hometax verification and deployment remain on hold. Korean reported general tax stays blocked by unresolved line-specific quantization evidence; component calculations and a CLI do not establish complete annual totals or comparison eligibility. Connector shadow support does not authorize economic promotion, and a restored collector record is not a new provider collection.
 
-Recheck checkout/build and protected settings before any later release; do not treat this snapshot as a permanent deployment record. Actual receipt paths and private inventories remain outside the public repository.
+Recheck source/build and protected settings before any later release. Private figures, account identifiers, original paths, snapshot IDs and receipt locations stay outside this public repository.
