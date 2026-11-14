@@ -1,0 +1,31 @@
+# Read-only account inventory adapter and display
+
+This source increment connects the [inventory foundation](account-inventory-foundation.md) to `/accounts`. It is not an operating release or private inventory adoption. The [approved design](../superpowers/specs/2026-11-13-account-inventory-design.md) remains the authority for identity, ownership and dated review scope.
+
+## Read boundary
+
+The [transport](../../lib/adapters/account-inventory.ts) reads the configured private map as a byte snapshot with an explicit missing/invalid/read-error result. It opens the existing SQLite database with `readonly: true` and `fileMustExist: true`, using one read transaction for its table queries. No source document, download, credential, provider endpoint, writer or refresh command is invoked. Existing map-loader, overrides, ingesters, financial totals and reminder outputs are unchanged.
+
+The adapter consumes existing holdings/transaction/cash observations, bank statement periods, accepted source-confirmation rows, recorded missing-disposal checks, source-file metadata, KR generated period receipts, crypto generated statement metadata and named generated snapshots. It compares the map hash with its recorded ingest fingerprint; a mismatch or absent fingerprint prevents a confirmed review. Missing previously ingested generated inputs, invalid supported metadata shapes and changed recorded generated fingerprints also make the new review unavailable. Genuinely absent optional caches are distinct from missing ingested inputs.
+
+Generated receipts are recorded provenance, not fresh original-byte verification. Date-only DB observations establish an observed population; they do not prove a query period, snapshot freshness or explicit owner. The adapter never promotes the DB's default `self` classification. Reading cached metadata does not establish a consistent capture across all external files; any available fingerprint mismatch remains visible rather than triggering regeneration.
+
+## Binding and evidence
+
+The [pure application adapter](../../lib/application/account-inventory.ts) groups facts by explicit provider alias, exact account reference, source kind and temporal eligibility before calling the domain projector. Valid period chains can consolidate into one kind; conflicting and unconfirmed recorded artifacts survive consolidation. Raw DB observations do not poison a separately established period, but are never used to create that period. Confirmed endpoints cannot fill historical gaps.
+
+Bank periods, empty/quiet declarations and accepted confirmations bind only to their own institution/account. KR receipts retain the existing conflict/date rules. Crypto full-scope/contiguity validation reuses the existing helper. Pension source tokens must identify one economic account; duplicates produce a conflict instead of sharing one snapshot. A uniquely bound missing-disposal check remains actionable even when freshness is current; ambiguous check identities make the read incomplete.
+
+Snapshot dates are not applied globally to every account at a provider. Explicit account labels are supported. Toss's actual `accountNo` schema is retained as a provisional, masked source-only reference when no explicit label bridge exists. It is not silently folded into the legacy generic Toss label. Unsupported Robinhood number/strategy bridges and unnamed snapshot identities remain unresolved; no last-four or owner inference is introduced. Private map/alias review can be proposed later, but this code never persists an ID or edits metadata.
+
+## Screen semantics
+
+The [server component](../../components/AccountInventoryReview.tsx) adds a bilingual inventory-review section to `/accounts`. Existing historical account counts, timelines, closed-account presentation and update tables remain intact. The new section distinguishes explicit expected accounts, observed-only groups, confirmed scope denominator, owner/lifecycle uncertainty, exclusions, required-source state and recorded date/reference details. Source requirements are not invented for legacy rows.
+
+An unreviewed/unavailable denominator says not confirmed rather than zero. A genuinely reviewed empty scope has its own dated-scope message. A current source never implies a complete inventory; source health and inventory attestation remain separate. Account labels and source references use the existing masking helper. Links navigate only to existing `/data-map` and `/data-ops#account-coverage`; they neither serve arbitrary files nor submit changes. Existing approved-device access and disabled web writes remain unchanged.
+
+## Verification and later gates
+
+Synthetic pure-binding tests and actual read-only SQLite/file transport tests cover quiet periods, account isolation, raw observation uncertainty, malformed/missing caches, snapshot identity limits, duplicate pension tokens, missing disposals, fingerprint mismatch and unchanged fixture hashes/mtimes. English/Korean render checks cover unavailable versus reviewed-empty states, masking and absence of editing controls. The isolated sample build/browser fixture contains no private configuration or source records.
+
+These tests do not establish complete provider coverage, current original hashes, physical-device access, private owner attestation or operating acceptance. Merging this source, deploying it, reviewing real metadata and any source regeneration remain separate authorized steps. Hometax and additional deployment stay held; financial records, original evidence and access/write settings remain preserved.
