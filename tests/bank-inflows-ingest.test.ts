@@ -218,3 +218,11 @@ test('a rule without an id is still recorded as the rule that matched', () => {
   const row = db.prepare("select category, rule, rule_note from bank_inflows where description = '급여'").get() as any
   assert.deepEqual([row.category, row.rule, row.rule_note], ['salary', 'bankInflowRules[0]', 'Example payroll'])
 })
+
+
+test('purchase reimbursements are classified distinctly from own transfers', () => {
+  const bank = { ...BANK, inflows: [inflow('mg', 'Checking', 'KRW', '2025-03-25', 500, 'PURCHASE REFUND')] }
+  const db = ingestBank(bank, { ...MAPPINGS, bankInflowRules: [{ id: 'purchase', match: { institution: 'mg', descriptionIncludes: 'PURCHASE REFUND' }, category: 'reimbursement' }] })
+  assert.deepEqual(db.prepare('select category, rule from bank_inflows').get(), { category: 'reimbursement', rule: 'purchase' })
+  assert.equal(checkOf(db, 'bank_inflow_rules_valid').status, 'pass')
+})
