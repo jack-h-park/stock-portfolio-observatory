@@ -1,4 +1,4 @@
-import { readStatementPeriodEvidence, type StatementPeriodEvidence } from '@/lib/domain/assets/statement-periods'
+import { bithumbStatementEnd, readStatementPeriodEvidence, type StatementPeriodEvidence } from '@/lib/domain/assets/statement-periods'
 import { collectAssetCoverage, dateRange } from '@/lib/application/asset-coverage'
 import { getFinanceOverview } from '@/lib/application/finance-overview'
 import fs from 'node:fs'
@@ -3805,6 +3805,7 @@ export function getAccountCoverage(): AccountCoverageSummary {
     // end; and 토스증권's lots include fills bridged from the Open API, so its
     // "statement" date ran ahead of the statement.
     const krStatementMetadata = readJson(path.join(config.stockKrStatementsDir, 'as-of.json'))
+    const cryptoActivity = readJson(config.stockCryptoActivityPath)
     const krStatementAsOf: Record<string, string> = krStatementMetadata?.accounts ?? {}
     const statementRows = conn
       .prepare(`select market, coalesce(brokerage, 'Unknown') as brokerage, account, account_type, max(as_of_date) as covered_through
@@ -3949,11 +3950,11 @@ export function getAccountCoverage(): AccountCoverageSummary {
         destination = 'crypto-bithumb/'
         maxLagDays = 14
         // Crypto holdings are derived with a quote's as-of date, which can be
-        // today even when the statement activity stops earlier. The statement
-        // transaction cutoff is the authoritative coverage date here.
-        coveredThrough = isoDate(transaction?.covered_through)
+        // today even when no recent activity occurred. The PDF's declared
+        // full-scope, contiguous query periods establish coverage instead.
+        coveredThrough = bithumbStatementEnd(cryptoActivity, rawAccount, new Date().toISOString().slice(0, 10)) ?? isoDate(transaction?.covered_through)
         action = '같은 조회기간의 PDF와 XLSX를 모두 다운로드해 inbox에 넣으세요.'
-        detail = 'PDF가 거래 원장이고 XLSX는 입출금 사유 보강용입니다.'
+        detail = 'PDF가 선언한 전체 자산·전체 거래유형의 연속 조회기간을 기준으로 계산합니다. XLSX는 입출금 사유 보강용입니다.'
       } else if (market === 'CRYPTO') {
         requiredArtifact = 'Robinhood Crypto monthly statement'
         format = 'PDF'
