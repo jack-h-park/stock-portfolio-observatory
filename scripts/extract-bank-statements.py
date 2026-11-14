@@ -1324,7 +1324,7 @@ KR_DIR = DATA_DIR / "kr-statements"
 MIRAE_TRANSFER_GLOBS = ("mirae-general-transactions-*.pdf", "mirae-isa-transactions-*.pdf",
                         "mirae-gold-transactions-*.pdf", "mirae-general-transactions-*.txt")
 # A counterparty bank, as 토스뱅크 prints it, whose statements this extractor reads.
-STATEMENT_BANKS = {"MG새마을금고": "mg", "미래에셋증권": "mirae", "토스뱅크": "tossbank", "하나은행": "hana", "국민은행": "kb"}
+STATEMENT_BANKS = {"MG새마을금고": "mg", "미래에셋증권": "mirae", "토스뱅크": "tossbank", "하나은행": "hana", "국민은행": "kb", "KB국민은행": "kb"}
 PAIR_DAYS = 3
 MIN_ESTIMATE_KRW = 1_000_000
 ESTIMATE_ALIASES = {

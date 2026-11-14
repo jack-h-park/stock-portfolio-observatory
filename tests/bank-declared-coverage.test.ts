@@ -86,7 +86,7 @@ test('a named Toss transfer matches its opposite KB bank leg', () => {
   const output = execFileSync('python3', ['-c', `
 import importlib.util, json
 spec=importlib.util.spec_from_file_location('bank','scripts/extract-bank-statements.py'); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
-a={'date':'2026-10-01','seq':0,'amount':-100,'counterpartyInstitution':'국민은행','description':'transfer'}
+a={'date':'2026-10-01','seq':0,'amount':-100,'counterpartyInstitution':'KB국민은행','description':'transfer'}
 b={'date':'2026-10-01','seq':0,'amount':100,'description':'transfer'}
 m.estimate_closed_accounts([('tossbank','toss-1',[a]),('kb','kb-1',[b])],[],{},[])
 print(json.dumps([a.get('ownTransfer',False),b.get('ownTransfer',False)]))
