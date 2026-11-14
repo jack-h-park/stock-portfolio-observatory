@@ -13,7 +13,7 @@ balance includes its core money-market position (see FIDELITY_CORE_FUNDS).
 """
 from __future__ import annotations
 
-import csv, hashlib, io, importlib.util, json, os, re, subprocess, sys, tempfile, unicodedata
+import csv, hashlib, io, importlib.util, json, math, os, re, subprocess, sys, tempfile, unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -794,14 +794,19 @@ def parse_korean_deposit(path, findings, _notes):
         if not re.fullmatch(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}(?::\d{2})?', date_time):
             raise ValueError('invalid transaction date and time')
         datetime.strptime(date_time[:10], '%Y-%m-%d')
-        if _num(get('잔액')) is None:
+        balance = _num(get('잔액'))
+        deposit = _num(get('입금액'))
+        withdrawal = _num(get('출금액'))
+        if balance is None or not math.isfinite(balance):
             raise ValueError('transaction row has no balance')
-        if not get('입금액') and not get('출금액'):
+        if deposit is None and withdrawal is None:
             raise ValueError('transaction row has no amounts')
+        if any(value is not None and not math.isfinite(value) for value in (deposit, withdrawal)):
+            raise ValueError('transaction row has non-finite amount')
         txns.append({'date': date_time[:10], 'time': date_time[11:],
                      'description': ' '.join(' '.join(filter(None, [get('적요'), get('보낸분/받는분')])).split()),
-                     'amount': (_num(get('입금액')) or 0) - (_num(get('출금액')) or 0),
-                     'balance': _num(get('잔액'))})
+                     'amount': (deposit or 0) - (withdrawal or 0),
+                     'balance': balance})
     if header is None:
         raise ValueError('transaction header missing')
     txns.sort(key=lambda txn: (txn['date'], txn['time']))

@@ -54,6 +54,7 @@ Run with --dry-run first; it prints the same plan and moves nothing.
 """
 
 import hashlib
+import importlib.util
 import io
 import json
 import os
@@ -1577,6 +1578,82 @@ def mg_xls_texts(doc):
     return [raw[offset:].decode("utf-16-le", errors="ignore") for offset in (0, 1)]
 
 
+_BANK_STATEMENT_MODULE = None
+
+
+def _bank_statement_module():
+    global _BANK_STATEMENT_MODULE
+    if _BANK_STATEMENT_MODULE is None:
+        spec = importlib.util.spec_from_file_location('bank_statement_filer', REPO_ROOT / 'scripts' / 'extract-bank-statements.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _BANK_STATEMENT_MODULE = module
+    return _BANK_STATEMENT_MODULE
+
+
+def detect_korean_bank_xls(doc):
+    """Hana KRW and KB exports: identify from cells, never from the input filename."""
+    texts = mg_xls_texts(doc)
+    if texts is None:
+        return None
+    joined = '\n'.join(texts)
+    if not all(marker in joined for marker in ('거래내역조회', '계좌번호', '조회기간', '거래일시')) or '통장(상품)명' in joined or '적용환율' in joined:
+        return None
+    entries, problem = account_map_list('bankAccounts')
+    if problem:
+        return None
+    # Check a registered full account number before conversion. A generic title
+    # alone must never claim an unrelated bank's file if conversion is missing.
+    raw = doc.path.read_bytes()
+    def contains_account(entry):
+        number = digits(entry.get('accountNumber'))
+        if not number:
+            return False
+        pattern = r'(?<!\d)' + r'[-\s]?'.join(number) + r'(?!\d)'
+        return bool(re.search(pattern, joined) or re.search(pattern.encode('ascii'), raw))
+    candidates = [e for e in entries if e.get('institution') in ('hana', 'kb')
+                  and e.get('kind') == 'checking' and e.get('currency') == 'KRW'
+                  and contains_account(e)]
+    if not candidates:
+        return None
+    bank = _bank_statement_module()
+    findings = []
+    try:
+        rows = bank._xls_rows(doc.path, findings)
+    except (OSError, ValueError):
+        return None
+    if not rows:
+        return None
+    cells = [[str(c).strip() for c in row] for row in rows]
+    if cells[0][:1] == ['조회기간'] and len(cells) > 2 and cells[1][:1] == ['계좌번호'] and cells[2][:1] == ['예금종류']:
+        institution = 'kb'
+        account_row = cells[1]
+    elif len(cells) > 2 and cells[0][:1] in (['거래내역조회'], ['과거거래내역조회']) and cells[2][:1] == ['계좌번호']:
+        institution = 'hana'
+        account_row = cells[2]
+    else:
+        return None
+    number = digits(account_row[1]) if len(account_row) > 1 else ''
+    matches = [e for e in entries if e.get('institution') == institution and number and digits(e.get('accountNumber')) == number]
+    if len(matches) != 1 or matches[0].get('currency') != 'KRW' or matches[0].get('kind') != 'checking':
+        return Refusal('Korean bank XLS', 'the printed account is missing or ambiguous in the account map',
+                       'add or correct the full account number in bankAccounts')
+    try:
+        period = bank.declared_bank_period(doc.path, institution, 'checking')
+        if not period or not all(period):
+            raise ValueError('declared query period missing')
+        start, end = (parse_ymd(value) for value in period)
+        if not start or not end or start > end:
+            raise ValueError('invalid query period')
+        txns = bank.parse_korean_deposit(doc.path, findings, [])
+        if any(not (iso(start) <= txn['date'] <= iso(end)) for txn in txns):
+            raise ValueError('transaction falls outside declared query period')
+    except (ValueError, TypeError, IndexError) as error:
+        return Refusal('Korean bank XLS', str(error))
+    name = f'{institution}-deposit-{number[-4:]}-{compact(start)}-{compact(end)}.xls'
+    return Plan(DIR_BANK, name, [f'account {mirae_accounts.mask(number)} matched in account map', f'조회기간 {iso(start)} ~ {iso(end)}'])
+
+
 def mg_printed_numbers(texts):
     """Every distinct full 계좌번호 the workbook prints, digits only."""
     return sorted({digits(m.group(0)) for text in texts for m in MG_NUMBER_RE.finditer(text)})
@@ -2200,6 +2277,7 @@ DETECTORS = [
     ("Chase deposit activity CSV", detect_chase_checking),
     ("Bank of America statement CSV", detect_boa),
     ("Robinhood checking / savings CSV", detect_robinhood_bank),
+    ("Hana KRW / KB deposit history (.xls)", detect_korean_bank_xls),
     ("새마을금고 거래내역조회 (.xls)", detect_mg_deposit),
     ("새마을금고 해지계좌 거래내역조회 (.xls)", detect_mg_term),
     ("토스뱅크 거래내역 (.xlsx, encrypted)", detect_tossbank),
