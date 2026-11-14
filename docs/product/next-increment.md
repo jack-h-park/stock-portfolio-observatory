@@ -16,7 +16,9 @@ Build on merged [#308](https://github.com/jack-h-park/stock-portfolio-observator
 
 The next independent increment should connect a reviewed account inventory to the existing coverage/read-only review surfaces. Its question is: which expected assets/accounts are represented, which have missing or stale evidence, and which still need reconciliation? A fresh file or recent API fetch must not imply complete history.
 
-Proposed PR scope, after checking the merged #308/#310/#312 boundaries:
+The proposed [expected-account design](../superpowers/specs/2026-11-13-account-inventory-design.md) defines additive metadata on the existing private map, canonical identities, explicit ownership, scoped review receipts and separate missing-evidence judgments. It is a design proposal, not implementation or a completed private account review. Merged [#314](https://github.com/jack-h-park/stock-portfolio-observatory/pull/314) already adds explicit bank historical-gap signals; reuse them rather than duplicating that work. No deployment of #314 is established by this document.
+
+The design PR is the current review step. Proposed later implementation scope, subject to separate authorization:
 
 - Identify the existing authoritative inventory inputs and account/owner keys. Document gaps rather than inventing a second mutable inventory or silently merging aliases.
 - Reuse existing account, supplementary-asset and statement-period adapters. Separate valuation dates, query/statement intervals, fetch age, evidence review and reconciliation.
