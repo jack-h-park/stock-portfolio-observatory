@@ -4,6 +4,12 @@ Updated November 13, 2026 (America/Los_Angeles). The original program is still t
 
 The [implementation status](implementation-status.md) and [installation observation](../operations/installation-status.md) separate source, installation, historical acceptance and current gaps. Hometax and deployment remain held. This document authorizes no implementation, merge, private-data mutation or operating change.
 
+## Before functional work: framework security review
+
+The November 13 read-only check found installed Next.js 15.5.27 and two open framework Dependabot alerts: [GHSA-2464-fhr4-w9xw](https://github.com/advisories/GHSA-2464-fhr4-w9xw) (critical) and [GHSA-p3m5-59mp-jv5r](https://github.com/advisories/GHSA-p3m5-59mp-jv5r) (high). The advisory metadata identifies 15.5.28 as a patched version. This is a reported dependency/version match, not a verified exploit or proof that this installation meets every affected configuration condition. Two additional medium transitive alerts also need classification.
+
+Prepare a separate minimal dependency-security PR before further feature implementation: review applicability against the app configuration, choose the supported patched resolution, inspect lockfile/transitive changes and run the existing synthetic CI/build. Do not probe production for an exploit, loosen access or combine this with a large feature/framework migration. Source review and any operational rollout are separate; deployment remains held. This status PR changes no dependency or runtime setting.
+
 ## Priority 1: finish account/source coverage visibility
 
 First coordinate with open [#308](https://github.com/jack-h-park/stock-portfolio-observatory/pull/308), which already addresses query-period evidence across accounts. Review and integration are separate decisions; do not create a duplicate query-period PR or treat the open change as delivered. Merged #304–#307 already address KR receipts and selected Fidelity/Bithumb/Merrill period/date cases.
