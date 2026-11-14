@@ -1,3 +1,4 @@
+import { readRobinhoodSnapshotIdentities } from '@/lib/domain/assets/robinhood-snapshot-identity'
 import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
@@ -78,6 +79,9 @@ export function getAccountInventoryReview(options: { paths?: InventoryReadPaths;
     if (table('source_files')) {
       const sources = db.prepare('select name,filename from source_files').all() as { name: string; filename: string }[]
       for (const registration of normalized.registrations.filter(r => r.section === 'pensionAccounts')) {
+        // Preserve isActivePensionEntry's existing retirement eligibility.
+        // Malformed/future declarations remain review issues, never reactivated.
+        if (registration.legacy.retiredOn) continue
         const token = registration.legacy.token
         if (!text(token)) continue
         const identities = new Set(normalized.registrations.filter(r => r.section === 'pensionAccounts' && r.legacy.token === token).map(r => r.metadata?.accountId ?? r.key))
@@ -138,11 +142,14 @@ export function getAccountInventoryReview(options: { paths?: InventoryReadPaths;
   for (const [file, name, provider] of [[paths.robinhoodPath,'robinhood_snapshot','robinhood'],[paths.tossPath,'toss_snapshot','toss']]) {
     const snapshot = generated(file, name)
     if (!Array.isArray(snapshot?.accounts)) continue
-    for (const account of snapshot.accounts) {
+    const robinhoodIdentities = provider === 'robinhood' ? readRobinhoodSnapshotIdentities(snapshot.accounts) : null
+    for (const [index, account] of snapshot.accounts.entries()) {
       // No global snapshot date applied to accounts not explicitly named here.
       if (!object(account)) continue
-      const accountLabel = text(account.account) ? account.account
-        : provider === 'toss' && text(account.accountNo) ? `Toss accountNo ${account.accountNo}` : null
+      const identity = robinhoodIdentities?.[index]
+      if (identity?.issue) { readIssues.push(identity.issue); continue }
+      const accountLabel = identity?.label ?? (text(account.account) ? account.account
+        : provider === 'toss' && text(account.accountNo) ? `Toss accountNo ${account.accountNo}` : null)
       if (!accountLabel) { readIssues.push(`${name}_identity_unresolved`); continue }
       const date = strictIsoDate(String(snapshot?.fetchedAt ?? '').slice(0,10))
       facts.push({ provider, account: accountLabel, kind: 'positions', date, refs: [`generated:${name}`], basis: 'snapshot', state: date && date <= today ? 'present' : 'unconfirmed' })

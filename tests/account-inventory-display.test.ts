@@ -35,3 +35,15 @@ test('a genuinely reviewed empty scope is distinguished from unreadable or unrev
  const html=renderToStaticMarkup(React.createElement(AccountInventoryReview,{review:r,language:'en'}))
  assert.match(html,/Reviewed empty scope/);assert.doesNotMatch(html,/does not establish an empty inventory/)
 })
+
+test('legacy pension declarations are explained without owner confirmation or collection requests',()=>{
+ const r=buildAccountInventoryReview({mapRead:{state:'available',value:{pensionAccounts:[{institution:'mirae',account:'Closed example',retiredOn:'2025-12-31',owner:'other'},{institution:'mirae',account:'Unloaded example',owner:'other'}]}},facts:[],readIssues:[]},clock)
+ for(const language of ['en','ko'] as const){
+  const html=renderToStaticMarkup(React.createElement(AccountInventoryReview,{review:r,language}))
+  assert.match(html,language==='en'?/Legacy retirement declared/:/기존 폐쇄 선언/)
+  assert.match(html,language==='en'?/Not loaded by existing policy/:/기존 정책상 미적재/)
+  assert.match(html,language==='en'?/No new source request/:/새 자료 요청 없음/)
+  assert.match(html,language==='en'?/Owner not confirmed/:/소유자 미확인/)
+  assert.doesNotMatch(html,/zero balance|잔액 0|<form|<input/)
+ }
+})

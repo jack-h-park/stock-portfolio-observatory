@@ -29,6 +29,7 @@ export function AccountInventoryReview({ review, language }: { review: AccountIn
           <div className="font-medium">{row.aliases.map(maskAccountLabel).join(' / ')}</div>
           <div className="text-label text-ink-3">{row.owner.state === 'confirmed' ? row.owner.ownerId === 'self' ? copy.owner.self : copy.owner.other : copy.owner.unknown}</div>
           <div className="text-label text-ink-3">{copy.lifecycle[row.lifecycle.state]}</div>
+          {review.pensionPolicies.find(p => p.key === row.key && p.state !== 'active') ? <div className="mt-1 text-label text-ink-3">{copy.pensionPolicy[review.pensionPolicies.find(p => p.key === row.key)!.state]}</div> : null}
         </div> },
         { key: 'identity', label: copy.identity, render: (row: InventoryRow) => <>
           <Badge tone={row.discovery === 'expected' && row.membership === 'included' ? 'info' : 'warning'}>{copy.discovery[row.discovery]}</Badge>
@@ -48,7 +49,11 @@ export function AccountInventoryReview({ review, language }: { review: AccountIn
             </details> : null}
           </div>
         } },
-        { key: 'next', label: copy.next, render: (row: InventoryRow) => <div className="max-w-64 text-label leading-relaxed">{copy.actions[row.action]}</div> },
+        { key: 'next', label: copy.next, render: (row: InventoryRow) => {
+          const policy = review.pensionPolicies.find(p => p.key === row.key)
+          const preserved = policy && ['closed_declared','not_loaded'].includes(policy.state) && row.issues.every(issue => issue === 'missing_pension_token')
+          return <div className="max-w-64 text-label leading-relaxed">{preserved ? copy.preservePensionPolicy : copy.actions[row.action]}</div>
+        } },
       ]} />
       <div className="mt-3 flex flex-wrap gap-4 text-label"><TextLink href="/data-map">{copy.sourcesLink}</TextLink><TextLink href="/data-ops#account-coverage">{copy.details}</TextLink></div>
       {projection.laterObservations.length ? <p className="mt-2 text-label text-ink-3">{copy.later}</p> : null}
