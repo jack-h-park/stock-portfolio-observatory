@@ -2,21 +2,21 @@
 
 Updated November 13, 2026 (America/Los_Angeles). The original program is still the [master plan](../superpowers/plans/2026-11-10-personal-finance-observatory.md): public reusable code, private sources/state, evidence-linked financial visibility and bounded tax planning. Foundation/branding, all-assets entry and historical-tax adoption are implemented. Historical gold, date/coverage disclosure and the recorded-tax summary have prior operating acceptance. The first expanded custodian backup now also has separate-location recovery evidence. These completed increments should not remain the next implementation tasks.
 
-The [implementation status](implementation-status.md) and [installation observation](../operations/installation-status.md) separate source, installation, historical acceptance and current gaps. Hometax and deployment remain held. This document authorizes no implementation, merge, private-data mutation or operating change.
+The [implementation status](implementation-status.md) and [installation observation](../operations/installation-status.md) separate source, installation, historical acceptance and current gaps. Hometax remains held; further deployments require separate authorization. This document authorizes no implementation, merge, private-data mutation or operating change.
 
-## Before functional work: framework security review
+## Completed security prerequisite and bounded maintenance
 
-The November 13 read-only check found installed Next.js 15.5.27 and two open framework Dependabot alerts: [GHSA-2464-fhr4-w9xw](https://github.com/advisories/GHSA-2464-fhr4-w9xw) (critical) and [GHSA-p3m5-59mp-jv5r](https://github.com/advisories/GHSA-p3m5-59mp-jv5r) (high). The advisory metadata identifies 15.5.28 as a patched version. This is a reported dependency/version match, not a verified exploit or proof that this installation meets every affected configuration condition. Two additional medium transitive alerts also need classification.
+[#311](https://github.com/jack-h-park/stock-portfolio-observatory/pull/311) is merged and its Next.js 15.5.28 patch was deployed with bounded browser/build/evidence and preservation verification. This is completed work, not the next feature PR. The [installation observation](../operations/installation-status.md) separates that release from the subsequent #312 checkout/build observation.
 
-Prepare a separate minimal dependency-security PR before further feature implementation: review applicability against the app configuration, choose the supported patched resolution, inspect lockfile/transitive changes and run the existing synthetic CI/build. Do not probe production for an exploit, loosen access or combine this with a large feature/framework migration. Source review and any operational rollout are separate; deployment remains held. This status PR changes no dependency or runtime setting.
+The release audit retained two moderate transitive findings through Tailwind and ESLint tooling. Classify compatible fixes in a small maintenance PR when scoped; do not fold a framework migration into account coverage. Retained rollback/recovery payload cleanup is a separate retention decision. Hometax remains held; no further release is authorized by this plan.
 
 ## Priority 1: finish account/source coverage visibility
 
-Build on merged [#308](https://github.com/jack-h-park/stock-portfolio-observatory/pull/308), which addresses query-period evidence across accounts and is present in the latest observed checkout/build. This documentation task performed neither its merge nor deployment and claims no new browser acceptance. Do not create a duplicate query-period PR. Merged #304–#307 already address KR receipts and selected Fidelity/Bithumb/Merrill period/date cases.
+Build on merged [#308](https://github.com/jack-h-park/stock-portfolio-observatory/pull/308), which addresses query-period evidence across accounts. Merged #310 adds Samsung/Chase period handling; #312 shows file requests only when an update is needed and is present in the latest observed checkout. These are inputs to the next increment, not evidence that expected-account coverage is complete. Do not duplicate their period handling or conditional request prompts. Merged #304–#307 already address KR receipts and selected Fidelity/Bithumb/Merrill period/date cases.
 
 The next independent increment should connect a reviewed account inventory to the existing coverage/read-only review surfaces. Its question is: which expected assets/accounts are represented, which have missing or stale evidence, and which still need reconciliation? A fresh file or recent API fetch must not imply complete history.
 
-Proposed PR scope, after checking the merged #308 boundaries:
+Proposed PR scope, after checking the merged #308/#310/#312 boundaries:
 
 - Identify the existing authoritative inventory inputs and account/owner keys. Document gaps rather than inventing a second mutable inventory or silently merging aliases.
 - Reuse existing account, supplementary-asset and statement-period adapters. Separate valuation dates, query/statement intervals, fetch age, evidence review and reconciliation.
@@ -60,4 +60,4 @@ Connector exports remain shadow-only. Seven distinct successful daily observatio
 
 ## Preserved gates
 
-Keep actual financial records, original evidence, approved-device access and private web-write prohibition unchanged. Hometax and deployment remain held. Source PRs, merge, installation, scheduled observation, private operating acceptance and recovery/promotion are separate outcomes. No recommendation above authorizes those later actions.
+Keep actual financial records, original evidence, approved-device access and private web-write prohibition unchanged. Hometax remains held; further deployments require separate authorization. Source PRs, merge, installation, scheduled observation, private operating acceptance and recovery/promotion are separate outcomes. No recommendation above authorizes those later actions.
