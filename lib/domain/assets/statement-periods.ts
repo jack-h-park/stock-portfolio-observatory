@@ -6,29 +6,6 @@ function date(value: unknown): value is string {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value
 }
 
-/** Use parser-declared, unfiltered periods, never quote dates or filenames. */
-export function bithumbStatementEnd(value: unknown, account: string, today: string): string | null {
-  if (!object(value) || !Array.isArray(value.documents)) return null
-  const documents = value.documents.filter(row => object(row) && row.category === 'bithumb_statement' && row.venue === 'Bithumb' && row.account === account)
-  if (!documents.length) return null
-  const periods: { start: string; end: string }[] = []
-  for (const row of documents) {
-    const metrics = row.metrics
-    if (!object(metrics) || metrics.scopeAssets !== '전체' || metrics.scopeTypes !== '매수/매도/입금/출금' ||
-      !date(metrics.periodStart) || !date(metrics.periodEnd) || metrics.periodStart > metrics.periodEnd || metrics.periodEnd > today) return null
-    periods.push({ start: metrics.periodStart, end: metrics.periodEnd })
-  }
-  periods.sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end))
-  let end = periods[0].end
-  for (const period of periods.slice(1)) {
-    const next = new Date(`${end}T00:00:00Z`)
-    next.setUTCDate(next.getUTCDate() + 1)
-    if (period.start > next.toISOString().slice(0, 10)) return null
-    if (period.end > end) end = period.end
-  }
-  return end
-}
-
 /** Parser-recorded receipt only. No original-file I/O or current-byte verification. */
 export function readStatementPeriodEvidence(value: unknown, account: string): StatementPeriodEvidence {
   if (!object(value) || !object(value.statementPeriods)) return unknown()

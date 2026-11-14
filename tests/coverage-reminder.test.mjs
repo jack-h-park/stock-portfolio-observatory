@@ -210,3 +210,11 @@ test('an all-current supplementary block prints no section, and an older summary
   assert.doesNotMatch(message, /보조 자산/)
   assert.equal(coverageMessage(doc([row({ status: 'current' })])), null)
 })
+
+
+test('unconfirmed query periods request confirmation rather than a new download',()=>{
+ const message=coverageMessage(doc([row({status:'unconfirmed',coveredThrough:null,downloadFrom:null})]))
+ assert.match(message,/조회기간 확인 필요/)
+ assert.match(message,/조회 종료일을 확인/)
+ assert.doesNotMatch(message,/다운로드 →|반영된 자료 없음/)
+})

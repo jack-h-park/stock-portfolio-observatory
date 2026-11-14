@@ -21,6 +21,7 @@ export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/data-ops')
 
 function coverageTone(status: AccountCoverage['status']): Tone {
+  if (status === 'unconfirmed') return 'warning'
   if (status === 'action_needed' || status === 'missing') return 'danger'
   if (status === 'due_soon') return 'warning'
   return 'success'
@@ -72,7 +73,7 @@ export default async function DataOpsPage() {
         action: '지금 필요한 계좌',
         due: '곧 필요한 계좌',
         current: '현재 기준 계좌',
-        status: { action_needed: '업데이트 필요', missing: '자료 없음', due_soon: '곧 필요', current: '현재 기준' },
+        status: { unconfirmed: '조회기간 확인 필요', action_needed: '업데이트 필요', missing: '자료 없음', due_soon: '곧 필요', current: '현재 기준' },
         account: '계좌',
         coverage: '반영 기준일',
         lag: '지연',
@@ -87,10 +88,10 @@ export default async function DataOpsPage() {
     : {
         title: 'Investment account updates',
         info: 'Separate from file integrity: this shows the actual cutoff and the next download start date. The start date is one day before the cutoff to guarantee overlap.',
-        action: 'Action needed',
+        action: 'Review / update',
         due: 'Due soon',
         current: 'Current',
-        status: { action_needed: 'Update needed', missing: 'No data', due_soon: 'Due soon', current: 'Current' },
+        status: { unconfirmed: 'Confirm query period', action_needed: 'Update needed', missing: 'No data', due_soon: 'Due soon', current: 'Current' },
         account: 'Account',
         coverage: 'Covered through',
         lag: 'Lag',
