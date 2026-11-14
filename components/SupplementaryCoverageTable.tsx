@@ -45,7 +45,7 @@ export function SupplementaryCoverageTable({ rows, language, accounts }: {
         {row.coverage ? <div className="text-label text-ink-3">{copy.kinds[row.coverage.kind]} · {copy.window(row.coverage.maxLagDays)}</div> : null}
       </> },
       { key: 'status', label: copy.status, render: (row: typeof data[number]) => row.coverage
-        ? <Badge tone={row.coverage.status === 'current' ? 'success' : row.coverage.status === 'due_soon' ? 'warning' : 'danger'}>{copy.statuses[row.coverage.status]}</Badge>
+        ? <Badge tone={row.coverage.status === 'current' ? 'success' : (row.coverage.status === 'due_soon' || row.coverage.status === 'unconfirmed') ? 'warning' : 'danger'}>{copy.statuses[row.coverage.status]}</Badge>
         : <Badge>{copy.closed}</Badge> },
       { key: 'next', label: copy.next, render: (row: typeof data[number]) => <div className="max-w-80 text-label leading-relaxed text-ink-2">{row.coverage ? nextAction(row.coverage) : copy.closedAction}</div> },
     ]}

@@ -13,7 +13,7 @@ balance includes its core money-market position (see FIDELITY_CORE_FUNDS).
 """
 from __future__ import annotations
 
-import csv, io, importlib.util, json, os, re, subprocess, sys, tempfile, unicodedata
+import csv, hashlib, io, importlib.util, json, os, re, subprocess, sys, tempfile, unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -388,7 +388,7 @@ def close_series(balances, retired_on):
     return [b for b in balances if b["date"] < retired_on] + [closing]
 
 
-def tossbank_pdf_accounts(account_map, findings, notes, inflow_sources=None):
+def tossbank_pdf_accounts(account_map, findings, notes, inflow_sources=None, coverage=None):
     """(accounts, krw_statements) from the 토스뱅크 PDF families, each statement named by its full 계좌번호.
 
     A statement is matched to the map's tossbank `bankAccounts` entry with that
@@ -433,6 +433,9 @@ def tossbank_pdf_accounts(account_map, findings, notes, inflow_sources=None):
                 findings.append(f"{path.name}: 계좌번호 {mirae_accounts.mask(number)} is a {entry.get('kind')} account in the "
                                 f"account map, not {kind}; skipped")
                 continue
+            if coverage is not None:
+                alias = entry.get("alias") or f"tossbank {number[-4:]}"
+                append_coverage(coverage, path, "tossbank", alias, doc.get("period"), findings)
             for printed, count in sorted(doc["unknown"].items()):
                 findings.append(f"{path.name}: {count} row(s) with 구분 {printed}, read by their printed sign")
             sections = {"KRW": doc["rows"]} if kind == "parking" else doc["sections"]
@@ -1113,6 +1116,54 @@ def _alias(account_map, institution, kind, last4=None):
                                          DEFAULT_ALIASES.get((institution, kind), f"{institution} {kind}"))
 
 
+def append_coverage(coverage, path, institution, account, period, findings):
+    """Keep document coverage independently of transaction and balance observations."""
+    if not period or len(period) != 2 or not all(period):
+        return
+    try:
+        start, end = (datetime.strptime(str(day), "%Y-%m-%d").date().isoformat() for day in period)
+        if start > end:
+            raise ValueError("reversed period")
+    except (TypeError, ValueError):
+        findings.append(f"{path.name}: invalid declared coverage period; coverage not written")
+        return
+    coverage.append({"institution": institution, "account": account, "source": path.name,
+                     "periodStart": start, "periodEnd": end, "basis": "declared-period",
+                     "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
+
+
+def declared_bank_period(path, institution, kind):
+    """Only periods the parsed document declares; filenames and row dates are never evidence."""
+    if institution == "boa":
+        text = path.read_text(encoding="utf-8-sig")
+        begin = re.search(r"Beginning balance as of (\d{2}/\d{2}/\d{4})", text)
+        end = re.search(r"Ending balance as of (\d{2}/\d{2}/\d{4})", text)
+        return (_mdy(begin.group(1)), _mdy(end.group(1))) if begin and end else None
+    if institution == "amex" and kind == "checking":
+        summary, _rows = parse_amex_lines(_pdf_lines(path))
+        return summary["begin_date"], summary["end_date"]
+    if institution == "mirae":
+        return _kr_statements_module().statement_coverage(path, lambda *_args: None)
+    if institution == "mg" and kind == "deposit":
+        raw = path.read_bytes()
+        text = "\n".join(raw[offset:].decode("utf-16-le", errors="ignore") for offset in (0, 1))
+        found = re.search(r"조회기간\s*:\s*(\d{4}\.\d{2}\.\d{2})\s*~\s*(\d{4}\.\d{2}\.\d{2})", text)
+        return tuple(day.replace(".", "-") for day in found.groups()) if found else None
+    if institution == "tossbank" and kind == "checking":
+        import openpyxl
+        book = openpyxl.load_workbook(path, read_only=False, data_only=True)
+        try:
+            for row in book.worksheets[0].iter_rows(max_row=10, values_only=True):
+                cells = [_cell_text(c) for c in row]
+                if "조회기간" in cells:
+                    window = " ".join(cells[cells.index("조회기간") + 1:])
+                    found = re.search(r"(\d{4}\.\d{2}\.\d{2})\s*[-~]\s*(\d{4}\.\d{2}\.\d{2})", window)
+                    return tuple(day.replace(".", "-") for day in found.groups()) if found else None
+        finally:
+            book.close()
+    return None
+
+
 def _mirae_cma_groups(paths, account_map, map_present, findings, notes):
     """{label: [paths]}: 미래에셋 CMA certificates, by the account-map entry for each one's full 계좌번호.
 
@@ -1530,7 +1581,7 @@ def estimate_closed_accounts(statements, transfers, account_map, findings, notes
 def main():
     map_present = MAP_PATH.exists()
     account_map = json.loads(MAP_PATH.read_text(encoding="utf-8")) if map_present else {}
-    findings, notes, accounts = [], [], []
+    findings, notes, accounts, coverage = [], [], [], []
     inflow_sources = []  # (institution, alias, currency, txns), for the incoming rows
     krw_statements = []
     mg_salary = []  # every 새마을금고 거래내역조회 row, for the term deposits' principal
@@ -1566,8 +1617,26 @@ def main():
                     continue
                 if rows is None:  # parsed, but unusable; the parser recorded why
                     continue
+                try:
+                    period = declared_bank_period(path, institution, kind)
+                    if period and all(period):
+                        matches = [e for e in account_map.get("bankAccounts", [])
+                                   if e.get("institution") == institution and
+                                   (str(e.get("last4") or "") == str(key) if key_pattern else e.get("kind") == kind)]
+                        # The full-number grouping above already resolved CMA/MG identities.
+                        grouped = (institution, kind) in (("mirae", "cma"), ("mg", "deposit")) and key in labels
+                        if grouped or len(matches) == 1:
+                            alias = labels.get(key) or _alias(account_map, institution, kind, key)
+                            append_coverage(coverage, path, institution, alias, period, findings)
+                        elif not map_present:
+                            notes.append(f"{path.name}: no account map; declared coverage omitted until the account identity is mapped")
+                        else:
+                            findings.append(f"{path.name}: ambiguous or unmapped account identity; declared coverage not written")
+                except Exception as error:
+                    findings.append(f"{path.name}: declared coverage could not be read ({type(error).__name__}: {error})")
                 if not rows:
-                    findings.append(f"{path.name}: parsed to zero rows")
+                    if not any(c["source"] == path.name for c in coverage):
+                        findings.append(f"{path.name}: parsed to zero rows")
                     continue
                 parsed.append((min(t["date"] for t in rows), path.name, rows))
             parsed.sort(key=lambda item: (item[0], item[1]))
@@ -1591,7 +1660,7 @@ def main():
                 "derived": derived, "sources": [name for _, name, _ in parsed], "balances": balances,
                 "continuityBreaks": [] if derived else continuity_breaks(txns),
             })
-    tossbank_accounts, parking_statements = tossbank_pdf_accounts(account_map, findings, notes, inflow_sources)
+    tossbank_accounts, parking_statements = tossbank_pdf_accounts(account_map, findings, notes, inflow_sources, coverage)
     accounts.extend(tossbank_accounts)
     krw_statements.extend(parking_statements)
     term_files = sorted(SOURCE_DIR.glob("mg-term-*")) if SOURCE_DIR.exists() else []
@@ -1616,7 +1685,7 @@ def main():
                 "ownTransfer": bool(t.get("ownTransfer") or t.get("term"))}
                for inst, alias, cur, txns in inflow_sources for t in txns if t["amount"] > 0]
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    document = {"generatedAt": datetime.now(timezone.utc).isoformat(), "accounts": accounts,
+    document = {"generatedAt": datetime.now(timezone.utc).isoformat(), "accounts": accounts, "coverage": coverage,
                 "estimatedAccounts": estimated, "externalInflows": external_inflows, "inflows": inflows,
                 "findings": findings, "notes": notes}
     OUT_PATH.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

@@ -48,6 +48,10 @@ transaction.run('US', 'Robinhood', 'Mid-term', 'Robinhood Mid-term', daysAgo(59)
 transaction.run('US', 'Robinhood', 'Long-term', 'Robinhood Long-term', daysAgo(3))
 transaction.run('KR', '미래에셋증권', 'General', 'Sample second', daysAgo(200))
 transaction.run('KR', '미래에셋증권', 'General', '미래에셋증권(종합)', daysAgo(200))
+for (const [strategy, age] of [['Mid-term',59],['Long-term',3]] as const) {
+ const end=daysAgo(age).replaceAll('-','')
+ db.prepare('insert into source_files values (?,?,0)').run(strategy,`robinhood-transactions-${strategy.toLowerCase().replaceAll('-','')}-${end}.csv`)
+}
 transaction.run('US', 'Fidelity', 'Cash', 'Sample Fidelity', daysAgo(100))
 const confirmation = db.prepare('insert into source_coverage_confirmations values (?, ?, ?, ?, ?, ?, ?, ?)')
 for (const kind of ['holdings','transactions']) confirmation.run('investment','Fidelity','Sample Fidelity',kind,daysAgo(0),'sample.csv','0'.repeat(64),kind === 'holdings' ? 1 : 0)
@@ -157,14 +161,14 @@ test('confirmed Fidelity query and empty snapshot dates replace last-transaction
 })
 
 
-test('newer Fidelity observations supersede a retained confirmation', async () => {
+test('newer Fidelity trades do not extend a retained query confirmation', async () => {
  const db=new Database(dbPath)
  db.prepare("update source_coverage_confirmations set through_date = ? where institution = 'Fidelity'").run(daysAgo(5))
- db.prepare('insert into holdings (market, brokerage, account_type, account, as_of_date) values (?,?,?,?,?)').run('US','Fidelity','Cash','Sample Fidelity numbered',daysAgo(0))
+ db.prepare('insert into holdings (market, brokerage, account_type, account, as_of_date) values (?,?,?,?,?)').run('US','Fidelity','Cash','Sample Fidelity',daysAgo(0))
  db.prepare('insert into transactions (market, brokerage, account_type, account, date) values (?,?,?,?,?)').run('US','Fidelity','Cash','Sample Fidelity',daysAgo(0))
  try {
   const {getAccountCoverage}=await import('../lib/adapters/portfolio-db')
-  assert.equal(getAccountCoverage().rows.find(row=>row.brokerage==='Fidelity')?.coveredThrough,daysAgo(0))
+  assert.equal(getAccountCoverage().rows.find(row=>row.brokerage==='Fidelity')?.coveredThrough,daysAgo(5))
  } finally {
   db.prepare("delete from holdings where brokerage = 'Fidelity'").run()
   db.prepare("delete from transactions where brokerage = 'Fidelity' and date = ?").run(daysAgo(0))
@@ -196,8 +200,8 @@ test('Bithumb uses declared full-scope PDF periods even with no recent activity'
     document('2026-02-30', daysAgo(0)),
   ]) {
     writeFileSync(cryptoPath, JSON.stringify({ documents: [first, invalid] }))
-    assert.equal(row().coveredThrough, daysAgo(32))
-    assert.equal(row().status, 'action_needed')
+    assert.equal(row().coveredThrough, invalid.account === 'Another account' || invalid.category === 'bithumb_ledger' ? daysAgo(32) : null)
+    assert.equal(row().status, invalid.account === 'Another account' || invalid.category === 'bithumb_ledger' ? 'action_needed' : 'unconfirmed')
   }
 })
 
@@ -211,4 +215,16 @@ test('Merrill confirmed query end keeps a quiet account current',async()=>{
  const {getAccountCoverage}=await import('../lib/adapters/portfolio-db')
  const row=getAccountCoverage().rows.find(row=>row.brokerage==='Merrill')!
  assert.equal(row.coveredThrough,daysAgo(0));assert.equal(row.status,'current')
+})
+
+
+test('row-only US transactions do not establish query coverage', async()=>{
+ const db=new Database(dbPath)
+ db.prepare('insert into transactions (market,brokerage,account_type,account,date) values (?,?,?,?,?)').run('US','Chase','Cash','Chase UNKNOWN',daysAgo(0))
+ db.prepare('insert into holdings (market,brokerage,account_type,account,as_of_date) values (?,?,?,?,?)').run('US','Chase','Cash','Chase UNKNOWN',daysAgo(0))
+ db.close()
+ const {getAccountCoverage}=await import('../lib/adapters/portfolio-db')
+ const row=getAccountCoverage().rows.find(row=>row.brokerage==='Chase')!
+ assert.equal(row.coveredThrough,null);assert.equal(row.status,'unconfirmed')
+ assert.match(row.action,/조회 종료일/)
 })

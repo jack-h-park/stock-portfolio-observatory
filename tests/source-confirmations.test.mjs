@@ -36,3 +36,14 @@ test('CMA core money market snapshot is a balance observation, never an incoming
  assert.throws(()=>fidelitySnapshotFacts(rows,{scope:'bank',account:'Other CMA',through:'2026-11-13'},map))
  assert.throws(()=>fidelitySnapshotFacts([rows[0],['X00012345','Sample CMA','AAPL','$123.45'],rows[2]],{scope:'bank',account:'Sample CMA',through:'2026-11-13'},map))
 })
+
+
+test('Chase investment and Amex bank query receipts stay exact-source transactions only',()=>{
+ for(const [scope,institution] of [['investment','Chase'],['bank','amex'],['bank','chase'],['bank','robinhood-bank']]){
+  const source=scope==='bank'?`bank-statements/${institution}-sample.csv`:'us-transactions/chase-transactions-sample.csv'
+  mkdirSync(path.dirname(path.join(root,source)),{recursive:true});writeFileSync(path.join(root,source),body)
+  const valid={...receipt,scope,institution,source}
+  assert.equal(verifiedSourceConfirmations([valid],root,{today:'2026-11-13'}).accepted.length,1)
+  assert.equal(verifiedSourceConfirmations([{...valid,kind:'holdings'}],root,{today:'2026-11-13'}).accepted.length,0)
+ }
+})

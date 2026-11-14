@@ -60,3 +60,45 @@ test('Merrill confirmed query coverage requires the consumed CSV and its exact a
   db.close()
  }
 })
+
+test('explicit empty query confirmations work without fabricated bank or investment activity',()=>{
+ const dir=mkdtempSync(path.join(tmpdir(),'empty-query-'))
+ const env=writeScenario(dir,{withPensions:false})
+ const bankPath=path.join(dir,'bank.json');writeFileSync(bankPath,JSON.stringify({accounts:[],findings:[],coverage:[]}))
+ const specs=[{scope:'investment',institution:'Chase',account:'Chase SAMPLE',source:'us-transactions/chase-transactions-20260101-20260113.csv',body:'Trade Date,Account Name,Account Number,Settlement Date,Cusip\n'},
+ {scope:'bank',institution:'amex',account:'Sample savings',source:'bank-statements/amex-savings-1234-20260101-20260113.csv',body:''}]
+ const receipts=specs.map(({body,...entry})=>{mkdirSync(path.dirname(path.join(dir,entry.source)),{recursive:true});writeFileSync(path.join(dir,entry.source),body);return {...entry,kind:'transactions',basis:'owner-confirmed',through:'2026-01-13',confirmedAt:'2026-01-13',sha256:createHash('sha256').update(body).digest('hex'),emptyTransactions:true}})
+ const mapPath=path.join(dir,'map.json');writeFileSync(mapPath,JSON.stringify({bankAccounts:[{institution:'amex',kind:'savings',alias:'Sample savings',last4:'1234'}],sourceConfirmations:receipts}))
+ const result=runIngestWithOutput(dir,{env:{...env,STOCK_ACCOUNT_MAP_PATH:mapPath,STOCK_BANK_BALANCES_PATH:bankPath},allowFailure:true})
+ const db=new Database(result.dbPath)
+ assert.equal((db.prepare('select count(*) as n from source_coverage_confirmations').get() as {n:number}).n,2,JSON.stringify(db.prepare("select * from validation_checks where name='source_confirmations_valid'").get()))
+ assert.equal((db.prepare("select count(*) as n from transactions where market='US'").get() as {n:number}).n,0)
+ assert.equal((db.prepare("select count(*) as n from cash_balances").get() as {n:number}).n,0)
+ db.close()
+ // Blank Chase data has no broker header; a bank source cannot borrow another account's identity.
+ writeFileSync(path.join(dir,receipts[0].source),'')
+ receipts[0].sha256=createHash('sha256').update('').digest('hex')
+ writeFileSync(mapPath,JSON.stringify({bankAccounts:[{institution:'amex',kind:'savings',alias:'Sample savings',last4:'9999'}],sourceConfirmations:receipts}))
+ const rejected=runIngestWithOutput(dir,{env:{...env,STOCK_ACCOUNT_MAP_PATH:mapPath,STOCK_BANK_BALANCES_PATH:bankPath},allowFailure:true})
+ const bad=new Database(rejected.dbPath)
+ assert.equal((bad.prepare('select count(*) as n from source_coverage_confirmations').get() as {n:number}).n,0)
+ bad.close()
+})
+
+test('declared bank coverage is bound to source bytes and advances no balances',()=>{
+ const dir=mkdtempSync(path.join(tmpdir(),'declared-bank-ingest-'))
+ const env=writeScenario(dir,{withPensions:false})
+ mkdirSync(path.join(dir,'bank-statements'),{recursive:true})
+ const body='statement content';writeFileSync(path.join(dir,'bank-statements','sample.csv'),body)
+ const sha256=createHash('sha256').update(body).digest('hex')
+ const bankPath=path.join(dir,'bank.json')
+ for(const [hash,count] of [[sha256,1],['0'.repeat(64),0]] as const){
+ writeFileSync(bankPath,JSON.stringify({accounts:[],coverage:[{institution:'Sample bank',account:'Empty',source:'sample.csv',basis:'declared-period',periodStart:'2026-01-01',periodEnd:'2026-01-13',sha256:hash}]}))
+ const result=runIngestWithOutput(dir,{env:{...env,STOCK_BANK_BALANCES_PATH:bankPath},allowFailure:true})
+ const db=new Database(result.dbPath)
+ assert.equal((db.prepare('select count(*) as n from bank_statement_coverage').get() as {n:number}).n,count,JSON.stringify(db.prepare("select detail from validation_checks where name='bank_statement_coverage_valid'").get()))
+ assert.equal((db.prepare('select count(*) as n from cash_balances').get() as {n:number}).n,0)
+ assert.equal((db.prepare("select status from validation_checks where name='bank_statement_coverage_valid'").get() as {status:string}).status,count?'pass':'fail')
+ db.close()
+ }
+})
