@@ -40,3 +40,23 @@ test('ingest records confirmed empty holdings and a CMA observation but rejects 
  assert.equal((newer.prepare("select count(*) as n from source_coverage_confirmations where empty_holdings=1").get() as {n:number}).n,0)
  newer.close()
 })
+
+
+test('Merrill confirmed query coverage requires the consumed CSV and its exact account',()=>{
+ const dir=mkdtempSync(path.join(tmpdir(),'merrill-confirmed-'))
+ const env=writeScenario(dir,{withPensions:false})
+ const source='us-transactions/merrill-transactions-20260101-20260104.csv'
+ const body='"Exported on: 01/13/2026 01:50 PM ET"\n"Selected account(s): CMA-Edge SAMPLE"\n"Settlement date","Description","Type","Symbol/ CUSIP","Quantity","Price","Amount"\n"01/04/2026","Dividend ACME","Dividend","ACME","0","0","1.00"\n'
+ mkdirSync(path.join(dir,'us-transactions'),{recursive:true});writeFileSync(path.join(dir,source),body)
+ const receipt={scope:'investment',institution:'Merrill',account:'Merrill CMA-Edge SAMPLE',kind:'transactions',source,sha256:createHash('sha256').update(body).digest('hex'),basis:'owner-confirmed',through:'2026-01-13',confirmedAt:'2026-01-13'}
+ const mapPath=path.join(dir,'accounts.local.json')
+ for(const [account,want] of [[receipt.account,1],['Merrill Other',0]] as const){
+  writeFileSync(mapPath,JSON.stringify({sourceConfirmations:[{...receipt,account}]}))
+  const result=runIngestWithOutput(dir,{env:{...env,STOCK_ACCOUNT_MAP_PATH:mapPath},allowFailure:true})
+  const db=new Database(result.dbPath)
+  assert.equal((db.prepare('select count(*) as n from source_coverage_confirmations').get() as {n:number}).n,want)
+  if(want) assert.equal((db.prepare('select through_date from source_coverage_confirmations').get() as {through_date:string}).through_date,'2026-01-13')
+  else assert.match((db.prepare("select detail from validation_checks where name='source_confirmations_valid'").get() as {detail:string}).detail,/account/)
+  db.close()
+ }
+})

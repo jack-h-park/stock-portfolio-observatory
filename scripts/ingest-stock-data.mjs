@@ -762,11 +762,19 @@ for (const receipt of sourceConfirmationResult.accepted) {
   try {
     if (receipt.scope === 'investment') {
       const selected = receipt.kind === 'holdings' ? usHoldingFiles : usTransactionFiles
-      const consumed = selected.some(source => source.brokerage === 'Fidelity' && fs.realpathSync(source.filename) === receipt.path)
+      const consumed = selected.some(source => source.brokerage === receipt.institution && fs.realpathSync(source.filename) === receipt.path)
       // A prior holdings receipt becomes historical when a newer snapshot supersedes it.
       if (!consumed && receipt.kind === 'holdings') continue
       if (!consumed) throw new Error('confirmed transaction source is not selected for ingestion')
-      if (receipt.kind === 'transactions' && !parseCsv(fs.readFileSync(receipt.path, 'utf8').replace(/^\uFEFF/, '')).some(row => row.includes('Run Date') && row.includes('Action'))) throw new Error('confirmed file has no Fidelity transaction header')
+      if (receipt.kind === 'transactions') {
+        const rows = parseCsv(fs.readFileSync(receipt.path, 'utf8').replace(/^\uFEFF/, ''))
+        if (receipt.institution === 'Merrill') {
+          const header = rows.find(row => row.map(closeSlashes).includes('Symbol/CUSIP') && (row.includes('Trade Date') || row.includes('Settlement date')))
+          const accountLine = rows.find(row => row.some(cell => text(cell).toLowerCase().startsWith('selected account')))
+          const account = accountLine ? `Merrill ${accountLine.join(' ').split(':').slice(1).join(':').trim()}` : ''
+          if (!header || account !== receipt.account) throw new Error('confirmed Merrill transaction header or account does not match')
+        } else if (!rows.some(row => row.includes('Run Date') && row.includes('Action'))) throw new Error('confirmed file has no Fidelity transaction header')
+      }
     } else if (receipt.kind === 'transactions') {
       const consumed = bankBalances.accounts.some(account => account.institution === receipt.institution && account.account === receipt.account && account.sources.includes(path.basename(receipt.source)))
       if (!consumed) throw new Error('confirmed bank history is not present in the parsed account sources')

@@ -200,3 +200,15 @@ test('Bithumb uses declared full-scope PDF periods even with no recent activity'
     assert.equal(row().status, 'action_needed')
   }
 })
+
+
+test('Merrill confirmed query end keeps a quiet account current',async()=>{
+ const db=new Database(dbPath)
+ db.prepare('insert into transactions (market,brokerage,account_type,account,date) values (?,?,?,?,?)').run('US','Merrill','Cash','Merrill SAMPLE',daysAgo(10))
+ db.prepare('insert into holdings (market,brokerage,account_type,account,as_of_date) values (?,?,?,?,?)').run('US','Merrill','Cash','Merrill SAMPLE',daysAgo(0))
+ db.prepare('insert into source_coverage_confirmations values (?,?,?,?,?,?,?,?)').run('investment','Merrill','Merrill SAMPLE','transactions',daysAgo(0),'sample.csv','0'.repeat(64),0)
+ db.close()
+ const {getAccountCoverage}=await import('../lib/adapters/portfolio-db')
+ const row=getAccountCoverage().rows.find(row=>row.brokerage==='Merrill')!
+ assert.equal(row.coveredThrough,daysAgo(0));assert.equal(row.status,'current')
+})
