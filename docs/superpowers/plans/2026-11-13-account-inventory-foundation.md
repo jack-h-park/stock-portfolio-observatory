@@ -35,10 +35,10 @@
 - [x] Write synthetic tests for read failures, primaries/bindings, identities, ownership and lifecycle, review/digest/time, per-kind evidence/history, compatibility and immutability. Run focused tests and record the expected missing-module RED.
 - [x] Implement types and strict boundary validation; deterministic semantic normalization, conservative scope matching, review selection and pure evidence/projector logic. Run focused tests until green; record any implementation decisions in the ledger.
 - [x] Run typecheck/lint, related legacy synthetic regressions, full isolated CI-equivalent suite, UI guardrails and sample build. Do not seed a configured private checkout.
-- [ ] Independently review the full branch; fix important findings with RED→GREEN tests. Record validation and delivery scope, commit/push and open a PR. Do not merge the new PR or deploy.
+- [x] Independently review the full branch; fix important findings with RED→GREEN tests. Record validation and delivery scope, commit/push and open a PR. Do not merge the new PR or deploy.
 
 This single task owns the tightly coupled contract; adapter/UI wiring and real metadata entry remain separate later tasks. The plan implements the design's first synthetic stage only, not its later display/owner-adoption stages.
 
 ## Verified implementation checkpoint
 
-The independent review findings were reproduced and fixed with synthetic regressions. Final isolated verification: 1,389 tests, 1,374 passed, 15 skipped, zero failed; typecheck, lint, UI guardrails and sample production build passed. This is source verification only; the final delivery step remains the review PR, not a merge or operating rollout.
+The independent review findings were reproduced and fixed with synthetic regressions. Final isolated verification: 1,389 tests, 1,374 passed, 15 skipped, zero failed; typecheck, lint, UI guardrails and sample production build passed. This is source verification only; the implementation was pushed and [PR #317](https://github.com/jack-h-park/stock-portfolio-observatory/pull/317) opened. That PR is not merged or deployed; its CI is separate from the recorded local validation.
