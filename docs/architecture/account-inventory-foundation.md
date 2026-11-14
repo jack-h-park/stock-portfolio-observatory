@@ -1,6 +1,6 @@
 # Account inventory foundation
 
-This standalone library implements the first synthetic stage of the [inventory design](../superpowers/specs/2026-11-13-account-inventory-design.md). No app, CLI, reminder, ingest or legacy map-loader caller is changed. Real mapping adoption, observation adapters and read-only UI wiring remain later work; no operating inventory is attested complete.
+This standalone library implements the first synthetic stage of the [inventory design](../superpowers/specs/2026-11-13-account-inventory-design.md). The later [read-only adapter/display increment](account-inventory-display.md) connects the library to the accounts page. Existing CLI, reminder, ingest and legacy map-loader callers remain unchanged. Real mapping adoption and operating acceptance are separate; no operating inventory is attested complete.
 
 ## Boundary and exports
 

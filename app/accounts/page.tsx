@@ -1,3 +1,5 @@
+import { AccountInventoryReview } from '@/components/AccountInventoryReview'
+import { getAccountInventoryReview } from '@/lib/adapters/account-inventory'
 import { AccountTimeline, TimelineLegend, TimelineScale, timelineAxis } from '@/components/AccountTimeline'
 import { SupplementaryCoverageTable } from '@/components/SupplementaryCoverageTable'
 import { DataTable } from '@/components/DataTable'
@@ -19,6 +21,7 @@ export default async function AccountsPage() {
   const language = await getLanguage()
   const copy = getPageCopy('accounts', language)
   const meta = getMeta()
+  const inventoryReview = getAccountInventoryReview()
   const accounts = getAccountDataRanges()
   const hints = getBrokerageAccountHints()
   const supplementary = getSupplementaryCoverage()
@@ -55,6 +58,8 @@ export default async function AccountsPage() {
         emphasis={copy.emphasis}
         subtitle={copy.subtitle(fmtDateTime(meta.ingested_at, language))}
       />
+
+      <AccountInventoryReview review={inventoryReview} language={language} />
 
       <CardRow columns={3}>
         <Card>
