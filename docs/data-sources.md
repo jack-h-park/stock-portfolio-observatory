@@ -234,7 +234,7 @@ own money; its interest and any other credit are not. The ingest loads them into
 5. Otherwise `unclassified`.
 
 A `bankInflowRules` entry is `{ "id", "match", "category", "note" }`. `category`
-is `salary`, `dividend`, `interest`, `other` or `transfer`. `match` may combine
+is `salary`, `dividend`, `interest`, `other`, `reimbursement` or `transfer`. `reimbursement` records repayment of purchases made for others and is shown separately from transfers and excluded from income totals. `match` may combine
 `institution`, `accountIncludes`, `descriptionIncludes`, `counterpartyIncludes`
 and `currency`; every key given must hit, and at least one must have a non-empty
 value after trimming (an empty or blank needle matches everything, so a rule with

@@ -25,6 +25,7 @@ bank.run('mg', 'Invented Checking', 'KRW', '2025-03-26', 2_000, '이자 지급',
 bank.run('mg', 'Invented Checking', 'KRW', '2025-03-27', 50_000, 'EXAMPLE REFUND', '', 'other', 'refund-example', null, 1000, 1)
 bank.run('mg', 'Invented Checking', 'KRW', '2025-03-28', 70_000, 'UNKNOWN SENDER', '', 'unclassified', null, null, 1000, 1)
 bank.run('mg', 'Invented Checking', 'KRW', '2025-03-29', 900_000, 'OWN MOVE', '', 'transfer', 'own', 'Own account', 1000, 1)
+bank.run('mg', 'Invented Checking', 'KRW', '2025-03-30', 120_000, 'PURCHASE REFUND', '', 'reimbursement', 'purchase', 'Purchase reimbursement', 1000, 1)
 bank.run('mg', 'Invented Checking', 'KRW', '2025-04-25', 3_000_000, 'EXAMPLE PAYROLL', '', 'salary', 'salary-example', 'Example payroll', 1000, 1)
 const div = db.prepare('insert into dividends values (?,?,?,?,?,?,?,?,?,?,?,?)')
 div.run('2025-03-15', 'Invented Broker', 'AAA', 'Invented ETF', 'USD', 10, 1, 'DIVIDEND', 'invented', 'dividend', 1000, 1)
@@ -74,4 +75,15 @@ test('a dividend row with no type of its own falls back to its category, never a
   const { getCashInflowRows } = await import('../lib/adapters/portfolio-db')
   const [row] = getCashInflowRows('2025-05', 'KRW', ['other'])
   assert.deepEqual([row.reasonKind, row.reason], ['none', null])
+})
+
+
+test('purchase reimbursements have their own filter and do not count as income', async () => {
+  const { getCashInflow, getCashInflowRows } = await import('../lib/adapters/portfolio-db')
+  const all = getCashInflow('month', 'KRW', NOW, 'All')
+  const reimbursement = getCashInflow('month', 'KRW', NOW, 'reimbursement')
+  assert.equal(all.periods.find((p) => p.period === '2025-03')!.total, 3_061_000)
+  assert.equal(reimbursement.periods.find((p) => p.period === '2025-03')!.total, 120_000)
+  const [row] = getCashInflowRows('2025-03', 'KRW', ['reimbursement'])
+  assert.deepEqual([row.label, row.reason], ['PURCHASE REFUND', 'Purchase reimbursement'])
 })

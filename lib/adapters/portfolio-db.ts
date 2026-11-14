@@ -2959,13 +2959,14 @@ export function getIncomeReview(display: DisplayCurrency): IncomeReview {
   }
 }
 
-export type CashInflowCategory = 'salary' | 'dividend' | 'interest' | 'other' | 'unclassified'
+export type CashInflowCategory = 'salary' | 'dividend' | 'interest' | 'other' | 'reimbursement' | 'unclassified'
 export type CashInflowPeriod = {
   period: string
   salary: number
   dividend: number
   interest: number
   other: number
+  reimbursement: number
   unclassified: number
   total: number
   /** Yearly view only: the year before's total under the same filter and scope, or null when there is none.
@@ -3022,8 +3023,8 @@ export type CashInflowRow = {
 }
 
 /** What the page's category filter selects. `investment` is dividends plus interest. */
-export type CashInflowFilter = 'All' | 'salary' | 'investment' | 'dividend' | 'interest' | 'other' | 'unclassified'
-export const CASH_INFLOW_FILTERS: CashInflowFilter[] = ['All', 'salary', 'investment', 'dividend', 'interest', 'other', 'unclassified']
+export type CashInflowFilter = 'All' | 'salary' | 'investment' | 'dividend' | 'interest' | 'other' | 'reimbursement' | 'unclassified'
+export const CASH_INFLOW_FILTERS: CashInflowFilter[] = ['All', 'salary', 'investment', 'dividend', 'interest', 'other', 'reimbursement', 'unclassified']
 /** Bank is bank_inflows; broker is the dividends table. */
 export type CashInflowSource = 'All' | 'bank' | 'broker'
 export const CASH_INFLOW_SOURCES: CashInflowSource[] = ['All', 'bank', 'broker']
@@ -3089,7 +3090,7 @@ function cashInflowWhere(scope: CashInflowScope) {
   }
 }
 
-const CASH_INFLOW_CATEGORIES = ['salary', 'dividend', 'interest', 'other', 'unclassified'] as const
+const CASH_INFLOW_CATEGORIES = ['salary', 'dividend', 'interest', 'other', 'reimbursement', 'unclassified'] as const
 
 function cashInflowPeriods(
   conn: Database.Database,
@@ -3230,7 +3231,7 @@ export function getCashInflow(
 export function getCashInflowRows(period: string, display: DisplayCurrency, categories?: CashInflowCategory[], scope: CashInflowScope = {}): CashInflowRow[] {
   const conn = db()
   try {
-    const wanted = categories ?? [...CASH_INFLOW_CATEGORIES]
+    const wanted = categories ?? CASH_INFLOW_CATEGORIES.filter((category) => category !== 'reimbursement')
     const placeholders = wanted.map(() => '?').join(', ')
     const where = cashInflowWhere(scope)
     const rows = conn
