@@ -1,3 +1,4 @@
+import { inventoryPensionPolicies } from '@/lib/application/inventory-pension-policy'
 import { projectAccountInventory, type EvidenceSignal, type MapRead, type Observation, type SourceKind } from '@/lib/domain/assets/account-inventory'
 import { providerId, sorted } from '@/lib/domain/assets/account-inventory/validation'
 import { strictIsoDate } from '@/lib/domain/assets/query-coverage'
@@ -49,7 +50,7 @@ export function buildAccountInventoryReview(snapshot: AccountInventorySnapshot, 
     projection.review = { state: 'unavailable', reasons: ['recorded_inputs_incomplete', ...readIssues] }
     projection.counts.confirmedExpected = null
   }
-  return { projection, readIssues, recordedSources: evidenceSignals.map(s => ({ ...s })),
+  return { projection, readIssues, pensionPolicies: inventoryPensionPolicies(snapshot.mapRead, clock.slice(0, 10)), recordedSources: evidenceSignals.map(s => ({ ...s })),
     // These are intentional read boundaries, not claims that acquisition failed.
     limitations: ['recorded_provenance_only', 'explicit_owner_review_required', 'unbound_aliases_not_guessed'] }
 }

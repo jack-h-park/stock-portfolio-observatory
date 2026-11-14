@@ -111,3 +111,31 @@ test('a uniquely bound missing disposal remains actionable with a current query 
  f.db.prepare('insert into source_coverage_confirmations values (?,?,?,?,?,?,?)').run('investment','Chase','Example one','transactions','2026-01-20','confirmed.csv',0);f.db.close()
  const r=getAccountInventoryReview({paths:f.paths,clock});assert.ok(source(r).reasons.includes('missing_disposal'));assert.equal(r.projection.rows.find(row=>row.accountId==='exampleA')?.action,'update')
 })
+
+test('the existing Robinhood number/nickname schema connects to its exact strategy label',t=>{
+ const f=transportFixture(t)
+ fs.writeFileSync(f.paths.robinhoodPath,JSON.stringify({fetchedAt:clock,accounts:[{accountNumber:'00001111',nickname:'Long-term'},{accountNumber:'99991111',nickname:'Mid-term'}]}));f.fingerprint('robinhood_snapshot',f.paths.robinhoodPath);f.db.close()
+ const r=getAccountInventoryReview({paths:f.paths,clock})
+ assert.deepEqual(r.readIssues,[])
+ assert.deepEqual(r.projection.rows.filter(row=>row.providerId==='robinhood').map(row=>row.aliases[0]).sort(),['Robinhood Long-term','Robinhood Mid-term'])
+ assert.equal(r.recordedSources.filter(s=>s.kind==='positions'&&s.state==='present').length,2)
+})
+
+test('legacy retirement continues suppressing pension snapshot loading even with retained source files',t=>{
+ const f=transportFixture(t)
+ fs.writeFileSync(f.paths.mapPath,JSON.stringify({pensionAccounts:[{account:'Closed example',token:'closed',institution:'mirae',retiredOn:'2025-12-31',owner:'other'},{account:'Unloaded example',institution:'mirae',owner:'other'}]}))
+ f.db.prepare('delete from source_files').run();f.fingerprint('account_map',f.paths.mapPath)
+ f.db.prepare('insert into source_files values (?,?,?)').run('pension:closed-holdings-20260120.csv','closed-holdings-20260120.csv','b'.repeat(64));f.db.close()
+ const r=getAccountInventoryReview({paths:f.paths,clock})
+ assert.equal(r.recordedSources.filter(s=>s.kind==='pension_snapshot').length,0)
+ assert.deepEqual(r.pensionPolicies.map(p=>p.state),['closed_declared','not_loaded'])
+})
+
+test('mixed Robinhood schemas cannot silently merge two account snapshots into one source',t=>{
+ const f=transportFixture(t)
+ fs.writeFileSync(f.paths.robinhoodPath,JSON.stringify({fetchedAt:clock,accounts:[{account:'Robinhood Same',accountNumber:'SAMPLE0001'},{accountNumber:'SAMPLE0002',nickname:'Same'}]}));f.fingerprint('robinhood_snapshot',f.paths.robinhoodPath);f.db.close()
+ const r=getAccountInventoryReview({paths:f.paths,clock})
+ assert.ok(r.readIssues.includes('robinhood_snapshot_identity_ambiguous'))
+ assert.equal(r.recordedSources.filter(s=>s.kind==='positions'&&s.state==='present').length,0)
+ assert.equal(r.projection.counts.confirmedExpected,null)
+})
