@@ -20,6 +20,9 @@
       "browserslist": "^4.28.7",
       "sharp": "^0.35.5",
       "source-map-js": "^1.2.2"
+    },
+    "patchedDependencies": {
+      "next@15.5.28": "patches/next@15.5.28.patch"
     }
   },
   "engines": {

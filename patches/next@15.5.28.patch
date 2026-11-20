@@ -1,0 +1,30 @@
+diff --git a/dist/client/components/router-reducer/reducers/navigate-reducer.js b/dist/client/components/router-reducer/reducers/navigate-reducer.js
+index a4857f077f82ac32f1593c41cb005ab4e225175e..ab1cbd5ac58863333c6fbe5b1540de6a7fff00fa 100644
+--- a/dist/client/components/router-reducer/reducers/navigate-reducer.js
++++ b/dist/client/components/router-reducer/reducers/navigate-reducer.js
+@@ -206,6 +206,10 @@ function navigateReducer(state, action) {
+             if (canonicalUrlOverride) {
+                 urlWithCanonicalPathname.pathname = canonicalUrlOverride.pathname;
+             }
++            // Patched (personal-finance-observatory): the aliased-prefetch path never copied
++            // shouldScroll onto `mutable`, so handleMutable defaulted it to true and a
++            // <Link scroll={false}> scrolled to the top in production builds.
++            mutable.shouldScroll = shouldScroll;
+             const result = (0, _aliasedprefetchnavigations.handleAliasedPrefetchEntry)(navigatedAt, state, flightData, urlWithCanonicalPathname, mutable);
+             // We didn't return new router state because we didn't apply the aliased entry for some reason.
+             // We'll re-invoke the navigation handler but ensure that we don't attempt to use the aliased entry. This
+diff --git a/dist/esm/client/components/router-reducer/reducers/navigate-reducer.js b/dist/esm/client/components/router-reducer/reducers/navigate-reducer.js
+index 1cf5576491e626c501da8aab9d5a640cd3412170..a5b47f2f82d7a27e12b5ddf02447c318ba4b768c 100644
+--- a/dist/esm/client/components/router-reducer/reducers/navigate-reducer.js
++++ b/dist/esm/client/components/router-reducer/reducers/navigate-reducer.js
+@@ -180,6 +180,10 @@ export function navigateReducer(state, action) {
+             if (canonicalUrlOverride) {
+                 urlWithCanonicalPathname.pathname = canonicalUrlOverride.pathname;
+             }
++            // Patched (personal-finance-observatory): the aliased-prefetch path never copied
++            // shouldScroll onto `mutable`, so handleMutable defaulted it to true and a
++            // <Link scroll={false}> scrolled to the top in production builds.
++            mutable.shouldScroll = shouldScroll;
+             const result = handleAliasedPrefetchEntry(navigatedAt, state, flightData, urlWithCanonicalPathname, mutable);
+             // We didn't return new router state because we didn't apply the aliased entry for some reason.
+             // We'll re-invoke the navigation handler but ensure that we don't attempt to use the aliased entry. This

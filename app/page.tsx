@@ -275,6 +275,138 @@ export default async function OverviewPage({
         </HeroAside>
       </CardRow>
 
+      {/* The snapshot trend sits right under the hero: the page's one picture of how the portfolio moved. */}
+      <Card
+        title={copy.snapshotTrend(selectedScopeLabel)}
+        info={selectedScope === 'GOLD' ? copy.goldScopeInfo : undefined}
+        className="mb-5"
+        action={
+          <div className="flex flex-wrap items-center justify-end gap-1">
+            <TrendRangeLinks selected={selectedRange} hrefFor={(key) => `/?trend=${key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}`} />
+          </div>
+        }
+      >
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            {selectedView === 'combined' ? (
+              <>
+                <div className="text-caption text-ink-3">{copy.combinedTrendSummary(selectedScopeLabel, displayAxisLabel)}</div>
+                <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
+                  {combinedMetrics.map((metric) => {
+                    const latest = combinedTrendData[combinedTrendData.length - 1]?.[metric.key]
+                    return (
+                      <div key={metric.key}>
+                        <div className="flex items-center gap-1.5 text-label text-ink-3"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: metric.color }} />{copy.metricLabels[metric.key]}</div>
+                        <div className="mt-0.5 text-title font-medium tabular-nums text-ink">{typeof latest === 'number' ? money(latest, currencyPreferences.displayCurrency) : EMPTY_VALUE}</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-caption text-ink-3">
+                  {copy.trendUnit(`${selectedScopeLabel} · ${selectedMetricLabel}`, selectedMetric.key === 'return_pct' ? copy.percentagePoints : displayAxisLabel)}
+                  {latestTrendCoverage != null && latestTrendCoverage < 1 ? ` · ${copy.costPriced(fmtNumber(latestTrendCoverage * 100, 2))}` : ''}
+                  {latestPositionCoverage != null && latestPositionCoverage < 1 ? ` · ${copy.positionsPriced(fmtNumber(latestPositionCoverage * 100, 1))}` : ''}
+                </div>
+                <div className="mt-1 text-title font-medium tabular-nums text-ink">{valuedTrendData.length ? trendValueLabel(latestTrendValue) : copy.noCoveredHistory}</div>
+                {latestTrendCoverage != null && latestTrendCoverage >= MIN_TREND_COST_COVERAGE && latestTrendCoverage < HEALTHY_TREND_COST_COVERAGE && (
+                  <div className="mt-1 text-label text-warning">{copy.partialValuation}</div>
+                )}
+              </>
+            )}
+          </div>
+          {selectedView === 'single' && <div className={`text-right text-caption tabular-nums ${signClass(trendChange)}`}>{valuedTrendData.length > 1 ? <>{trendChangeLabel}<div className="text-micro font-normal text-ink-3">{copy.since(firstTrendPoint.date)}</div></> : copy.needTwoSnapshots}</div>}
+        </div>
+        {latestSnapshot ? (
+          <div className={`-mt-1 mb-3 text-label tabular-nums ${latestSnapshotStale ? 'text-warning' : 'text-ink-3'}`}>
+            {latestPriceDates.length ? (
+              <>
+                {copy.priceBasis}{' '}
+                {latestPriceDates.map((item, index) => (
+                  <span key={item.market}>
+                    {index ? ' · ' : ''}{copy.scopeLabels[item.market]} {item.newest}{item.oldest ? ` (${copy.priceOldest(item.oldest)})` : ''}
+                  </span>
+                ))}
+                {' · '}
+              </>
+            ) : null}
+            {copy.snapshotWritten(fmtDateTime(latestSnapshot.captured_at, language))}
+            {latestSnapshotStale ? <div>{copy.snapshotStale}</div> : null}
+          </div>
+        ) : null}
+        <div className="mb-3 flex flex-wrap items-center gap-1">
+          <LinkChip
+            href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=single`}
+            active={selectedView === 'single'}
+          >{copy.individual}</LinkChip>
+          <LinkChip
+            href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=combined`}
+            active={selectedView === 'combined'}
+          >{copy.combined}</LinkChip>
+          <span className="mx-1 h-4 w-px bg-line-subtle" />
+          <LinkChips
+            items={TREND_SCOPES.map((scope) => ({
+              key: scope.key,
+              href: `/?trend=${selectedRange.key}&scope=${scope.key}&metric=${selectedMetric.key}&view=${selectedView}`,
+              label: copy.scopeLabels[scope.key],
+              title: scope.key === 'GOLD' ? copy.scopeHints.GOLD : undefined,
+            }))}
+            current={selectedScope}
+          />
+          <span className="mx-1 h-4 w-px bg-line-subtle" />
+          <LinkChips
+            variant="subtle"
+            items={TREND_METRICS.map((metric) => ({
+              key: metric.key,
+              href: `/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${metric.key}&view=single`,
+              label: copy.metricLabels[metric.key],
+            }))}
+            current={selectedMetric.key}
+          />
+        </div>
+        {selectedScope === 'GOLD' ? (
+          <Panel bordered={false} text="label-note" spacing="mb-3">{copy.goldScopeNote}</Panel>
+        ) : null}
+        {selectedView === 'combined' ? (
+          combinedTrendData.length === 0 ? (
+            <EmptyState hint={copy.firstSnapshotHint}>{copy.noCombinedHistory}</EmptyState>
+          ) : (
+            <PortfolioMultiTrendChart
+              data={combinedTrendData}
+              series={combinedMetrics.map((metric) => metric.key === 'realized_gl'
+                ? { dataKey: metric.key, name: copy.onRightAxis(copy.metricLabels[metric.key]), color: metric.color, axis: 'right' as const }
+                : { dataKey: metric.key, name: copy.metricLabels[metric.key], color: metric.color })}
+              axisLabel={displayAxisLabel}
+              rightAxisLabel={`${copy.metricLabels.realized_gl} · ${displayAxisLabel}`}
+              unit={moneyUnit}
+              language={language}
+              emptyMessage={copy.noCombinedHistory}
+            />
+          )
+        ) : valuedTrendData.length === 0 ? (
+          <EmptyState hint={copy.firstSnapshotHint}>{copy.noPortfolioHistory}</EmptyState>
+        ) : (
+          <PortfolioTrendChart
+            data={trendData}
+            dataKey="value"
+            color={selectedMetric.color}
+            axisLabel={selectedMetric.key === 'return_pct' ? copy.chartAxisReturn : displayAxisLabel}
+            valueName={copy.chartValueName}
+            unit={selectedMetric.key === 'return_pct' ? { kind: 'percent' } : moneyUnit}
+            language={language}
+            emptyMessage={copy.noPortfolioHistory}
+          />
+        )}
+        <div className="mt-1 text-label text-ink-3">
+          {trendData.length ? copy.trendRangeSummary(trendData[0].date, trendData[trendData.length - 1].date, valuedTrendData.length, trendData.length, missingTrendPoints) : copy.snapshotsOnce}
+        </div>
+        <div className="mt-2 text-label leading-relaxed text-ink-3">
+          {copy.trendExplanation}
+        </div>
+      </Card>
+
       {netWorth ? (
         <Card title={copy.totalAssets} className="mb-5">
           <AssetCoverageNote summary={netWorth} language={language} review={getAssetCoverageReview(netWorth)} />
@@ -425,137 +557,6 @@ export default async function OverviewPage({
           </div>
         </Card>
       </CardRow>
-
-      <Card
-        title={copy.snapshotTrend(selectedScopeLabel)}
-        info={selectedScope === 'GOLD' ? copy.goldScopeInfo : undefined}
-        className="mb-5"
-        action={
-          <div className="flex flex-wrap items-center justify-end gap-1">
-            <TrendRangeLinks selected={selectedRange} hrefFor={(key) => `/?trend=${key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=${selectedView}`} />
-          </div>
-        }
-      >
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            {selectedView === 'combined' ? (
-              <>
-                <div className="text-caption text-ink-3">{copy.combinedTrendSummary(selectedScopeLabel, displayAxisLabel)}</div>
-                <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
-                  {combinedMetrics.map((metric) => {
-                    const latest = combinedTrendData[combinedTrendData.length - 1]?.[metric.key]
-                    return (
-                      <div key={metric.key}>
-                        <div className="flex items-center gap-1.5 text-label text-ink-3"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: metric.color }} />{copy.metricLabels[metric.key]}</div>
-                        <div className="mt-0.5 text-title font-medium tabular-nums text-ink">{typeof latest === 'number' ? money(latest, currencyPreferences.displayCurrency) : EMPTY_VALUE}</div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="text-caption text-ink-3">
-                  {copy.trendUnit(`${selectedScopeLabel} · ${selectedMetricLabel}`, selectedMetric.key === 'return_pct' ? copy.percentagePoints : displayAxisLabel)}
-                  {latestTrendCoverage != null && latestTrendCoverage < 1 ? ` · ${copy.costPriced(fmtNumber(latestTrendCoverage * 100, 2))}` : ''}
-                  {latestPositionCoverage != null && latestPositionCoverage < 1 ? ` · ${copy.positionsPriced(fmtNumber(latestPositionCoverage * 100, 1))}` : ''}
-                </div>
-                <div className="mt-1 text-title font-medium tabular-nums text-ink">{valuedTrendData.length ? trendValueLabel(latestTrendValue) : copy.noCoveredHistory}</div>
-                {latestTrendCoverage != null && latestTrendCoverage >= MIN_TREND_COST_COVERAGE && latestTrendCoverage < HEALTHY_TREND_COST_COVERAGE && (
-                  <div className="mt-1 text-label text-warning">{copy.partialValuation}</div>
-                )}
-              </>
-            )}
-          </div>
-          {selectedView === 'single' && <div className={`text-right text-caption tabular-nums ${signClass(trendChange)}`}>{valuedTrendData.length > 1 ? <>{trendChangeLabel}<div className="text-micro font-normal text-ink-3">{copy.since(firstTrendPoint.date)}</div></> : copy.needTwoSnapshots}</div>}
-        </div>
-        {latestSnapshot ? (
-          <div className={`-mt-1 mb-3 text-label tabular-nums ${latestSnapshotStale ? 'text-warning' : 'text-ink-3'}`}>
-            {latestPriceDates.length ? (
-              <>
-                {copy.priceBasis}{' '}
-                {latestPriceDates.map((item, index) => (
-                  <span key={item.market}>
-                    {index ? ' · ' : ''}{copy.scopeLabels[item.market]} {item.newest}{item.oldest ? ` (${copy.priceOldest(item.oldest)})` : ''}
-                  </span>
-                ))}
-                {' · '}
-              </>
-            ) : null}
-            {copy.snapshotWritten(fmtDateTime(latestSnapshot.captured_at, language))}
-            {latestSnapshotStale ? <div>{copy.snapshotStale}</div> : null}
-          </div>
-        ) : null}
-        <div className="mb-3 flex flex-wrap items-center gap-1">
-          <LinkChip
-            href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=single`}
-            active={selectedView === 'single'}
-          >{copy.individual}</LinkChip>
-          <LinkChip
-            href={`/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${selectedMetric.key}&view=combined`}
-            active={selectedView === 'combined'}
-          >{copy.combined}</LinkChip>
-          <span className="mx-1 h-4 w-px bg-line-subtle" />
-          <LinkChips
-            items={TREND_SCOPES.map((scope) => ({
-              key: scope.key,
-              href: `/?trend=${selectedRange.key}&scope=${scope.key}&metric=${selectedMetric.key}&view=${selectedView}`,
-              label: copy.scopeLabels[scope.key],
-              title: scope.key === 'GOLD' ? copy.scopeHints.GOLD : undefined,
-            }))}
-            current={selectedScope}
-          />
-          <span className="mx-1 h-4 w-px bg-line-subtle" />
-          <LinkChips
-            variant="subtle"
-            items={TREND_METRICS.map((metric) => ({
-              key: metric.key,
-              href: `/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${metric.key}&view=single`,
-              label: copy.metricLabels[metric.key],
-            }))}
-            current={selectedMetric.key}
-          />
-        </div>
-        {selectedScope === 'GOLD' ? (
-          <Panel bordered={false} text="label-note" spacing="mb-3">{copy.goldScopeNote}</Panel>
-        ) : null}
-        {selectedView === 'combined' ? (
-          combinedTrendData.length === 0 ? (
-            <EmptyState hint={copy.firstSnapshotHint}>{copy.noCombinedHistory}</EmptyState>
-          ) : (
-            <PortfolioMultiTrendChart
-              data={combinedTrendData}
-              series={combinedMetrics.map((metric) => metric.key === 'realized_gl'
-                ? { dataKey: metric.key, name: copy.onRightAxis(copy.metricLabels[metric.key]), color: metric.color, axis: 'right' as const }
-                : { dataKey: metric.key, name: copy.metricLabels[metric.key], color: metric.color })}
-              axisLabel={displayAxisLabel}
-              rightAxisLabel={`${copy.metricLabels.realized_gl} · ${displayAxisLabel}`}
-              unit={moneyUnit}
-              language={language}
-              emptyMessage={copy.noCombinedHistory}
-            />
-          )
-        ) : valuedTrendData.length === 0 ? (
-          <EmptyState hint={copy.firstSnapshotHint}>{copy.noPortfolioHistory}</EmptyState>
-        ) : (
-          <PortfolioTrendChart
-            data={trendData}
-            dataKey="value"
-            color={selectedMetric.color}
-            axisLabel={selectedMetric.key === 'return_pct' ? copy.chartAxisReturn : displayAxisLabel}
-            valueName={copy.chartValueName}
-            unit={selectedMetric.key === 'return_pct' ? { kind: 'percent' } : moneyUnit}
-            language={language}
-            emptyMessage={copy.noPortfolioHistory}
-          />
-        )}
-        <div className="mt-1 text-label text-ink-3">
-          {trendData.length ? copy.trendRangeSummary(trendData[0].date, trendData[trendData.length - 1].date, valuedTrendData.length, trendData.length, missingTrendPoints) : copy.snapshotsOnce}
-        </div>
-        <div className="mt-2 text-label leading-relaxed text-ink-3">
-          {copy.trendExplanation}
-        </div>
-      </Card>
 
       <Card title={copy.accountAllocation}>
         {accounts.length === 0 ? (
