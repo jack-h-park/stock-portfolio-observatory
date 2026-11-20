@@ -30,7 +30,8 @@ const BLOCKS: { path: string; absent: string[]; present: string[] }[] = [
   },
   {
     path: 'app/page.tsx',
-    absent: ['StackedAssetChart', 'AssetEventList', 'topHoldingsByCost', 'freshnessTitle'],
+    // The hero may carry a control-less total-assets summary (checked below); the workbench stays on /net-worth.
+    absent: ['AssetEventList', 'getAssetEvents', 'getChildAssets', 'childrenBand', 'topHoldingsByCost', 'freshnessTitle'],
     present: ['copy.concentrationBasis', 'copy.openTotalAssets'],
   },
   {
@@ -54,6 +55,19 @@ for (const { path, absent, present } of BLOCKS) {
     for (const token of present) assert.ok(text.includes(token), `${path} is missing ${token}`)
   })
 }
+
+// The Overview's total-assets chart is a summary: no event markers, no
+// children band, and a link to /net-worth, which owns the workbench.
+test('app/page.tsx draws the total-assets chart as a control-less summary', () => {
+  const text = source('app/page.tsx')
+  const calls = text.split('<StackedAssetChart').length - 1
+  assert.equal(calls, 1, 'one StackedAssetChart on the overview')
+  const at = text.indexOf('<StackedAssetChart')
+  const props = text.slice(at, text.indexOf('/>', text.indexOf('emptyMessage=', at)))
+  for (const forbidden of ['markers=', 'childrenBand=']) assert.ok(!props.includes(forbidden), `summary chart passes ${forbidden}`)
+  const link = text.indexOf('href="/net-worth"', at)
+  assert.ok(link > at && link < text.indexOf('</MetricHeroCard>', at), 'the summary links to /net-worth inside the hero')
+})
 
 // A template literal whose last character is a bare `$` appends a literal
 // dollar sign to the URL (`...&view=single$` parses as an unknown view), and

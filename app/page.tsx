@@ -3,7 +3,7 @@ import { AssetCoverageNote } from '@/components/AssetCoverageNote'
 import { isSupplementarySource } from '@/lib/supplementary'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Card, EmptyState, HeroAside, MetricField, MetricHeroCard, Note, Panel, TextLink, marketTone } from '@/components/ui'
-import { PortfolioMultiTrendChart, PortfolioTrendChart } from '@/components/charts'
+import { PortfolioMultiTrendChart, PortfolioTrendChart, StackedAssetChart } from '@/components/charts'
 import type { ChartUnit } from '@/lib/chart-format'
 import {
   dbAvailable,
@@ -14,10 +14,14 @@ import {
   getOperationalHealth,
   getOverview,
   getPortfolioSnapshots,
+  getSnapshotDates,
   getTopHoldings,
+  getTotalAssetsSeries,
   getWashSaleReview,
+  portfolioToday,
   withGoldScope,
 } from '@/lib/adapters/portfolio-db'
+import { isoDaysBefore, previousYearEnd, totalAssetsChange, type TotalAssetsChange } from '@/lib/total-assets-change'
 import {
   HEALTHY_TREND_COST_COVERAGE,
   MIN_TREND_COST_COVERAGE,
@@ -105,6 +109,12 @@ export default async function OverviewPage({
   const overview = getOverview()
   const netWorthSummary = getNetWorth(overview)
   const netWorth = assetView === 'all' ? netWorthSummary : null
+  // The all view leads with total assets: a control-less 12-month summary of
+  // the /net-worth chart, and the change over a month and since the year began.
+  const assetsSeries = netWorth ? getTotalAssetsSeries(getSnapshotDates(366), netWorth) : null
+  const today = portfolioToday()
+  const monthChange = assetsSeries ? totalAssetsChange(assetsSeries.points, isoDaysBefore(today, 30)) : null
+  const yearChange = assetsSeries ? totalAssetsChange(assetsSeries.points, previousYearEnd(today)) : null
   const storedSnapshots = getPortfolioSnapshots(trendRangeDays(selectedRange.days))
   // The gold scope is derived on read (lib/gold-trend.ts), so only that scope pays for it.
   const portfolioSnapshots = selectedScope === 'GOLD' ? withGoldScope(storedSnapshots) : storedSnapshots
@@ -209,6 +219,24 @@ export default async function OverviewPage({
     ? fmtPct(trendChange, { digits: 1, unit: 'pp', signed: true })
     : `${fmtSigned(trendChange, trendValueLabel)}${trendChangePct == null ? '' : ` · ${fmtPct(trendChangePct, { digits: 1, signed: true })}`}`
 
+  // Unavailable is not zero: with no snapshot that old the field says so.
+  const changeField = (label: string, change: TotalAssetsChange | null) => (
+    <MetricField
+      label={label}
+      value={change ? fmtSigned(change.change, (v) => money(v, 'KRW')) : EMPTY_VALUE}
+      tone={change ? signTone(change.change) : 'neutral'}
+      hint={
+        change
+          ? [
+              change.pct == null ? null : fmtPct(change.pct, { digits: 1, signed: true }),
+              copy.changeSince(fmtDate(change.baseDate, language)),
+              change.addedClasses.length ? copy.changeAddedClasses(change.addedClasses.map((key) => copy.assetClasses[key]).join(', ')) : null,
+            ].filter(Boolean).join(' · ')
+          : copy.changeUnavailable
+      }
+    />
+  )
+
   return (
     <>
       <PageHeader
@@ -226,40 +254,88 @@ export default async function OverviewPage({
       <WashSaleBanner review={getWashSaleReview()} copy={getPageCopy('washSale', language)} />
 
       <CardRow columns="hero">
-        <MetricHeroCard
-          title={copy.portfolioValue}
-          info={copy.portfolioValueInfo}
-          eyebrow={copy.allMarkets}
-          value={money(globalValue, 'KRW')}
-          hint={assetView === 'stocks' && (netWorthSummary.cash.length > 0 || netWorthSummary.byClass.pensions > 0 || netWorthSummary.byClass.gold > 0) ? (
-            <>
-              {copy.valueHint}
-              <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 text-caption">
-                <span>{copy.totalAssetsInclDeposits}</span>
-                <span className="tabular-nums text-ink">{money(netWorthSummary.totalKrw, 'KRW')}</span>
-                <AssetViewLink to="all">{copy.viewAllAssets}</AssetViewLink>
+        {netWorth && assetsSeries ? (
+          <MetricHeroCard
+            id="overview-lead"
+            title={copy.totalAssets}
+            info={copy.totalAssetsInfo}
+            eyebrow={copy.allAssetClasses}
+            value={money(netWorth.totalKrw, 'KRW')}
+            hint={copy.totalAssetsHint}
+          >
+            <div>
+              <StackedAssetChart
+                points={assetsSeries.points.map((point) => ({
+                  date: point.date,
+                  stocks: point.stocks == null ? null : displayBaseValue(point.stocks),
+                  crypto: point.crypto == null ? null : displayBaseValue(point.crypto),
+                  cash: point.cash == null ? null : displayBaseValue(point.cash),
+                  pensions: point.pensions == null ? null : displayBaseValue(point.pensions),
+                  gold: point.gold == null ? null : displayBaseValue(point.gold),
+                  total: displayBaseValue(point.total),
+                }))}
+                startsOn={assetsSeries.startsOn}
+                labels={{ ...copy.assetClasses, total: copy.totalAssets }}
+                height={180}
+                unit={moneyUnit}
+                language={language}
+                emptyMessage={copy.snapshotsOnce}
+              />
+              <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3 text-label text-ink-3">
+                <span>{copy.totalAssetsTrend}</span>
+                <TextLink href="/net-worth">{copy.openTotalAssets}</TextLink>
               </div>
-            </>
-          ) : copy.valueHint}
-        >
-          <KpiBand>
-            <MetricField label={copy.totalCost} value={money(globalBase, 'KRW')} info={glossary.costBasis.description} />
-            <MetricField
-              label={copy.totalGain}
-              value={money(overview.totals.global_base_unrealized_gl, 'KRW')}
-              info={glossary.unrealizedGl.description}
-              tone={signTone(overview.totals.global_base_unrealized_gl)}
-            />
-            <MetricField
-              label={copy.returnOnPricedCost}
-              value={fmtPct(globalUnrealizedPct, { digits: 2 })}
-              info={`${glossary.unrealizedGl.description} ${copy.returnOnPricedCostInfo}`}
-              tone={signTone(globalUnrealizedPct)}
-            />
-          </KpiBand>
-        </MetricHeroCard>
+            </div>
+            <KpiBand columns={4}>
+              {changeField(copy.change1m, monthChange)}
+              {changeField(copy.changeYtd, yearChange)}
+            </KpiBand>
+          </MetricHeroCard>
+        ) : (
+          <MetricHeroCard
+            title={copy.portfolioValue}
+            info={copy.portfolioValueInfo}
+            eyebrow={copy.allMarkets}
+            value={money(globalValue, 'KRW')}
+            hint={assetView === 'stocks' && (netWorthSummary.cash.length > 0 || netWorthSummary.byClass.pensions > 0 || netWorthSummary.byClass.gold > 0) ? (
+              <>
+                {copy.valueHint}
+                <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 text-caption">
+                  <span>{copy.totalAssetsInclDeposits}</span>
+                  <span className="tabular-nums text-ink">{money(netWorthSummary.totalKrw, 'KRW')}</span>
+                  <AssetViewLink to="all">{copy.viewAllAssets}</AssetViewLink>
+                </div>
+              </>
+            ) : copy.valueHint}
+          >
+            <KpiBand>
+              <MetricField label={copy.totalCost} value={money(globalBase, 'KRW')} info={glossary.costBasis.description} />
+              <MetricField
+                label={copy.totalGain}
+                value={money(overview.totals.global_base_unrealized_gl, 'KRW')}
+                info={glossary.unrealizedGl.description}
+                tone={signTone(overview.totals.global_base_unrealized_gl)}
+              />
+              <MetricField
+                label={copy.returnOnPricedCost}
+                value={fmtPct(globalUnrealizedPct, { digits: 2 })}
+                info={`${glossary.unrealizedGl.description} ${copy.returnOnPricedCostInfo}`}
+                tone={signTone(globalUnrealizedPct)}
+              />
+            </KpiBand>
+          </MetricHeroCard>
+        )}
 
         <HeroAside title={copy.supportingMetrics} note={copy.fxNote(fxLabel)}>
+          {netWorth ? (
+            <MetricField
+              label={copy.stockValue}
+              value={money(globalValue, 'KRW')}
+              hint={`${copy.totalGain} ${fmtSigned(overview.totals.global_base_unrealized_gl, (v) => money(v, 'KRW'))} · ${fmtPct(globalUnrealizedPct, { digits: 2, signed: true })}`}
+              info={copy.portfolioValueInfo}
+              size="metric"
+            />
+          ) : null}
           <MetricField
             label={copy.holdings}
             value={fmtNumber(overview.totals.holding_count)}
@@ -410,8 +486,7 @@ export default async function OverviewPage({
       {netWorth ? (
         <Card title={copy.totalAssets} className="mb-5">
           <AssetCoverageNote summary={netWorth} language={language} review={getAssetCoverageReview(netWorth)} />
-          <div className="text-metric font-medium tabular-nums text-ink">{money(netWorth.totalKrw, 'KRW')}</div>
-          <ul className="mt-3 grid gap-1.5">
+          <ul className="grid gap-1.5">
             {(['stocks', 'crypto', 'cash', 'pensions', 'gold'] as const).map((key) => (
               <li key={key} className="flex items-baseline justify-between gap-3 text-body">
                 <span className="text-ink-3">

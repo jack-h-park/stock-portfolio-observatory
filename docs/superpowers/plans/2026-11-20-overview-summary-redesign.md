@@ -35,7 +35,7 @@ The Overview (`app/page.tsx`) is the first page of the Personal Finance Observat
 
 **Phase 0 — done in this branch.** Snapshot trend moved directly under the hero. Filter chips no longer jump to the top (Next.js patch, see "Scroll fix" below).
 
-**Phase 1 — total assets leads.** Amend the one-home rule in `docs/ui-guide.md` and `tests/page-blocks.test.ts` (allow a control-less `StackedAssetChart` summary on Overview; keep `AssetEventList`, range links and the children toggle banned). Hero becomes total assets in the all view, stock value in the stocks view. The text list of classes folds into band 4.
+**Phase 1 — total assets leads (implemented on `claude/overview-total-assets-hero`).** Amend the one-home rule in `docs/ui-guide.md` and `tests/page-blocks.test.ts` (allow a control-less `StackedAssetChart` summary on Overview; keep `AssetEventList`, range links and the children toggle banned). Hero becomes total assets in the all view, stock value in the stocks view. The text list of classes folds into band 4.
 
 **Phase 2 — this month / this year tiles.** Four `MetricField` tiles reading existing adapters; each tile is a link. No new data. Empty and unavailable states follow the "unavailable is not zero" rule (#364).
 

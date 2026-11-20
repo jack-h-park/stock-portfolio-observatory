@@ -275,7 +275,7 @@ to `/taxes/history`); the eyebrow above a heading is the top-level section.
 
 | section | what belongs in it |
 |---|---|
-| Overview | `/` and `/daily-briefing`: the summary a reader opens first, and only blocks no other page owns |
+| Overview | `/` and `/daily-briefing`: the summary a reader opens first; its own blocks, plus control-less summaries that link to the page owning them |
 | Assets & Cash Flow | `/holdings`, `/net-worth`, `/pension`, `/income`, `/cash-inflow`, and the collapsible Detailed Records group (`/transactions`, `/fx`, `/crypto-premium`). `/net-worth` and `/pension` are hidden when the database has no supplementary data |
 | Taxes | `/taxes`, `/taxes/history`, `/tax-planning`, `/lots`, `/realized`, `/fbar` |
 | Review & Data | `/review`, `/rebalance`, `/data-ops`, `/reconciliation`, `/accounts`, `/health`, `/data-map` |
@@ -294,14 +294,19 @@ a back link in `actions`.
 ### One home per data block
 
 A block of data renders on one page, and other pages link to it. The overview
-and the review page keep only their own blocks; the all-view cumulative
-total-assets chart lives only on `/net-worth`; `/data-ops` is the one work
+and the review page keep only their own blocks; the total-assets workbench
+(range links, the children toggle, event markers and the event list) lives only
+on `/net-worth`; `/data-ops` is the one work
 queue, and each of its rows links to the card that lists its items, never back
 to the queue (validation and source freshness lead to `/health`, position breaks
 to `/reconciliation`); the FBAR worksheet lives on `/fbar`. The allowed repeats
 are:
 
 - a header pill that summarises another page's count (it links there);
+- an Overview summary of another page's block: one figure, or one chart with no
+  controls, linking to the page that owns it (the all-view hero's 12-month
+  total-assets chart links to `/net-worth`). Anything with controls, tables or
+  event lists stays at home;
 - the archive figures on `/daily-briefing`, which is the archive's own page;
 - the position page's per-ticker slices of data whose full list lives elsewhere.
 
