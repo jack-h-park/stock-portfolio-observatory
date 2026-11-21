@@ -1,3 +1,4 @@
+import { NOT_COVERED_TEXT } from '@/lib/tax-export-not-covered'
 import { defineCopy } from '@/lib/ui-copy/define'
 
 export const realized = defineCopy({
@@ -30,6 +31,8 @@ export const realized = defineCopy({
       counts: (rows: number, blank: number, superseded: number) =>
         `${rows + superseded} row(s) in the file${superseded > 0 ? ` (${rows} reported, ${superseded} superseded)` : ''}; ${blank} with a blank dollar figure (unknown, not zero).`,
       notCovered: 'What the download does not cover',
+      // The notes file's own sentences: the file stays English, so this half reads them from there.
+      notCoveredLines: NOT_COVERED_TEXT,
     },
     approximateRate: 'No rate for the sale date; the nearest earlier one was used.',
     columns: {
@@ -77,6 +80,19 @@ export const realized = defineCopy({
       counts: (rows: number, blank: number, superseded: number) =>
         `파일에 ${rows + superseded}행${superseded > 0 ? ` (보고 ${rows}행, 대체됨 ${superseded}행)` : ''}, 그중 달러 값이 빈 행 ${blank}개 (0이 아니라 알 수 없음).`,
       notCovered: '내려받는 파일이 다루지 않는 것',
+      notCoveredLines: {
+        worksheet:
+          '이 자료는 신고서가 아니라 워크시트입니다. 재생 계산으로 표시된 행은 이 저장소가 선입선출로 추정한 값이고, 1099b로 표시된 행은 증권사가 신고한 수치입니다.',
+        adjustments:
+          '1099b 행의 손익은 증권사가 신고한 손익이고, adjustment_usd는 이 손익과 매도금액에서 취득원가를 뺀 값의 차이입니다(워시세일 조정과 취득원가 조정). 조정 코드는 저장하지 않으므로 Form 8949의 f열은 생략합니다. 재생 계산 행에는 조정이 없고, 이 행의 워시세일도 계산하지 않습니다.',
+        box_codes: '박스 코드는 1099b 행에만 있습니다. 이 파일의 암호화폐 행에는 박스가 없으며, 이 앱은 1099-DA를 읽지 않습니다.',
+        korea_dollars:
+          '한국 계좌의 세금 단위는 달러로 측정합니다. 취득원가는 취득일 환율로, 매도금액은 매도일 환율로 환산합니다. 이는 IRS 방식에 대한 이 저장소의 해석이며, 세무 대리인과 확인해야 합니다.',
+        gold_collectibles:
+          '금현물(KRX) 매도는 수집품(collectible=true)으로 포함하며, 선입선출로 짝지으므로 각 행에는 그 매도가 소진한 매수분의 보유 기간이 담깁니다. 매수 수수료는 취득원가에 더하고 매도 수수료는 매도금액에서 빼되, 원화로 계산한 뒤 각각 취득일 환율과 매도일 환율로 환산합니다. 장기 보유 수집품의 이익에는 주식과 다른 최고 세율이 적용되며, 이 파일은 세금을 전혀 계산하지 않습니다.',
+        not_included: '포함하지 않는 항목: 다른 소유자의 계좌 · 연금 계좌 · 배당과 이자 · FBAR · 한국 측 이익과 세금.',
+        shared_alias: '저장된 이름이 똑같은 두 계좌는 이 파일에서 구별할 수 없어 하나의 별칭을 함께 씁니다.',
+      },
     },
     approximateRate: '매도일 환율이 없어 가장 가까운 이전 환율을 썼습니다.',
     columns: {

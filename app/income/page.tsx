@@ -8,7 +8,8 @@ import { createMoneyFormatter } from '@/lib/currency'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
-import { getPageCopy } from '@/lib/ui-copy'
+import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
+import { labelFor } from '@/lib/ui-copy/label'
 import { routeMetadata, routeSection } from '@/lib/page-names'
 import { incomeLinkedIssues } from '@/lib/header-status'
 import { CardRow, KpiBand } from '@/components/layout'
@@ -25,6 +26,7 @@ export default async function IncomePage() {
   const money = createMoneyFormatter(currencyPreferences)
   const usd = currencyPreferences.displayCurrency === 'USD'
   const copy = getPageCopy('income', language)
+  const transactionTypes = getUiCopy(language).transactionTypes
   const glossary = getGlossary(language)
   const income = getIncomeReview(currencyPreferences.displayCurrency)
   const latestMonth = income.byMonth[income.byMonth.length - 1]
@@ -199,7 +201,7 @@ export default async function IncomePage() {
               rows={income.tickerless}
               columns={[
                 { key: 'market', priority: 'secondary', label: copy.columns.market, render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
-                { key: 'type', label: copy.columns.type },
+                { key: 'type', label: copy.columns.type, render: (r) => labelFor(transactionTypes, r.type) },
                 { key: 'name', label: copy.columns.name },
                 { key: 'row_count', priority: 'secondary', label: copy.columns.rows, align: 'right', render: (r) => fmtNumber(r.row_count) },
                 { key: 'native_income', priority: 'secondary', label: copy.columns.native, align: 'right', render: (r) => money(r.native_income, r.currency) },

@@ -64,7 +64,7 @@ export function SupplementaryCoverageTable({ rows, language, accounts }: {
       { key: 'status', label: copy.status, render: (row: typeof data[number]) => row.coverage
         ? <Badge tone={statusTone(COVERAGE_SEVERITY, row.coverage.status)}>{copy.statuses[row.coverage.status]}</Badge>
         : <Badge>{copy.closed}</Badge> },
-      { key: 'next', label: copy.next, render: (row: typeof data[number]) => <div className="max-w-80 text-label leading-relaxed text-ink-2">{row.coverage ? <AccountUpdateAction status={row.coverage.status} language={language} confirmation={maskAccountLabel(row.coverage.action)}>{nextAction(row.coverage)}</AccountUpdateAction> : copy.closedAction}</div> },
+      { key: 'next', label: copy.next, render: (row: typeof data[number]) => <div className="max-w-80 text-label leading-relaxed text-ink-2">{row.coverage ? <AccountUpdateAction status={row.coverage.status} language={language} confirmation={copy.unconfirmedAction(row.coverage.kind, maskAccountLabel(row.coverage.label)) ?? maskAccountLabel(row.coverage.action)}>{nextAction(row.coverage)}</AccountUpdateAction> : copy.closedAction}</div> },
     ]}
   />
 }

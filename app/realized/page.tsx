@@ -6,7 +6,7 @@ import { Badge, Card, Label, Note, Panel, Signed, marketTone } from '@/component
 import { Total, TotalsStrip } from '@/components/layout'
 import { getRealizedLots } from '@/lib/adapters/portfolio-db'
 import { todayLosAngeles } from '@/lib/cli/common'
-import { NOT_COVERED_LINES, selectTaxExportRows, summarizeTaxExport } from '@/lib/tax-export'
+import { NOT_COVERED_NOTES, selectTaxExportRows, summarizeTaxExport } from '@/lib/tax-export'
 import { formatKrw, formatUsd } from '@/lib/currency'
 import { EMPTY_VALUE, fmtNumber, fmtQuantity } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
@@ -234,8 +234,8 @@ export default async function RealizedLotsPage({
             <details open className="text-caption text-ink-3">
               <summary className="min-h-6 cursor-pointer leading-6">{copy.taxExport.notCovered}</summary>
               <ul className="mt-1 list-disc space-y-1 pl-5">
-                {NOT_COVERED_LINES.map((line) => (
-                  <li key={line}>{line}</li>
+                {NOT_COVERED_NOTES.map(({ code, text }) => (
+                  <li key={code}>{copy.taxExport.notCoveredLines[code] ?? text}</li>
                 ))}
               </ul>
             </details>

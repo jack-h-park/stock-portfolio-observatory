@@ -13,7 +13,7 @@ import type { getPageCopy } from '@/lib/ui-copy'
 import { PLANNING_INPUT_TONE, PLANNING_RESULT_TONE, TAX_DECISION_SEVERITY, TO_REVIEW_SEVERITY, categoryTone, countTone, statusTone } from '@/lib/tone'
 
 type TaxPlanningCopy = ReturnType<typeof getPageCopy<'taxPlanning'>>
-import { marketAmount, sameKrw } from './view-utils'
+import { marketAmount, multiYearScenarioName, sameKrw } from './view-utils'
 
 type OpportunityRow = {
   year: number
@@ -262,7 +262,7 @@ export function DecisionSummary({
     ? copy.opportunity.reviewTimingSignals
     : tiedTax
       ? copy.opportunity.noTaxDifference
-      : copy.opportunity.currentLowestTaxPath(bestScenario?.label ?? EMPTY_VALUE)
+      : copy.opportunity.currentLowestTaxPath(bestScenario ? multiYearScenarioName(bestScenario, copy) : EMPTY_VALUE)
   const body = !hasPlanningTarget
     ? copy.opportunity.noPlanningTargetBody
     : tiedTax
@@ -354,7 +354,7 @@ export function PlanningMap({
       title={hasPlanningTarget ? copy.opportunity.actionPlanTitle : copy.opportunity.opportunityMapTitle}
       info={hasPlanningTarget ? copy.opportunity.actionPlanInfo : copy.opportunity.opportunityMapInfo}
       className="mb-5"
-      action={hasPlanningTarget && scenario ? <Badge tone="info">{scenario.label}</Badge> : undefined}
+      action={hasPlanningTarget && scenario ? <Badge tone="info">{multiYearScenarioName(scenario, copy)}</Badge> : undefined}
     >
       {!hasPlanningTarget || !scenario ? (
         <OpportunityTable rows={opportunityRows} coverage={coverage} policy={policy} assumptionsAreExample={assumptionsAreExample} copy={copy} />

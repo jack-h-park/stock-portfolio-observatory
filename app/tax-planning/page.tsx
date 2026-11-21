@@ -20,7 +20,7 @@ import { annualProfiles, getTaxPolicyState } from '@/lib/tax-policy'
 
 import { CandidateTable, MasterPlanAnnualTax, MasterPlanOverview, MasterScenarioComparison, SavedPlansPanel } from './components'
 import { DecisionSummary, PlanningMap, buildOpportunityRows, opportunitySummary, type OpportunityCoverage } from './opportunity-analysis'
-import { sameKrw } from './view-utils'
+import { multiYearScenarioDescription, multiYearScenarioName, sameKrw, taxPlanWarningText } from './view-utils'
 import { Input, Select } from '@/components/form'
 import { DataTable } from '@/components/DataTable'
 import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
@@ -150,7 +150,7 @@ export default async function TaxPlanningPage({
           <ul className="space-y-2 text-caption text-ink-2">
             {operational.staleItems.length > 0 && <li><Badge tone="warning">{copy.page.inputs}</Badge> {copy.page.resolveFreshness(fmtNumber(operational.staleItems.length))}</li>}
             {plan.summary.warnings.map((warning) => (
-              <li key={warning}><Badge tone="warning">{copy.page.review}</Badge> {warning}</li>
+              <li key={warning.message}><Badge tone="warning">{copy.page.review}</Badge> {taxPlanWarningText(warning, copy)}</li>
             ))}
           </ul>
         </Card>
@@ -260,7 +260,7 @@ export default async function TaxPlanningPage({
           <div className="flex items-center justify-between gap-3"><span>{copy.page.krCreditUsed}</span><span className="tabular-nums text-success">{fmtSigned(-plan.summary.krForeignTaxCreditKrw, fmtKrw)}</span></div>
           <div className="flex items-center justify-between gap-3"><span>{copy.page.combinedAfterCredit}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.estimatedTaxKrw)}</span></div>
           <div className="flex items-center justify-between gap-3"><span>{copy.page.afterTaxProceeds}</span><span className="tabular-nums text-ink">{fmtKrw(plan.summary.estimatedAfterTaxKrw)}</span></div>
-          <div className="text-label leading-relaxed text-ink-3">{copy.page.methodNote(plan.summary.taxCalculationMethod)}</div>
+          <div className="text-label leading-relaxed text-ink-3">{copy.page.methodNote(copy.page.methodLabels[plan.summary.taxCalculationMethod] ?? plan.summary.taxCalculationMethod)}</div>
         </div>
       </Card>
 
@@ -294,14 +294,14 @@ export default async function TaxPlanningPage({
                 render: (row: MultiYearTaxScenario) => (
                   <>
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-ink">{row.label}</span>
+                      <span className="font-medium text-ink">{multiYearScenarioName(row, copy)}</span>
                       {multiYearPlan.bestScenario?.key === row.key && <Badge tone="success">{copy.page.lowestTax}</Badge>}
                       {multiYearPlan.bestScenario?.key !== row.key &&
                         sameKrw(row.summary.taxKrw, multiYearPlan.bestScenario?.summary.taxKrw) && (
                           <Badge tone="neutral">{copy.page.sameTax}</Badge>
                         )}
                     </div>
-                    <div className="mt-1 max-w-[24rem] text-label text-ink-3">{row.description}</div>
+                    <div className="mt-1 max-w-[24rem] text-label text-ink-3">{multiYearScenarioDescription(row, copy)}</div>
                   </>
                 ),
               },
@@ -367,7 +367,7 @@ function ScenarioTimeline({ scenario, copy }: { scenario: MultiYearTaxScenario; 
   return (
     <Panel pad="md">
       <SectionHeading level={3} size="sub" action={<Badge tone={countTone(TAX_DUE_SEVERITY, scenario.summary.taxKrw)}>{fmtKrw(scenario.summary.taxKrw)}</Badge>}>
-        {scenario.label}
+        {multiYearScenarioName(scenario, copy)}
       </SectionHeading>
       <div className="mt-3 divide-y divide-line-subtle">
         {scenario.years.map((year) => (

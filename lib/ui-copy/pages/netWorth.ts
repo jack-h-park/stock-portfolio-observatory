@@ -1,5 +1,13 @@
 import { defineCopy } from '@/lib/ui-copy/define'
 
+/**
+ * A cash row's `kind`: the bank map's kinds the extractors write to
+ * cash_balances, and `cash`, the overview's name for a row without one. An
+ * unlisted kind shows raw.
+ */
+export const CASH_KINDS = ['checking', 'savings', 'cma', 'deposit', 'fx', 'cash'] as const
+type CashKind = (typeof CASH_KINDS)[number]
+
 export const netWorth = defineCopy({
   en: {
     title: 'Total Assets',
@@ -35,7 +43,7 @@ export const netWorth = defineCopy({
     noTrend: 'No total assets history yet.',
     balances: 'Deposit balances',
     columns: { institution: 'Institution', account: 'Account', kind: 'Kind', asOf: 'As of', balance: 'Balance', krw: 'Value' },
-    kinds: { checking: 'Checking', savings: 'Savings', cma: 'CMA', deposit: 'Deposit' },
+    kinds: { checking: 'Checking', savings: 'Savings', cma: 'CMA', deposit: 'Deposit', fx: 'fx', cash: 'cash' } satisfies Record<CashKind, string>,
     derived: 'Derived from an anchor balance',
     unpriced: (list: string) => `No USD/KRW rate is available for ${list}. These accounts are not in the total.`,
     history: 'Month-end history',
@@ -96,7 +104,7 @@ export const netWorth = defineCopy({
     noTrend: '아직 자산 현황 이력이 없습니다.',
     balances: '예금 잔고',
     columns: { institution: '기관', account: '계좌', kind: '종류', asOf: '기준일', balance: '잔고', krw: '평가금액' },
-    kinds: { checking: '입출금', savings: '저축', cma: 'CMA', deposit: '예금' },
+    kinds: { checking: '입출금', savings: '저축', cma: 'CMA', deposit: '예금', fx: '외화', cash: '현금' } satisfies Record<CashKind, string>,
     derived: '기준 잔고에서 역산',
     unpriced: (list: string) => `${list}은(는) USD/KRW 환율이 없어 합계에 포함되지 않았습니다.`,
     history: '월말 추이',

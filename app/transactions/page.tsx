@@ -8,6 +8,7 @@ import { getCurrencyPreferences } from '@/lib/currency-server'
 import { EMPTY_VALUE, fmtNumber, fmtQuantity } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy, getUiCopy } from '@/lib/ui-copy'
+import { labelFor } from '@/lib/ui-copy/label'
 import { TickerFilterChip } from '@/components/TickerFilterChip'
 import { applyFilters, applySearch, applyTicker, filterOptions, readFilters, readTicker, tickerWindowTruncated, withParam, type FilterGroup } from '@/lib/table-filter'
 import { columnSortValue, formatSort, knownSort, parseSort, sortRows, sortableKeys, type TableSort } from '@/lib/table-sort'
@@ -40,6 +41,7 @@ export default async function TransactionsPage({
   const params = await searchParams
   const language = await getLanguage()
   const copy = getPageCopy('transactions', language)
+  const transactionTypes = getUiCopy(language).transactionTypes
   const money = createMoneyFormatter(await getCurrencyPreferences())
   const rows = getRecentTransactions(RECENT_TRANSACTION_LIMIT)
   // A position page links here with its exact ticker; the market is the ordinary filter.
@@ -53,7 +55,7 @@ export default async function TransactionsPage({
     { key: 'market', label: copy.columns.market, priority: 'secondary', sortable: true, sortFirst: 'asc', render: (r) => <Badge tone={marketTone(r.market)}>{r.market}</Badge> },
     { key: 'date', label: copy.columns.date, sortable: true, nowrap: true },
     { key: 'account', label: copy.columns.account, sortable: true, sortFirst: 'asc', sortValue: accountSortValue, priority: 'secondary', render: (r) => <AccountCell brokerage={r.brokerage} account={r.account} /> },
-    { key: 'type', label: copy.columns.type, sortable: true, sortFirst: 'asc', render: (r) => <Badge tone={categoryTone(TRANSACTION_TYPE_TONE, r.type, 'info')}>{getUiCopy(language).transactionTypes[r.type] ?? r.type}</Badge> },
+    { key: 'type', label: copy.columns.type, sortable: true, sortFirst: 'asc', render: (r) => <Badge tone={categoryTone(TRANSACTION_TYPE_TONE, r.type, 'info')}>{labelFor(transactionTypes, r.type)}</Badge> },
     { key: 'ticker', label: copy.columns.ticker, sortable: true, sortFirst: 'asc' },
     { key: 'name', label: copy.columns.name, priority: 'secondary', sortable: true, sortFirst: 'asc' },
     { key: 'quantity', label: copy.columns.quantity, priority: 'secondary', align: 'right', sortable: true, render: (r) => fmtQuantity(r.quantity, 2) },
@@ -88,7 +90,8 @@ export default async function TransactionsPage({
             groups={GROUPS.map((group) => ({
               key: group.key,
               label: copy.filters[group.label as keyof typeof copy.filters],
-              options: options[group.key].map((value: string) => ({ value, label: value })),
+              // The type chips read the table's type column labels; the URL keeps the code.
+              options: options[group.key].map((value: string) => ({ value, label: group.key === 'type' ? labelFor(transactionTypes, value) : value })),
               selected: selected[group.key],
             }))}
           />

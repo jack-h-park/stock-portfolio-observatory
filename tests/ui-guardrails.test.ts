@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert'
+import fs from 'node:fs'
 import { test } from 'node:test'
 
 import {
@@ -8,6 +9,7 @@ import {
   findBareFootnote,
   findBrowserLocaleNumber,
   findConflicts,
+  findDataLayerSentence,
   findDateFormatWithoutLanguage,
   findDeadOpacity,
   findEnglishInKoreanCopy,
@@ -487,6 +489,31 @@ test('G12 skips identifier tokens but still reads a hyphenated word and a word b
   ])
 })
 
+test('G12 skips a form number but still reads an English word beside it', () => {
+  const module = koModule(
+    "da: '이 앱은 1099-DA를 읽지 않습니다.',",
+    "es: '1040-ES 예정 납부',",
+    "draft: '1099-DA draft 양식',",
+    "word: 'DA 양식',",
+  )
+  assert.deepEqual(g12Lines(module), [
+    [5, 'draft'],
+    [6, 'DA'],
+  ])
+})
+
+test('G12 skips an unspaced name=value pair but still reads a spaced one and a word beside it', () => {
+  const module = koModule(
+    "pair: '수집품(collectible=true)으로 포함합니다.',",
+    "row: 'collectible=true 표시 row',",
+    "spaced: 'collectible = true 표시',",
+  )
+  assert.deepEqual(g12Lines(module), [
+    [4, 'row'],
+    [5, 'collectible, true'],
+  ])
+})
+
 test('G12 lets the allow-listed acronyms, codes and names stand, but still reads snapshot', () => {
   const module = koModule(
     "niit: 'NIIT 세율',",
@@ -633,6 +660,105 @@ test('G14 groups files by their own folder, so a nested route is its own unit', 
   assert.equal(findFormPagePolls(child).length, 1)
 })
 
+test('G15 catches a Korean sentence stored as a property value in the data layer', () => {
+  const source = [
+    'export function retention(kind: string) {',
+    "  return { kind, retentionReason: '세금 신고에 쓰는 원본입니다.' }",
+    '}',
+    'const row = {',
+    '  action: "자료를 다시 내려받으세요",',
+    '  hint: `${n}개 계좌를 확인하십시오!`,',
+    "  question: '계속하시겠습니까?',",
+    "  'quoted-key': '원본입니다 그대로',",
+    '}',
+  ].join('\n')
+  const hits = findDataLayerSentence(source, 'lib/planted.ts') as Hit[]
+  assert.deepEqual(
+    hits.map((h) => h.line),
+    [2, 5, 6, 7, 8],
+  )
+  assert.equal(hits[0].file, 'lib/planted.ts')
+  assert.ok(hits[0].snippet.includes('원본입니다.'))
+  // The value may sit on the line after its key, as a formatter wraps it.
+  assert.deepEqual(
+    (findDataLayerSentence("const r = {\n  retentionReason:\n    '세금 신고에 쓰는 원본입니다.',\n}") as Hit[]).map((h) => h.line),
+    [3],
+  )
+})
+
+test('G15 catches a prose literal pushed onto a warnings or notes array', () => {
+  const source = [
+    'const warnings: string[] = []',
+    "warnings.push('KR domestic stock taxable scope is off for this year')",
+    'lotWarnings.push(`Lot ${id} has no acquisition date on file`)',
+    "notes.push('원가 정보 없음')",
+    'this.Notes.push(`${count}건 확인 필요`)',
+    'warnings.push(',
+    "  'A wrapped sentence still counts as prose here',",
+    ')',
+  ].join('\n')
+  assert.deepEqual(
+    (findDataLayerSentence(source) as Hit[]).map((h) => h.line),
+    [2, 3, 4, 5, 7],
+  )
+})
+
+test('G15 leaves data the code matches and text that is not a sentence alone', () => {
+  const quiet = [
+    // A Korean noun phrase as a property value.
+    "const a = { status: '추가 자료 필요 없음', unit: '만' }",
+    // A Korean sentence as an argument, a comparison operand, an array element, an assignment.
+    "send('알림을 보냈습니다.')",
+    "if (memo === '입금되었습니다') skip()",
+    "const markers = ['처리되었습니다', '완료되었습니다.']",
+    "message = '다시 시도하세요.'",
+    "const reply = '확인하십시오'",
+    // A ternary branch inside an object value is not the value's key.
+    "const b = { text: ok ? '가' : '정상입니다' }",
+    // A pushed object, and a pushed English literal of two words or a code.
+    "warnings.push({ code: 'scope_off', message: 'Scope is off for this year' })",
+    "warnings.push('scope off')",
+    "notes.push('KR_DOMESTIC_SCOPE')",
+    'notes.push(`${a} ${b} ${c}`)',
+    // Another array name.
+    "rows.push('A whole English sentence about something')",
+    // An English sentence as a property value is out of scope.
+    "const c = { reason: 'The file was skipped because it is empty.' }",
+  ].join('\n')
+  assert.deepEqual(findDataLayerSentence(quiet), [])
+})
+
+test('G15 skips a line marked guardrail:allow data-text, and a sentence in a comment', () => {
+  assert.deepEqual(
+    findDataLayerSentence("const a = { body: '알림을 보냈습니다.' } // guardrail:allow data-text: leaves the machine"),
+    [],
+  )
+  assert.deepEqual(
+    findDataLayerSentence("// guardrail:allow data-text: a reminder body\nwarnings.push('This reminder text leaves the machine')"),
+    [],
+  )
+  // The marker covers its own line and the next one, no further.
+  assert.deepEqual(
+    (findDataLayerSentence("// guardrail:allow data-text\nconst x = 1\nconst a = { body: '알림을 보냈습니다.' }") as Hit[]).map((h) => h.line),
+    [3],
+  )
+  const comments = [
+    "// retentionReason: '세금 신고에 쓰는 원본입니다.'",
+    "const a = 1 /* warnings.push('KR domestic stock taxable scope is off') */",
+    '/**',
+    ' * notes.push(`원가 정보를 확인하세요`)',
+    ' */',
+  ].join('\n')
+  assert.deepEqual(findDataLayerSentence(comments), [])
+})
+
+// The two leaks this check exists for lived in these files; pin their zero.
+test('G15 finds nothing in the files where the original leaks lived', () => {
+  for (const file of ['lib/adapters/portfolio-db.ts', 'lib/tax-planning.ts']) {
+    assert.deepEqual(findDataLayerSentence(fs.readFileSync(file, 'utf8'), file), [], file)
+  }
+})
+
 test('the counted checks are registered in order with their scopes', () => {
   type Check = { code: string; id: string; roots: string[]; exclude: string[]; include: RegExp | null }
   const checks = CHECKS as Check[]
@@ -652,6 +778,7 @@ test('the counted checks are registered in order with their scopes', () => {
       'G12 english-in-korean-copy',
       'G13 raw-enum-badge',
       'G14 form-page-polls',
+      'G15 data-layer-sentence',
     ],
   )
   const byCode = Object.fromEntries(checks.map((c) => [c.code, c]))
@@ -671,6 +798,25 @@ test('the counted checks are registered in order with their scopes', () => {
   assert.equal(byCode.G12.include, null)
   assert.deepEqual(byCode.G14.roots, ['app'])
   assert.equal((byCode.G14 as Check & { group?: string }).group, 'route')
+  assert.deepEqual(byCode.G15.roots, ['lib'])
+  assert.deepEqual(byCode.G15.exclude, [])
+  assert.equal(
+    (byCode.G15 as Check & { title: string }).title,
+    'sentence written in the data layer instead of a copy module',
+  )
+  for (const read of ['lib/tax-planning.ts', 'lib/adapters/portfolio-db.ts', 'lib/rebalance/engine.ts', 'lib/ui-copyist.ts']) {
+    assert.ok(byCode.G15.include?.test(read), read)
+  }
+  for (const skipped of [
+    'lib/ui-copy/common.ts',
+    'lib/ui-copy/pages/review.ts',
+    'lib/glossary.ts',
+    'lib/cli/commands.ts',
+    'lib/rebalance/notify.ts',
+    'lib/rebalance/proposal-view.ts',
+  ]) {
+    assert.ok(!byCode.G15.include?.test(skipped), skipped)
+  }
   for (const code of Object.keys(byCode).filter((c) => c !== 'G14')) {
     assert.equal((byCode[code] as Check & { group?: string }).group, undefined, code)
   }

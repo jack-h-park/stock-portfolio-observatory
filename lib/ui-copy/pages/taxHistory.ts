@@ -1,4 +1,15 @@
+import type { AnnualEstimateInput } from '@/lib/domain/taxes/annual/contracts'
+import type { EffectiveBasis, Settlement } from '@/lib/domain/taxes/history'
 import { defineCopy } from '@/lib/ui-copy/define'
+
+// The record codes the tax pages print, named here so the Korean half carries
+// no English string literal in a type (G12). An obligation's authority and tax
+// type are free text in the history store; these are the values the annual
+// estimate schema allows, and any other (`US:CA`) shows raw.
+export type TaxAuthority = AnnualEstimateInput['authority']
+export type TaxType = AnnualEstimateInput['taxType']
+export type TaxRecordKind = EffectiveBasis['kind']
+export type TaxEventKind = Settlement['kind']
 
 export const taxHistory = defineCopy({
   en: {
@@ -60,6 +71,19 @@ export const taxHistory = defineCopy({
     changes: 'Review history',
     record: 'Inspect record',
     importHint: 'Import is preview-first. See the tax-history guide for the reviewed import workflow.',
+    // Read with `labelFor(authorities, code)` (lib/ui-copy/label.ts), and likewise below.
+    authorities: { 'US:federal': 'US:federal', 'KR:national': 'KR:national', 'KR:local': 'KR:local' } satisfies Record<TaxAuthority, string>,
+    taxTypes: { income: 'income' } satisfies Record<TaxType, string>,
+    recordKinds: { return: 'return', assessment: 'assessment' } satisfies Record<TaxRecordKind, string>,
+    eventKinds: {
+      withholding: 'withholding',
+      'estimated-payment': 'estimated-payment',
+      'filing-payment': 'filing-payment',
+      'additional-payment': 'additional-payment',
+      refund: 'refund',
+      reversal: 'reversal',
+      'credit-transfer': 'credit-transfer',
+    } satisfies Record<TaxEventKind, string>,
   },
   ko: {
     title: '세금 개요',
@@ -119,5 +143,17 @@ export const taxHistory = defineCopy({
     changes: '검토 이력',
     record: '기록 확인',
     importHint: '가져오기는 미리보기가 기본입니다. 검토 후 적용하는 절차는 세금 이력 안내를 확인하세요.',
+    authorities: { 'US:federal': '미국 연방세', 'KR:national': '한국 국세', 'KR:local': '한국 지방세' } satisfies Record<TaxAuthority, string>,
+    taxTypes: { income: '소득세' } satisfies Record<TaxType, string>,
+    recordKinds: { return: '신고서', assessment: '과세기관 결정' } satisfies Record<TaxRecordKind, string>,
+    eventKinds: {
+      withholding: '원천징수',
+      'estimated-payment': '예정 납부',
+      'filing-payment': '신고 납부',
+      'additional-payment': '추가 납부',
+      refund: '환급',
+      reversal: '취소',
+      'credit-transfer': '환급금 충당',
+    } satisfies Record<TaxEventKind, string>,
   },
 })

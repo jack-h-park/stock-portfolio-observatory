@@ -17,6 +17,7 @@ import { Select } from '@/components/form'
 import type { Metadata } from 'next'
 import { SubmitButton } from '@/components/SubmitButton'
 import { savedPlanHeading } from '@/lib/page-headings'
+import { masterPlanName } from '@/app/tax-planning/view-utils'
 import { CHANGE_SEVERITY, REVIEW_SEVERITY, TAX_PLAN_STATUS_SEVERITY, deltaTone, statusTone, type Tone } from '@/lib/tone'
 
 export const dynamic = 'force-dynamic'
@@ -42,7 +43,8 @@ export default async function SavedTaxPlanPage({
   const { id } = await params
   const query = await searchParams
   const language = await getLanguage()
-  const copy = getPageCopy('taxPlanning', language).savedPlanDetail
+  const pageCopy = getPageCopy('taxPlanning', language)
+  const copy = pageCopy.savedPlanDetail
   const labels = getUiCopy(language)
   const saved = getSavedTaxPlan(id)
   if (!saved) notFound()
@@ -178,7 +180,7 @@ export default async function SavedTaxPlanPage({
 
       <Card title={copy.snapshotProvenance} className="mb-5">
         <dl className="grid gap-x-8 gap-y-3 text-caption sm:grid-cols-2 lg:grid-cols-4">
-          <div><dt className="text-ink-3">{copy.strategy}</dt><dd className="mt-1 text-ink">{saved.plan.label}</dd></div>
+          <div><dt className="text-ink-3">{copy.strategy}</dt><dd className="mt-1 text-ink">{masterPlanName(saved.plan, pageCopy)}</dd></div>
           <div><dt className="text-ink-3">{copy.executionWindow}</dt><dd className="mt-1 tabular-nums text-ink">{saved.executionMonths} {copy.months}</dd></div>
           <div><dt className="text-ink-3">{copy.taxHorizon}</dt><dd className="mt-1 tabular-nums text-ink">{saved.horizonYears} {copy.years}</dd></div>
           <div><dt className="text-ink-3">{copy.taxPolicy}</dt><dd className="mt-1 tabular-nums text-ink">{copy.version} {saved.policyVersion}</dd></div>

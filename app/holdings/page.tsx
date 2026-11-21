@@ -88,7 +88,7 @@ export default async function HoldingsPage({
       nowrap: true,
       render: (r) => <Badge tone={COST_BASIS_STATUS_TONE[r.cost_status] ?? 'neutral'}>{copy.costStatus[r.cost_status] ?? r.cost_status}</Badge>,
     },
-    { key: 'cost_note', label: copy.costNote, priority: 'tertiary', render: (r) => <div className="max-w-[20rem] text-label text-ink-3">{r.cost_note}</div> },
+    { key: 'cost_note', label: copy.costNote, priority: 'tertiary', render: (r) => <div className="max-w-[20rem] text-label text-ink-3">{copy.costNotes[r.cost_status] ?? r.cost_note}</div> },
   ]
   const sort = knownSort(parseSort(params.sort, DEFAULT_SORT), sortableKeys(columns), DEFAULT_SORT)
   const filtered = sortRows(

@@ -1,10 +1,21 @@
 import { EMPTY_VALUE } from '@/lib/format'
-import type { TaxPlanCandidate } from '@/lib/tax-planning'
+import { MASTER_PLAN_REASONS } from '@/lib/tax-plan-reasons'
+import type {
+  MasterPlanReasonCode,
+  MasterPlanStrategyKey,
+  MultiYearStrategyKey,
+  TaxPlanCandidate,
+  TaxPlanWarningCode,
+} from '@/lib/tax-planning'
 import type { FilingScenario } from '@/lib/tax-policy'
+import type { UsTaxEstimate } from '@/lib/us-tax-engine'
 import { defineCopy } from '@/lib/ui-copy/define'
 
 // Named here so the Korean half carries no English string literal in a type (G12).
 type HoldingBucket = TaxPlanCandidate['holdingBucket']
+type UsTaxMethod = UsTaxEstimate['method']
+type PlainWarningCode = Exclude<TaxPlanWarningCode, 'WASH_SALE_REVIEW'>
+type StrategyText = (executionMonths: number) => string
 
 export const taxPlanning = defineCopy({
   en: {
@@ -53,9 +64,58 @@ export const taxPlanning = defineCopy({
       afterTaxProceeds: 'After-tax proceeds',
       method: 'Method',
       methodNote: (method: string) => `Method: ${method}. FTC is applied only in the selected credit mode; source and treaty percentages remain manual inputs.`,
+      /** The US calculation method methodNote names. Read with `methodLabels[method] ?? method`. */
+      methodLabels: {
+        'progressive-mfj': 'progressive-mfj',
+        'screening-rate-fallback': 'screening-rate-fallback',
+      } satisfies Record<UsTaxMethod, string> as Partial<Record<string, string>>,
       inputs: 'Inputs',
       resolveFreshness: (count: string) => `Resolve ${count} freshness issue(s) before trading.`,
       review: 'Review',
+    },
+    /** Master sale strategies, by MonthlySaleMasterPlan.strategy. English matches masterStrategyLabel / masterStrategyDescription. */
+    strategies: {
+      label: {
+        EARLIEST_LT: () => 'Sell at long-term eligibility',
+        WAIT_US_ONLY: () => 'Wait for US-only filing',
+        ACCELERATE_LOSSES: () => 'Accelerate loss harvesting',
+        STAGED: (executionMonths: number) => `Stage sales over ${executionMonths} months`,
+      } satisfies Record<MasterPlanStrategyKey, StrategyText> as Partial<Record<string, StrategyText>>,
+      description: {
+        EARLIEST_LT: () => 'Sell each priced lot on the first available date after it becomes long-term for US tax purposes.',
+        WAIT_US_ONLY: () => 'Move both gain and loss lots to the first US-only filing year so the comparison preserves same-year loss netting.',
+        ACCELERATE_LOSSES: () => 'Make loss lots available now for same-year offset planning while waiting for gain lots to become long-term.',
+        STAGED: (executionMonths: number) =>
+          `Spread priced lots across ${executionMonths} months, prioritizing eligible loss and lower-gain lots within the monthly capacity.`,
+      } satisfies Record<MasterPlanStrategyKey, StrategyText> as Partial<Record<string, StrategyText>>,
+    },
+    /** Annual-target scenarios, by MultiYearTaxScenario.key. English matches scenarioLabel / scenarioDescription. */
+    scenarios: {
+      label: {
+        KR_FIRST: 'KR-market first',
+        US_FIRST: 'US-market first',
+        LOSS_FIRST: 'Loss first',
+        BALANCED: 'Balanced',
+      } satisfies Record<MultiYearStrategyKey, string> as Partial<Record<string, string>>,
+      description: {
+        KR_FIRST: 'Realize Korea-listed holdings earlier in the planning horizon; this is not a filing-order assumption.',
+        US_FIRST: 'Realize US-listed holdings earlier in the planning horizon; this is not a filing-order assumption.',
+        LOSS_FIRST: 'Use loss lots first across markets before raising the remaining cash target.',
+        BALANCED: 'Split each year across Korea and US market exposure based on available value.',
+      } satisfies Record<MultiYearStrategyKey, string> as Partial<Record<string, string>>,
+    },
+    /** Planner warnings, by TaxPlanWarning.code. English matches the engine's `message`. */
+    planWarnings: {
+      codes: {
+        MISSING_VALUATION: 'Missing valuation; refresh price snapshot before acting.',
+        KR_DOMESTIC_SCOPE_OFF: 'KR domestic stock taxable scope is off by current assumptions.',
+        CRYPTO_NO_KR_MODULE: 'Crypto: no Korea virtual-asset module; US estimate treats it as property with no wash-sale rule.',
+        NO_COUNTRY_MODULE: 'No country module exists yet; treated as monitoring-only.',
+        KRW_USES_COST_BASIS_FX: 'KRW estimate uses cost-basis FX because current FX is missing on the tax lot.',
+        US_WORLDWIDE_INCOME: 'US tax estimate includes non-US market gains because US citizens/residents generally report worldwide income.',
+        NO_ACQUISITION_DATE_KRW_COST: 'No acquisition-date won cost on this lot; the Korea gain uses the cost at the current rate.',
+      } satisfies Record<PlainWarningCode, string> as Partial<Record<string, string>>,
+      washSaleReview: (daysBefore: number, daysAfter: number) => `Potential wash-sale review: ${daysBefore}d before / ${daysAfter}d after.`,
     },
     sections: {
       monthlyPlan: 'Monthly sale plan',
@@ -153,6 +213,7 @@ export const taxPlanning = defineCopy({
       execution: 'Execution',
       planned: 'planned',
       executed: (done: string, total: string) => `${done} / ${total} executed`,
+      snapshotLine: (strategy: string, asOfDate: string, revision: string | number) => `${strategy} · snapshot ${asOfDate} · revision ${revision}`,
       empty: 'No saved plans yet. Save the current calculation when it is ready for review.',
     },
     savedPlanDetail: {
@@ -249,6 +310,8 @@ export const taxPlanning = defineCopy({
       next: 'Next',
       noScheduledSaleInstructions: 'No scheduled sale instructions',
       noProfile: 'No profile',
+      /** Why an instruction is scheduled, by MasterPlanReasonCode. English is the stored `reason`, read from its table. */
+      reasons: MASTER_PLAN_REASONS,
     },
     annualTax: {
       title: 'Annual tax roll-up',
@@ -449,9 +512,54 @@ export const taxPlanning = defineCopy({
       afterTaxProceeds: '세후 매도대금',
       method: '방식',
       methodNote: (method: string) => `방식: ${method}. FTC는 선택한 공제 모드에서만 적용되며, 원천 및 조세조약 비율은 수동 입력값으로 남습니다.`,
+      methodLabels: {
+        'progressive-mfj': '부부 합산 신고(MFJ) 누진세율 계산',
+        'screening-rate-fallback': '간이 세율 대체 계산',
+      } satisfies Record<UsTaxMethod, string> as Partial<Record<string, string>>,
       inputs: '입력',
       resolveFreshness: (count: string) => `거래 전 최신성 이슈 ${count}개를 해결하세요.`,
       review: '검토',
+    },
+    strategies: {
+      label: {
+        EARLIEST_LT: () => '장기 보유 요건 충족 시 매도',
+        WAIT_US_ONLY: () => '미국만 신고하는 시점까지 대기',
+        ACCELERATE_LOSSES: () => '손실 수확 앞당기기',
+        STAGED: (executionMonths: number) => `${executionMonths}개월에 걸쳐 단계적 매도`,
+      } satisfies Record<MasterPlanStrategyKey, StrategyText> as Partial<Record<string, StrategyText>>,
+      description: {
+        EARLIEST_LT: () => '가격이 있는 각 세금 단위를 미국 세법상 장기 보유가 된 뒤 첫 매도 가능일에 매도합니다.',
+        WAIT_US_ONLY: () => '이익과 손실 세금 단위를 모두 미국만 신고하는 첫 해로 옮겨, 비교에서 같은 해 손실 상계가 유지되도록 합니다.',
+        ACCELERATE_LOSSES: () => '이익 세금 단위가 장기 보유가 되기를 기다리는 동안 손실 세금 단위를 바로 같은 해 상계 계획에 쓸 수 있게 합니다.',
+        STAGED: (executionMonths: number) =>
+          `가격이 있는 세금 단위를 ${executionMonths}개월에 걸쳐 나누고, 월별 한도 안에서 매도 가능한 손실 세금 단위와 이익이 작은 세금 단위를 우선합니다.`,
+      } satisfies Record<MasterPlanStrategyKey, StrategyText> as Partial<Record<string, StrategyText>>,
+    },
+    scenarios: {
+      label: {
+        KR_FIRST: '한국 시장 먼저',
+        US_FIRST: '미국 시장 먼저',
+        LOSS_FIRST: '손실 먼저',
+        BALANCED: '균형',
+      } satisfies Record<MultiYearStrategyKey, string> as Partial<Record<string, string>>,
+      description: {
+        KR_FIRST: '계획 기간 초반에 한국 상장 보유분을 먼저 실현합니다. 신고 순서에 대한 가정은 아닙니다.',
+        US_FIRST: '계획 기간 초반에 미국 상장 보유분을 먼저 실현합니다. 신고 순서에 대한 가정은 아닙니다.',
+        LOSS_FIRST: '남은 현금 목표를 채우기 전에 시장 구분 없이 손실 세금 단위를 먼저 사용합니다.',
+        BALANCED: '매년 가용 평가금액에 따라 한국 시장과 미국 시장 노출을 나눠 매도합니다.',
+      } satisfies Record<MultiYearStrategyKey, string> as Partial<Record<string, string>>,
+    },
+    planWarnings: {
+      codes: {
+        MISSING_VALUATION: '평가금액이 없습니다. 실행 전에 가격 스냅샷을 갱신하세요.',
+        KR_DOMESTIC_SCOPE_OFF: '현재 가정에서는 한국 국내 주식이 과세 범위에서 제외됩니다.',
+        CRYPTO_NO_KR_MODULE: '암호화폐: 한국 가상자산 계산 모듈이 없습니다. 미국 추정에서는 이를 워시세일 규칙이 적용되지 않는 자산으로 취급합니다.',
+        NO_COUNTRY_MODULE: '이 시장의 국가별 계산 모듈이 아직 없어 모니터링 전용으로 취급합니다.',
+        KRW_USES_COST_BASIS_FX: '세금 단위에 현재 FX가 없어 원화 추정에 취득 기준 FX를 사용합니다.',
+        US_WORLDWIDE_INCOME: '미국 시민/거주자는 일반적으로 전세계 소득을 신고하므로 미국 세금 추정에 미국 외 시장의 이익도 포함합니다.',
+        NO_ACQUISITION_DATE_KRW_COST: '이 세금 단위에는 취득일 기준 원화 원가가 없어 한국 손익에 현재 환율 기준 원가를 사용합니다.',
+      } satisfies Record<PlainWarningCode, string> as Partial<Record<string, string>>,
+      washSaleReview: (daysBefore: number, daysAfter: number) => `워시세일 검토가 필요할 수 있습니다: 매도 전 ${daysBefore}일 / 매도 후 ${daysAfter}일.`,
     },
     sections: {
       monthlyPlan: '월별 매도 계획',
@@ -549,6 +657,7 @@ export const taxPlanning = defineCopy({
       execution: '실행',
       planned: '계획됨',
       executed: (done: string, total: string) => `${done} / ${total} 실행`,
+      snapshotLine: (strategy: string, asOfDate: string, revision: string | number) => `${strategy} · 스냅샷 ${asOfDate} · 리비전 ${revision}`,
       empty: '저장된 계획이 아직 없습니다. 검토 준비가 되면 현재 계산을 저장하세요.',
     },
     savedPlanDetail: {
@@ -645,6 +754,14 @@ export const taxPlanning = defineCopy({
       next: '다음',
       noScheduledSaleInstructions: '예약된 매도 지시가 없습니다',
       noProfile: '프로필 없음',
+      reasons: {
+        WAIT_US_ONLY_YEAR: '미국만 신고하는 첫 해에 장기 보유 처리와 같은 해 상계를 받도록 보유',
+        EARLY_LOSS_OFFSET: '같은 해 이익 상계를 위한 조기 손실 후보, 워시세일 검토 필요',
+        LOSS_INVENTORY: '연간 실현 계획에 맞춰 배치한 손실 재고',
+        MIXED_RETURNS: '올해 한 신고에서는 이익, 다른 신고에서는 손실이라 손실 재고가 아닌 매도로 배치',
+        FIRST_LONG_TERM_WINDOW: '장기 보유 요건 충족 후 첫 매도 가능 구간',
+        SHORT_TERM_SALE: '선택한 시나리오에 따른 단기 매도',
+      } satisfies Record<MasterPlanReasonCode, string>,
     },
     annualTax: {
       title: '연도별 세금 합계',

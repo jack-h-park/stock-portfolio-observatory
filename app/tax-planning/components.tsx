@@ -18,6 +18,7 @@ import { displayAccount } from '@/lib/account-label'
 import { ProgressBar } from '@/components/bars'
 import { PositionCell } from '@/components/PositionCell'
 import { Split } from '@/components/layout'
+import { masterPlanDescription, masterPlanName } from './view-utils'
 
 type MoneyFormatter = ReturnType<typeof createMoneyFormatter>
 
@@ -101,7 +102,7 @@ export function MasterPlanOverview({
       info={copy.overview.info}
       className="mb-5"
       accent
-      action={<Badge tone="success">{plan.label}</Badge>}
+      action={<Badge tone="success">{masterPlanName(plan, copy)}</Badge>}
     >
       <div className="flex flex-col gap-3 border-b border-line-subtle pb-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
@@ -109,7 +110,7 @@ export function MasterPlanOverview({
             {fmtDateShort(plan.summary.startDate, language)} <span className="text-ink-3">{copy.overview.to}</span>{' '}
             {fmtDateShort(plan.summary.endDate, language)}
           </SectionHeading>
-          <p className="mt-2 max-w-[58rem] text-body leading-relaxed text-ink-2">{plan.description}</p>
+          <p className="mt-2 max-w-[58rem] text-body leading-relaxed text-ink-2">{masterPlanDescription(plan, copy)}</p>
         </div>
         <Callout tone="success" emphasis="soft" layout="aside">
           <Label size="micro" className="text-success">{copy.overview.whyThisMatters}</Label>
@@ -238,13 +239,13 @@ export function MasterScenarioComparison({
                     href={strategyHref(scenarioRow.strategy, planSet.executionMonths, horizonYears, annualTargetCashKrw)}
                     className="inline-flex min-h-6 items-center text-body font-medium text-info hover:underline"
                   >
-                    {scenarioRow.label}
+                    {masterPlanName(scenarioRow, copy)}
                   </Link>
                   {selected && <Badge tone="success">{copy.comparison.selected}</Badge>}
                   {scenarioRow.summary.estimatedTaxKrw === minTax && <Badge tone="success">{copy.comparison.lowestTax}</Badge>}
                 </div>
                 <div className="mt-1 max-w-[34rem] text-label leading-relaxed text-ink-3">
-                  {scenarioRow.description}
+                  {masterPlanDescription(scenarioRow, copy)}
                 </div>
               </div>
 
@@ -355,7 +356,7 @@ export function SavedPlansPanel({
                         </Badge>
                       </div>
                       <div className="mt-1 text-micro text-ink-3">
-                        {saved.plan.label} · snapshot {saved.asOfDate} · revision {saved.revision}
+                        {copy.savedPlans.snapshotLine(masterPlanName(saved.plan, copy), saved.asOfDate, saved.revision)}
                       </div>
                     </div>
                     <div>

@@ -62,7 +62,8 @@ export function FilterBar({
                     : 'border-line bg-card text-ink-2 hover:border-ink-3 hover:bg-surface hover:text-ink'
                 )}
               >
-                {option.label}
+                {/* The URL value stays `All`; a page that passes its own label for it keeps that label. */}
+                {option.value === ALL && option.label === ALL ? <CommonLabel label="all" /> : option.label}
               </Link>
             )
           })}

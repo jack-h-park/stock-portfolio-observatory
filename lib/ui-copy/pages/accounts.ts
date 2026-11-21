@@ -1,5 +1,12 @@
 import { defineCopy } from '@/lib/ui-copy/define'
 
+/**
+ * The `account_type` literals the ingest and the sample seeder write. Most rows
+ * carry the broker's own text (`Individual`, a strategy name), which shows raw.
+ */
+export const ACCOUNT_TYPES = ['Taxable', 'Crypto', 'Brokerage'] as const
+export type AccountType = (typeof ACCOUNT_TYPES)[number]
+
 export const accounts = defineCopy({
   en: {
     title: 'Accounts & Coverage',
@@ -19,6 +26,8 @@ export const accounts = defineCopy({
     closed: 'Closed',
     noHoldings: 'No positions as of this date',
     crypto: 'Crypto',
+    /** Read with `labelFor(accountTypes, type)` (lib/ui-copy/label.ts): the value is often broker text. */
+    accountTypes: { Taxable: 'Taxable', Crypto: 'Crypto', Brokerage: 'Brokerage' } satisfies Record<AccountType, string>,
     tableInfo:
       'First and last date per table. Tax lots run from the oldest open acquisition to the snapshot that listed them. A holdings date is when positions were last read, not how far statements reach.',
     nextDownloads: 'Next downloads',
@@ -60,6 +69,7 @@ export const accounts = defineCopy({
     closed: '종료 계좌',
     noHoldings: '기준일 현재 보유 종목 없음',
     crypto: '가상자산',
+    accountTypes: { Taxable: '일반(과세)', Crypto: '가상자산', Brokerage: '위탁' } satisfies Record<AccountType, string>,
     tableInfo:
       '자료별 첫 날짜와 마지막 날짜입니다. 세금 단위는 남아 있는 것 중 가장 오래된 취득일부터 읽은 시점까지입니다. 보유 기준일은 보유내역을 마지막으로 읽은 날이며, 거래내역서가 그 날짜까지 있다는 뜻은 아닙니다.',
     nextDownloads: '다음 다운로드',

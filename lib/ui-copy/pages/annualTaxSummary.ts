@@ -6,7 +6,8 @@ export const annualTaxSummary = defineCopy({
     reportedTitle: 'Return-reported figures · separate from cash',
     prepayments: 'Return-reported prepayments', requestedRefund: 'Refund requested on return',
     version: (id: string, revision: number) => `${id} · revision ${revision}`,
-    filingStates: { draft: 'Draft', submitted: 'Submitted', accepted: 'Accepted', rejected: 'Rejected' },
+    // A return's status, and `assessed`, the record page's status for an assessment.
+    filingStates: { draft: 'Draft', submitted: 'Submitted', accepted: 'Accepted', rejected: 'Rejected', assessed: 'assessed' },
     reportedNote: 'Each return version is separate. These figures are not proof of payment or refund receipt and never change the reviewed balance. Missing is not zero.',
     factsMissing: 'No structured return-reported figures for this version.', factsEvidenceMissing: 'Return figures unavailable: evidence references are incomplete.',
     noReturns: 'No return version is recorded for this obligation.',
@@ -39,7 +40,7 @@ export const annualTaxSummary = defineCopy({
     reportedTitle: '신고서상 금액 · 실제 현금과 구분',
     prepayments: '신고서상 선납액', requestedRefund: '신고서상 환급 요청액',
     version: (id: string, revision: number) => `${id} · 버전 ${revision}`,
-    filingStates: { draft: '초안', submitted: '제출', accepted: '접수', rejected: '반려' },
+    filingStates: { draft: '초안', submitted: '제출', accepted: '접수', rejected: '반려', assessed: '결정' },
     reportedNote: '신고 버전별 금액입니다. 실제 납부·환급 수령의 증명이 아니며 검토 잔액 계산에도 반영하지 않습니다. 미확인은 0원이 아닙니다.',
     factsMissing: '이 버전에 구조화된 신고서상 금액이 없습니다.', factsEvidenceMissing: '증빙 참조가 미완료여서 신고서상 금액은 확인 불가입니다.',
     noReturns: '이 세금 의무에 기록된 신고 버전이 없습니다.',

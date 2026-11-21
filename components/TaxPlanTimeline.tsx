@@ -18,6 +18,7 @@ import { Input, Select } from '@/components/form'
 import { DataTable } from '@/components/DataTable'
 import { SubmitButton } from '@/components/SubmitButton'
 import { maskAccountLabel } from '@/lib/account-label'
+import { instructionReasonText } from '@/app/tax-planning/view-utils'
 
 const PAGE_SIZE = 50
 
@@ -329,7 +330,7 @@ export function TaxPlanTimeline({
                           </Link>
                           <span className="max-w-[16rem] truncate font-medium text-ink">{row.name}</span>
                         </div>
-                        <div className="mt-1 max-w-[28rem] text-micro leading-relaxed text-ink-3">{row.reason}</div>
+                        <div className="mt-1 max-w-[28rem] text-micro leading-relaxed text-ink-3">{instructionReasonText(row, pageCopy)}</div>
                         {row.washSaleRisk && (
                           <div className="mt-1 max-w-[28rem] text-micro leading-relaxed text-warning">
                             {copy.washSaleReviewDetail(row.washSaleMatches)}

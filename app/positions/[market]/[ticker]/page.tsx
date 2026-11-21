@@ -148,7 +148,8 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
       amount: row.native_amount,
       currency: row.currency,
       source: row.source,
-      detail: row.raw_type || row.type,
+      // A broker's own raw_type text with no label stays as written.
+      detail: translated(row.raw_type || row.type, copy.transactionTypes),
     })),
     ...detail.dividends.map((row, index) => ({
       id: `div:${index}:${row.date}:${row.account}`,
@@ -160,7 +161,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
       amount: row.native_amount,
       currency: row.currency,
       source: row.source,
-      detail: row.type || copy.eventDetail.income,
+      detail: translated(row.type, copy.transactionTypes) || copy.eventDetail.income,
     })),
     ...detail.lots.map((row, index) => ({
       id: `lot:${index}:${row.acquired_date}:${row.account}`,
@@ -172,7 +173,7 @@ export default async function PositionPage({ params }: { params: Promise<{ marke
       amount: row.native_cost_basis,
       currency: row.currency,
       source: row.source,
-      detail: row.tax_term || copy.eventDetail.openLot,
+      detail: translated(row.tax_term, copy.terms) || copy.eventDetail.openLot,
     })),
   ]
     .filter((event) => event.date)

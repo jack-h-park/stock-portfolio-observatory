@@ -14,6 +14,7 @@ import { getLanguage } from '@/lib/i18n-server'
 import { routeMetadata } from '@/lib/page-names'
 import { taxRecordHeading } from '@/lib/page-headings'
 import { getPageCopy } from '@/lib/ui-copy'
+import { labelFor } from '@/lib/ui-copy/label'
 import { reviewTaxHistory } from '../../actions'
 import { EMPTY_VALUE } from '@/lib/format'
 
@@ -30,13 +31,15 @@ export default async function TaxRecordPage({
   const { id } = await params,
     search = await searchParams,
     language = await getLanguage(),
-    copy = getPageCopy('taxHistory', language)
+    copy = getPageCopy('taxHistory', language),
+    filingStates = getPageCopy('annualTaxSummary', language).filingStates
   const store = readTaxHistory(),
     detail = getTaxRecordDetail(store, id)
   if (!detail) notFound()
   const { obligation, row, allocations, events, versions, adjustments, auditChanges } = detail
   const evidenceIds = new Set(detail.evidenceIds)
   const roots = { records: config.finance.recordsDir, tax: config.finance.taxDir }
+  const recordKind = (kind: string) => labelFor(copy.recordKinds, kind)
   const fields = (kind: string, itemId: string) => (
     <>
       <input type="hidden" name="kind" value={kind} />
@@ -57,7 +60,7 @@ export default async function TaxRecordPage({
         parent="/taxes/history"
         language={language}
         {...taxRecordHeading(copy)}
-        subtitle={`${obligation.authority} · ${obligation.taxYear} · ${obligation.taxUnitId}`}
+        subtitle={`${labelFor(copy.authorities, obligation.authority)} · ${obligation.taxYear} · ${obligation.taxUnitId}`}
         autoRefresh={false}
       />
       {typeof search.error === 'string' && <FormError messages={[search.error]} />}
@@ -104,7 +107,7 @@ export default async function TaxRecordPage({
               >
                 {row.candidates.map((candidate) => (
                   <option key={`${candidate.kind}:${candidate.id}`} value={`${candidate.kind}:${candidate.id}`}>
-                    {candidate.kind} · {candidate.id} · {formatMoney(candidate.liability)}
+                    {recordKind(candidate.kind)} · {candidate.id} · {formatMoney(candidate.liability)}
                   </option>
                 ))}
               </select>
@@ -121,7 +124,7 @@ export default async function TaxRecordPage({
         <p className="p-4 text-body">
           {copy.basis}:{' '}
           {obligation.effectiveBasis
-            ? `${obligation.effectiveBasis.kind} · ${obligation.effectiveBasis.id} · ${copy.version} ${obligation.effectiveBasis.recordRevision}`
+            ? `${recordKind(obligation.effectiveBasis.kind)} · ${obligation.effectiveBasis.id} · ${copy.version} ${obligation.effectiveBasis.recordRevision}`
             : copy.none}
         </p>
         <div className="overflow-x-auto" tabIndex={0} role="region" aria-label={copy.versions}>
@@ -148,12 +151,12 @@ export default async function TaxRecordPage({
               {versions.map((version) => (
                 <tr key={`${version.kind}:${version.id}`} id={`version-${version.id}`}>
                   <td className="p-3">
-                    {version.kind} · {version.id}
+                    {recordKind(version.kind)} · {version.id}
                     {version.deleted ? ` · ${copy.archived}` : ''}
                   </td>
                   <td className="p-3">{version.recordRevision}</td>
                   <td className="p-3">
-                    {version.status}
+                    {labelFor(filingStates, version.status)}
                     {version.statusDate ? ` · ${version.statusDate}` : ''}
                   </td>
                   <td className="p-3">{version.supersedesId ?? EMPTY_VALUE}</td>
@@ -189,7 +192,7 @@ export default async function TaxRecordPage({
             return (
               <li key={allocation.id} className="p-4">
                 <p className="text-body">
-                  {event.kind} · {event.date ?? copy.none} ·{' '}
+                  {labelFor(copy.eventKinds, event.kind)} · {event.date ?? copy.none} ·{' '}
                   {formatMoney({ currency: event.currency, minor: allocation.principal })}
                 </p>
                 <p className="mt-1 text-caption text-ink-2">

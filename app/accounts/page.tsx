@@ -13,6 +13,7 @@ import { fmtDate, fmtDateTime, fmtNumber } from '@/lib/format'
 import { getLanguage } from '@/lib/i18n-server'
 import { routeMetadata, routeSection } from '@/lib/page-names'
 import { getPageCopy } from '@/lib/ui-copy'
+import { labelFor } from '@/lib/ui-copy/label'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/accounts')
@@ -106,7 +107,7 @@ export default async function AccountsPage() {
                   <div className="mt-1 text-label text-ink-2">
                     {maskAccountLabel(row.name)}{hints.get(row.name)?.suffix ? ` · ${hints.get(row.name)!.suffix}` : null}
                     {hints.get(row.name)?.retired ? <span className="ml-2 text-ink-3">{copy.closed}</span> : null}
-                    {row.accountType && !row.name.includes(row.accountType) ? <span className="text-ink-3"> · {row.accountType}</span> : null}
+                    {row.accountType && !row.name.includes(row.accountType) ? <span className="text-ink-3"> · {labelFor(copy.accountTypes, row.accountType)}</span> : null}
                   </div>
                   {row.aliases.length ? <div className="text-label text-ink-3">{copy.alsoStoredAs(row.aliases.map(maskAccountLabel).join(', '))}</div> : null}
                 </div>

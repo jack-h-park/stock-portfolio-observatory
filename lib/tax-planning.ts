@@ -12,6 +12,10 @@ import {
   type TaxYearProfile,
 } from '@/lib/tax-policy'
 import { estimateUsCapitalGainTax } from '@/lib/us-tax-engine'
+import { MASTER_PLAN_REASONS, type MasterPlanReasonCode } from '@/lib/tax-plan-reasons'
+
+// Re-exported so callers keep importing the planner's vocabulary from one place.
+export { instructionReasonCode, type MasterPlanReasonCode } from '@/lib/tax-plan-reasons'
 
 export type TaxPlanningLot = {
   id: number
@@ -39,6 +43,63 @@ export type TaxPlanningLot = {
   account_wrapper?: string | null
 }
 
+/**
+ * A planner warning. `code` is what a page renders from copy; `message` is the
+ * English sentence the engine has always produced, kept for scripts and for
+ * de-duplication (the same shape as EngineWarning in lib/rebalance).
+ */
+export type TaxPlanWarningCode =
+  | 'MISSING_VALUATION'
+  | 'WASH_SALE_REVIEW'
+  | 'KR_DOMESTIC_SCOPE_OFF'
+  | 'CRYPTO_NO_KR_MODULE'
+  | 'NO_COUNTRY_MODULE'
+  | 'KRW_USES_COST_BASIS_FX'
+  | 'US_WORLDWIDE_INCOME'
+  | 'NO_ACQUISITION_DATE_KRW_COST'
+
+export type TaxPlanWarning = {
+  code: TaxPlanWarningCode
+  message: string
+  daysBefore?: number
+  daysAfter?: number
+}
+
+/** The English sentence of each warning without parameters; page copy must match it. */
+export const WARNING_MESSAGES = {
+  MISSING_VALUATION: 'Missing valuation; refresh price snapshot before acting.',
+  KR_DOMESTIC_SCOPE_OFF: 'KR domestic stock taxable scope is off by current assumptions.',
+  CRYPTO_NO_KR_MODULE: 'Crypto: no Korea virtual-asset module; US estimate treats it as property with no wash-sale rule.',
+  NO_COUNTRY_MODULE: 'No country module exists yet; treated as monitoring-only.',
+  KRW_USES_COST_BASIS_FX: 'KRW estimate uses cost-basis FX because current FX is missing on the tax lot.',
+  US_WORLDWIDE_INCOME:
+    'US tax estimate includes non-US market gains because US citizens/residents generally report worldwide income.',
+  NO_ACQUISITION_DATE_KRW_COST: 'No acquisition-date won cost on this lot; the Korea gain uses the cost at the current rate.',
+} satisfies Record<Exclude<TaxPlanWarningCode, 'WASH_SALE_REVIEW'>, string>
+
+function planWarning(code: keyof typeof WARNING_MESSAGES): TaxPlanWarning {
+  return { code, message: WARNING_MESSAGES[code] }
+}
+
+function washSaleWarning(daysBefore: number, daysAfter: number): TaxPlanWarning {
+  return {
+    code: 'WASH_SALE_REVIEW',
+    message: `Potential wash-sale review: ${daysBefore}d before / ${daysAfter}d after.`,
+    daysBefore,
+    daysAfter,
+  }
+}
+
+/** Drops repeated warnings by their English sentence, keeping first-seen order. */
+function uniqueWarnings(warnings: TaxPlanWarning[]): TaxPlanWarning[] {
+  const seen = new Set<string>()
+  return warnings.filter((warning) => {
+    if (seen.has(warning.message)) return false
+    seen.add(warning.message)
+    return true
+  })
+}
+
 export type TaxPlanCandidate = TaxPlanningLot & {
   // The planning USD/KRW rate the candidate was built with, for its US measure in KRW.
   usdKrwRate?: number
@@ -52,7 +113,7 @@ export type TaxPlanCandidate = TaxPlanningLot & {
   krTaxKrw: number
   estimatedTaxKrw: number
   estimatedAfterTaxKrw: number | null
-  warnings: string[]
+  warnings: TaxPlanWarning[]
 }
 
 export type TaxPlanSummary = {
@@ -80,7 +141,7 @@ export type TaxPlanSummary = {
   estimatedTaxKrw: number
   estimatedAfterTaxKrw: number
   remainingKrDeductionKrw: number
-  warnings: string[]
+  warnings: TaxPlanWarning[]
 }
 
 export type TaxPlan = {
@@ -172,7 +233,7 @@ export type TaxYearPlan = {
   effectiveTaxRatePct: number | null
   markets: MarketSalePlan[]
   lots: TaxPlanCandidate[]
-  warnings: string[]
+  warnings: TaxPlanWarning[]
 }
 
 export type MultiYearTaxScenario = {
@@ -188,7 +249,7 @@ export type MultiYearTaxScenario = {
     peakYearTaxKrw: number
     effectiveTaxRatePct: number | null
     lotCount: number
-    warnings: string[]
+    warnings: TaxPlanWarning[]
   }
 }
 
@@ -223,6 +284,8 @@ export type MasterPlanInstruction = {
   holdingBucket: 'short' | 'long'
   role: PlanRole
   reason: string
+  // Optional because plans saved before it was added carry only `reason`.
+  reasonCode?: MasterPlanReasonCode
   washSaleRisk: boolean
   washSaleMatches: number
   washSaleNote: string
@@ -338,14 +401,14 @@ function isScenarioEnabled(scenario: FilingScenario, jurisdiction: 'US' | 'KR') 
   return scenario.startsWith(jurisdiction)
 }
 
-function scenarioLabel(key: MultiYearStrategyKey) {
+export function scenarioLabel(key: MultiYearStrategyKey) {
   if (key === 'KR_FIRST') return 'KR-market first'
   if (key === 'US_FIRST') return 'US-market first'
   if (key === 'LOSS_FIRST') return 'Loss first'
   return 'Balanced'
 }
 
-function scenarioDescription(key: MultiYearStrategyKey) {
+export function scenarioDescription(key: MultiYearStrategyKey) {
   if (key === 'KR_FIRST') return 'Realize Korea-listed holdings earlier in the planning horizon; this is not a filing-order assumption.'
   if (key === 'US_FIRST') return 'Realize US-listed holdings earlier in the planning horizon; this is not a filing-order assumption.'
   if (key === 'LOSS_FIRST') return 'Use loss lots first across markets before raising the remaining cash target.'
@@ -366,14 +429,14 @@ export function krTaxable(lot: Pick<TaxPlanningLot, 'market'>, policy?: TaxPolic
 }
 
 function warningForLot(lot: TaxPlanningLot, policy: TaxPolicy, proceedsKrw: number | null, gainKrw: number | null) {
-  const warnings: string[] = []
-  if (proceedsKrw == null || gainKrw == null) warnings.push('Missing valuation; refresh price snapshot before acting.')
+  const warnings: TaxPlanWarning[] = []
+  if (proceedsKrw == null || gainKrw == null) warnings.push(planWarning('MISSING_VALUATION'))
   if (lot.market === 'US' && gainKrw != null && gainKrw < 0) {
     const before = assumptionNumber(policy, 'US', 'washSaleWindowDaysBefore', 30)
     const after = assumptionNumber(policy, 'US', 'washSaleWindowDaysAfter', 30)
-    warnings.push(`Potential wash-sale review: ${before}d before / ${after}d after.`)
+    warnings.push(washSaleWarning(before, after))
   }
-  if (lot.market === 'KR' && !krTaxable(lot, policy)) warnings.push('KR domestic stock taxable scope is off by current assumptions.')
+  if (lot.market === 'KR' && !krTaxable(lot, policy)) warnings.push(planWarning('KR_DOMESTIC_SCOPE_OFF'))
   // Crypto reaches the planner but is deliberately not modelled by a country
   // module. The US side still picks it up through the worldwide-income scenario
   // below, which is right — a US person reports crypto gains like any other
@@ -382,9 +445,9 @@ function warningForLot(lot: TaxPlanningLot, policy: TaxPolicy, proceedsKrw: numb
   // deferred more than once, and guessing an effective date here would produce a
   // confident number nobody should act on.
   if (lot.market === 'CRYPTO') {
-    warnings.push('Crypto: no Korea virtual-asset module; US estimate treats it as property with no wash-sale rule.')
+    warnings.push(planWarning('CRYPTO_NO_KR_MODULE'))
   } else if (lot.market !== 'KR' && lot.market !== 'US') {
-    warnings.push('No country module exists yet; treated as monitoring-only.')
+    warnings.push(planWarning('NO_COUNTRY_MODULE'))
   }
   return warnings
 }
@@ -717,10 +780,10 @@ export function buildTaxPlan({
       warnings: [
         ...warningForLot(lot, policy, normalizedProceedsKrw, gainKrw),
         ...(lot.currency !== 'KRW' && !explicitFxRate && basisFxRate
-          ? ['KRW estimate uses cost-basis FX because current FX is missing on the tax lot.']
+          ? [planWarning('KRW_USES_COST_BASIS_FX')]
           : []),
         ...(lot.market !== 'US' && isScenarioEnabled(scenario, 'US') && gainKrw != null && gainKrw > 0
-          ? ['US tax estimate includes non-US market gains because US citizens/residents generally report worldwide income.']
+          ? [planWarning('US_WORLDWIDE_INCOME')]
           : []),
       ],
     } satisfies TaxPlanCandidate
@@ -797,7 +860,7 @@ export function buildTaxPlan({
       estimatedTaxKrw,
       estimatedAfterTaxKrw: grossProceedsKrw - estimatedTaxKrw,
       remainingKrDeductionKrw: Math.max(krBasicDeductionKrw - Math.max(grossGainKrw + grossLossKrw, 0), 0),
-      warnings: Array.from(new Set(active.flatMap((row) => row.warnings))),
+      warnings: uniqueWarnings(active.flatMap((row) => row.warnings)),
     },
   }
 }
@@ -987,7 +1050,7 @@ export function buildMultiYearTaxPlan({
         effectiveTaxRatePct: proceedsKrw > 0 ? (taxKrw / proceedsKrw) * 100 : null,
         markets,
         lots: selected,
-        warnings: Array.from(new Set(selected.flatMap((row) => row.warnings))),
+        warnings: uniqueWarnings(selected.flatMap((row) => row.warnings)),
       } satisfies TaxYearPlan
     })
     const proceedsKrw = years.reduce((sum, year) => sum + year.proceedsKrw, 0)
@@ -1007,7 +1070,7 @@ export function buildMultiYearTaxPlan({
         peakYearTaxKrw: Math.max(...years.map((year) => year.taxKrw), 0),
         effectiveTaxRatePct: proceedsKrw > 0 ? (taxKrw / proceedsKrw) * 100 : null,
         lotCount: years.reduce((sum, year) => sum + year.lots.length, 0),
-        warnings: Array.from(new Set(years.flatMap((year) => year.warnings))),
+        warnings: uniqueWarnings(years.flatMap((year) => year.warnings)),
       },
     } satisfies MultiYearTaxScenario
   })
@@ -1074,14 +1137,14 @@ function firstUsOnlyYear(policy: TaxPolicy, horizonYears: number) {
     .sort((a, b) => a - b)[0] ?? null
 }
 
-function masterStrategyLabel(strategy: MasterPlanStrategyKey, executionMonths: number) {
+export function masterStrategyLabel(strategy: MasterPlanStrategyKey, executionMonths: number) {
   if (strategy === 'EARLIEST_LT') return 'Sell at long-term eligibility'
   if (strategy === 'WAIT_US_ONLY') return 'Wait for US-only filing'
   if (strategy === 'ACCELERATE_LOSSES') return 'Accelerate loss harvesting'
   return `Stage sales over ${executionMonths} months`
 }
 
-function masterStrategyDescription(strategy: MasterPlanStrategyKey, executionMonths: number) {
+export function masterStrategyDescription(strategy: MasterPlanStrategyKey, executionMonths: number) {
   if (strategy === 'EARLIEST_LT') {
     return 'Sell each priced lot on the first available date after it becomes long-term for US tax purposes.'
   }
@@ -1120,18 +1183,18 @@ function instructionFromSlice({
   const eligible = longTermEligibleDate(candidate.acquired_date)
   const longTerm = plannedDate.getTime() >= eligible.getTime()
   const role = planningRole(candidate, plannedDate.getUTCFullYear(), policy)
-  const reason =
+  const reasonCode: MasterPlanReasonCode =
     strategy === 'WAIT_US_ONLY'
-      ? 'Held for long-term treatment and same-year netting in the first US-only filing year'
+      ? 'WAIT_US_ONLY_YEAR'
       : strategy === 'ACCELERATE_LOSSES' && role === 'loss' && !longTerm
-        ? 'Early loss candidate for same-year gain offset; wash-sale review required'
+        ? 'EARLY_LOSS_OFFSET'
         : role === 'loss'
-          ? 'Loss inventory scheduled with the annual realization plan'
+          ? 'LOSS_INVENTORY'
           : role === 'mixed'
-            ? 'A gain on one return and a loss on the other this year; scheduled as a sale, not as loss inventory'
+            ? 'MIXED_RETURNS'
             : longTerm
-            ? 'First permitted window after long-term eligibility'
-            : 'Short-term sale under the selected scenario'
+            ? 'FIRST_LONG_TERM_WINDOW'
+            : 'SHORT_TERM_SALE'
   return {
     id: `${candidate.id}:${dateOnly(plannedDate)}:${sequence}`,
     lotId: candidate.id,
@@ -1151,7 +1214,8 @@ function instructionFromSlice({
     gainKrw,
     holdingBucket: longTerm ? 'long' : 'short',
     role,
-    reason,
+    reason: MASTER_PLAN_REASONS[reasonCode],
+    reasonCode,
     washSaleRisk: false,
     washSaleMatches: 0,
     washSaleNote: '',
@@ -1540,10 +1604,10 @@ export function repriceForSaleDate(
     const krCostKrw = Number(lot.acquisition_cost_krw ?? lot.cost_basis_krw ?? 0)
     const gainKrw = proceedsKrw == null ? null : proceedsKrw - krCostKrw
     const holdingBucket: 'short' | 'long' = saleDate >= longTermEligibleOn(lot.acquired_date) ? 'long' : 'short'
-    const warnings: string[] = []
-    if (proceedsNative == null) warnings.push('Missing valuation; refresh price snapshot before acting.')
+    const warnings: TaxPlanWarning[] = []
+    if (proceedsNative == null) warnings.push(planWarning('MISSING_VALUATION'))
     if (lot.currency !== 'KRW' && lot.acquisition_cost_krw == null) {
-      warnings.push('No acquisition-date won cost on this lot; the Korea gain uses the cost at the current rate.')
+      warnings.push(planWarning('NO_ACQUISITION_DATE_KRW_COST'))
     }
     return {
       ...lot,

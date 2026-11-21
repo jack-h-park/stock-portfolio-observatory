@@ -46,6 +46,13 @@ export const holdings = defineCopy({
     } as Record<string, string>,
     costStatusColumn: 'Sync Status',
     costNote: 'Why',
+    // One sentence per cost_status, as the adapter writes it into cost_note.
+    costNotes: {
+      missing_cost: 'Total Cost is missing or zero; verify this before relying on the row.',
+      unpriced: 'Cost exists, but current value/price is missing.',
+      estimated: 'Cost is usable for manual sync, but tax-lot coverage is incomplete or CSV-derived.',
+      ready: 'Cost and current value are present.',
+    } as Record<string, string>,
   },
   ko: {
     title: '보유종목',
@@ -92,5 +99,11 @@ export const holdings = defineCopy({
     } as Record<string, string>,
     costStatusColumn: '동기화 상태',
     costNote: '사유',
+    costNotes: {
+      missing_cost: '총 취득원가가 없거나 0입니다. 이 행을 근거로 쓰기 전에 확인해 주세요.',
+      unpriced: '취득원가는 있지만 현재 평가금액이나 가격이 없습니다.',
+      estimated: '취득원가는 수동 동기화에 쓸 수 있지만, 세금 단위 내역이 불완전하거나 CSV에서 가져온 값입니다.',
+      ready: '취득원가와 현재 평가금액이 모두 있습니다.',
+    } as Record<string, string>,
   },
 })

@@ -533,3 +533,75 @@ test('the cross-border credit covers US tax on US-source gains already realized 
   // Another year starts its own pool on both sides.
   assert.equal(summarize(ytdPolicy(10_000), 2027).usFederalTaxOnUsMarketGainKrw, 0)
 })
+
+test('candidate warnings carry a code beside the unchanged English message', () => {
+  const krLot = lot({
+    id: 2,
+    market: 'KR',
+    currency: 'KRW',
+    ticker: '000000',
+    fx_rate_to_base: 1,
+    native_cost_basis: 10_000_000,
+    native_market_value: 20_000_000,
+    native_unrealized_gl: 10_000_000,
+    cost_basis_krw: 10_000_000,
+  })
+  const plan = buildTaxPlan({
+    lots: [
+      lot({ id: 1, ticker: 'LOSS', native_market_value: 6_000, native_unrealized_gl: -4_000 }),
+      krLot,
+      lot({ id: 3, market: 'CRYPTO', ticker: 'COIN' }),
+    ],
+    policy: policy(),
+    scenario: 'US_AND_KR',
+    objective: 'raise-cash',
+  })
+  const byId = new Map(plan.candidates.map((row) => [row.id, row]))
+  const usLoss = byId.get(1)!.warnings
+  assert.deepEqual(usLoss.map((w) => w.code), ['WASH_SALE_REVIEW'])
+  assert.deepEqual(usLoss[0], {
+    code: 'WASH_SALE_REVIEW',
+    message: 'Potential wash-sale review: 30d before / 30d after.',
+    daysBefore: 30,
+    daysAfter: 30,
+  })
+  assert.deepEqual(byId.get(2)!.warnings.map((w) => w.code), ['KR_DOMESTIC_SCOPE_OFF', 'US_WORLDWIDE_INCOME'])
+  assert.equal(byId.get(2)!.warnings[0].message, 'KR domestic stock taxable scope is off by current assumptions.')
+  assert.deepEqual(byId.get(3)!.warnings.map((w) => w.code), ['CRYPTO_NO_KR_MODULE', 'US_WORLDWIDE_INCOME'])
+})
+
+test('summary warnings de-duplicate by message and keep first-seen order', () => {
+  const plan = buildTaxPlan({
+    lots: [
+      lot({ id: 1, market: 'CRYPTO', ticker: 'COIN' }),
+      lot({ id: 2, market: 'CRYPTO', ticker: 'COIN2' }),
+      lot({ id: 3, ticker: 'LOSS', native_market_value: 6_000, native_unrealized_gl: -4_000 }),
+    ],
+    policy: policy(),
+    scenario: 'US_AND_KR',
+    objective: 'raise-cash',
+  })
+  const all = plan.recommended.flatMap((row) => row.warnings)
+  assert.equal(all.length, 5)
+  const firstSeen = all.filter((w, index) => all.findIndex((other) => other.message === w.message) === index)
+  assert.deepEqual(plan.summary.warnings, firstSeen)
+  assert.deepEqual([...plan.summary.warnings.map((w) => w.code)].sort(), ['CRYPTO_NO_KR_MODULE', 'US_WORLDWIDE_INCOME', 'WASH_SALE_REVIEW'])
+})
+
+test('each instruction carries the reason code that matches its English reason', () => {
+  const planSet = buildMonthlySalePlanSet({
+    lots: [lot({ id: 1 }), lot({ id: 2, ticker: 'LOSS', native_market_value: 6_000, native_unrealized_gl: -4_000 })],
+    policy: policy(),
+    selectedStrategy: 'EARLIEST_LT',
+    executionMonths: 12,
+    horizonYears: 5,
+    asOfDate: '2026-06-15',
+  })
+  const reasons = new Map(planSet.scenarios.flatMap((plan) => plan.instructions).map((row) => [row.reason, row.reasonCode]))
+  assert.equal(reasons.get('First permitted window after long-term eligibility'), 'FIRST_LONG_TERM_WINDOW')
+  assert.equal(reasons.get('Loss inventory scheduled with the annual realization plan'), 'LOSS_INVENTORY')
+  assert.equal(reasons.get('Held for long-term treatment and same-year netting in the first US-only filing year'), 'WAIT_US_ONLY_YEAR')
+  for (const row of planSet.scenarios.flatMap((plan) => plan.instructions)) {
+    assert.ok(row.reasonCode, row.reason)
+  }
+})

@@ -3,6 +3,7 @@ import test from 'node:test'
 import { ALL_YEARS, rateOnOrBefore, toRealizedView, type RealizedLotRow } from '../lib/realized-lots'
 import {
   NOT_COVERED_LINES,
+  NOT_COVERED_NOTES,
   TAX_EXPORT_HEADER,
   readExportParams,
   selectTaxExportRows,
@@ -231,6 +232,27 @@ test('notes state the build date, the row counts and every NOT_COVERED_LINES ent
   assert.match(notes, /superseded/i)
   for (const line of NOT_COVERED_LINES) assert.ok(notes.includes(line), line)
   assert.match(taxExportNotes(summary, { year: '2026', builtAt: null, audit: false }), /build date is unknown/i)
+})
+
+// The preparer's notes file must not move by one byte when the page reads the
+// same sentences by code: the section is spelled out here, not derived.
+const NOT_COVERED_SECTION = [
+  'What this export does not cover:',
+  "- This is a worksheet, not a filing. Rows marked replay are this repo's FIFO estimate; rows marked 1099b are the broker's filed figures.",
+  "- On 1099b rows the gain is the broker's filed gain, and adjustment_usd is its difference from proceeds minus cost (wash-sale and basis adjustments); the adjustment code is not stored, so Form 8949 column f is omitted. Replay rows carry no adjustment, and wash sales are not computed for them.",
+  '- Box codes appear only on 1099b rows. Crypto rows have no box here; 1099-DA is not parsed by this app.',
+  "- Korea-account lots are measured in dollars: cost at the acquisition-date rate, proceeds at the sale-date rate. This is the repo's reading of the IRS method, to be confirmed with the preparer.",
+  "- Physical gold (KRX) sales are included as collectibles (collectible=true), matched first in, first out so each row carries the holding period of the purchase it consumed. Purchase commissions are added to cost and sale commissions are taken out of proceeds, in won, then converted at the acquisition-date and sale-date rates. The gain on long-term collectibles is taxed at a different maximum rate than a stock's; this export does not compute any tax.",
+  "- Not included: other owners' accounts, pension wrappers, dividends and interest, FBAR, Korean-side gains and tax.",
+  '- Two accounts that carry an identical stored label cannot be told apart by the export, and share one alias.',
+].join('\r\n') + '\r\n'
+
+test('the notes file ends with the not-covered section, byte for byte, in code order', () => {
+  const notes = taxExportNotes(summarizeTaxExport([lot()]), { year: '2026', builtAt: null, audit: false })
+  assert.ok(notes.endsWith(`\r\n\r\n${NOT_COVERED_SECTION}`))
+  assert.deepEqual(NOT_COVERED_LINES, NOT_COVERED_NOTES.map((note) => note.text))
+  const codes = NOT_COVERED_NOTES.map((note) => note.code)
+  assert.equal(new Set(codes).size, 7)
 })
 
 test('a row without a collectible key yields null and a false cell', () => {

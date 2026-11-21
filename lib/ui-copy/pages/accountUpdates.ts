@@ -1,7 +1,9 @@
 import { defineCopy } from '@/lib/ui-copy/define'
 
 const INBOX_DIRECTORY = 'inbox'
-const KINDS = {goldPrice: 'gold_price', pension: 'pension', gold: 'gold'}
+const KINDS = {goldPrice: 'gold_price', pension: 'pension', gold: 'gold', deposit: 'deposit', cma: 'cma'}
+/** Deposit and CMA rows share the bank statement wording; with gold, they are the kinds the adapter marks unconfirmed. */
+const isBankKind = (kind: string) => kind === KINDS.deposit || kind === KINDS.cma
 
 export const accountUpdates = defineCopy({
   en: {
@@ -21,6 +23,12 @@ export const accountUpdates = defineCopy({
     inboxAction: 'Download the file and place it in inbox.',
     saveAction: (destination: string) => `Save the downloaded file to ${destination}.`,
     confirmPeriod: 'Confirm the query end date of the existing file.',
+    /** Null for a kind that is never unconfirmed; the caller then shows the adapter's sentence. */
+    unconfirmedAction: (kind: string, label: string): string | null => {
+      if (isBankKind(kind)) return `Confirm the query end date of the existing file for ${label}. The last transaction date is not used to decide whether a download is needed.`
+      if (kind === KINDS.gold) return `Confirm the query end date of the existing certificate for ${label}.`
+      return null
+    },
     historyGap: (from: string, to: string) => `Download account transaction history for ${from} – ${to} and place it in inbox.`,
     missingDisposals: (symbols: string) => `Missing sale records: ${symbols}`,
     closed: 'Closed account',
@@ -54,6 +62,11 @@ export const accountUpdates = defineCopy({
     inboxAction: `자료를 다운로드해 ${INBOX_DIRECTORY}에 넣으세요.`,
     saveAction: (destination: string) => `받은 파일을 ${destination}에 저장하세요.`,
     confirmPeriod: '기존 파일의 조회 종료일을 확인해주세요.',
+    unconfirmedAction: (kind: string, label: string): string | null => {
+      if (isBankKind(kind)) return `${label} 기존 자료의 조회 종료일을 확인해주세요. 마지막 거래일로 다운로드 필요 여부를 판단하지 않습니다.`
+      if (kind === KINDS.gold) return `${label} 기존 증명서의 조회 종료일을 확인해주세요`
+      return null
+    },
     historyGap: (from: string, to: string) => `누락된 계좌 거래내역을 ${from} ~ ${to} 기간으로 받아 ${INBOX_DIRECTORY}에 넣으세요.`,
     missingDisposals: (symbols: string) => `매도 기록 누락: ${symbols}`,
     closed: '종료 계좌',

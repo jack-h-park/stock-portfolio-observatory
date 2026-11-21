@@ -2,6 +2,7 @@ import React from 'react'
 import { Badge, Button, Card, Note, TextLink } from '@/components/ui'
 import { Select } from '@/components/form'
 import { getPageCopy } from '@/lib/ui-copy'
+import { labelFor } from '@/lib/ui-copy/label'
 import type { Language } from '@/lib/i18n'
 import { getAnnualRequiredAmounts } from '@/lib/domain/taxes/annual/contracts'
 import { formatMoney } from '@/lib/domain/taxes/reconcile'
@@ -10,6 +11,7 @@ import { getHypotheticalTaxPreview, HYPOTHETICAL_EXAMPLES } from '@/lib/applicat
 /** Server-rendered selection and pure invented calculations; no writes or private-data reader. */
 export function HypotheticalTaxPlanning({ selection, language }: { selection: unknown; language: Language }) {
   const copy = getPageCopy('hypotheticalTax', language)
+  const authorities = getPageCopy('taxHistory', language).authorities
   const preview = getHypotheticalTaxPreview(selection)
   const selected = typeof selection === 'string' && HYPOTHETICAL_EXAMPLES.includes(selection as typeof HYPOTHETICAL_EXAMPLES[number]) ? selection : ''
   const bases = preview.status === 'ready' ? [...new Set(preview.input.requestedComponents.flatMap(id => getAnnualRequiredAmounts(preview.input, id)))] : []
@@ -29,7 +31,7 @@ export function HypotheticalTaxPlanning({ selection, language }: { selection: un
       <div className="space-y-3 p-4 text-body text-ink-2">
         <p>{copy.requirements}</p><p>{copy.inventedReview}</p><p>{copy.exclusions}</p><p>{copy.comparison}</p>
         {preview.status === 'ready' ? <>
-          <p>{copy.profile} · {preview.input.taxYear} · {preview.input.authority} · {preview.input.currency} · {copy.filing[preview.input.filingStatus]}</p>
+          <p>{copy.profile} · {preview.input.taxYear} · {labelFor(authorities, preview.input.authority)} · {preview.input.currency} · {copy.filing[preview.input.filingStatus]}</p>
           <p className="break-all">{copy.rule} · {preview.result.rulePackId}</p>
           <dl className="flex flex-wrap gap-4">
             {bases.map(key => <div key={key} className="min-w-0 flex-1 basis-64"><dt className="text-label">{copy.bases[key]}</dt><dd className="break-all text-body tabular-nums">{preview.input.amounts[key] ? formatMoney(preview.input.amounts[key]!) : copy.missing}</dd></div>)}

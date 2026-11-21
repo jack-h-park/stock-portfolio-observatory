@@ -710,6 +710,24 @@ function withoutIdentifierTokens(body) {
   return body.replace(/[\w.@:-]*(?:@|::|\w[._]\w|[a-z][A-Z])[\w.@:-]*/g, ' ')
 }
 
+/**
+ * A form number (`1099-DA`, `1099-B`, `1040-ES`) is a code, not a word: three
+ * or four digits, a hyphen and up to three capitals. The capitals alone
+ * (`DA 양식`) are still read.
+ */
+function withoutFormNumbers(body) {
+  return body.replace(/\b\d{3,4}-[A-Z]{1,3}\b/g, ' ')
+}
+
+/**
+ * A `name=value` pair copied from a file (`collectible=true`) is a field shown
+ * as typed: word characters on both sides of one `=`, with no space. A spaced
+ * `collectible = true` is read as words.
+ */
+function withoutFieldValuePairs(body) {
+  return body.replace(/\b\w+=\w+\b/g, ' ')
+}
+
 /** `{placeholder}` and `${…}` are filled in at run time, so their names are not copy. */
 function withoutInterpolations(body) {
   let out = ''
@@ -739,10 +757,12 @@ function withoutInterpolations(body) {
  * read, spaced or not. A token containing `/` (`data/manual-mappings.json`,
  * `/lots`) is a path or route and is not read.
  *
- * Four more things are not words and are not read: a `className=` value
+ * Six more things are not words and are not read: a `className=` value
  * (markup), an operand of `===` or `!==` (a code value), a backticked span
- * inside a literal (a command or identifier shown as typed), and an identifier
- * token (one holding `@`, `::`, an inner `.` or `_`, or a camelCase hump). A
+ * inside a literal (a command or identifier shown as typed), an identifier
+ * token (one holding `@`, `::`, an inner `.` or `_`, or a camelCase hump), a
+ * form number (`1099-DA`), and an unspaced `name=value` pair copied from a
+ * file (`collectible=true`). A
  * command in a Korean sentence is reworded (`갱신을 실행하세요`), not allowed.
  */
 export function findEnglishInKoreanCopy(source, file = '<source>') {
@@ -755,7 +775,9 @@ export function findEnglishInKoreanCopy(source, file = '<source>') {
       .filter((match) => !isObjectKey(text, match) && !isClassNameValue(text, match) && !isComparisonOperand(text, match))
       .flatMap((match) => literalsIn(match[0]))
     for (const literal of literals) {
-      const body = withoutPathTokens(withoutIdentifierTokens(withoutInlineCode(withoutInterpolations(literal.slice(1, -1)))))
+      const body = withoutPathTokens(
+        withoutFieldValuePairs(withoutFormNumbers(withoutIdentifierTokens(withoutInlineCode(withoutInterpolations(literal.slice(1, -1))))))
+      )
       const words = (body.match(/\b[A-Za-z]{2,}\b/g) ?? []).filter((word) => !KO_LATIN_ALLOW.has(word))
       if (words.length > 0) hits.push(hit(file, line, `${[...new Set(words)].join(', ')}: ${literal}`))
     }
@@ -886,6 +908,107 @@ export function groupByRoute(paths) {
   return new Map([...groups.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
 }
 
+/**
+ * G15. A sentence written in the data layer: a module under lib/ stores reader
+ * text in a field, and a page prints the field as it is. The page then shows
+ * one language whatever the toggle says (`retentionReason: '… 원본입니다.'` put
+ * Korean on the English /data-map), and the copy module never hears of it.
+ * The data layer returns a code with its parameters; the page renders the
+ * sentence from lib/ui-copy. Two shapes, one hit per literal, read from the
+ * comment-stripped source as a whole so a value wrapped onto the line after its
+ * key or its `push(` still counts; the hit is reported on the literal's line:
+ *
+ * - a Korean sentence as an object property value: `key: '…'` (or a quoted
+ *   key), the key directly after `{` or `,`, the literal holding Hangul and a
+ *   sentence ending (니다, 세요, 시오, 습니까, optionally followed by `.`, `!`
+ *   or `?`) at its end or before whitespace. A noun phrase, and a Korean
+ *   literal used as an argument, a comparison operand, an array element, a
+ *   ternary branch or the right side of `=`, are not hits: those are data the
+ *   code matches or text that leaves the machine, and a lexical check cannot
+ *   tell them from page text;
+ * - a prose literal pushed onto an array whose name ends in `warnings` or
+ *   `notes` (`warnings`, `lotWarnings`, `Notes`): it holds Hangul, or, once
+ *   `${…}` interpolations are removed, whitespace and three or more Latin
+ *   words of two or more letters. A pushed object is not a hit.
+ *
+ * A deliberate one is marked with the comment `guardrail:allow data-text` on
+ * its line or the line above, read from the raw source as G4 reads its marker.
+ *
+ * Blind spots: an English sentence stored as a property value (too many of
+ * those are machine-facing reasons and CLI text to tell apart), a sentence
+ * built in a helper and returned, a sentence in a template literal that spans
+ * lines, and a field typed `string` that a page prints. The net for those is
+ * the types: the fields the pages render are typed as code unions
+ * (`RetentionReasonCode`, `TaxPlanWarning`, `MasterPlanReasonCode`), and each
+ * has a coverage test that every code has a label in both languages.
+ */
+const DATA_TEXT_ALLOW = 'guardrail:allow data-text'
+
+const KOREAN_SENTENCE_END = /(?:니다|세요|시오|습니까)[.!?]?(?=\s|$)/
+
+/** The text just before a property value: `{` or `,`, then a key and `:`. */
+const KEY_BEFORE_VALUE = /[{,]\s*([A-Za-z_$][\w$]*|'[^'\n]*'|"[^"\n]*")\s*:\s*$/
+
+const PUSH_ONTO_NOTES = /(?<![\w$])[\w$]*(?:[wW]arnings|[nN]otes)\s*\??\.\s*push\(\s*/g
+
+const LITERAL_AT = new RegExp(STRING_LITERAL.source, 'y')
+
+function isPushedProse(literal) {
+  const body = withoutInterpolations(literal.slice(1, -1))
+  if (HANGUL.test(body)) return true
+  return /\s/.test(body.trim()) && (body.match(/\b[A-Za-z]{2,}\b/g) ?? []).length >= 3
+}
+
+export function findDataLayerSentence(source, file = '<source>') {
+  const text = stripComments(source)
+  const raw = source.split('\n')
+  const lineAt = (index) => text.slice(0, index).split('\n').length
+  const allowed = (line) => raw[line - 1]?.includes(DATA_TEXT_ALLOW) || raw[line - 2]?.includes(DATA_TEXT_ALLOW)
+  const found = []
+  for (const match of text.matchAll(STRING_LITERAL)) {
+    const literal = match[0]
+    const body = literal.slice(1, -1)
+    if (!HANGUL.test(body) || !KOREAN_SENTENCE_END.test(body)) continue
+    const key = text.slice(Math.max(0, match.index - 200), match.index).match(KEY_BEFORE_VALUE)
+    if (!key) continue
+    found.push({ index: match.index, snippet: `${key[1]}: ${literal}` })
+  }
+  for (const match of text.matchAll(PUSH_ONTO_NOTES)) {
+    LITERAL_AT.lastIndex = match.index + match[0].length
+    const literal = LITERAL_AT.exec(text)?.[0]
+    if (!literal || !isPushedProse(literal)) continue
+    found.push({ index: LITERAL_AT.lastIndex - literal.length, snippet: `${match[0].trim()}${literal}` })
+  }
+  return found
+    .sort((a, b) => a.index - b.index)
+    .map(({ index, snippet }) => ({ line: lineAt(index), snippet }))
+    .filter(({ line }) => !allowed(line))
+    .map(({ line, snippet }) => hit(file, line, snippet))
+}
+
+/**
+ * Files under lib/ whose job is to write text, so G15 does not read them. A
+ * trailing `/` covers a whole folder; any other entry is one exact file.
+ */
+const DATA_LAYER_TEXT_OWNERS = [
+  // The copy catalog itself.
+  'lib/ui-copy/',
+  // A catalog by another name: term definitions in both languages.
+  'lib/glossary.ts',
+  // Terminal output, which never reaches a page.
+  'lib/cli/',
+  // Reminder messages that leave the machine.
+  'lib/rebalance/notify.ts',
+  // Returns both languages, for the page and for the notifier.
+  'lib/rebalance/proposal-view.ts',
+]
+
+/** An `include` pattern that matches every path except those `owners` names. */
+function outside(owners) {
+  const alternatives = owners.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + (p.endsWith('/') ? '' : '$'))
+  return new RegExp(`^(?!(?:${alternatives.join('|')}))`)
+}
+
 const BILINGUAL_BY_DESIGN = ['app/global-error.tsx']
 
 /**
@@ -989,6 +1112,14 @@ export const CHECKS = [
     roots: ['app'],
     group: 'route',
     find: findFormPagePolls,
+  },
+  {
+    code: 'G15',
+    id: 'data-layer-sentence',
+    title: 'sentence written in the data layer instead of a copy module',
+    roots: ['lib'],
+    include: outside(DATA_LAYER_TEXT_OWNERS),
+    find: findDataLayerSentence,
   },
 ].map((check) => ({ roots: ['app', 'components'], exclude: [], include: null, ...check }))
 

@@ -473,6 +473,48 @@ export type RefreshRun = {
   steps: RefreshStep[]
 }
 
+/** One code per rule in `retentionFor`, named for the file's role. */
+export const RETENTION_REASON_CODES = [
+  'DERIVED_ARTIFACT',
+  'BRIEFING_ARCHIVE',
+  'BRIEFING_ARCHIVE_BACKUP',
+  'KR_STATEMENT_SUPERSEDED',
+  'KR_STATEMENT_OVERLAP',
+  'KR_STATEMENT',
+  'BANK_STATEMENT',
+  'PENSION_EVIDENCE',
+  'PENSION_SNAPSHOT',
+  'MERRILL_LOT_FALLBACK',
+  'US_NEWER_TRANSACTIONS',
+  'US_EARLIER_EXPORT',
+  'MANUAL_LOT_WORKBOOK',
+  'LEGACY_KR_EXTRACT',
+  'DATA_DIR_README',
+  'NEEDS_REVIEW',
+  'TRACKED_SOURCE',
+] as const
+
+export type RetentionReasonCode = (typeof RETENTION_REASON_CODES)[number]
+
+/** The file categories `fileCategory` names; /data-map renders each from copy. */
+export const FILE_CATEGORY_CODES = [
+  'kr sheet payload',
+  'generated output',
+  'extracted text',
+  'drive pdf cache',
+  'us csv export',
+  'pdf evidence',
+  'tsv payload',
+  'workbook',
+  'json snapshot',
+  'database',
+  'image artifact',
+  'text artifact',
+  'documentation',
+] as const
+
+export type FileCategoryCode = (typeof FILE_CATEGORY_CODES)[number]
+
 export type SourceInventoryItem = {
   id: string
   name: string
@@ -488,7 +530,8 @@ export type SourceInventoryItem = {
   /** A tracked file carries its freshness code; an untracked file a sentence. */
   detail: FreshnessDetail | string
   retention: 'active' | 'fallback' | 'archive' | 'derived' | 'review'
-  retentionReason: string
+  /** Why the file is kept, as a code; /data-map renders the sentence from copy. */
+  retentionReason: RetentionReasonCode
 }
 
 export type SourceInventory = {
@@ -2170,7 +2213,7 @@ export function getHoldings(limit = 200): HoldingWithCostStatus[] {
  * Whether a holding's cost can be relied on. Read from the holdings row alone:
  * no cost, no current value, or cost that tax lots do not back.
  */
-function costBasisStatus(row: {
+export function costBasisStatus(row: {
   native_cost: number | null
   native_market_value: number | null
   lot_count: number | null
@@ -2350,7 +2393,11 @@ function sourceFreshness(source: any): FreshnessItem {
   }
 }
 
-function fileCategory(filePath: string, relativePath: string) {
+/**
+ * The category /data-map shows for a file.
+ * A FileCategoryCode shows its copy label; `xyz file` and `file` show raw.
+ */
+function fileCategory(filePath: string, relativePath: string): FileCategoryCode | `${string} file` | 'file' {
   const ext = path.extname(filePath).toLowerCase()
   if (relativePath.startsWith('.codex_sheet_payloads/')) return 'kr sheet payload'
   if (relativePath.startsWith('outputs/')) return 'generated output'
@@ -2403,41 +2450,44 @@ function relativeToDataDir(dataDir: string, filePath: string) {
   return rel && !rel.startsWith('..') ? rel : filePath
 }
 
-function retentionFor(relativePath: string, status: SourceInventoryItem['status']) {
+function retentionFor(
+  relativePath: string,
+  status: SourceInventoryItem['status']
+): Pick<SourceInventoryItem, 'retention' | 'retentionReason'> {
   if (status === 'derived') {
     return {
       retention: 'derived' as const,
-      retentionReason: '재생성 가능한 캐시·파생 산출물이며 현재 ingest 원본이 아닙니다.',
+      retentionReason: 'DERIVED_ARTIFACT',
     }
   }
   if (relativePath.startsWith('briefing-archive/')) {
     return {
       retention: 'active' as const,
-      retentionReason: '일일 브리핑 화면과 외부 브리핑 파이프라인이 읽는 운영 archive입니다.',
+      retentionReason: 'BRIEFING_ARCHIVE',
     }
   }
   if (relativePath.startsWith('briefing-archive.backup-')) {
     return {
       retention: 'archive' as const,
-      retentionReason: '브리핑 archive의 백업 스냅샷입니다. 현재 runtime은 읽지 않습니다.',
+      retentionReason: 'BRIEFING_ARCHIVE_BACKUP',
     }
   }
   if (relativePath.startsWith('kr-statements-superseded/')) {
     return {
       retention: 'archive' as const,
-      retentionReason: '더 긴 기간의 증명서로 대체된 과거 원본입니다. 원본 provenance 보존용입니다.',
+      retentionReason: 'KR_STATEMENT_SUPERSEDED',
     }
   }
   if (relativePath.startsWith('kr-statements/_partial-overlap/')) {
     return {
       retention: 'fallback' as const,
-      retentionReason: '기간이 겹치는 한국 증권사 원본입니다. 자동 추출은 보류하지만 겹침 검증에 필요합니다.',
+      retentionReason: 'KR_STATEMENT_OVERLAP',
     }
   }
   if (relativePath.startsWith('kr-statements/')) {
     return {
       retention: 'active' as const,
-      retentionReason: '거래·배당·tax lot을 재생성하는 사람이 받은 증권사 원본 PDF입니다.',
+      retentionReason: 'KR_STATEMENT',
     }
   }
   // The supplementary originals: kept like the broker statements, because the
@@ -2445,19 +2495,19 @@ function retentionFor(relativePath: string, status: SourceInventoryItem['status'
   if (relativePath.startsWith('bank-statements/')) {
     return {
       retention: 'active' as const,
-      retentionReason: '예금·CMA 잔고를 재생성하는 사람이 받은 은행 거래내역 원본입니다.',
+      retentionReason: 'BANK_STATEMENT',
     }
   }
   if (relativePath.startsWith('pension/evidence/')) {
     return {
       retention: 'active' as const,
-      retentionReason: '연금 계좌의 연말 잔고·납입 증명서 원본입니다. pension-evidence.json을 재생성합니다.',
+      retentionReason: 'PENSION_EVIDENCE',
     }
   }
   if (relativePath.startsWith('pension/')) {
     return {
       retention: 'active' as const,
-      retentionReason: '연금 계좌 보유 현황을 사람이 캡처한 스냅샷 원본입니다.',
+      retentionReason: 'PENSION_SNAPSHOT',
     }
   }
   if (
@@ -2466,7 +2516,7 @@ function retentionFor(relativePath: string, status: SourceInventoryItem['status'
   ) {
     return {
       retention: 'fallback' as const,
-      retentionReason: 'Cost Basis가 포함된 Merrill tax-lot fallback입니다. 최신 positions-only 파일을 보완합니다.',
+      retentionReason: 'MERRILL_LOT_FALLBACK',
     }
   }
   if (
@@ -2475,36 +2525,36 @@ function retentionFor(relativePath: string, status: SourceInventoryItem['status'
   ) {
     return {
       retention: 'fallback' as const,
-      retentionReason: '현재 resolver가 아직 사용하지 않는 최신 기간 거래내역입니다. 최신 export 대조 전 보존합니다.',
+      retentionReason: 'US_NEWER_TRANSACTIONS',
     }
   }
   if (relativePath.startsWith('us-holdings/') || relativePath.startsWith('us-transactions/')) {
     return {
       retention: 'archive' as const,
-      retentionReason: '현재 선택된 export 이전의 broker snapshot입니다. 과거 시점 검증용으로 보존합니다.',
+      retentionReason: 'US_EARLIER_EXPORT',
     }
   }
   if (relativePath === 'korea_stock_tax_lots_updated.xlsx') {
     return {
       retention: 'fallback' as const,
-      retentionReason: '수동 tax-lot workbook입니다. 자동 ingest 입력은 아니지만 provenance 확인 전 보존합니다.',
+      retentionReason: 'MANUAL_LOT_WORKBOOK',
     }
   }
   if (relativePath === '.codex_extracted_korea.json') {
     return {
       retention: 'archive' as const,
-      retentionReason: '구형 한국 추출 snapshot입니다. 현재 ingest에는 사용하지 않지만 과거 결과 대조용입니다.',
+      retentionReason: 'LEGACY_KR_EXTRACT',
     }
   }
   if (relativePath === 'README.md') {
     return {
       retention: 'archive' as const,
-      retentionReason: '데이터 디렉터리 운영 문서입니다.',
+      retentionReason: 'DATA_DIR_README',
     }
   }
   return {
     retention: status === 'unused' ? 'review' as const : 'active' as const,
-    retentionReason: status === 'unused' ? '현재 사용 여부와 보존 정책을 추가 확인해야 합니다.' : '현재 ingest가 추적하는 원본입니다.',
+    retentionReason: status === 'unused' ? 'NEEDS_REVIEW' : 'TRACKED_SOURCE',
   }
 }
 

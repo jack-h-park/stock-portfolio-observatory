@@ -47,3 +47,38 @@ test('needed supplementary history actions include both query endpoints',async()
   }
  }
 })
+
+test('the unconfirmed supplementary action reads from copy for each kind that can be unconfirmed', async () => {
+  const {accountUpdates} = await import('../lib/ui-copy/pages/accountUpdates')
+  const label = 'Sample Bank ••1234'
+  // The Korean wording is the sentence the adapter writes for the reminder.
+  assert.equal(accountUpdates.ko.unconfirmedAction('deposit', label), `${label} 기존 자료의 조회 종료일을 확인해주세요. 마지막 거래일로 다운로드 필요 여부를 판단하지 않습니다.`)
+  assert.equal(accountUpdates.ko.unconfirmedAction('cma', label), `${label} 기존 자료의 조회 종료일을 확인해주세요. 마지막 거래일로 다운로드 필요 여부를 판단하지 않습니다.`)
+  assert.equal(accountUpdates.ko.unconfirmedAction('gold', label), `${label} 기존 증명서의 조회 종료일을 확인해주세요`)
+  for (const kind of ['deposit', 'cma', 'gold']) {
+    const en = accountUpdates.en.unconfirmedAction(kind, label)
+    assert.ok(en && en.includes(label), kind)
+    assert.doesNotMatch(en!, /[가-힯]/, kind)
+  }
+  assert.match(accountUpdates.en.unconfirmedAction('gold', label)!, /certificate/)
+  // Pension and gold price rows never reach unconfirmed; they keep the adapter sentence.
+  for (const kind of ['pension', 'gold_price']) {
+    assert.equal(accountUpdates.en.unconfirmedAction(kind, label), null)
+    assert.equal(accountUpdates.ko.unconfirmedAction(kind, label), null)
+  }
+})
+
+test('the supplementary table prints the unconfirmed action in the page language with the account masked', async () => {
+  ;(globalThis as {React?: typeof React}).React = React
+  const {SupplementaryCoverageTable} = await import('../components/SupplementaryCoverageTable')
+  const row: import('../lib/adapters/portfolio-db').SupplementaryCoverageRow = {
+    kind: 'deposit', label: 'Sample Bank AB-12345678', status: 'unconfirmed', freshnessStatus: 'unconfirmed',
+    action: 'Sample Bank AB-12345678 기존 자료의 조회 종료일을 확인해주세요. 마지막 거래일로 다운로드 필요 여부를 판단하지 않습니다.',
+    latestDate: null, lagDays: null, maxLagDays: 30,
+  }
+  const en = renderToStaticMarkup(React.createElement(SupplementaryCoverageTable, {rows: [row], language: 'en'}))
+  assert.match(en, /Confirm the query end date of the existing file for Sample Bank …5678/)
+  assert.doesNotMatch(en, /기존 자료|12345678/)
+  const ko = renderToStaticMarkup(React.createElement(SupplementaryCoverageTable, {rows: [row], language: 'ko'}))
+  assert.match(ko, /Sample Bank …5678 기존 자료의 조회 종료일을 확인해주세요/)
+})

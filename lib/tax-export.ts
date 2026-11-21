@@ -7,6 +7,9 @@
  * assigns an alias, and the alias is per file on purpose.
  */
 import { ALL_YEARS, csvCell, defaultSoldYear, formGainUsd, type RealizedLotView } from './realized-lots'
+import { NOT_COVERED_NOTES } from './tax-export-not-covered'
+
+export { NOT_COVERED_NOTES, type NotCoveredCode } from './tax-export-not-covered'
 
 export const TAX_EXPORT_HEADER = [
   'description',
@@ -213,15 +216,7 @@ export function summarizeTaxExport(rows: RealizedLotView[]): TaxExportSummary {
 }
 
 /** What the export does not cover: one source for the notes file and the page. */
-export const NOT_COVERED_LINES: readonly string[] = [
-  'This is a worksheet, not a filing. Rows marked replay are this repo\'s FIFO estimate; rows marked 1099b are the broker\'s filed figures.',
-  'On 1099b rows the gain is the broker\'s filed gain, and adjustment_usd is its difference from proceeds minus cost (wash-sale and basis adjustments); the adjustment code is not stored, so Form 8949 column f is omitted. Replay rows carry no adjustment, and wash sales are not computed for them.',
-  'Box codes appear only on 1099b rows. Crypto rows have no box here; 1099-DA is not parsed by this app.',
-  'Korea-account lots are measured in dollars: cost at the acquisition-date rate, proceeds at the sale-date rate. This is the repo\'s reading of the IRS method, to be confirmed with the preparer.',
-  'Physical gold (KRX) sales are included as collectibles (collectible=true), matched first in, first out so each row carries the holding period of the purchase it consumed. Purchase commissions are added to cost and sale commissions are taken out of proceeds, in won, then converted at the acquisition-date and sale-date rates. The gain on long-term collectibles is taxed at a different maximum rate than a stock\'s; this export does not compute any tax.',
-  'Not included: other owners\' accounts, pension wrappers, dividends and interest, FBAR, Korean-side gains and tax.',
-  'Two accounts that carry an identical stored label cannot be told apart by the export, and share one alias.',
-]
+export const NOT_COVERED_LINES: readonly string[] = NOT_COVERED_NOTES.map((note) => note.text)
 
 export function taxExportNotes(summary: TaxExportSummary, ctx: { year: string; builtAt: string | null; audit: boolean }): string {
   const fmt = (n: number) => n.toFixed(2)

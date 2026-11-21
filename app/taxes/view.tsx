@@ -10,6 +10,7 @@ import { formatMoney } from '@/lib/domain/taxes/reconcile'
 import { live } from '@/lib/domain/taxes/history'
 import { getLanguage } from '@/lib/i18n-server'
 import { getPageCopy } from '@/lib/ui-copy'
+import { labelFor } from '@/lib/ui-copy/label'
 import { routeSection } from '@/lib/page-names'
 import { EMPTY_VALUE } from '@/lib/format'
 
@@ -156,7 +157,7 @@ export async function TaxHistoryScreen({
                           <td className="p-3">{event.date ?? copy.none}</td>
                           <td className="p-3">{event.postingDate ?? EMPTY_VALUE}</td>
                           <td className="p-3">
-                            {event.kind}
+                            {labelFor(copy.eventKinds, event.kind)}
                             <div className="text-caption text-ink-2">{event.taxUnitIds.join(' · ')}</div>
                           </td>
                           {(['principal', 'interest', 'penalty'] as const).map((field) => (
@@ -185,7 +186,7 @@ export async function TaxHistoryScreen({
                         <tr key={row.id}>
                           <td className="p-3">
                             <Link className="underline" href={`/taxes/records/${encodeURIComponent(row.id)}`}>
-                              {row.authority} · {row.taxYear}
+                              {labelFor(copy.authorities, row.authority)} · {row.taxYear}
                             </Link>
                             <div className="text-caption text-ink-2">{row.taxUnitId}</div>
                           </td>
@@ -240,7 +241,7 @@ export async function TaxHistoryScreen({
                   <tr key={event.eventId}>
                     <td className="p-3">{event.date ?? copy.none}</td>
                     <td className="p-3">
-                      {event.kind} · {event.eventId}
+                      {labelFor(copy.eventKinds, event.kind)} · {event.eventId}
                     </td>
                     {(['principal', 'interest', 'penalty'] as const).map((component) => (
                       <td key={component} className="whitespace-nowrap p-3 tabular-nums">
