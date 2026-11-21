@@ -11,6 +11,7 @@ import {
   dataOpsLinkedIssues,
   fmtCount,
   mappingSuggestionRows,
+  overviewLinkedStatus,
   positionBreaksCapped,
   queueRowCapped,
   reconciliationLinkedIssues,
@@ -144,4 +145,20 @@ test('scenario, execution and proposal-status tones live in lib/tone.ts only', (
     const source = readFileSync(file, 'utf8')
     assert.ok(!/(const|let)\s+(SCENARIO|EXECUTION|PROPOSAL_STATUS)_TONE\b/.test(source), `${file} defines its own tone map`)
   }
+})
+
+// The Overview pill and the /data-ops pill name the same queue; they show the
+// same count, label and severity, and the Overview's links to that queue.
+test('the Overview pill reads the /data-ops work queue', () => {
+  const queue = [
+    { kind: 'validation' as const, count: 2 },
+    { kind: 'position_breaks' as const, count: POSITION_BREAK_CAP },
+  ]
+  const copy = getPageCopy('dataOps', 'en')
+  const ops = dataOpsLinkedIssues(copy, queue, 'en').status!
+  const overview = overviewLinkedStatus(copy, queue, 'en', 'Healthy')
+  assert.equal(text(overview.label), text(ops.label))
+  assert.equal(overview.severity, ops.severity)
+  assert.equal(overview.href, '/data-ops#data-ops-priority-work')
+  assert.deepEqual(overviewLinkedStatus(copy, [{ kind: 'validation', count: 0 }], 'en', 'Healthy'), { severity: 'ok', label: 'Healthy' })
 })

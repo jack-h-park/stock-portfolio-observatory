@@ -44,7 +44,7 @@ The Overview (`app/page.tsx`) is the first page of the Personal Finance Observat
 
 **Phase 3 — one allocation row (implemented on `claude/overview-allocation-row`).** One "Allocation" card replaces the total-assets class list, the market-breakdown card and the concentration card: asset-class shares (all view), market shares with each market's value and return, and the top 5 by cost basis, each a bar plus lines (`components/ShareSummary.tsx`) linking to `/net-worth` or `/holdings`. Per-market cost basis and G/L move off Overview (they are on `/holdings`), and so does the top-10 list. Currency exposure is not shown yet: a total-assets currency split needs each class's currency, which only stocks and cash carry today.
 
-**Phase 4 — needs-attention strip.** Counts only, each linking to its queue; the strip hides when everything is clear.
+**Phase 4 — needs-attention strip (implemented on `claude/overview-attention-strip`).** Counts only, each linking to its queue; the strip hides when everything is clear (`lib/overview-attention.ts`). Three counts: the `/data-ops` work-queue total (which already includes stale sources, so they are not counted twice; shown as a lower bound when the position-break row is capped), positions over the rebalance cap, and markets whose target gap calls for Add or Reduce. Filing dates are not shown: no source in the app holds them, and hard-coding deadlines would be new tax rules.
 
 **Phase 5 — trim.** Slim the snapshot-trend card, move account allocation to `/accounts`, re-check the phone first screen (hero plus the trend chart should fit above the fold at 390px).
 

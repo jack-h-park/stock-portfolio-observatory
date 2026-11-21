@@ -19,6 +19,13 @@ export const overview = defineCopy({
     changeUnavailable: 'No snapshot that far back',
     stockValue: 'Stock value',
     totalAssetsTrend: 'Last 12 months by asset class',
+    attentionTitle: 'Needs attention',
+    attentionInfo: 'Counts only; each links to the page that lists the items. The card hides when everything is clear.',
+    attention: {
+      work_queue: (count: string) => `${count} in the work queue`,
+      over_cap: (count: string) => `${count} position(s) over the cap`,
+      market_gap: (count: string) => `${count} market(s) off target`,
+    },
     allocation: 'Allocation',
     allocationInfo: 'How the whole is split. Each split links to the page with its full breakdown.',
     byAssetClass: 'By asset class',
@@ -43,7 +50,6 @@ export const overview = defineCopy({
     emphasis: 'Overview',
     subtitle: (ingestedAt: string, fx: string | null) =>
       `Investment status loaded from local records at ${ingestedAt}.${fx ? ` Applied FX: ${fx}.` : ''}`,
-    needsReview: (count: number) => `Operations review ${count}`,
     healthy: 'Healthy',
     portfolioValue: 'Total Portfolio Value',
     portfolioValueInfo: 'Current market value converted to the selected display currency across all priced holdings.',
@@ -151,6 +157,13 @@ export const overview = defineCopy({
     changeUnavailable: '그 시점의 스냅샷 없음',
     stockValue: '주식 평가금액',
     totalAssetsTrend: '최근 12개월 자산군별 추이',
+    attentionTitle: '확인할 일',
+    attentionInfo: '건수만 보여주며, 각 항목은 목록이 있는 페이지로 연결됩니다. 모두 비어 있으면 이 카드는 보이지 않습니다.',
+    attention: {
+      work_queue: (count: string) => `작업 대기열 ${count}건`,
+      over_cap: (count: string) => `비중 한도 초과 ${count}종목`,
+      market_gap: (count: string) => `목표 비중을 벗어난 시장 ${count}곳`,
+    },
     allocation: '배분',
     allocationInfo: '전체가 어떻게 나뉘어 있는지 보여줍니다. 각 항목은 자세한 내역이 있는 페이지로 연결됩니다.',
     byAssetClass: '자산군별',
@@ -175,7 +188,6 @@ export const overview = defineCopy({
     emphasis: '개요',
     subtitle: (ingestedAt: string, fx: string | null) =>
       `로컬 투자 자료를 ${ingestedAt}에 불러온 투자 현황입니다.${fx ? ` 적용 환율: ${fx}.` : ''}`,
-    needsReview: (count: number) => `운영 검토 대기 ${count}건`,
     healthy: '정상',
     portfolioValue: '전체 평가금액',
     portfolioValueInfo: '가격과 환율을 적용해 선택한 표시 통화로 환산한 전체 보유자산의 현재 평가금액입니다.',

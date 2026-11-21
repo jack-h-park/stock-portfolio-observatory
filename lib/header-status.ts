@@ -143,6 +143,22 @@ export function dataOpsLinkedIssues(
 }
 
 /**
+ * The Overview: the /data-ops work queue, the same count, label and severity
+ * as the /data-ops pill, linking to that queue. It used to count failed checks
+ * plus stale stock sources under the same "operations review" label, so the
+ * two pills named one thing and showed two numbers.
+ */
+export function overviewLinkedStatus(
+  dataOpsCopy: ReturnType<typeof getPageCopy<'dataOps'>>,
+  queue: readonly { kind: DataOpsQueueKind; count: number }[],
+  language: Language,
+  healthy: ReactNode,
+): HeaderStatus {
+  const { status } = dataOpsLinkedIssues(dataOpsCopy, queue, language)
+  return status && queueCount(queue) > 0 ? { ...status, href: '/data-ops#data-ops-priority-work' } : { severity: 'ok', label: healthy }
+}
+
+/**
  * /reconciliation: the position breaks its breaks card lists, a confirmed
  * discrepancy each, so a problem (`POSITION_BREAK_SEVERITY`, which the
  * /data-ops breaks tile reads too). The hero reads the same count; the work
