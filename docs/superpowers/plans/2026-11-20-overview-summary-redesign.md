@@ -37,7 +37,10 @@ The Overview (`app/page.tsx`) is the first page of the Personal Finance Observat
 
 **Phase 1 — total assets leads (implemented on `claude/overview-total-assets-hero`).** Amend the one-home rule in `docs/ui-guide.md` and `tests/page-blocks.test.ts` (allow a control-less `StackedAssetChart` summary on Overview; keep `AssetEventList`, range links and the children toggle banned). Hero becomes total assets in the all view, stock value in the stocks view. The text list of classes folds into band 4.
 
-**Phase 2 — this month / this year tiles.** Four `MetricField` tiles reading existing adapters; each tile is a link. No new data. Empty and unavailable states follow the "unavailable is not zero" rule (#364).
+**Phase 2 — this month / this year tiles (implemented on `claude/overview-month-year-tiles`).** Three tiles reading existing adapters, each linking to its page; no new data. Empty and unavailable states follow the "unavailable is not zero" rule (#364). Two of the four proposed tiles changed on contact with the data:
+
+- *Net cash flow this month* became **cash inflow this month**: the cash-inflow model records credits only (salary, dividends, interest, other), so a net figure would need an outflow source the app does not have.
+- *Estimated tax for the year* is **not shown**. The tax records are recorded obligations ("never a new annual tax calculation"), and the planner's estimates are for hypothetical future sales under a chosen plan, so neither is this year's estimated tax. Building one means a new calculation; decided 2026-11-20 to leave the slot empty rather than build it, so Phase 2 ships three tiles.
 
 **Phase 3 — one allocation row.** Replace the market-breakdown card's per-market grids with share bars; concentration keeps the top 5 (the top-10 list moves to `/holdings`).
 
@@ -51,7 +54,7 @@ Each phase is one PR with the screenshot net (`docs/ui-guide.md`), `pnpm ui:guar
 
 1. **Amend "one home per data block": yes.** A control-less summary (one figure, or one chart without controls) may repeat on Overview; workbenches stay at home (Phase 1).
 2. **Hero figure in the all view: total assets.** The stocks view keeps stock value.
-3. **Phase 2 tiles: the four proposed** (net cash flow this month, income YTD, realized G/L YTD, estimated tax for the year).
+3. **Phase 2 tiles: the four proposed** (net cash flow this month, income YTD, realized G/L YTD, estimated tax for the year). Implemented as three: the cash tile reads inflow, and the tax tile is dropped (see Phase 2).
 
 ## Scroll fix (Phase 0)
 

@@ -9,18 +9,23 @@ import {
   dbAvailable,
   getAccountAllocation,
   getAssetCoverageReview,
+  getCashInflow,
+  getIncomeReview,
   getMeta,
   getNetWorth,
   getOperationalHealth,
   getOverview,
   getPortfolioSnapshots,
+  getRealizedLots,
   getSnapshotDates,
   getTopHoldings,
   getTotalAssetsSeries,
   getWashSaleReview,
   portfolioToday,
+  portfolioYearMonth,
   withGoldScope,
 } from '@/lib/adapters/portfolio-db'
+import { periodTiles } from '@/lib/overview-period-tiles'
 import { isoDaysBefore, previousYearEnd, totalAssetsChange, type TotalAssetsChange } from '@/lib/total-assets-change'
 import {
   HEALTHY_TREND_COST_COVERAGE,
@@ -42,10 +47,10 @@ import { getAssetView } from '@/lib/asset-view-server'
 import { getCurrencyPreferences } from '@/lib/currency-server'
 import { getGlossary } from '@/lib/glossary'
 import { getLanguage } from '@/lib/i18n-server'
-import { signClass, signTone } from '@/lib/tone'
+import { deltaTone, signClass, signTone } from '@/lib/tone'
 import { getPageCopy } from '@/lib/ui-copy'
 import { routeMetadata, routeSection } from '@/lib/page-names'
-import { CardRow, KpiBand, MiniStat, MiniStatGrid } from '@/components/layout'
+import { CardRow, KpiBand, MiniStat, MiniStatGrid, Stat, StatStrip } from '@/components/layout'
 import { ShareBar } from '@/components/bars'
 import { AssetViewLink } from '@/components/LanguageSwitcher'
 import { WashSaleBanner } from '@/components/WashSaleBanner'
@@ -115,6 +120,22 @@ export default async function OverviewPage({
   const today = portfolioToday()
   const monthChange = assetsSeries ? totalAssetsChange(assetsSeries.points, isoDaysBefore(today, 30)) : null
   const yearChange = assetsSeries ? totalAssetsChange(assetsSeries.points, previousYearEnd(today)) : null
+  // This month / this year, all view only: each figure is a summary of its own page.
+  const display = currencyPreferences.displayCurrency
+  const tiles = netWorth
+    ? (() => {
+        const { year, month } = portfolioYearMonth()
+        const inflow = getCashInflow('month', display)
+        const income = getIncomeReview(display)
+        return periodTiles({
+          currentMonth: `${year}-${String(month).padStart(2, '0')}`,
+          currentYear: String(year),
+          inflow: { periods: inflow.periods, monthlyAverage: inflow.totals.monthlyAverage, hasRecords: inflow.periods.length > 0 || inflow.hasBankData },
+          income: { rowCount: income.totals.row_count, ytd: income.totals.ytd_base_income, trailing12m: income.totals.trailing_12m_base_income },
+          realized: getRealizedLots(),
+        })
+      })()
+    : null
   const storedSnapshots = getPortfolioSnapshots(trendRangeDays(selectedRange.days))
   // The gold scope is derived on read (lib/gold-trend.ts), so only that scope pays for it.
   const portfolioSnapshots = selectedScope === 'GOLD' ? withGoldScope(storedSnapshots) : storedSnapshots
@@ -482,6 +503,30 @@ export default async function OverviewPage({
           {copy.trendExplanation}
         </div>
       </Card>
+
+      {tiles ? (
+        <Card title={copy.periodTitle} info={copy.periodInfo} className="mb-5">
+          <StatStrip columns="sm-3">
+            <Stat
+              label={copy.inflowMonth}
+              value={tiles.inflowMonth == null ? EMPTY_VALUE : money(tiles.inflowMonth, display)}
+              sub={<>{tiles.inflowMonthlyAverage == null ? copy.noRecordsYet : copy.inflowMonthHint(money(tiles.inflowMonthlyAverage, display))}{tiles.inflowLastMonth ? ` · ${copy.inflowLastRecord(tiles.inflowLastMonth)}` : ''} · <TextLink href="/cash-inflow">{copy.openCashInflow}</TextLink></>}
+            />
+            <Stat
+              label={copy.incomeYtd}
+              value={tiles.incomeYtd == null ? EMPTY_VALUE : money(tiles.incomeYtd, display)}
+              tone={deltaTone(tiles.incomeYtd)}
+              sub={<>{tiles.incomeTrailing12m == null ? copy.noRecordsYet : copy.incomeYtdHint(money(tiles.incomeTrailing12m, display))} · <TextLink href="/income">{copy.openIncome}</TextLink></>}
+            />
+            <Stat
+              label={copy.realizedYtd}
+              value={tiles.realizedYtdKrw == null ? EMPTY_VALUE : fmtSigned(tiles.realizedYtdKrw, (v) => money(v, 'KRW'))}
+              tone={deltaTone(tiles.realizedYtdKrw)}
+              sub={<>{tiles.realizedYtdKrw == null ? copy.noRecordsYet : copy.realizedYtdHint(tiles.realizedYtdCount)} · <TextLink href="/realized">{copy.openRealized}</TextLink></>}
+            />
+          </StatStrip>
+        </Card>
+      ) : null}
 
       {netWorth ? (
         <Card title={copy.totalAssets} className="mb-5">
