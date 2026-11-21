@@ -58,7 +58,8 @@ import { TrendRangeLinks } from '@/components/TrendRangeLinks'
 import { LinkChip, LinkChips } from '@/components/LinkChips'
 import { resolveTrendRange, trendRangeDays } from '@/lib/trend-ranges'
 import { maskAccountLabel } from '@/lib/account-label'
-import { marketColor } from '@/lib/palette'
+import { ASSET_CLASS_COLOR, marketColor } from '@/lib/palette'
+import { ShareSummary } from '@/components/ShareSummary'
 
 export const dynamic = 'force-dynamic'
 export const generateMetadata = routeMetadata('/')
@@ -139,7 +140,7 @@ export default async function OverviewPage({
   const storedSnapshots = getPortfolioSnapshots(trendRangeDays(selectedRange.days))
   // The gold scope is derived on read (lib/gold-trend.ts), so only that scope pays for it.
   const portfolioSnapshots = selectedScope === 'GOLD' ? withGoldScope(storedSnapshots) : storedSnapshots
-  const top = getTopHoldings(10)
+  const top = getTopHoldings(5)
   const accounts = getAccountAllocation()
   const operational = getOperationalHealth()
   const usdKrw = overview.fxRates.find((r: any) => r.from_currency === 'USD' && r.to_currency === 'KRW')
@@ -528,155 +529,100 @@ export default async function OverviewPage({
         </Card>
       ) : null}
 
-      {netWorth ? (
-        <Card title={copy.totalAssets} className="mb-5">
-          <AssetCoverageNote summary={netWorth} language={language} review={getAssetCoverageReview(netWorth)} />
-          <ul className="grid gap-1.5">
-            {(['stocks', 'crypto', 'cash', 'pensions', 'gold'] as const).map((key) => (
-              <li key={key} className="flex items-baseline justify-between gap-3 text-body">
-                <span className="text-ink-3">
-                  {copy.assetClasses[key]}
-                  {/* A class read from a dated snapshot, held at cost or (cash) from an older balance carries its date here. */}
-                  {netWorth.asOfNotes.some((note) => note.assetClass === key) ? (
-                    <span className="ml-2 text-label">
-                      {netWorth.asOfNotes.filter((note) => note.assetClass === key).map((note) => copy.asOfNote(maskAccountLabel(note.label), fmtDate(note.asOf, language))).join(' · ')}
-                    </span>
-                  ) : null}
-                </span>
-                <span className="tabular-nums text-ink">
-                  {money(netWorth.byClass[key], 'KRW')}
-                  <span className="ml-2 text-ink-3">{fmtPct(netWorth.totalKrw > 0 ? (netWorth.byClass[key] / netWorth.totalKrw) * 100 : 0, { digits: 1 })}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-          {netWorth.asOfNotes.length > 0 ? (
-            <Panel bordered={false} text="label-note" spacing="mt-3">{copy.asOfNotesHint}</Panel>
+      {/* One allocation card: how the whole is split, each split linking to the page with the full breakdown. */}
+      <Card title={copy.allocation} info={copy.allocationInfo} className="mb-5">
+        {netWorth ? <AssetCoverageNote summary={netWorth} language={language} review={getAssetCoverageReview(netWorth)} /> : null}
+        <CardRow columns={netWorth ? 3 : 2} spacing="none">
+          {netWorth ? (
+            <ShareSummary
+              title={copy.byAssetClass}
+              action={<TextLink href="/net-worth">{copy.openTotalAssets}</TextLink>}
+              items={(['stocks', 'crypto', 'cash', 'pensions', 'gold'] as const).map((key) => ({
+                key,
+                label: copy.assetClasses[key],
+                color: ASSET_CLASS_COLOR[key],
+                pct: netWorth.totalKrw > 0 ? (netWorth.byClass[key] / netWorth.totalKrw) * 100 : 0,
+                detail: money(netWorth.byClass[key], 'KRW'),
+              }))}
+            >
+              {netWorth.asOfNotes.length > 0 ? (
+                <Note spacing="above-2">
+                  {netWorth.asOfNotes.map((note) => `${copy.assetClasses[note.assetClass as keyof typeof copy.assetClasses] ?? note.assetClass}: ${copy.asOfNote(maskAccountLabel(note.label), fmtDate(note.asOf, language))}`).join(' · ')}
+                  {' '}{copy.asOfNotesHint}
+                </Note>
+              ) : null}
+              {netWorth.unpricedCash.length > 0 ? <Note spacing="above-2">{copy.unpricedCash(netWorth.unpricedCash.length)}</Note> : null}
+            </ShareSummary>
           ) : null}
-          {netWorth.unpricedCash.length > 0 ? (
-            <Panel bordered={false} text="label-note" spacing="mt-3">{copy.unpricedCash(netWorth.unpricedCash.length)}</Panel>
-          ) : null}
-          <div className="mt-3">
-            <TextLink href="/net-worth">{copy.openTotalAssets}</TextLink>
-          </div>
-        </Card>
-      ) : null}
-
-      <FinanceTaxSummary language={language} />
-      <Card title={copy.marketBreakdown} info={copy.marketBreakdownInfo} className="mb-5">
-        <div className="mb-5">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-            <div className="text-caption font-medium text-ink-2">{copy.marketAllocation}</div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              {marketBreakdown.map((market) => (
-                <div key={market.market} className="flex items-center gap-1.5 text-caption text-ink-3">
-                  <span className="h-2 w-2 rounded-pill" style={{ backgroundColor: market.color }} />
-                  <span>{market.label}</span>
-                  <span className="font-medium tabular-nums text-ink">{fmtPct(market.share, { digits: 0 })}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <ShareBar
-            segments={marketBreakdown.map((market, index) => ({
+          <ShareSummary
+            title={copy.marketAllocation}
+            action={<TextLink href="/holdings">{copy.openHoldings}</TextLink>}
+            items={marketBreakdown.map((market) => ({
               key: market.market,
-              // A present market keeps a sliver even when it rounds to nothing.
-              pct: Math.max(market.share > 0 ? 1 : 0, market.share),
-              title: `${market.label} ${fmtPct(market.share, { digits: 0 })}`,
-              style: {
-                backgroundColor: market.color,
-                borderLeft: index === 0 ? undefined : '1px solid var(--bg-card)',
-              },
+              label: market.label,
+              color: market.color,
+              pct: globalValue > 0 ? (market.marketValue / globalValue) * 100 : 0,
+              detail: (
+                <>
+                  {money(market.marketValue, 'KRW')} · <span className={signClass(market.returnPct)}>{fmtPct(market.returnPct, { digits: 1, signed: true })}</span>
+                </>
+              ),
             }))}
-          />
-        </div>
-        <div className="grid gap-4 lg:grid-cols-3">
-          {marketBreakdown.map((market) => (
-            <div key={market.market} className="min-w-0">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Badge tone={market.tone}>{market.market}</Badge>
-                  <span className="text-body font-medium text-ink">{market.label}</span>
-                </div>
-                <span className="text-caption tabular-nums text-ink-3">{copy.share} {fmtPct(market.share, { digits: 0 })}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-caption">
-                <MetricField label={copy.marketValue} value={money(market.marketValue, 'KRW')} size="caption" labelClassName="normal-case tracking-normal" />
-                <MetricField label={copy.costBasis} value={money(market.cost, 'KRW')} info={glossary.costBasis.description} size="caption" labelClassName="normal-case tracking-normal" />
-                <MetricField
-                  label={copy.gain}
-                  value={money(market.gain, 'KRW')}
-                  info={glossary.unrealizedGl.description}
-                  tone={signTone(market.gain)}
-                  size="caption"
-                  labelClassName="normal-case tracking-normal"
-                />
-                <MetricField
-                  label={copy.return}
-                  value={fmtPct(market.returnPct, { digits: 2 })}
-                  tone={signTone(market.returnPct)}
-                  size="caption"
-                  labelClassName="normal-case tracking-normal"
-                />
-              </div>
-            </div>
-          ))}
-        </div>
+          >
+            <Note spacing="above-2">{copy.marketAllocationNote}</Note>
+          </ShareSummary>
+          <ShareSummary
+            title={copy.concentrationTitle(fmtPct(topFiveShare, { digits: 0 }))}
+            action={<TextLink href="/holdings">{copy.openHoldings}</TextLink>}
+            items={top.slice(0, 5).map((p) => ({
+              key: String(p.id),
+              label: (
+                <>
+                  {p.name} <span className="font-mono text-label">{p.ticker}</span>
+                </>
+              ),
+              color: marketColor(p.market),
+              pct: globalBase > 0 ? ((p.base_cost ?? 0) / globalBase) * 100 : 0,
+              detail: money(p.base_cost ?? 0, 'KRW'),
+            }))}
+          >
+            <Note spacing="above-2">{copy.concentrationBasis}</Note>
+          </ShareSummary>
+        </CardRow>
       </Card>
 
-      <CardRow>
-        <Card title={copy.concentration} info={copy.concentrationInfo}>
-          <div className="flex h-full min-h-[190px] flex-col justify-center">
-            <div className="text-metric font-medium leading-none tabular-nums text-ink">{fmtPct(topFiveShare, { digits: 0 })}</div>
-            <div className="mt-1 text-caption text-ink-3">{copy.concentrationHint}</div>
-            <div className="mt-5 space-y-2">
-              {top.map((p) => (
-                <div key={p.id} className="flex items-center justify-between gap-3 text-caption">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Badge tone={marketTone(p.market)}>{p.market}</Badge>
-                    <span className="min-w-0 truncate text-ink">{p.name}</span>
-                    <span className="shrink-0 font-mono text-label text-ink-3">{p.ticker}</span>
-                  </div>
-                  <span className="shrink-0 tabular-nums text-ink-3">{money(p.base_cost ?? 0, 'KRW')}</span>
+      <FinanceTaxSummary language={language} />
+      <Card title={copy.termMix} info={copy.termMixInfo} className="mb-5">
+        <div className="flex h-full min-h-[190px] flex-col justify-center">
+          <div className="text-metric font-medium leading-none tabular-nums text-ink">{fmtPct(termCoveragePct, { digits: 0 })}</div>
+          <div className="mt-1 text-caption text-ink-3">{copy.termCoverage} · {copy.shortTermExposure} {fmtPct(shortTermExposurePct, { digits: 0 })}</div>
+          <ShareBar
+            height="md"
+            spacing="mt-5"
+            segments={[
+              { key: 'long', pct: termSegmentWidth(termLongValue), className: 'bg-success' },
+              { key: 'short', pct: termSegmentWidth(termShortValue), className: 'bg-warning' },
+              { key: 'unclassified', pct: termSegmentWidth(termUnclassifiedValue), className: 'bg-line' },
+            ]}
+          />
+          <MiniStatGrid columns={3} spacing="mt-3">
+            <MiniStat label={copy.longTerm} value={money(termLongValue, 'KRW')} />
+            <MiniStat label={copy.shortTerm} value={money(termShortValue, 'KRW')} />
+            <MiniStat label={copy.unclassifiedTerm} value={money(termUnclassifiedValue, 'KRW')} />
+          </MiniStatGrid>
+          <div className="mt-4 grid gap-2 text-caption">
+            {termShortByMarket.map((row) => (
+              <div key={row.market} className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Badge tone={marketTone(row.market)}>{row.market}</Badge>
+                  <span className="truncate text-ink-3">{row.label}</span>
                 </div>
-              ))}
-            </div>
-            <Note spacing="above-2">{copy.concentrationBasis}</Note>
+                <span className="shrink-0 font-medium tabular-nums text-ink">{money(row.value, 'KRW')}</span>
+              </div>
+            ))}
           </div>
-        </Card>
-
-        <Card title={copy.termMix} info={copy.termMixInfo}>
-          <div className="flex h-full min-h-[190px] flex-col justify-center">
-            <div className="text-metric font-medium leading-none tabular-nums text-ink">{fmtPct(termCoveragePct, { digits: 0 })}</div>
-            <div className="mt-1 text-caption text-ink-3">{copy.termCoverage} · {copy.shortTermExposure} {fmtPct(shortTermExposurePct, { digits: 0 })}</div>
-            <ShareBar
-              height="md"
-              spacing="mt-5"
-              segments={[
-                { key: 'long', pct: termSegmentWidth(termLongValue), className: 'bg-success' },
-                { key: 'short', pct: termSegmentWidth(termShortValue), className: 'bg-warning' },
-                { key: 'unclassified', pct: termSegmentWidth(termUnclassifiedValue), className: 'bg-line' },
-              ]}
-            />
-            <MiniStatGrid columns={3} spacing="mt-3">
-              <MiniStat label={copy.longTerm} value={money(termLongValue, 'KRW')} />
-              <MiniStat label={copy.shortTerm} value={money(termShortValue, 'KRW')} />
-              <MiniStat label={copy.unclassifiedTerm} value={money(termUnclassifiedValue, 'KRW')} />
-            </MiniStatGrid>
-            <div className="mt-4 grid gap-2 text-caption">
-              {termShortByMarket.map((row) => (
-                <div key={row.market} className="flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Badge tone={marketTone(row.market)}>{row.market}</Badge>
-                    <span className="truncate text-ink-3">{row.label}</span>
-                  </div>
-                  <span className="shrink-0 font-medium tabular-nums text-ink">{money(row.value, 'KRW')}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Card>
-      </CardRow>
+        </div>
+      </Card>
 
       <Card title={copy.accountAllocation}>
         {accounts.length === 0 ? (

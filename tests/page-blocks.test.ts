@@ -31,8 +31,9 @@ const BLOCKS: { path: string; absent: string[]; present: string[] }[] = [
   {
     path: 'app/page.tsx',
     // The hero may carry a control-less total-assets summary (checked below); the workbench stays on /net-worth.
-    absent: ['AssetEventList', 'getAssetEvents', 'getChildAssets', 'childrenBand', 'topHoldingsByCost', 'freshnessTitle'],
-    present: ['copy.concentrationBasis', 'copy.openTotalAssets'],
+    // Phase 3: allocation is one card of summaries; the per-market grids and top-10 list are gone.
+    absent: ['AssetEventList', 'getAssetEvents', 'getChildAssets', 'childrenBand', 'topHoldingsByCost', 'freshnessTitle', 'title={copy.marketBreakdown}', 'title={copy.concentration}', 'getTopHoldings(10)'],
+    present: ['copy.concentrationBasis', 'copy.openTotalAssets', '<ShareSummary'],
   },
   {
     path: 'app/review/page.tsx',

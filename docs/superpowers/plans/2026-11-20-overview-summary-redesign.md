@@ -42,7 +42,7 @@ The Overview (`app/page.tsx`) is the first page of the Personal Finance Observat
 - *Net cash flow this month* became **cash inflow this month**: the cash-inflow model records credits only (salary, dividends, interest, other), so a net figure would need an outflow source the app does not have.
 - *Estimated tax for the year* is **not shown**. The tax records are recorded obligations ("never a new annual tax calculation"), and the planner's estimates are for hypothetical future sales under a chosen plan, so neither is this year's estimated tax. Building one means a new calculation; decided 2026-11-20 to leave the slot empty rather than build it, so Phase 2 ships three tiles.
 
-**Phase 3 — one allocation row.** Replace the market-breakdown card's per-market grids with share bars; concentration keeps the top 5 (the top-10 list moves to `/holdings`).
+**Phase 3 — one allocation row (implemented on `claude/overview-allocation-row`).** One "Allocation" card replaces the total-assets class list, the market-breakdown card and the concentration card: asset-class shares (all view), market shares with each market's value and return, and the top 5 by cost basis, each a bar plus lines (`components/ShareSummary.tsx`) linking to `/net-worth` or `/holdings`. Per-market cost basis and G/L move off Overview (they are on `/holdings`), and so does the top-10 list. Currency exposure is not shown yet: a total-assets currency split needs each class's currency, which only stocks and cash carry today.
 
 **Phase 4 — needs-attention strip.** Counts only, each linking to its queue; the strip hides when everything is clear.
 
