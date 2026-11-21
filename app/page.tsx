@@ -6,7 +6,6 @@ import { PortfolioMultiTrendChart, PortfolioTrendChart, StackedAssetChart } from
 import type { ChartUnit } from '@/lib/chart-format'
 import {
   dbAvailable,
-  getAccountAllocation,
   getAssetCoverageReview,
   getCashInflow,
   getDataOpsReview,
@@ -151,7 +150,6 @@ export default async function OverviewPage({
   // The gold scope is derived on read (lib/gold-trend.ts), so only that scope pays for it.
   const portfolioSnapshots = selectedScope === 'GOLD' ? withGoldScope(storedSnapshots) : storedSnapshots
   const top = getTopHoldings(5)
-  const accounts = getAccountAllocation()
   const usdKrw = overview.fxRates.find((r: any) => r.from_currency === 'USD' && r.to_currency === 'KRW')
   const fxLabel = usdKrw ? `USD/KRW ${fmtNumber(usdKrw.rate, 2)} (${usdKrw.as_of_date})` : null
 
@@ -247,6 +245,32 @@ export default async function OverviewPage({
   const trendChangeLabel = selectedMetric.key === 'return_pct'
     ? fmtPct(trendChange, { digits: 1, unit: 'pp', signed: true })
     : `${fmtSigned(trendChange, trendValueLabel)}${trendChangePct == null ? '' : ` · ${fmtPct(trendChangePct, { digits: 1, signed: true })}`}`
+
+  // What the snapshot card used to print under the chart: which prices the
+  // latest point used, the range it covers and how it is built.
+  const trendInfo = (
+    <span className="flex flex-col gap-2">
+      {selectedScope === 'GOLD' ? <span>{copy.goldScopeInfo}</span> : null}
+      {latestSnapshot ? (
+        <span className="tabular-nums">
+          {latestPriceDates.length ? (
+            <>
+              {copy.priceBasis}{' '}
+              {latestPriceDates.map((item, index) => (
+                <span key={item.market}>
+                  {index ? ' · ' : ''}{copy.scopeLabels[item.market]} {item.newest}{item.oldest ? ` (${copy.priceOldest(item.oldest)})` : ''}
+                </span>
+              ))}
+              {' · '}
+            </>
+          ) : null}
+          {copy.snapshotWritten(fmtDateTime(latestSnapshot.captured_at, language))}
+        </span>
+      ) : null}
+      <span>{trendData.length ? copy.trendRangeSummary(trendData[0].date, trendData[trendData.length - 1].date, valuedTrendData.length, trendData.length, missingTrendPoints) : copy.snapshotsOnce}</span>
+      <span>{copy.trendExplanation}</span>
+    </span>
+  )
 
   // Unavailable is not zero: with no snapshot that old the field says so.
   const changeField = (label: string, change: TotalAssetsChange | null) => (
@@ -379,7 +403,7 @@ export default async function OverviewPage({
       {/* The snapshot trend sits right under the hero: the page's one picture of how the portfolio moved. */}
       <Card
         title={copy.snapshotTrend(selectedScopeLabel)}
-        info={selectedScope === 'GOLD' ? copy.goldScopeInfo : undefined}
+        info={trendInfo}
         className="mb-5"
         action={
           <div className="flex flex-wrap items-center justify-end gap-1">
@@ -420,22 +444,9 @@ export default async function OverviewPage({
           </div>
           {selectedView === 'single' && <div className={`text-right text-caption tabular-nums ${signClass(trendChange)}`}>{valuedTrendData.length > 1 ? <>{trendChangeLabel}<div className="text-micro font-normal text-ink-3">{copy.since(firstTrendPoint.date)}</div></> : copy.needTwoSnapshots}</div>}
         </div>
-        {latestSnapshot ? (
-          <div className={`-mt-1 mb-3 text-label tabular-nums ${latestSnapshotStale ? 'text-warning' : 'text-ink-3'}`}>
-            {latestPriceDates.length ? (
-              <>
-                {copy.priceBasis}{' '}
-                {latestPriceDates.map((item, index) => (
-                  <span key={item.market}>
-                    {index ? ' · ' : ''}{copy.scopeLabels[item.market]} {item.newest}{item.oldest ? ` (${copy.priceOldest(item.oldest)})` : ''}
-                  </span>
-                ))}
-                {' · '}
-              </>
-            ) : null}
-            {copy.snapshotWritten(fmtDateTime(latestSnapshot.captured_at, language))}
-            {latestSnapshotStale ? <div>{copy.snapshotStale}</div> : null}
-          </div>
+        {/* The price basis lives in the info popover; only a stale snapshot is said out loud. */}
+        {latestSnapshot && latestSnapshotStale ? (
+          <div className="-mt-1 mb-3 text-label text-warning">{copy.snapshotStale}</div>
         ) : null}
         <div className="mb-3 flex flex-wrap items-center gap-1">
           <LinkChip
@@ -456,16 +467,21 @@ export default async function OverviewPage({
             }))}
             current={selectedScope}
           />
-          <span className="mx-1 h-4 w-px bg-line-subtle" />
-          <LinkChips
-            variant="subtle"
-            items={TREND_METRICS.map((metric) => ({
-              key: metric.key,
-              href: `/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${metric.key}&view=single`,
-              label: copy.metricLabels[metric.key],
-            }))}
-            current={selectedMetric.key}
-          />
+          {/* Metric chips pick the single-metric chart; the combined view already draws every metric. */}
+          {selectedView === 'single' ? (
+            <>
+              <span className="mx-1 h-4 w-px bg-line-subtle" />
+              <LinkChips
+                variant="subtle"
+                items={TREND_METRICS.map((metric) => ({
+                  key: metric.key,
+                  href: `/?trend=${selectedRange.key}&scope=${selectedScope}&metric=${metric.key}&view=single`,
+                  label: copy.metricLabels[metric.key],
+                }))}
+                current={selectedMetric.key}
+              />
+            </>
+          ) : null}
         </div>
         {selectedScope === 'GOLD' ? (
           <Panel bordered={false} text="label-note" spacing="mb-3">{copy.goldScopeNote}</Panel>
@@ -500,12 +516,6 @@ export default async function OverviewPage({
             emptyMessage={copy.noPortfolioHistory}
           />
         )}
-        <div className="mt-1 text-label text-ink-3">
-          {trendData.length ? copy.trendRangeSummary(trendData[0].date, trendData[trendData.length - 1].date, valuedTrendData.length, trendData.length, missingTrendPoints) : copy.snapshotsOnce}
-        </div>
-        <div className="mt-2 text-label leading-relaxed text-ink-3">
-          {copy.trendExplanation}
-        </div>
       </Card>
 
       {tiles ? (
@@ -639,21 +649,6 @@ export default async function OverviewPage({
         </div>
       </Card>
 
-      <Card title={copy.accountAllocation}>
-        {accounts.length === 0 ? (
-          <EmptyState>{copy.noAccountData}</EmptyState>
-        ) : (
-          <ul className="divide-y divide-line-subtle">
-            {accounts.map((a) => (
-              <li key={a.account} className="flex items-center gap-3 py-2">
-                <div className="min-w-0 flex-1 truncate text-body text-ink">{maskAccountLabel(a.account)}</div>
-                <div className="text-caption tabular-nums text-ink-3">{copy.holdingRows(a.count)}</div>
-                <div className="w-36 text-right text-caption font-medium tabular-nums text-ink">{money(a.value, a.currency)}</div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
     </>
   )
 }

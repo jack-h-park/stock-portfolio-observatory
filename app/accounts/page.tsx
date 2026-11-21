@@ -4,9 +4,11 @@ import { AccountTimeline, TimelineLegend, TimelineScale, timelineAxis } from '@/
 import { SupplementaryCoverageTable } from '@/components/SupplementaryCoverageTable'
 import { DataTable } from '@/components/DataTable'
 import { PageHeader } from '@/components/PageHeader'
-import { Badge, Card, MetricField, TextLink, marketTone } from '@/components/ui'
+import { Badge, Card, EmptyState, MetricField, TextLink, marketTone } from '@/components/ui'
+import { createMoneyFormatter } from '@/lib/currency'
+import { getCurrencyPreferences } from '@/lib/currency-server'
 import { CardRow } from '@/components/layout'
-import { getAccountDataRanges, getMeta, getSupplementaryCoverage, getBrokerageAccountHints } from '@/lib/adapters/portfolio-db'
+import { getAccountAllocation, getAccountDataRanges, getMeta, getSupplementaryCoverage, getBrokerageAccountHints } from '@/lib/adapters/portfolio-db'
 import { maskAccountLabel } from '@/lib/account-label'
 import { summarizeAccountRanges, type AccountDataRange, type DateRange } from '@/lib/account-ranges'
 import { fmtDate, fmtDateTime, fmtNumber } from '@/lib/format'
@@ -25,6 +27,8 @@ export default async function AccountsPage() {
   const accounts = getAccountDataRanges()
   const hints = getBrokerageAccountHints()
   const supplementary = getSupplementaryCoverage()
+  const holdingsByAccount = getAccountAllocation()
+  const money = createMoneyFormatter(await getCurrencyPreferences())
   const bankAccounts = accounts.filter(account => account.assetType === 'cash')
   const investments = accounts.filter(account => account.assetType !== 'cash')
   const summary = summarizeAccountRanges(accounts)
@@ -155,6 +159,22 @@ export default async function AccountsPage() {
       </Card>
       <Card className="mt-5" title={copy.banksTitle} info={copy.banksInfo} action={<TextLink href="/data-ops#supplementary-coverage">{copy.nextDownloads}</TextLink>}>
         <SupplementaryCoverageTable language={language} accounts={bankAccounts} rows={supplementary.rows.filter(row => row.kind === 'deposit' || row.kind === 'cma')} />
+      </Card>
+      <Card className="mt-5" id="accounts-holdings" title={copy.accountAllocation} info={copy.accountAllocationInfo}>
+        {holdingsByAccount.length === 0 ? (
+          <EmptyState>{copy.noAccountData}</EmptyState>
+        ) : (
+          <ul className="divide-y divide-line-subtle">
+            {holdingsByAccount.map((a) => (
+              <li key={`${a.market}:${a.currency}:${a.account}`} className="flex items-center gap-3 py-2">
+                <Badge tone={marketTone(a.market)}>{a.market}</Badge>
+                <div className="min-w-0 flex-1 truncate text-body text-ink">{maskAccountLabel(a.account)}</div>
+                <div className="text-caption tabular-nums text-ink-3">{copy.holdingRows(a.count)}</div>
+                <div className="w-36 text-right text-caption font-medium tabular-nums text-ink">{money(a.value, a.currency)}</div>
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
     </>
   )

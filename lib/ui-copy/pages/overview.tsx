@@ -114,9 +114,6 @@ export const overview = defineCopy({
       `${start} to ${end} · ${valued} valued / ${total} total snapshot(s)${gaps ? ` · ${gaps} gap(s)` : ''}`,
     snapshotsOnce: 'Snapshots are recorded once per ingest date.',
     trendExplanation: 'Cost basis, holdings, and dividends are reconstructed from tax-lot and transaction dates. Foreign-currency quotes are converted using FX snapshots, then displayed in the selected currency. Valuation points below 90% cost-basis coverage remain visible as chart gaps; 90–95% coverage is marked partial. Cost-basis history itself does not require a market price. The latest point is valued at the prices the last refresh fetched; each earlier month-end point uses the latest close on or before that date. Realized G/L is the running total of every sale up to each date, counted from the first sale rather than from the start of the selected range; a sale the broker filed on Form 1099-B replaces the replayed estimate of it.',
-    accountAllocation: 'Account allocation',
-    noAccountData: 'No account data',
-    holdingRows: (count: number) => `${count} holdings`,
     metricLabels: {
       market_value: 'Market value',
       cost_basis: 'Cost basis',
@@ -252,9 +249,6 @@ export const overview = defineCopy({
       `${start}부터 ${end}까지 · 가격 확인 ${valued}개 / 전체 ${total}개 스냅샷${gaps ? ` · 공백 ${gaps}개` : ''}`,
     snapshotsOnce: '스냅샷은 수집 날짜마다 한 번 기록됩니다.',
     trendExplanation: '취득원가, 보유수량, 배당은 세금 단위와 거래일 기준으로 재구성됩니다. 외화 가격은 환율 스냅샷으로 환산한 뒤 선택 표시 통화로 표시됩니다. 취득원가 기준 가격 확인률이 90% 미만인 평가 지점은 차트 공백으로 남기고, 90~95%는 부분 평가로 표시합니다. 취득원가 이력 자체에는 시장 가격이 필요하지 않습니다. 마지막 점은 마지막 자동 갱신이 받아 온 가격으로, 그 이전 월말 점은 해당 날짜 이전 최신 종가로 평가합니다. 실현손익은 각 날짜까지 발생한 모든 매도의 누적 합계이며, 선택한 기간의 시작이 아니라 첫 매도부터 누적합니다. 브로커가 Form 1099-B로 신고한 매도는 자체 재계산 값 대신 신고 값을 사용합니다.',
-    accountAllocation: '계좌별 배분',
-    noAccountData: '계좌 데이터가 없습니다.',
-    holdingRows: (count: number) => `${count}개 보유`,
     metricLabels: {
       market_value: '평가금액',
       cost_basis: '취득원가',

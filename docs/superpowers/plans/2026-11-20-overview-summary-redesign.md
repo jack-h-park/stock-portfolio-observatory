@@ -1,6 +1,6 @@
 # Overview as the observatory's summary — improvement plan
 
-**Status:** accepted, 2026-11-20. Phase 0 is implemented on `claude/overview-asset-graph-layout-466742`; the three decisions below are settled as proposed, and Phases 1–5 follow as one PR each.
+**Status:** implemented, 2026-11-20, as stacked PRs, one per phase (Phase 0 on `claude/overview-asset-graph-layout-466742`, then Phases 1–5). Decisions below are settled; where a phase departed from this plan it says why.
 
 ## Why
 
@@ -46,7 +46,7 @@ The Overview (`app/page.tsx`) is the first page of the Personal Finance Observat
 
 **Phase 4 — needs-attention strip (implemented on `claude/overview-attention-strip`).** Counts only, each linking to its queue; the strip hides when everything is clear (`lib/overview-attention.ts`). Three counts: the `/data-ops` work-queue total (which already includes stale sources, so they are not counted twice; shown as a lower bound when the position-break row is capped), positions over the rebalance cap, and markets whose target gap calls for Add or Reduce. Filing dates are not shown: no source in the app holds them, and hard-coding deadlines would be new tax rules.
 
-**Phase 5 — trim.** Slim the snapshot-trend card, move account allocation to `/accounts`, re-check the phone first screen (hero plus the trend chart should fit above the fold at 390px).
+**Phase 5 — trim (implemented on `claude/overview-trim`).** The snapshot-trend card keeps its range, view and scope chips; the metric chips show only in the single-metric view (the combined chart already draws every metric), and the price basis, range summary and method paragraph move into the card's info popover, with only a stale-snapshot warning left in the body. Account allocation moves to `/accounts` as "Holdings by account". At 390×844 the hero figure and its 12-month chart fit the first screen with no horizontal scroll; the portfolio trend starts on the second screen, below the supporting metrics.
 
 Each phase is one PR with the screenshot net (`docs/ui-guide.md`), `pnpm ui:guardrails`, and the English render diffed line by line.
 
