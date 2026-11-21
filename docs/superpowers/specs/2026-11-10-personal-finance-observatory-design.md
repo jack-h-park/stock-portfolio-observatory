@@ -1,7 +1,7 @@
 # Personal Finance Observatory Product and Architecture Design
 
 **Date:** 2026-11-10 (America/Los_Angeles)
-**Status:** Foundation implemented and merged; bounded private operating adoption is recorded separately. Complete source/settlement coverage and broader migration remain separate. See [execution status](../../product/implementation-status.md).
+**Status:** Foundation and both required bounded annual workflows are merged, with separately recorded [operating acceptance](../../operations/installation-status.md#annual-review-and-hypothetical-planning-release-acceptance-november-20-2026). Complete financial/source/settlement coverage, owner routine acceptance and broader migration remain separate. See [execution status](../../product/implementation-status.md).
 **Companion:** [Implementation plan](../plans/2026-11-10-personal-finance-observatory.md)
 
 ## 1. Decision and purpose

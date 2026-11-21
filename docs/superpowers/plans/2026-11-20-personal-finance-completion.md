@@ -1,7 +1,7 @@
 # Personal Finance Observatory product completion plan
 
 **Date:** November 20, 2026 (America/Los_Angeles)
-**Status:** Accepted and merged in #367. Packet 1 is verified merged in #369 with synthetic/browser source acceptance, without deployment. Packet 2 is authorized by the subsequent continuation and is implemented for source review; it is not merged or deployed. No private adoption, actual comparison or operating change is authorized by this document.
+**Status:** Accepted in #367. Packet 1 (#369) and packet 2 (#371) are merged and deployed with [bounded operating/browser acceptance](../../operations/installation-status.md#annual-review-and-hypothetical-planning-release-acceptance-november-20-2026). Owner routine acceptance, actual financial completeness and any new real-fact adoption remain separate. Actual 2025 comparison and all current operating holds remain intact; this documentation update authorizes no further deployment.
 **Governing design:** [Original product and architecture design](../specs/2026-11-10-personal-finance-observatory-design.md). This plan resets the remaining sequence, not the original purpose or accepted financial facts.
 
 ## 1. Finish the product, not the maintenance queue
@@ -37,7 +37,7 @@ The November 20 private account review found current investment rows alongside d
 
 ## 4. Next integrated packet: annual tax review
 
-**Priority:** First implementation packet after this completion plan is accepted. This is the largest remaining gap between the existing infrastructure and the original user goal. Account perfection is not its prerequisite.
+**Priority at approval:** First integrated implementation packet. It is now merged and has bounded operating acceptance; the contract and acceptance journey below retain their original scope. Complete account inventory was not its prerequisite.
 
 **User outcome:** For one selected year, tax unit and authority, a reader can explain what the return says, what cash settlements have evidence, what remains unknown and which evidence record supports each fact, starting from the financial overview and returning through existing navigation. The estimate area remains visibly unavailable where its supported-input gate fails; no actual 2025 estimate or comparison is calculated.
 
@@ -70,7 +70,7 @@ Do not extract new facts from the accepted 2025 v5 documents or convert old free
 
 ## 5. Required second packet: bounded KR/US estimate planning
 
-This is a remaining required product outcome, not optional maintenance or an indefinitely deferred calculator screen. It follows the annual review source packet and reuses the existing rule/component contracts. The subsequent continuation authorizes the integrated source implementation described in the [packet plan](2026-11-20-hypothetical-tax-planning.md). Only invented bundled inputs are evaluated; operating adoption and real scenarios remain separately held.
+This required product outcome is now implemented, merged and deployed within its bounded hypothetical scope. It followed annual review and reused the existing rule/component contracts as described in the [packet plan](2026-11-20-hypothetical-tax-planning.md). The acceptance below defines that delivered scope; further operating adoption and real scenarios remain separately held.
 
 **User outcome:** A reader can enter or select explicitly supported hypothetical inputs, understand the rules and exclusions, obtain a reproducible bounded calculation where supported, and understand whether/how that result relates to recorded tax history. The result must never masquerade as a filed amount, actual settlement, complete cross-border liability or an approved actual 2025 comparison.
 
@@ -91,7 +91,7 @@ Acceptance journey:
 
 | Work package | Product outcome | Dependencies / stop condition |
 | --- | --- | --- |
-| Bounded operating adoption of the required source packets | Available real records remain readable in annual review and the permitted hypothetical planning journey is verified | Separate merge/release authorization; identify actual serving source and held main deltas at that time. New real return facts need a concrete evidence-linked import preview at current revision; no adoption by plan or deployment alone |
+| Owner acceptance and any further bounded adoption | Both source packets already have bounded operating acceptance; confirm the personally useful routine and scope any materially necessary real-fact adoption | Owner acceptance is separate from release proof. Any new release needs authorization and current serving-source review. New real return facts need an evidence-linked import preview at current revision; no adoption by plan or deployment alone |
 | Account/source completeness improvements | Resolve specific material identity/scope or missing-period questions that change interpretation of a real total | Batch owner decisions and source actions; preserve established identity/confirmation evidence. Draft/preview first, then separately authorized acquisition/import/mapping changes. No complete-account denominator from legacy row counts |
 
 Account/source work can progress independently when authorized, but should not displace the required annual review or estimate journey merely because a CSV date is unknown. Add a source task to the critical path only when it blocks a specific acceptance case or changes a material amount's interpretation.
@@ -116,4 +116,20 @@ Complete the active authorized package without repeated intermediate approval lo
 
 Liabilities/complete net worth, broad spending/budgeting, archive migration, repository/host/job renaming, service extraction, connector economic promotion and comprehensive tax methods remain deferred. Preserve total-assets wording until liabilities have separately evidenced support. No structural rewrite is justified by the new product name.
 
-Annual-review acceptance closes that packet only. Final bounded program acceptance reviews both required journeys against all five outcomes in section 2, together with separately authorized operating and owner walkthroughs. List unsupported calculation methods and unresolved real financial facts explicitly; do not declare full financial completeness. Until held operating adoption is authorized, report source readiness only. The next decision should be which product outcome to finish or adopt, not which internal helper to add.
+Annual-review acceptance closes that packet only. Final bounded program acceptance reviews both required journeys against all five outcomes in section 2, together with separately authorized operating and owner walkthroughs. List unsupported calculation methods and unresolved real financial facts explicitly; do not declare full financial completeness. The authorized combined rollout now has dated operating acceptance; owner acceptance and further adoption remain separate. Do not extend that walkthrough to later builds merely from source presence. The next decision should be which product outcome to finish or adopt, not which internal helper to add.
+
+## 10. Bounded delivery checkpoint: November 20, 2026
+
+Both integrated packets have completed implementation, merge and the separately authorized operating walkthrough. The combined selective release, preserved financial/control boundaries, candidate suite, evidence hashes and twelve hypothetical cases are recorded in [installation status](../../operations/installation-status.md#annual-review-and-hypothetical-planning-release-acceptance-november-20-2026). A later installed-source observation is separate from that release's full acceptance.
+
+| Completion-plan outcome | Delivered within scope | Still separate |
+| --- | --- | --- |
+| Supported asset scope/date visibility | Existing all-assets and source/history surfaces, with dated operating evidence | Complete inventory, liabilities and private source acceptance |
+| One recorded tax-year review | Integrated version/evidence/cash navigation and explicit unavailable real estimates | Missing structured facts and settlement/authority confirmation |
+| Know recorded payments/refunds | Existing tax-year/payment-date projections preserve dates, allocations and unknowns | Financial completeness; no receipt is inferred from a requested refund |
+| Explain trust and next action | Exact record/evidence links, rule/input identity and unsupported/missing reasons | Owner understanding and acceptance of the routine |
+| Public execution/private operation | Synthetic examples plus protected private operating walkthrough | New adoption, broader methods and wider recovery/consumer claims |
+
+The required hypothetical journey is selection-only: reproducible invented US components and exact KR schedule references, with no full annual bill, reported KR amount or actual filing comparison. Its successful deployment does not make those excluded outputs available.
+
+Next priorities are [owner routine acceptance, one material input/decision package, then bounded steady-state evidence](../../product/next-increment.md). Preserve unknowns and all execution holds. Do not turn this checkpoint into another helper, coverage widget, backup drill or automatic actual comparison. A future feature must serve a named material outcome or resolve an observed acceptance obstacle.

@@ -1,6 +1,6 @@
 # Owner installation observation
 
-Updated November 20, 2026 (America/Los_Angeles). This documentation update records the separately authorized freshness/gap display release and a later read-only identity/access observation. Earlier security and backup/recovery acceptance retains its dated scope. The preceding table and earlier sections are dated historical observations; the latest bounded source/browser/release acceptance is the final section. This task performs no deployment or private metadata adoption.
+Updated November 20, 2026 (America/Los_Angeles). This file preserves dated release acceptance separately from later installed-source observations. The final section records the combined annual-review/hypothetical-planning release and a subsequent read-only identity check. This documentation update performs no deployment, financial adoption or operating change.
 
 | Layer | Verified state | Interpretation |
 | --- | --- | --- |
@@ -106,3 +106,31 @@ The shared gateway was changed after the release: both its full fingerprint and 
 Therefore do not claim that the old fixed device allowlist or the entire gateway stayed unchanged after release. Owner-account-only access and a fixed reviewed-device list are different policies; the current UI notice does not itself enforce either. This documentation task makes no access change or retrospective approval of that replacement. Confirm the intended device-versus-account policy before any later access or notice change, using the gateway's current ownership contract. Other service configuration is outside this PR.
 
 Actual 2025 comparison, generation, briefing web publication, automatic resumption and Hometax remain held. Any further source reconciliation, operating change or deployment requires its own scope. Exact device/account identities, source intervals, figures, private paths, hashes and screenshots remain outside this public repository.
+
+## Annual review and hypothetical planning release acceptance: November 20, 2026
+
+The owner authorized merging [#371](https://github.com/jack-h-park/stock-portfolio-observatory/pull/371) and deploying it together with merged [#369](https://github.com/jack-h-park/stock-portfolio-observatory/pull/369). #369 merged at `8fe123380e296eec34cfe4c2b8f8861be47cb27b`; #371 merged at `836bc26911e86c574b754835fd943b4bd39744fe`. Both workflow implementations now have bounded operating acceptance, rather than source-only status. This documentation update records that completed authorization and performs no further rollout.
+
+| Layer | Verified identity / result | Boundary |
+| --- | --- | --- |
+| Combined release source | `0621b6419efbde350dc95ba3db9a8a245cbe4011`, based on operating `9b299f517d2583663914bcaeb262d031acd55478` | All 22 selected tax-workflow source/test/example files matched the approved #369/#371 source bytes. The concurrent separately authorized bank update was retained; unrelated main changes were not installed |
+| Accepted build | `D4KppbDAlxiiFP1urmlPw`; existing app service restarted | Owner HTTPS manifest bytes matched the installed artifact with TLS verification. Environment, service configuration and dependencies were preserved |
+| Candidate verification | Native in-memory SQLite check, opt-in synthetic seed, focused acceptance, 2,082 full-suite tests passed / 14 skipped / zero failures, typecheck, lint, UI guardrails and production build | This selective release has a different base/test count from main's source PR; the results are release-specific |
+| Annual review | All six recorded obligations matched the existing read-only amount projection; overview monetary display was unchanged. Selected year/unit/authority scopes retained each relevant tax type; exact return anchors, including accepted US 2025 v5, evidence and payment-date history worked | Structured prepayment/refund-request fields remained unavailable where not adopted. No new fact, receipt, basis or settlement-completeness claim was created |
+| Private evidence | Four bounded KR/US downloads matched recorded SHA-256 hashes with `private, no-store` caching | Hash/link verification only; no filing re-extraction or reassessment |
+| Hypothetical planning | Existing planning entry, all twelve invented sets, input/result identity, repeated-parameter rejection and recorded year/authority navigation verified | US ordinary/QDCG/NIIT components and KR exact national/local references only. No editable custom input, annual bill, reported KR amount, actual comparison, saving or real-input adoption |
+| Browser acceptance | English desktop (1280 px), Korean narrow (375 px), light/dark screenshots inspected; no narrow page overflow; Enter submission and version/context navigation exercised | GET/HEAD only. Bounded browser proof, not physical-device, assistive-technology or owner financial acceptance |
+| Preservation | Zero content/link changes in inspected financial/original/application-data/briefing-operator roots; existing asset/annual/account judgments, mappings, environment, service, persisted/live gateway, briefing bindings and dependencies preserved | One SQLite SHM read-lock mtime changed with identical bytes. Model equality excludes only volatile coverage generation time; amount/liability/status mutation checks still fail |
+| Access and holds | Owner HTTPS worked; unapproved LAN source and spoofed forwarding headers each returned 403; app listener remained loopback-only. Web tax-history writes disabled; briefing disabled/paused | Existing gateway policy preserved, including the previously documented owner-account versus fixed-device distinction. Actual 2025 comparison, generation, publication, automatic resumption and Hometax were not run |
+
+One app-switch attempt automatically restored the prior source/build because the preservation checker included a volatile `generatedAt` value. The checker was corrected and regression-checked against substantive changes; the same validated build was then installed successfully. No financial state was restored or rewritten. Private failed-attempt, rollback and successful-release receipts remain retained with the prior build/source pair. Cleanup or reuse of that old rollback target needs a current compatibility review.
+
+The release performed no refresh, ingest, collection, tax import, actual comparison, backup/restore, actual briefing generation or publication, Hometax action or access-policy edit. Detailed figures, identifiers, document paths and receipts remain private.
+
+### Later installed identity observed during this documentation update
+
+A fresh read-only check found source `dbd2c212a4c0c22c574ff49c2841a6f801154f22` and build `0ZSrx_1SSFEFZk1SM-jdg`. Its owner HTTPS manifest matched the installed bytes. This source descends from the accepted combined tax release; all 22 tax-workflow files remain byte-identical. The intervening eight-file change concerns shared UI/formatting components and theme configuration.
+
+This is a later identity/source-retention observation, not a deployment by this task or a repetition of the complete tax-workflow/financial-content acceptance on that later build. Web writes were still disabled and briefing still disabled/paused at the read-only check. The dated `D4KppbDAlxiiFP1urmlPw` walkthrough above remains the acceptance evidence for this session's tax release. Do not present it as the latest serving build or attribute every later presentation change to its tests.
+
+Further deployment, actual comparison, data/mapping adoption, generation, briefing publication, automatic resumption and Hometax remain held. See the [outcome checkpoint and next priorities](../product/next-increment.md).
